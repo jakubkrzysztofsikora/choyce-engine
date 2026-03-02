@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentTask",
+  "type": "object",
+  "required": ["id", "title", "owner", "specialty", "inputs", "acceptance_criteria", "status"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^TASK-[0-9]{3,}$"},
+    "title": {"type": "string"},
+    "owner": {"type": "string", "enum": ["orchestrator", "codex", "claude", "copilot", "mistral"]},
+    "specialty": {"type": "string"},
+    "inputs": {"type": "array", "items": {"type": "string"}},
+    "dependencies": {"type": "array", "items": {"type": "string"}},
+    "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+    "cross_review_by": {"type": "string", "enum": ["codex", "claude", "copilot", "mistral"]},
+    "status": {"type": "string", "enum": ["todo", "in_progress", "in_review", "done", "blocked"]}
+  }
+}
