@@ -14,6 +14,7 @@
 
 ## Claude Code setup
 - `CLAUDE.md`
+- `.claude/commands/plan.md`
 - `.claude/commands/delegate.md`
 - `.claude/commands/review-safety.md`
 
