@@ -1,0 +1,56 @@
+version: 1
+project: choyce-engine
+strategy:
+  orchestrator: codex
+  objective: Build a child-safe 3D family game engine foundation using Godot + Ollama + hexagonal architecture.
+
+tasks:
+  - id: TASK-001
+    title: Define core domain entities and use-case ports
+    owner: claude
+    specialty: architecture
+    inputs:
+      - docs/requirements/architecture-requirements.md
+    acceptance_criteria:
+      - Domain interfaces are framework-agnostic
+      - Inbound and outbound ports documented
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-002
+    title: Implement AI safety policy gate with reversible patches
+    owner: codex
+    specialty: ai-safety
+    inputs:
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-001]
+    acceptance_criteria:
+      - Pre/post moderation checks included
+      - Patch apply/undo represented in API
+    cross_review_by: mistral
+    status: todo
+
+  - id: TASK-003
+    title: Create kid-mode onboarding scene and parent advanced toggle
+    owner: copilot
+    specialty: gameplay-ux
+    inputs:
+      - docs/requirements/ui-ux-requirements.md
+    acceptance_criteria:
+      - Child-first flow in <=3 clicks
+      - Parent gate enforced
+    cross_review_by: claude
+    status: todo
+
+  - id: TASK-004
+    title: Review gameplay loop economy balancing heuristics
+    owner: mistral
+    specialty: systems-design
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    acceptance_criteria:
+      - Balance notes include age-appropriate pacing
+      - AI hints do not remove challenge
+    cross_review_by: copilot
+    status: todo

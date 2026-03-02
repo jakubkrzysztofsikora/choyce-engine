@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CrossAgentReview",
+  "type": "object",
+  "required": ["task_id", "reviewer", "decision", "findings"],
+  "properties": {
+    "task_id": {"type": "string"},
+    "reviewer": {"type": "string", "enum": ["codex", "claude", "copilot", "mistral"]},
+    "decision": {"type": "string", "enum": ["approve", "request_changes", "block"]},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "message"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+          "message": {"type": "string"},
+          "path": {"type": "string"}
+        }
+      }
+    }
+  }
+}
