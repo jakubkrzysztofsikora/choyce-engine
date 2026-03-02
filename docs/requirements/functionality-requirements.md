@@ -69,6 +69,13 @@ Target game feel: approachable like kid-friendly sandbox/tycoon loops (build →
 - FR-025: Parent dashboard with time limits, friend controls, and AI access policies.
 - FR-026: All AI-generated visual assets MUST pass through an automated content moderation filter before being presented to the user.
 
+## 3.6 Polish language experience (mandatory)
+- FR-027: The engine UI MUST be fully available in Polish as the default and primary language for kid and parent modes.
+- FR-028: AI-generated in-game text (quests, hints, NPC dialogue, labels, tutorials) MUST be generated in Polish by default.
+- FR-029: Voice experiences (TTS narration, NPC voices, generated audio prompts) MUST use Polish language voices by default, including ElevenLabs integrations.
+- FR-030: Voice input handling MUST prioritize Polish speech recognition and intent parsing for child pronunciation patterns.
+- FR-031: Template content shipped for MVP (starter worlds, quests, helper prompts) MUST be localized and QA-verified in Polish.
+
 ---
 
 ## 4) AI agent requirements (Ollama-powered)
@@ -78,6 +85,7 @@ Target game feel: approachable like kid-friendly sandbox/tycoon loops (build →
 - FR-AI-002: Produce multi-step plans (“To build your zoo tycoon, first place paths…”).
 - FR-AI-003: Generate/modify block-logic graphs and scripts through tool-calling.
 - FR-AI-004: Enforce policy layer before applying changes.
+- FR-AI-004a: Maintain Polish-first responses in all child and parent interactions unless parent explicitly changes language settings.
 
 ## 4.2 Gameplay agent
 - FR-AI-005: Observe gameplay events and suggest context-aware hints.

@@ -63,6 +63,7 @@ Each use-case MUST be independent of concrete UI/runtime frameworks.
 - `TelemetryPort`
 - `ClockPort`
 - `IdentityConsentPort`
+- `LocalizationPolicyPort` (language policy, glossary, terminology constraints)
 
 Adapters can be swapped without changing use-case implementations.
 
@@ -123,6 +124,7 @@ Requirements:
 - AR-SAFE-004: Parent override logging with reason.
 - AR-SAFE-005: Failsafe mode: disable generative output but keep core editor functional.
 - AR-SAFE-006: AI-generated audio (voice/music/SFX) must pass moderation and license checks prior to runtime playback and publishing.
+- AR-SAFE-007: Child- and parent-facing generated content must enforce Polish-first language policy at orchestration level, with explicit parent-controlled override.
 
 ---
 

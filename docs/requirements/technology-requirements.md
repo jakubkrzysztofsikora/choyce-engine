@@ -73,6 +73,13 @@ Recommendation: start with **Option A**, design adapters so engine core can migr
   - enforce policy filters and parent approval before publish
   - maintain attribution/licensing metadata in project manifest
 
+## 5.1 Polish language and localization technology requirements
+- TR-L10N-001: Polish (`pl-PL`) MUST be the default locale across editor UI, child gameplay UI, parent dashboard, and built-in templates.
+- TR-L10N-002: LLM prompt wrappers MUST inject a language policy requiring Polish output for kid/parent-facing content by default.
+- TR-L10N-003: ElevenLabs configuration MUST use Polish voice models/profiles for narration, NPC speech, and generated voice lines.
+- TR-L10N-004: STT adapters MUST support Polish recognition with child speech tolerance; fallback providers must preserve Polish intent extraction.
+- TR-L10N-005: Localization pipeline MUST include glossary/style constraints for child-safe Polish wording and parent-mode technical Polish terminology.
+
 ---
 
 ## 6) Platform requirements

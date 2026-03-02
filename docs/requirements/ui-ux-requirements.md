@@ -63,6 +63,14 @@
 
 ---
 
+
+## 4.1 Polish-first language UX
+- UX-LANG-001: Entire child and parent UI must be Polish by default (navigation, labels, prompts, dialogs, tooltips).
+- UX-LANG-002: AI helper responses in text and voice must default to natural, age-appropriate Polish.
+- UX-LANG-003: Voice personas (NPC helper, narration, onboarding guide) must provide Polish speech as the primary experience.
+- UX-LANG-004: Parent mode may enable additional languages, but child mode must keep Polish as the safe default unless parent explicitly approves a change.
+
+---
 ## 5) Kid mode requirements
 - UX-KID-001: Reading level around early elementary; optional full voice narration.
 - UX-KID-002: Bounded choices (3–5 options per step).
