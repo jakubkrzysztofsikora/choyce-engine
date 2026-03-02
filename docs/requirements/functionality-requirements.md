@@ -65,6 +65,7 @@ Target game feel: approachable like kid-friendly sandbox/tycoon loops (build →
 - FR-023: Minimal data collection; explicit parental consent for cloud features.
 - FR-024: Explainable AI actions log (“AI changed: spawn rate from 1.0 to 0.7”).
 - FR-025: Parent dashboard with time limits, friend controls, and AI access policies.
+- FR-026: All AI-generated visual assets MUST pass through an automated content moderation filter before being presented to the user.
 
 ---
 
