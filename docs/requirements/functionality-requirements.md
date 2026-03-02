@@ -62,6 +62,8 @@ Target game feel: approachable like kid-friendly sandbox/tycoon loops (build →
 - FR-020: Age band profiles (6–8 default restrictions).
 - FR-021: Profanity/toxicity filtering for text + prompt safety filters.
 - FR-022: Voice input moderation and optional on-device transcription.
+- FR-022a: ElevenLabs API SHOULD be used for child-friendly TTS voices and non-lyrical ambient audio generation, subject to parental controls and regional policy settings.
+- FR-022b: Any AI-generated voice, sound effect, or music MUST pass automated audio/content moderation and licensing checks before playback or publishing.
 - FR-023: Minimal data collection; explicit parental consent for cloud features.
 - FR-024: Explainable AI actions log (“AI changed: spawn rate from 1.0 to 0.7”).
 - FR-025: Parent dashboard with time limits, friend controls, and AI access policies.

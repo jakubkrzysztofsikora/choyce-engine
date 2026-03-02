@@ -25,6 +25,8 @@ This project direction was informed by current publicly available resources on e
   - https://code.org/en-US/curriculum/computer-science-fundamentals
 - LangGraph docs (agent orchestration patterns).
   - https://www.langchain.com/langgraph
+- ElevenLabs developer docs (voice, sound effects, and music APIs).
+  - https://elevenlabs.io/docs
 - NIST AI Risk Management Framework.
   - https://www.nist.gov/itl/ai-risk-management-framework
 - ISO/IEC 42001 AI management systems standard.
@@ -40,3 +42,4 @@ This project direction was informed by current publicly available resources on e
 3. Block-based programming should be first-class, with bridge-to-script for parent advanced flows.
 4. Safety and governance cannot be add-ons: moderation, role-based controls, and AI audit logs should be built into core architecture.
 5. Hexagonal architecture aligns with future-proofing model/engine choices and keeping domain logic testable.
+6. ElevenLabs can be used as a swappable outbound adapter for high-quality TTS and safe generated audio, with moderation and licensing gates in-domain.

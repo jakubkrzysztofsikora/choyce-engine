@@ -58,11 +58,20 @@ Recommendation: start with **Option A**, design adapters so engine core can migr
 - TR-INT-001: Voice input pipeline:
   - STT local-first when possible
   - fallback to cloud STT with parent opt-in
+  - optional ElevenLabs STT integration where available
 - TR-INT-002: Block programming integration:
   - Blockly/Scratch-like blocks mapped to engine behavior DSL
 - TR-INT-003: Scripting bridge:
   - generated code from blocks is editable in advanced mode
 - TR-INT-004: Telemetry pipeline with child-safe analytics (no ad-tech identifiers).
+- TR-INT-005: ElevenLabs integration for:
+  - text-to-speech narration (NPC helper + accessibility narration)
+  - generated safe sound effects and background music for kid-friendly worlds
+  - voice profile presets restricted to approved child-safe voices
+- TR-INT-006: Audio governance controls:
+  - watermark/tag AI-generated audio metadata
+  - enforce policy filters and parent approval before publish
+  - maintain attribution/licensing metadata in project manifest
 
 ---
 
@@ -101,5 +110,6 @@ Recommendation: start with **Option A**, design adapters so engine core can migr
 - Blockly docs (block programming integration model).
 - Code.org CS Fundamentals (age-appropriate learning progression).
 - LangGraph docs (agent orchestration patterns).
+- ElevenLabs API docs (voice, sound effects, and music generation capabilities).
 - NIST AI RMF and ISO/IEC 42001 (AI governance practices).
 - Hexagonal architecture and CQRS references for system design baseline.

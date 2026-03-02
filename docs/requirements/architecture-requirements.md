@@ -57,6 +57,7 @@ Each use-case MUST be independent of concrete UI/runtime frameworks.
 - `ModerationPort`
 - `SpeechToTextPort`
 - `TextToSpeechPort`
+- `AudioGenerationPort` (SFX/music generation with policy checks)
 - `AssetRepositoryPort`
 - `ProjectStorePort`
 - `TelemetryPort`
@@ -80,6 +81,7 @@ Adapters can be swapped without changing use-case implementations.
 - Local rules+ML moderation adapter for `ModerationPort`
 - Filesystem adapter for local project storage
 - Cloud sync adapter (optional)
+- ElevenLabs adapter for `TextToSpeechPort` and `AudioGenerationPort`
 
 ---
 
@@ -120,6 +122,7 @@ Requirements:
 - AR-SAFE-003: Restricted tool scopes in kid mode.
 - AR-SAFE-004: Parent override logging with reason.
 - AR-SAFE-005: Failsafe mode: disable generative output but keep core editor functional.
+- AR-SAFE-006: AI-generated audio (voice/music/SFX) must pass moderation and license checks prior to runtime playback and publishing.
 
 ---
 
