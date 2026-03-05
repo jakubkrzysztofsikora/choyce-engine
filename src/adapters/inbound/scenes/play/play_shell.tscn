@@ -1,0 +1,77 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/adapters/inbound/scenes/play/play_shell.gd" id="1_play_script"]
+
+[node name="PlayShell" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_play_script")
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="VBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Tryb gry"
+
+[node name="Info" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Wybierz świat i uruchom sesję."
+autowrap_mode = 3
+
+[node name="StatusSummary" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Brak danych postepu dla aktywnego swiata."
+autowrap_mode = 3
+
+[node name="Actions" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PlaySoloButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(132, 44)
+layout_mode = 2
+text = "Start solo"
+
+[node name="PlayCoopButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(172, 44)
+layout_mode = 2
+text = "Start lokalnej kooperacji"
+
+[node name="UndoButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(88, 44)
+layout_mode = 2
+text = "Cofnij"
+
+[node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+text = "Przywróć bezpieczny zapis"
+
+[node name="GoCreateButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(168, 44)
+layout_mode = 2
+text = "Wróć do tworzenia"
+
+[node name="GoLibraryButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(176, 44)
+layout_mode = 2
+text = "Przejdź do biblioteki"

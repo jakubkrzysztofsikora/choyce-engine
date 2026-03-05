@@ -1,0 +1,55 @@
+{
+  "task_id": "TASK-012",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "medium",
+      "message": "Safety events use 'MODERATION_BLOCK' as policy_rule for both content moderation blocks (step 2, line 52) and tool validation blocks (step 4, line 74). Audit consumers cannot distinguish between 'unsafe content' and 'disallowed tool scope'. Use 'TOOL_SCOPE_VIOLATION' for validation blocks and keep 'MODERATION_BLOCK' for content checks.",
+      "path": "src/application/request_ai_creation_help_service.gd:74"
+    },
+    {
+      "severity": "medium",
+      "message": "Explanation prompt at line 103 is in English ('Explain briefly what these changes will do:') in a Polish-first engine. The PromptEnvelope locale is pl-PL but the prompt text is English, causing inconsistent language output. Use Polish: 'Opisz krotko co te zmiany zrobia:' for consistent Polish-first kid experience.",
+      "path": "src/application/request_ai_creation_help_service.gd:103"
+    },
+    {
+      "severity": "medium",
+      "message": "Transaction failure (line 126-128) rejects the action but does not emit SafetyInterventionTriggeredEvent. Failed tool executions could indicate safety-relevant conditions (e.g., forbidden resource access). Add audit event emission for transaction failures to maintain audit completeness.",
+      "path": "src/application/request_ai_creation_help_service.gd:126"
+    },
+    {
+      "severity": "medium",
+      "message": "Contract test is missing coverage for input moderation blocking (step 2) and output moderation sanitization (step 8). These are the most safety-critical paths in the orchestration loop. Add tests that exercise the 'unsafe' keyword in MockModeration for both input prompt rejection and output explanation sanitization.",
+      "path": "tests/contracts/request_ai_creation_help_service_contract_test.gd"
+    },
+    {
+      "severity": "low",
+      "message": "_impact_level_name() is duplicated identically in RequestAICreationHelpService (line 254) and ApproveAIPatchService (line 67). Extract to a static method on AIAssistantAction or a shared utility to reduce maintenance risk.",
+      "path": "src/application/request_ai_creation_help_service.gd:254"
+    },
+    {
+      "severity": "low",
+      "message": "Explanation envelope (line 102-106) does not set session_id, unlike the main envelope (line 39). This could affect downstream context tracking for the explanation generation step.",
+      "path": "src/application/request_ai_creation_help_service.gd:102"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "orchestration_loop_stages": "PASS - All 9 stages are implemented in correct order: intent capture, input moderation, LLM tool planning, deterministic validation, impact classification, approval gating, explanation generation, output moderation, transactional execution with rollback.",
+      "high_impact_approval_gating": "PASS - High-impact actions (kid: script/logic edits or >3 batch; parent: >5 batch) remain PROPOSED and are not executed. requires_parent_approval flag is correctly set. Tool gateway is not called for PROPOSED actions."
+    },
+    "hexagonal_boundaries": "PASS - Service depends on LLMPort, ModerationPort, ClockPort, LocalizationPolicyPort (all ports), plus optional DomainEventBus and ToolExecutionGateway. No framework dependencies. ToolExecutionGateway is a clean gateway abstraction.",
+    "kid_safety_and_parental_controls": "PASS - Kid tool scope restricted to [scene_edit, paint, duplicate]. Script/logic edits blocked at validation for kids. Impact assessment stricter for kids (>3 = MEDIUM). Dual-filter moderation on input and output.",
+    "contract_tests": "PARTIAL - 10 checks cover low-impact apply, high-impact blocking, tool validation rejection, and transaction rollback. Missing: input moderation blocking and output moderation sanitization tests (see medium finding).",
+    "cross_agent_review": "This review constitutes the required cross-agent review for TASK-012."
+  },
+  "positive_notes": [
+    "Excellent 9-stage orchestration pipeline with clear separation of concerns at each stage.",
+    "Transactional execution with reverse-order rollback is correctly implemented — each tool produces an undo_token and failures trigger cascading undo.",
+    "Tool validation gate provides defense in depth: scope check (permitted_tools) + argument safety (no Callable/Object). Even if permitted_tools leaks, the assessment provides a second safety net.",
+    "Impact classification is appropriately stricter for kids than parents — good age-differentiated safety policy.",
+    "ToolExecutionGateway is a clean minimal abstraction — execute() + rollback() with context dictionary. Perfect for TASK-013 to implement concrete tool schemas."
+  ],
+  "summary": "TASK-012 delivers a solid deterministic AI orchestration loop with correct stage ordering, transactional execution, and approval gating. Four medium findings: undifferentiated audit policy_rule values, English explanation prompt in Polish-first engine, missing audit event for transaction failures, and missing test coverage for moderation paths. Two low findings for code duplication and missing session_id. Overall: APPROVE — the orchestration architecture is sound and well-structured. The medium findings improve audit quality and test coverage but don't affect correctness of the core flow."
+}

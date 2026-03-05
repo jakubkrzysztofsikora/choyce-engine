@@ -1,0 +1,60 @@
+{
+  "task_id": "TASK-016",
+  "reviewer": "claude",
+  "verdict": "APPROVE",
+  "summary": "Well-structured audio governance pipeline with 3-gate enforcement (consent, moderation, license), Polish-first voice/language defaults, and proper metadata watermarking. Legacy consent backward compatibility is a nice touch. 2 medium + 3 low findings.",
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "src/application/audio_governance_service.gd",
+      "lines": "194-209",
+      "title": "Metadata extraction relies on duck-typed methods not on port contracts",
+      "detail": "_extract_tts_metadata() checks _tts.has_method('get_last_request_metadata') and _extract_audio_generation_metadata() checks _audio_generation.has_method('get_last_generation_metadata'). These methods are implemented by the adapters but not declared on TextToSpeechPort or AudioGenerationPort. If a different TTS or audio adapter is used that doesn't implement these methods, the governance service gets empty metadata, bypasses license checks (empty license_id → blocked), and returns a confusing license error instead of a clear 'metadata unavailable' error.",
+      "recommendation": "Add get_last_request_metadata() -> Dictionary to TextToSpeechPort and get_last_generation_metadata() -> Dictionary to AudioGenerationPort with default {} returns. This formalizes the contract and makes governance work predictably with any conforming adapter."
+    },
+    {
+      "severity": "medium",
+      "file": "src/application/audio_governance_service.gd",
+      "lines": "73-74",
+      "title": "Voice role resolution uses duck-typed method on TTS adapter",
+      "detail": "generate_narration() calls _tts.has_method('resolve_voice_for_role') at line 73. This is an adapter-specific method not on TextToSpeechPort. If a conforming TTS adapter doesn't implement it, voice_id falls back to the raw role string (e.g., 'narration') which may not map to a valid provider voice_id, causing silent failures in synthesis.",
+      "recommendation": "Either add resolve_voice_for_role() to TextToSpeechPort with a default pass-through, or handle the fallback explicitly by mapping common role names to safe defaults within the governance service itself."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/audio_governance_service.gd",
+      "lines": "219",
+      "title": "allow_publish defaults to true when provider metadata omits the field",
+      "detail": "_augment_metadata reads result.get('allow_publish', true) which defaults to true. If a provider adapter returns metadata without an allow_publish field, the audio is implicitly marked as publishable. The safety-first default should be false (deny publishing unless explicitly allowed).",
+      "recommendation": "Change the default to false: result.get('allow_publish', false) to follow the fail-closed pattern used elsewhere in the engine."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/audio_governance_service.gd",
+      "lines": "177-191",
+      "title": "Language override mixes kid profile data with parent policy control",
+      "detail": "_resolve_audio_language reads actor.language directly and then checks actor.preferences for 'allow_non_polish_audio'. This couples the governance service to the PlayerProfile internal structure. If a kid has a non-Polish language preference set but their parent hasn't explicitly allowed it, the service correctly falls back to pl-PL. However, the logic would be cleaner using a dedicated consent/preference check rather than inspecting actor fields.",
+      "recommendation": "Consider using the consent port with a 'non_polish_audio' consent type, or extract language policy into a separate method on LocalizationPolicyPort."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/audio_governance_service.gd",
+      "lines": "267",
+      "title": "Safety event decision_id uses non-cryptographic hash",
+      "detail": "Same recurring pattern: absi(seed.hash()) for decision_id generation. Collisions between different policy_rule/actor/trigger combinations would deduplicate events in audit systems.",
+      "recommendation": "Incorporate a monotonic counter or timestamp for uniqueness."
+    }
+  ],
+  "positive_observations": [
+    "Clean 3-gate governance: consent → moderation → license checks before any audio output",
+    "Polish-first enforcement: non-Polish output requires explicit parent preference override",
+    "Legacy consent backward compatibility: cloud_tts accepted alongside cloud_audio_generation",
+    "Non-lyrical enforcement by default for ambient audio (bez wokalu tag)",
+    "Separate playback_allowed and publish_allowed flags for different consumption contexts",
+    "AI watermark metadata (ai_audio tag) on all generated audio for downstream identification",
+    "License allowlist pattern with configurable approved_license_ids",
+    "SafetyInterventionTriggeredEvent emission for all governance blocks with specific policy rules",
+    "Parent-only bypass for consent gate — parents always have implicit consent",
+    "13 contract assertions covering consent gate, moderation gate, license gate, and event emission"
+  ]
+}

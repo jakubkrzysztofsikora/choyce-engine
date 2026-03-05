@@ -1,0 +1,55 @@
+{
+  "template_id": "tycoon",
+  "name": "Tycoon",
+  "name_pl": "Biznesowe Miasto",
+  "description_pl": "Buduj sklepy, obsługuj klientów i rozwijaj swoje miasto krok po kroku.",
+  "theme": "business_city",
+  "default_palette_id": "city_sunrise",
+  "palette_options": [
+    "city_sunrise",
+    "city_neon",
+    "city_pastel"
+  ],
+  "default_world": {
+    "name_pl": "Miasteczko Startowe",
+    "nodes": [
+      {
+        "type": "TERRAIN",
+        "display_name_pl": "Plac Główny",
+        "position": [0, 0, 0]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Sklep Spożywczy",
+        "position": [4, 0, 1]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Dom Klienta",
+        "position": [-3, 0, -2]
+      }
+    ],
+    "rules": [
+      {
+        "type": "SCORING",
+        "display_name_pl": "Zysk za obsłużenie klienta",
+        "compiled_logic": "on_customer_served:add_score(10)"
+      },
+      {
+        "type": "TIMER",
+        "display_name_pl": "Codzienna premia",
+        "compiled_logic": "every_60s:add_score(5)"
+      }
+    ]
+  },
+  "onboarding_hints_pl": [
+    "Postaw pierwszy sklep blisko placu.",
+    "Dodaj ścieżkę, aby klienci szybciej docierali.",
+    "Ulepsz sklep, gdy zbierzesz pierwsze monety."
+  ],
+  "quest_text_pl": [
+    "Obsłuż 3 klientów.",
+    "Zdobądź 50 monet.",
+    "Postaw drugi budynek usługowy."
+  ]
+}

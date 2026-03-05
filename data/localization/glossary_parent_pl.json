@@ -1,0 +1,12 @@
+{
+	"preferred_terms": {
+		"quest": "zadanie",
+		"hint": "wskazowka",
+		"build": "tworzenie",
+		"playtest": "sesja testowa",
+		"template": "szablon",
+		"moderation": "moderacja",
+		"policy": "polityka",
+		"publish": "publikacja"
+	}
+}

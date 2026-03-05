@@ -1,0 +1,90 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/adapters/inbound/scenes/create/create_shell.gd" id="1_create_script"]
+
+[node name="CreateShell" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_create_script")
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="VBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Tryb tworzenia"
+
+[node name="Info" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Wybierz szablon, zbuduj świat i uruchom test."
+autowrap_mode = 3
+
+[node name="Tools" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PlaceButton" type="Button" parent="Layout/Tools"]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+toggle_mode = true
+text = "🟦 Umieść"
+
+[node name="PaintButton" type="Button" parent="Layout/Tools"]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+toggle_mode = true
+text = "🟩 Pomaluj"
+
+[node name="MoveButton" type="Button" parent="Layout/Tools"]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+toggle_mode = true
+text = "🔷 Przesuń"
+
+[node name="DuplicateButton" type="Button" parent="Layout/Tools"]
+custom_minimum_size = Vector2(132, 44)
+layout_mode = 2
+toggle_mode = true
+text = "🟪 Duplikuj"
+
+[node name="Actions" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="UndoButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(88, 44)
+layout_mode = 2
+text = "Cofnij"
+
+[node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+text = "Przywróć bezpieczny zapis"
+
+[node name="GoPlayButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+text = "Przejdź do gry"
+
+[node name="GoLibraryButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(176, 44)
+layout_mode = 2
+text = "Przejdź do biblioteki"

@@ -1,0 +1,55 @@
+{
+  "template_id": "adventure",
+  "name": "Adventure Island",
+  "name_pl": "Wyspa Przygód",
+  "description_pl": "Odkrywaj wyspę, zbieraj skarby i rozwiązuj proste zagadki.",
+  "theme": "tropical_fantasy",
+  "default_palette_id": "island_lagoon",
+  "palette_options": [
+    "island_lagoon",
+    "island_sunset",
+    "island_jungle"
+  ],
+  "default_world": {
+    "name_pl": "Laguna Odkrywców",
+    "nodes": [
+      {
+        "type": "TERRAIN",
+        "display_name_pl": "Plaża Startowa",
+        "position": [0, 0, 0]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Most Linowy",
+        "position": [5, 1, 3]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Skrzynia Skarbów",
+        "position": [9, 0, -2]
+      }
+    ],
+    "rules": [
+      {
+        "type": "SCORING",
+        "display_name_pl": "Zbieranie monet przygody",
+        "compiled_logic": "on_collect_token:add_score(12)"
+      },
+      {
+        "type": "EVENT_TRIGGER",
+        "display_name_pl": "Odblokowanie bramy zagadką",
+        "compiled_logic": "on_solve_puzzle:open_gate()"
+      }
+    ]
+  },
+  "onboarding_hints_pl": [
+    "Idź ścieżką i szukaj świecących wskazówek.",
+    "Zbieraj monety przygody po drodze.",
+    "Rozwiąż zagadkę, aby otworzyć bramę do skarbu."
+  ],
+  "quest_text_pl": [
+    "Zbierz 10 monet przygody.",
+    "Rozwiąż pierwszą zagadkę wyspy.",
+    "Otwórz skrzynię skarbów."
+  ]
+}

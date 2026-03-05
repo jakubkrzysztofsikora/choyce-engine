@@ -1,0 +1,38 @@
+# Godot
+.godot/
+*.import
+export_presets.cfg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment / secrets
+.env
+.env.*
+.vibe/
+*.key
+*.pem
+
+# Build
+build/
+dist/
+
+# Logs
+*.log
+
+# Ollama local data
+ollama_data/
+
+# User project data (created at runtime)
+projects/
+
+# Python venv (if used for tooling)
+venv/
+__pycache__/

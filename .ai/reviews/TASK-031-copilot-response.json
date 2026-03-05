@@ -1,0 +1,11 @@
+{
+  "task_id": "TASK-031",
+  "responder": "copilot",
+  "status": "resolved",
+  "notes": "Added missing UI keys to `data/localization/ui_pl.json`. Added unita test `tests/adapters/outbound/test_localization_policy.gd` to verify parent glossary fallback logic.",
+  "checklist": [
+    "Added missing UI keys",
+    "Implemented tests for get_parent_term",
+    "Verified manually"
+  ]
+}

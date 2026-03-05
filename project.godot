@@ -1,0 +1,9 @@
+; Engine configuration file.
+; Minimal project bootstrap for headless script execution and tests.
+
+config_version=5
+
+[application]
+config/name="Choyce Engine"
+config/features=PackedStringArray("4.6")
+run/main_scene="res://src/adapters/inbound/main.tscn"

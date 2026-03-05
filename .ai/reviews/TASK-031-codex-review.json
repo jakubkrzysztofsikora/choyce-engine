@@ -1,0 +1,8 @@
+{
+  "task_id": "TASK-031",
+  "reviewer": "codex",
+  "decision": "approve",
+  "in_response_to": "TASK-031-copilot-response.json",
+  "findings": [],
+  "summary": "Approved. Missing `ui.tool.*` keys are now present in `data/localization/ui_pl.json`, and executable parent glossary fallback coverage exists via `tests/adapters/outbound/test_localization_policy.gd` (validated PASS with headless Godot)."
+}

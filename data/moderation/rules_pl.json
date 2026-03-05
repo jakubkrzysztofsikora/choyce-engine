@@ -1,0 +1,56 @@
+{
+	"categories": {
+		"violence": {
+			"terms": ["zabij", "zabic", "zabijac", "zabojstwo", "przemoc", "walka", "krew", "ranic", "pobij", "uderzac"],
+			"safe_alternative": "Sprobuj stworzyc cos przyjaznego i bezpiecznego.",
+			"severity": "block"
+		},
+		"weapons": {
+			"terms": ["bron", "pistolet", "karabin", "noz", "miecz", "bomba", "granat", "strzal", "strzelac"],
+			"safe_alternative": "Uzyj bezpiecznych narzedzi do budowania.",
+			"severity": "block"
+		},
+		"drugs": {
+			"terms": ["narkotyk", "narkotyki", "alkohol", "piwo", "wodka", "papieros", "palenie"],
+			"safe_alternative": "Wybierz cos zdrowszego dla swojej postaci.",
+			"severity": "block"
+		},
+		"gambling": {
+			"terms": ["hazard", "kasyno", "zaklad", "zaklady", "ruletka"],
+			"safe_alternative": "Sprobuj stworzyc gre zrecznosciowa zamiast tego.",
+			"severity": "block"
+		},
+		"profanity": {
+			"terms": ["cholera", "kurwa", "kurde", "psiakrew", "jasna cholera", "do diabla"],
+			"safe_alternative": "Uzyj milszych slow w swojej grze.",
+			"severity": "block"
+		},
+		"adult_content": {
+			"terms": ["seks", "erotyka", "nagi", "nagosc", "porno"],
+			"safe_alternative": "Tworzmy cos odpowiedniego dla wszystkich.",
+			"severity": "block"
+		},
+		"horror": {
+			"terms": ["smierc", "trup", "zombie", "duch", "straszny", "koszmar"],
+			"safe_alternative": "Moze stworz cos wesolego zamiast strasznego?",
+			"severity": "warn_child"
+		}
+	},
+	"image_rules": {
+		"max_size_bytes": 10485760,
+		"allowed_formats_magic": {
+			"png": [137, 80, 78, 71],
+			"jpg": [255, 216, 255]
+		}
+	},
+	"age_band_overrides": {
+		"CHILD_6_8": {
+			"additional_blocked": ["straszny", "potwor", "smierc", "duch", "zombie", "koszmar", "trup"],
+			"default_alternative": "Wybierz cos przyjemniejszego do zabawy!"
+		},
+		"CHILD_9_12": {
+			"additional_blocked": [],
+			"default_alternative": "Sprobuj stworzyc cos bezpieczniejszego."
+		}
+	}
+}

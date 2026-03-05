@@ -1,0 +1,36 @@
+{
+  "task_id": "TASK-020",
+  "responder": "copilot",
+  "in_response_to": "TASK-020-codex-review.json",
+  "status": "all_findings_addressed",
+  "responses": [
+    {
+      "finding": "Template rule type vocabulary mismatch with current domain/compile pipeline",
+      "severity": "medium",
+      "action": "fixed",
+      "detail": "Normalized starter template rule type values to domain-compatible names and hardened TemplateLoader with explicit enum parsing + legacy synonym mapping for both node and rule types.",
+      "files": [
+        "data/templates/tycoon.json",
+        "data/templates/obby.json",
+        "data/templates/farm.json",
+        "data/templates/city.json",
+        "data/templates/adventure.json",
+        "src/application/template_loader.gd"
+      ]
+    },
+    {
+      "finding": "No executable validation that all new templates instantiate through TemplateLoader",
+      "severity": "low",
+      "action": "fixed",
+      "detail": "Added and executed smoke test that loads all five templates through TemplateLoader and asserts project/world/nodes/rules are created.",
+      "files": [
+        "tests/application/template_loader_starter_smoke.gd"
+      ],
+      "validation": [
+        "godot --headless --path . --editor --quit >/dev/null && godot --headless --path . -s tests/application/template_loader_starter_smoke.gd",
+        "Result: STARTER_TEMPLATE_SMOKE: PASS"
+      ]
+    }
+  ],
+  "summary": "Both review findings were addressed: template type compatibility is now enforced and validated at loader level, and an executable starter-template smoke test now proves load/instantiate behavior for all 5 templates."
+}

@@ -1,0 +1,57 @@
+{
+  "task_id": "TASK-028",
+  "reviewer": "claude",
+  "verdict": "APPROVE",
+  "summary": "Well-structured parent scripting workflow with proper preview-before-apply enforcement, rollback support, and parent-mode gating. Polish-first LLM prompts for explain and refactor. Clean port/adapter separation. 1 medium + 4 low findings.",
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "src/application/parent_script_editor_service.gd",
+      "lines": "41-54, 57-70",
+      "title": "LLM explain/refactor responses returned without output moderation",
+      "detail": "explain_script and suggest_refactor pass raw script code to the LLM and return the response directly via _llm.complete(prompt). The LLM output is not moderated through ModerationPort.check_text(). While this is parent-mode, the dual-filter moderation pattern used elsewhere in the engine (e.g., RequestAICreationHelpService Step 8) should apply to all AI-generated text. An LLM that produces unsafe content in explanations would bypass moderation entirely.",
+      "recommendation": "Add optional ModerationPort dependency and run check_text on LLM responses before returning. On BLOCK, return a safe alternative or generic explanation."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/parent_script_editor_service.gd",
+      "lines": "179-181",
+      "title": "Mutation ID uses non-cryptographic hash with collision risk",
+      "detail": "_mutation_id uses GDScript .hash() which is not collision-resistant. If the clock has low resolution (same timestamp for consecutive calls), two mutations to the same project/path could get the same mutation_id, overwriting the pending mutation entry.",
+      "recommendation": "Append an incrementing counter or use a UUID-like construction to ensure uniqueness."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/parent_script_editor_service.gd",
+      "lines": "10, 88",
+      "title": "_pending_mutations is unbounded and never pruned for abandoned previews",
+      "detail": "Applied mutations are erased from _pending_mutations (line 136), but abandoned previews (previewed but never applied) persist forever. A parent previewing many potential changes without applying them will accumulate stale entries.",
+      "recommendation": "Add a max_pending limit or time-based expiry for previewed mutations that are never applied."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/parent_script_editor_service.gd",
+      "lines": "73-103",
+      "title": "No moderation of new_code content in preview_mutation",
+      "detail": "preview_mutation accepts arbitrary new_code without content checks. While this is parent-mode, if a parent applies code containing unsafe content that subsequently becomes part of a published world, the moderation is only caught at publish time (if at all). Adding a WARN-level check at preview time could provide early feedback.",
+      "recommendation": "Consider adding an optional moderation check on new_code content with WARN severity for parent mode."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/parent_script_editor_service.gd",
+      "lines": "194-210",
+      "title": "Line diff algorithm is naive index-based comparison",
+      "detail": "_build_line_diff compares old and new lines by index position. If a single line is inserted in the middle, all subsequent lines appear as changes. This is acceptable for MVP but produces noisy diffs for insertions/deletions.",
+      "recommendation": "Document as a known limitation. A future improvement could use longest common subsequence (LCS) for more accurate diffs."
+    }
+  ],
+  "positive_observations": [
+    "Clean parent-mode gate on ALL operations via _can_access_parent_mode(actor)",
+    "Preview-before-apply enforcement — apply only works with previewed mutation IDs",
+    "Rollback restores exact previous script source with proper action log recording",
+    "Polish-first LLM prompts: 'Wyjasnij ten skrypt prostym jezykiem dla rodzica', 'Zaproponuj bezpieczny refaktor'",
+    "Clean ScriptRepositoryPort/InMemoryScriptRepository separation with composite key pattern",
+    "Explicit diff output in preview showing removed (-) and added (+) lines",
+    "33 test assertions across 3 contracts covering parent gate, kid blocking, full mutation lifecycle"
+  ]
+}

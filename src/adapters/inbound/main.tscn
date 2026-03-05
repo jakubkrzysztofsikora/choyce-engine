@@ -1,0 +1,94 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/adapters/inbound/main.gd" id="1_main_script"]
+[ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/create/create_shell.tscn" id="2_create_scene"]
+[ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/play/play_shell.tscn" id="3_play_scene"]
+[ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/library/library_shell.tscn" id="4_library_scene"]
+[ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/parent/parent_zone_shell.tscn" id="5_parent_scene"]
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_main_script")
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="NavBar" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Layout/NavBar"]
+custom_minimum_size = Vector2(240, 44)
+layout_mode = 2
+text = "Choyce Engine"
+
+[node name="NavCreate" type="Button" parent="Layout/NavBar"]
+custom_minimum_size = Vector2(88, 44)
+layout_mode = 2
+text = "Twórz"
+
+[node name="NavPlay" type="Button" parent="Layout/NavBar"]
+custom_minimum_size = Vector2(88, 44)
+layout_mode = 2
+text = "Graj"
+
+[node name="NavLibrary" type="Button" parent="Layout/NavBar"]
+custom_minimum_size = Vector2(120, 44)
+layout_mode = 2
+text = "Biblioteka"
+
+[node name="NavParent" type="Button" parent="Layout/NavBar"]
+custom_minimum_size = Vector2(144, 44)
+layout_mode = 2
+text = "Strefa rodzica"
+
+[node name="Body" type="Control" parent="Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="CreateShell" parent="Layout/Body" instance=ExtResource("2_create_scene")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PlayShell" parent="Layout/Body" instance=ExtResource("3_play_scene")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="LibraryShell" parent="Layout/Body" instance=ExtResource("4_library_scene")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ParentZoneShell" parent="Layout/Body" instance=ExtResource("5_parent_scene")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2

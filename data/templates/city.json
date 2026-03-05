@@ -1,0 +1,55 @@
+{
+  "template_id": "city",
+  "name": "City",
+  "name_pl": "Nowoczesne Miasto",
+  "description_pl": "Rozbudowuj drogi, stawiaj budynki i utrzymuj zasoby miasta.",
+  "theme": "urban_modern",
+  "default_palette_id": "urban_steel",
+  "palette_options": [
+    "urban_steel",
+    "urban_twilight",
+    "urban_green"
+  ],
+  "default_world": {
+    "name_pl": "Dzielnica Centralna",
+    "nodes": [
+      {
+        "type": "TERRAIN",
+        "display_name_pl": "Plac Ratuszowy",
+        "position": [0, 0, 0]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Ratusz",
+        "position": [1, 0, -3]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Skrzyżowanie",
+        "position": [-4, 0, 2]
+      }
+    ],
+    "rules": [
+      {
+        "type": "TIMER",
+        "display_name_pl": "Bilans energii",
+        "compiled_logic": "every_45s:update_energy_balance()"
+      },
+      {
+        "type": "SCORING",
+        "display_name_pl": "Punkty za zadowolenie mieszkańców",
+        "compiled_logic": "on_happiness_tick:add_score(6)"
+      }
+    ]
+  },
+  "onboarding_hints_pl": [
+    "Połącz budynki drogą.",
+    "Dbaj o równowagę między domami a usługami.",
+    "Dodaj park, aby zwiększyć zadowolenie mieszkańców."
+  ],
+  "quest_text_pl": [
+    "Połącz 3 budynki drogami.",
+    "Osiągnij 70% zadowolenia mieszkańców.",
+    "Zbuduj pierwszy park miejski."
+  ]
+}

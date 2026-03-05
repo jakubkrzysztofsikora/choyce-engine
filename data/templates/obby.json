@@ -1,0 +1,55 @@
+{
+  "template_id": "obby",
+  "name": "Obby-lite",
+  "name_pl": "Kolorowy Tor Przeszkód",
+  "description_pl": "Stwórz prosty tor z checkpointami i skokami dla szybkiej zabawy.",
+  "theme": "arcade_colorful",
+  "default_palette_id": "arcade_pop",
+  "palette_options": [
+    "arcade_pop",
+    "arcade_candy",
+    "arcade_neon"
+  ],
+  "default_world": {
+    "name_pl": "Tor Treningowy",
+    "nodes": [
+      {
+        "type": "TERRAIN",
+        "display_name_pl": "Start",
+        "position": [0, 0, 0]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Platforma Skoku",
+        "position": [3, 1, 0]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Checkpoint",
+        "position": [8, 1, 0]
+      }
+    ],
+    "rules": [
+      {
+        "type": "EVENT_TRIGGER",
+        "display_name_pl": "Zapis postępu na checkpointach",
+        "compiled_logic": "on_touch_checkpoint:set_respawn_point()"
+      },
+      {
+        "type": "WIN_CONDITION",
+        "display_name_pl": "Meta po dotknięciu flagi",
+        "compiled_logic": "on_touch_goal:end_level()"
+      }
+    ]
+  },
+  "onboarding_hints_pl": [
+    "Ustaw platformy od łatwej do trudniejszej.",
+    "Dodaj checkpoint po każdym trudnym skoku.",
+    "Przetestuj tor i popraw odległości skoków."
+  ],
+  "quest_text_pl": [
+    "Ukończ tor bez upadku.",
+    "Dodaj 2 nowe przeszkody.",
+    "Ustaw własną metę."
+  ]
+}

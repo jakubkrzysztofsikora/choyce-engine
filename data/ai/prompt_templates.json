@@ -1,0 +1,106 @@
+{
+  "schema_version": "1",
+  "default_locale": "pl-PL",
+  "templates": [
+    {
+      "template_id": "ai_creation_help_kid_pl_v1_0_0",
+      "use_case": "ai_creation_help",
+      "version": "1.0.0",
+      "locale": "pl-PL",
+      "role": "kid",
+      "age_band": "CHILD_6_8",
+      "system_prompt": "Pomagasz dziecku tworzyc bezpieczna gre krok po kroku.",
+      "user_prefix": "Prosba dziecka:"
+    },
+    {
+      "template_id": "ai_creation_help_kid_pl_v1_1_0",
+      "use_case": "ai_creation_help",
+      "version": "1.1.0",
+      "locale": "pl-PL",
+      "role": "kid",
+      "age_band": "CHILD_6_8",
+      "system_prompt": "Pomagasz dziecku tworzyc bezpieczna gre. Zawsze proponuj male, odwracalne kroki.",
+      "user_prefix": "Prosba dziecka:"
+    },
+    {
+      "template_id": "ai_creation_help_parent_pl_v1_0_0",
+      "use_case": "ai_creation_help",
+      "version": "1.0.0",
+      "locale": "pl-PL",
+      "role": "parent",
+      "age_band": "PARENT",
+      "system_prompt": "Wspierasz rodzica w tworzeniu gry rodzinnej i dbasz o bezpieczenstwo zmian.",
+      "user_prefix": "Prosba rodzica:"
+    },
+    {
+      "template_id": "ai_creation_help_parent_en_v1_0_0",
+      "use_case": "ai_creation_help",
+      "version": "1.0.0",
+      "locale": "en-US",
+      "role": "parent",
+      "age_band": "PARENT",
+      "system_prompt": "You are a family co-creation assistant focused on safe, reversible edits.",
+      "user_prefix": "Parent request:"
+    },
+    {
+      "template_id": "ai_creation_explain_pl_v1_0_0",
+      "use_case": "ai_creation_explain",
+      "version": "1.0.0",
+      "locale": "pl-PL",
+      "role": "any",
+      "age_band": "ANY",
+      "system_prompt": "Wyjasnij plan zmian prostym jezykiem i zaznacz ryzyko.",
+      "user_prefix": "Plan narzedzi:"
+    },
+    {
+      "template_id": "ai_creation_explain_en_parent_v1_0_0",
+      "use_case": "ai_creation_explain",
+      "version": "1.0.0",
+      "locale": "en-US",
+      "role": "parent",
+      "age_band": "PARENT",
+      "system_prompt": "Explain the change plan clearly, including safety impact and rollback notes.",
+      "user_prefix": "Tool plan:"
+    },
+    {
+      "template_id": "gameplay_hint_kid_pl_v1_0_0",
+      "use_case": "gameplay_hint",
+      "version": "1.0.0",
+      "locale": "pl-PL",
+      "role": "kid",
+      "age_band": "CHILD_6_8",
+      "system_prompt": "Jestes pomocnym towarzyszem gry. Daj wskazowki warstwowo i nie zdradzaj gotowego rozwiazania.",
+      "user_prefix": "Kontekst gry:"
+    },
+    {
+      "template_id": "gameplay_hint_parent_en_v1_0_0",
+      "use_case": "gameplay_hint",
+      "version": "1.0.0",
+      "locale": "en-US",
+      "role": "parent",
+      "age_band": "PARENT",
+      "system_prompt": "You are a gameplay mentor. Provide scaffolded hints before giving stronger guidance.",
+      "user_prefix": "Gameplay context:"
+    },
+    {
+      "template_id": "parent_script_explain_pl_v1_0_0",
+      "use_case": "parent_script_explain",
+      "version": "1.0.0",
+      "locale": "pl-PL",
+      "role": "parent",
+      "age_band": "PARENT",
+      "system_prompt": "Wyjasnij skrypt rodzicowi jasno i praktycznie.",
+      "user_prefix": "Skrypt:"
+    },
+    {
+      "template_id": "parent_script_refactor_pl_v1_0_0",
+      "use_case": "parent_script_refactor",
+      "version": "1.0.0",
+      "locale": "pl-PL",
+      "role": "parent",
+      "age_band": "PARENT",
+      "system_prompt": "Zaproponuj bezpieczny refaktor skryptu oraz krotkie uzasadnienie.",
+      "user_prefix": "Skrypt:"
+    }
+  ]
+}

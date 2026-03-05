@@ -1,0 +1,71 @@
+{
+  "task_id": "TASK-013",
+  "reviewer": "claude",
+  "verdict": "APPROVE",
+  "summary": "Solid implementation of deterministic tool registry and execution gateway. Schema validation, idempotency replay, and handler registration patterns are well-designed. Integration with orchestration service is clean. 3 medium and 3 low findings — all improvement suggestions, no blockers.",
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "src/application/deterministic_tool_execution_gateway.gd",
+      "lines": "10-11",
+      "title": "Unbounded idempotency caches will grow indefinitely",
+      "detail": "_seen_invocation_ids and _idempotency_cache accumulate entries for every unique invocation_id but never evict. In a long session with many AI tool calls, memory grows without bound. Recommend adding a max-entries cap (e.g., 1000) with LRU or FIFO eviction, or periodic flush on session boundaries.",
+      "recommendation": "Add a _max_cache_entries constant and evict oldest entries when exceeded."
+    },
+    {
+      "severity": "medium",
+      "file": "src/application/request_ai_creation_help_service.gd",
+      "lines": "139-152",
+      "title": "Schema-driven requires_approval flag computed but not consulted in impact assessment",
+      "detail": "validate_and_apply correctly sets invocation.requires_approval from schema metadata (e.g., asset_import -> requires_parent_approval: true, logic_edit -> true). However, _assess_impact uses hardcoded tool name lists instead of checking the flag. A parent calling asset_import with ≤5 invocations gets LOW impact despite the schema declaring it requires approval. This creates a gap between declared policy and enforcement.",
+      "recommendation": "Have _assess_impact check invocation.requires_approval as a first pass — if any invocation has requires_approval=true, return HIGH regardless of actor or count heuristics."
+    },
+    {
+      "severity": "medium",
+      "file": "src/application/ai_tool_registry.gd",
+      "lines": "183-197",
+      "title": "safety_check schema has no required arguments",
+      "detail": "safety_check declares argument_types for text, image_ref, and mode, but required_arguments is empty and allow_unknown_arguments is false. An empty invocation safety_check({}) passes validation, which is semantically meaningless — a safety check with nothing to check.",
+      "recommendation": "Either add required_arguments: ['text'] or at minimum document that callers must provide at least one of text/image_ref. An alternative is a custom validation rule on the schema."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/deterministic_tool_execution_gateway.gd",
+      "lines": "127-133",
+      "title": "Default execute handler returns full execution context in result",
+      "detail": "_default_execute includes 'context': context.duplicate(true) in its return value. When context contains actor_id or other sensitive data, and results are cached in _idempotency_cache, this data persists in memory. If results are ever serialized or logged, it becomes a data exposure vector.",
+      "recommendation": "Omit context from the default execute result, or strip sensitive keys before caching."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/deterministic_tool_execution_gateway.gd",
+      "lines": "187-188",
+      "title": "_stable_serialize returns identical string for all unsupported types",
+      "detail": "All unrecognized types serialize to '<unsupported>', creating theoretical fingerprint collisions. Mitigated by schema validation rejecting non-deterministic values upstream, but defense-in-depth suggests including type info (e.g., '<unsupported:TYPE_OBJECT>').",
+      "recommendation": "Change line 188 to return '<unsupported:%d>' % typeof(value) for type-distinct fingerprints."
+    },
+    {
+      "severity": "low",
+      "file": "tests/contracts/deterministic_tool_execution_gateway_contract_test.gd",
+      "lines": "37-119",
+      "title": "Missing test coverage for register_handler with unknown tool name",
+      "detail": "Gateway correctly rejects handler registration for tools not in the registry (lines 30-32 in gateway), returning false and logging an error. This path has no contract test coverage.",
+      "recommendation": "Add an assertion: gateway.register_handler('nonexistent_tool', handler) returns false."
+    }
+  ],
+  "collateral_fix_review": {
+    "file": "src/adapters/outbound/local_moderation_adapter.gd",
+    "verdict": "acceptable",
+    "detail": "The setup('') change correctly skips file loading when an empty path is passed, while setup() with default parameter still loads the rules file. This is a sensible fix for test isolation — contracts can use defaults-only without depending on filesystem state."
+  },
+  "positive_observations": [
+    "Clean separation of concerns: registry handles schema validation, gateway handles execution + idempotency",
+    "Deterministic value checking is thorough — recursive validation of Arrays and Dictionaries",
+    "Stable serialization covers Vector2, Vector3, nested structures with sorted dictionary keys",
+    "Idempotency replay with fingerprint comparison prevents stale data corruption",
+    "Per-tool handler registration with fallback defaults is a flexible extension point",
+    "DeterministicToolExecutionGateway properly extends ToolExecutionGateway as a subtype replacement",
+    "Registry defaults cover all 5 required tools plus 3 compatibility schemas",
+    "31 new test assertions across 2 contract tests with good edge case coverage"
+  ]
+}

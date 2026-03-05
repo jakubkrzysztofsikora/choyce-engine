@@ -1,0 +1,130 @@
+{
+  "task_id": "TASK-017",
+  "reviewer": "claude",
+  "review_date": "2026-03-02",
+  "review_type": "re-review after remediation",
+  "verdict": "APPROVE",
+  "summary": "All 3 high-severity findings from the original review have been properly remediated. Consent is now fail-closed, the AgeBand enum reference is correct, and the port contract signature is restored. 4 medium-severity and 2 low-severity findings are also addressed. Approving with 2 new medium-severity observations that should be tracked as follow-up work.",
+  "original_findings_verification": [
+    {
+      "id": "F1",
+      "severity": "HIGH",
+      "title": "Consent Fail-Open Security Issue",
+      "status": "FIXED",
+      "verification": "CloudSTTAdapter.transcribe() at line 24 now checks: if _profile_id == '' or not _consent_port.has_consent(_profile_id, 'cloud_stt'): return ''. This is correct fail-closed behavior. Empty profile blocks access. Missing consent blocks access. Profile is injected via set_profile() DI method rather than passed as a parameter. Dedicated test test_empty_profile_blocks_transcription() confirms fail-closed semantics.",
+      "file": "src/adapters/outbound/cloud_stt_adapter.gd",
+      "lines": "16-25"
+    },
+    {
+      "id": "F2",
+      "severity": "HIGH",
+      "title": "AgeBand Enum Reference Error",
+      "status": "FIXED",
+      "verification": "PolishIntentExtractor.setup() now defaults to AgeBand.new(AgeBand.Band.CHILD_6_8). Verified against age_band.gd which defines enum Band { CHILD_6_8, CHILD_9_12, TEEN, PARENT }. The previously-referenced AgeBand.CHILD_5_7 no longer appears anywhere. The inner enum Band is correctly accessed as AgeBand.Band.CHILD_6_8.",
+      "file": "src/application/polish_intent_extractor.gd",
+      "lines": "8-13"
+    },
+    {
+      "id": "F3",
+      "severity": "HIGH",
+      "title": "Port Contract Signature Violation",
+      "status": "FIXED",
+      "verification": "SpeechToTextPort defines transcribe(audio: PackedByteArray, language: String) -> String. All three implementations now match this exact signature: CloudSTTAdapter.transcribe(audio, language), STTFallbackChain.transcribe(audio, language), LocalSTTAdapter.transcribe(audio, language). The extra profile_id and allow_cloud_fallback parameters have been moved to set_profile() and set_allow_cloud_fallback() DI methods. Hexagonal port contract is restored.",
+      "files": [
+        "src/ports/outbound/speech_to_text_port.gd",
+        "src/adapters/outbound/cloud_stt_adapter.gd",
+        "src/application/stt_fallback_chain.gd",
+        "src/adapters/outbound/local_stt_adapter.gd"
+      ]
+    },
+    {
+      "id": "F4",
+      "severity": "MEDIUM",
+      "title": "Polish Normalization False Positives",
+      "status": "FIXED",
+      "verification": "Global String.replace() calls replaced with regex_replace() using verb-context patterns. Pattern '(chce|moge|chcę|mogę)\\s*sia' targets only verb+sia combinations, preventing corruption of words like 'ciekawy'. Whole-word matching with \\b used for 'dzis' -> 'dzisiaj'.",
+      "file": "src/application/polish_intent_extractor.gd",
+      "lines": "25-39"
+    },
+    {
+      "id": "F5",
+      "severity": "MEDIUM",
+      "title": "Missing Imperative Verb Forms",
+      "status": "FIXED",
+      "verification": "All intent categories now include both infinitive and imperative forms: CREATE (buduj, zbuduj, zrób), DELETE (usuń, zburz), MOVE (przesuń, przenieś), HELP (pomoc, pomocy, podpowiedź, podpowiedzi), GAME (graj, zagraj). These are the forms children actually use in spoken Polish.",
+      "file": "src/application/polish_intent_extractor.gd",
+      "lines": "42-74"
+    },
+    {
+      "id": "F6",
+      "severity": "MEDIUM",
+      "title": "LocalSTTAdapter State Mutation",
+      "status": "FIXED",
+      "verification": "LocalSTTAdapter.transcribe() now uses local variable: var effective_language := language if language != '' else _language. The _language instance variable is not mutated. Subsequent calls are not affected by previous language overrides.",
+      "file": "src/adapters/outbound/local_stt_adapter.gd",
+      "lines": "13-15"
+    },
+    {
+      "id": "F7",
+      "severity": "LOW",
+      "title": "PackedByteArray API Misuse",
+      "status": "FIXED",
+      "verification": "test_local_stt_adapter.gd now uses correct GDScript API: longer_audio.resize(250) followed by longer_audio.fill(1). This is the correct two-step approach for PackedByteArray initialization.",
+      "file": "tests/adapters/test_local_stt_adapter.gd",
+      "lines": "34-35"
+    },
+    {
+      "id": "F8",
+      "severity": "LOW",
+      "title": "Missing CloudSTTAdapter Consent Test",
+      "status": "FIXED",
+      "verification": "New test file tests/adapters/test_cloud_stt_adapter.gd exists with 4 test methods: test_empty_audio(), test_empty_profile_blocks_transcription(), test_consent_required_for_cloud(), test_consent_granted_allows_transcription(). The consent enforcement tests directly verify fail-closed behavior. Uses MockConsentPort with grant_consent/has_consent/revoke_consent.",
+      "file": "tests/adapters/test_cloud_stt_adapter.gd"
+    }
+  ],
+  "new_findings": [
+    {
+      "id": "F9",
+      "severity": "MEDIUM",
+      "title": "CloudSTTAdapter.transcribe() still mutates _language state",
+      "description": "Lines 20-21 of cloud_stt_adapter.gd still contain: if language != '': _language = language. This is the exact same state mutation pattern that was correctly fixed in LocalSTTAdapter (F6). CloudSTTAdapter should use a local variable (var effective_language) instead of mutating _language. Not blocking because the _language variable is not currently used downstream in transcribe(), but it is an inconsistency and a latent bug.",
+      "file": "src/adapters/outbound/cloud_stt_adapter.gd",
+      "lines": "20-21",
+      "recommendation": "Apply the same fix as LocalSTTAdapter: use var effective_language := language if language != '' else _language"
+    },
+    {
+      "id": "F10",
+      "severity": "MEDIUM",
+      "title": "STTFallbackChain depends on concrete CloudSTTAdapter type",
+      "description": "stt_fallback_chain.gd line 8 declares var _cloud_adapter: CloudSTTAdapter (concrete type) rather than SpeechToTextPort (interface). The remediation summary states 'Changed to depend on SpeechToTextPort interface instead of concrete LocalSTTAdapter' which was done for the local adapter, but the cloud adapter is still a concrete dependency. This is partially justified because set_profile() is CloudSTTAdapter-specific, but it weakens hexagonal purity. Consider extracting a ConsentAwareSTTPort interface.",
+      "file": "src/application/stt_fallback_chain.gd",
+      "lines": "8",
+      "recommendation": "Track as tech debt. Consider a ConsentAwareSTTPort or ProfileAwareSTTPort interface in a future task."
+    },
+    {
+      "id": "F11",
+      "severity": "LOW",
+      "title": "Inconsistent MockConsentPort implementations across test files",
+      "description": "test_cloud_stt_adapter.gd MockConsentPort uses nested Dictionary ({profile: {key: true}}) while test_stt_fallback_chain.gd MockConsentPort uses Dictionary with Array values ({profile: [key]}). Both work but the inconsistency could cause confusion. The fallback chain test also accesses _consents directly (line 34: _consents['test_profile'] = ['cloud_stt']) rather than using grant_consent().",
+      "files": [
+        "tests/adapters/test_cloud_stt_adapter.gd",
+        "tests/application/test_stt_fallback_chain.gd"
+      ],
+      "recommendation": "Extract a shared TestConsentPort to a test helpers module to ensure consistency."
+    }
+  ],
+  "positive_observations": [
+    "Fail-closed consent enforcement is correctly implemented with clear guard clause at the top of transcribe(). The pattern if _profile_id == '' or not _consent_port.has_consent() is unambiguous and safe by default.",
+    "DI pattern using set_profile() and set_allow_cloud_fallback() cleanly separates configuration from the port contract. This preserves the hexagonal boundary while allowing runtime configuration.",
+    "Test coverage for consent enforcement is thorough with dedicated tests for empty profile, missing consent, and granted consent paths. These are the most safety-critical paths in the STT pipeline.",
+    "Polish intent extraction now covers both infinitive and imperative verb forms, which is linguistically correct for child speech. Children ages 6-8 predominantly use imperative forms.",
+    "Regex-based normalization with verb-context patterns is a meaningful improvement over global substring replacement. The pattern anchoring prevents false positives on common Polish words.",
+    "Port contract is cleanly maintained across all three implementations. The transcribe(audio, language) signature is consistent."
+  ],
+  "follow_up_tasks": [
+    "Fix CloudSTTAdapter._language state mutation in transcribe() (F9) - should be addressed before TASK-023",
+    "Consider extracting ProfileAwareSTTPort interface to reduce concrete dependency in STTFallbackChain (F10)",
+    "Consolidate test mock implementations into shared test helpers (F11)"
+  ],
+  "approval_rationale": "All 3 high-severity blocking issues are properly resolved. The consent system is now fail-closed (F1), the AgeBand enum is correct (F2), and the port contract is honored (F3). The 2 new medium findings (F9, F10) are non-blocking: F9 is a latent bug with no current impact, and F10 is a justified design trade-off. Approving to unblock TASK-023 and TASK-042."
+}

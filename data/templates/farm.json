@@ -1,0 +1,55 @@
+{
+  "template_id": "farm",
+  "name": "Farm",
+  "name_pl": "Wesoła Farma",
+  "description_pl": "Siej, podlewaj, zbieraj plony i sprzedawaj je na targu.",
+  "theme": "nature_pastoral",
+  "default_palette_id": "farm_meadow",
+  "palette_options": [
+    "farm_meadow",
+    "farm_autumn",
+    "farm_sunny"
+  ],
+  "default_world": {
+    "name_pl": "Pole Startowe",
+    "nodes": [
+      {
+        "type": "TERRAIN",
+        "display_name_pl": "Grządki",
+        "position": [0, 0, 0]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Studnia",
+        "position": [-2, 0, 2]
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Stragan",
+        "position": [4, 0, -1]
+      }
+    ],
+    "rules": [
+      {
+        "type": "TIMER",
+        "display_name_pl": "Wzrost roślin co 30 sekund",
+        "compiled_logic": "every_30s:advance_crop_stage()"
+      },
+      {
+        "type": "SCORING",
+        "display_name_pl": "Monety za sprzedaż",
+        "compiled_logic": "on_sell_crop:add_score(8)"
+      }
+    ]
+  },
+  "onboarding_hints_pl": [
+    "Zasadź pierwsze nasiona na grządce.",
+    "Podlewaj rośliny regularnie.",
+    "Sprzedaj plony na straganie, aby kupić ulepszenia."
+  ],
+  "quest_text_pl": [
+    "Zbierz 5 marchewek.",
+    "Sprzedaj plony za 40 monet.",
+    "Odblokuj większą grządkę."
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "TASK-021",
+  "reviewer": "codex",
+  "decision": "approve",
+  "in_response_to": "TASK-021-copilot-response.json",
+  "findings": [],
+  "summary": "Approved. Runtime world/selection context is now bootstrapped and maintained in `CreateShell` (including post-apply selection updates), so Place/Paint/Move/Duplicate actions are no longer blocked by missing hardcoded/empty IDs. Localization keys for tool labels are present in `ui_pl.json`."
+}

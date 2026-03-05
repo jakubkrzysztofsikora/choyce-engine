@@ -1,0 +1,52 @@
+{
+  "task_id": "TASK-008",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "medium",
+      "message": "ParentZoneShell has no self-contained role guard. It relies entirely on InboundMain to hide it via visibility. For defense-in-depth child safety, the shell should verify _profile is a parent in its own _ready() or setup() and hide/disable itself if not. While Godot desktop apps make it difficult for kids to bypass visibility, this is a safety best practice that protects against future navigation paths or composition changes.",
+      "path": "src/adapters/inbound/scenes/parent/parent_zone_shell.gd"
+    },
+    {
+      "severity": "medium",
+      "message": "main.gd uses string-based .call('setup', ...) instead of typed method calls (lines 66-69). The @onready vars are typed as Control instead of their specific shell classes (CreateShell, PlayShell, etc). This means a setup() signature mismatch would only surface at runtime. Consider casting to the concrete shell type or using a shared shell base class with a typed setup signature.",
+      "path": "src/adapters/inbound/main.gd:66"
+    },
+    {
+      "severity": "low",
+      "message": "Undo and safe-restore buttons are present in all 4 shells with Polish labels but have no pressed.connect() handlers. They are non-functional stubs. Acceptable for TASK-008 scope (shell scaffolding), but should be tracked for TASK-021 (build canvas tools).",
+      "path": "src/adapters/inbound/scenes/create/create_shell.gd"
+    },
+    {
+      "severity": "low",
+      "message": "Each shell has its own _t() helper with identical logic and duplicated Polish fallback dictionaries. Extract to a shared base class or utility function. The common keys 'ui.common.undo' and 'ui.common.safe_restore' are duplicated across all 4 shells.",
+      "path": "src/adapters/inbound/scenes/create/create_shell.gd"
+    },
+    {
+      "severity": "low",
+      "message": "ShellNavigator uses old-style emit_signal('shell_changed', shell_id) instead of Godot 4.x idiomatic shell_changed.emit(shell_id).",
+      "path": "src/adapters/inbound/navigation/shell_navigator.gd:23"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "adapters_call_inbound_ports": "PASS - All shells receive ports via setup() DI. No shell creates domain aggregates or entities. Dependencies are inbound port interfaces (CreateProjectFromTemplatePort, RunPlaytestPort, PublishToFamilyLibraryPort, SetParentalControlsPort) plus LocalizationPolicyPort.",
+      "shells_navigable": "PASS - ShellNavigator manages shell visibility. Main nav buttons route among Create, Play, Library, and Parent Zone. Polish labels on all nav buttons.",
+      "kid_mode_hides_parent": "PARTIAL - InboundMain._is_parent() gates both parent shell visibility and nav button visibility. But ParentZoneShell has no self-guard (see medium finding)."
+    },
+    "hexagonal_boundaries": "PASS - Shells only reference inbound ports and LocalizationPolicyPort. ShellNavigator extends RefCounted. PlayerProfile is accepted by shells but is effectively a read-only value object (profile_id, role, age_band) — acceptable for adapter layer role decisions.",
+    "kid_safety_and_parental_controls": "PARTIAL - Parent zone is visibility-gated in main.gd. Defense-in-depth self-guard missing from ParentZoneShell (medium finding).",
+    "polish_localization": "PASS - All fallback strings are Polish (pl-PL). _t() helper correctly delegates to LocalizationPolicyPort first. Navigation labels: Twórz, Graj, Biblioteka, Strefa rodzica.",
+    "touch_targets": "PASS - All buttons across all shells meet 44px height minimum via custom_minimum_size.",
+    "cross_agent_review": "This review constitutes the required cross-agent review for TASK-008."
+  },
+  "positive_notes": [
+    "Consistent DI pattern across all shells: setup() with port interfaces, returning self for fluent chaining.",
+    "Polish-first UI with proper fallback pattern — localization port preferred, hardcoded pl-PL as fallback.",
+    "Clean scene structure: consistent VBoxContainer > Header + Actions layout with 16px spacing across all shells.",
+    "ShellNavigator is a clean RefCounted utility that decouples shell transitions from shell implementations.",
+    "Touch-friendly 44px minimum heights on all interactive buttons."
+  ],
+  "summary": "TASK-008 delivers clean inbound adapter shells that properly use DI and preserve hexagonal boundaries. Polish-first localization and touch-target compliance are met. Two medium findings: ParentZoneShell needs a self-contained role guard for defense-in-depth child safety, and main.gd uses string-based .call() instead of typed shell references. Three low-severity findings for code style and DRY. Overall: APPROVE. The parent guard finding should be addressed in a follow-up before TASK-029 (parent controls)."
+}

@@ -1,0 +1,48 @@
+{
+  "task_id": "TASK-018",
+  "reviewer": "claude",
+  "verdict": "APPROVE",
+  "summary": "Clean failsafe controller with proper fail-closed semantics, Polish-first rules-based hints, and consistent audit event emission. Integration into both creation and hint services follows established optional dependency pattern. 1 medium + 3 low findings.",
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "src/application/request_gameplay_hint_service.gd",
+      "lines": "122-128",
+      "title": "_is_model_unavailable relies on undocumented duck-typed method on LLMPort",
+      "detail": "_is_model_unavailable() checks _llm.has_method('get_last_provider') and calls it dynamically. This is not part of the LLMPort contract, so any adapter that doesn't implement this optional method will silently lose the fallback provider detection path. The only fallback signal would be empty response text, which is less reliable (e.g., a model could return whitespace-only output that passes strip_edges().is_empty()).",
+      "recommendation": "Add get_last_provider() -> String to LLMPort with a default return of '' to formalize the contract. Alternatively, have complete() return a structured result {text: String, provider: String} instead of a bare String."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/request_gameplay_hint_service.gd",
+      "lines": "41-47",
+      "title": "Failsafe path bypasses output moderation for rules-based hints",
+      "detail": "When failsafe is enabled, the rules-based hint is returned at line 43-47 before the output moderation check at line 77. These are hardcoded Polish strings we control, so the risk is minimal, but it breaks the dual-filter consistency where all AI-generated or assistant-produced text passes through ModerationPort.check_text().",
+      "recommendation": "Consider running moderation on the rules_based_hint before returning, or document that static controller hints are exempt from output moderation by design."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_failsafe_controller.gd",
+      "lines": "41",
+      "title": "Failsafe action ID uses non-cryptographic hash",
+      "detail": "build_disabled_action uses absi(prompt_text.hash()) for action ID suffix. While failsafe actions are ephemeral and collision risk is very low, this is inconsistent with the push toward more robust ID generation in other services.",
+      "recommendation": "Append _clock.now_msec() to the action ID instead of or in addition to the hash for uniqueness."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/request_gameplay_hint_service.gd",
+      "lines": "68-74",
+      "title": "Fallback hint emits BLOCK event for non-safety situation",
+      "detail": "When the LLM is unavailable and the service falls back to rules-based hints (line 63-66), it emits a SafetyInterventionTriggeredEvent with decision_type='BLOCK'. This is technically a degradation event, not a safety block. Using BLOCK may confuse parent audit timelines where all BLOCKs are expected to represent content safety decisions.",
+      "recommendation": "Consider using a different decision_type like 'DEGRADE' or 'FALLBACK' to distinguish model-unavailability from safety interventions, or use a separate event type."
+    }
+  ],
+  "positive_observations": [
+    "Fail-closed design: failsafe returns REJECTED action before any LLM/tool interaction",
+    "Polish-first rules-based hints at all 3 scaffolding levels with objective-contextual messages",
+    "Model-unavailable detection via empty response + optional provider check covers common failure modes",
+    "Proper audit tagging: FAILSAFE_MODE and RULES_HINT_FALLBACK policy rules for event traceability",
+    "Clean optional dependency injection: _failsafe=null means no failsafe, matching project patterns",
+    "10 contract assertions covering enable/disable lifecycle, action shape, and hint generation"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "task_id": "TASK-020",
+  "reviewer": "codex",
+  "decision": "approve",
+  "in_response_to": "TASK-020-copilot-response.json",
+  "findings": [],
+  "summary": "Approved. Rule type vocabulary is now normalized for current domain compatibility through TemplateLoader parsing/synonym mapping, and executable smoke coverage exists for all five starter templates via tests/application/template_loader_starter_smoke.gd (validated PASS)."
+}

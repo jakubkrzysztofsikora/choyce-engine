@@ -1,0 +1,109 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/adapters/inbound/scenes/library/library_shell.gd" id="1_library_script"]
+
+[node name="LibraryShell" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_library_script")
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="VBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Biblioteka rodzinna"
+
+[node name="Info" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Przeglądaj opublikowane światy i uruchamiaj je."
+autowrap_mode = 3
+
+[node name="PublishPanel" type="VBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ProjectIdInput" type="LineEdit" parent="Layout/PublishPanel"]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+placeholder_text = "ID projektu"
+
+[node name="WorldIdInput" type="LineEdit" parent="Layout/PublishPanel"]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+placeholder_text = "ID świata"
+
+[node name="RequestIdInput" type="LineEdit" parent="Layout/PublishPanel"]
+custom_minimum_size = Vector2(280, 40)
+layout_mode = 2
+placeholder_text = "ID wniosku publikacji"
+
+[node name="Actions" type="HBoxContainer" parent="Layout/PublishPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PublishButton" type="Button" parent="Layout/PublishPanel/Actions"]
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+text = "Wyślij do publikacji"
+
+[node name="ApproveButton" type="Button" parent="Layout/PublishPanel/Actions"]
+custom_minimum_size = Vector2(96, 44)
+layout_mode = 2
+text = "Zatwierdź"
+
+[node name="RejectButton" type="Button" parent="Layout/PublishPanel/Actions"]
+custom_minimum_size = Vector2(96, 44)
+layout_mode = 2
+text = "Odrzuć"
+
+[node name="UnpublishButton" type="Button" parent="Layout/PublishPanel/Actions"]
+custom_minimum_size = Vector2(144, 44)
+layout_mode = 2
+text = "Wycofaj publikację"
+
+[node name="Status" type="Label" parent="Layout/PublishPanel"]
+layout_mode = 2
+text = "Gotowe do publikacji."
+
+[node name="Actions" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="UndoButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(88, 44)
+layout_mode = 2
+text = "Cofnij"
+
+[node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+text = "Przywróć bezpieczny zapis"
+
+[node name="GoCreateButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(176, 44)
+layout_mode = 2
+text = "Przejdź do tworzenia"
+
+[node name="GoPlayButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+text = "Przejdź do gry"

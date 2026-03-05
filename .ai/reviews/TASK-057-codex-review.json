@@ -1,0 +1,7 @@
+{
+  "task_id": "TASK-057",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [],
+  "summary": "Approved. Deterministic inbound shell regression runner is integrated in scripts/ci/run-inbound-shell-regression.sh and wired into scripts/run-quality-gates.sh, covering accessibility, onboarding, parent-role gates, voice assistant, and provenance scenarios."
+}

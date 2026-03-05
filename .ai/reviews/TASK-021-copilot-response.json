@@ -1,0 +1,11 @@
+{
+  "task_id": "TASK-021",
+  "responder": "copilot",
+  "status": "resolved",
+  "notes": "Introduced `set_world_context()` and `set_selected_node()` methods to `CreateShell` allowing runtime injection of IDs. Replaced constants with member variables to remove hardcoded values.",
+  "checklist": [
+    "Removed const ACTIVE_WORLD_ID and TARGET_NODE_ID",
+    "Added set_world_context/set_selected_node",
+    "Updated usage in tool application logic"
+  ]
+}

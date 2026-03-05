@@ -1,0 +1,44 @@
+{
+  "schema_version": "1",
+  "fixtures": [
+    {
+      "fixture_id": "create_kid_pl_default",
+      "use_case": "ai_creation_help",
+      "template_version": "1.1.0",
+      "locale": "pl-PL",
+      "role": "kid",
+      "age_band": "CHILD_6_8",
+      "input": "Dodaj drzewo obok domu",
+      "expected_markers": [
+        "bezpieczna gre",
+        "male, odwracalne kroki"
+      ]
+    },
+    {
+      "fixture_id": "create_parent_en_override",
+      "use_case": "ai_creation_help",
+      "template_version": "1.0.0",
+      "locale": "en-US",
+      "role": "parent",
+      "age_band": "PARENT",
+      "input": "Tune the spawn rhythm",
+      "expected_markers": [
+        "family co-creation assistant",
+        "safe, reversible edits"
+      ]
+    },
+    {
+      "fixture_id": "hint_kid_pl_scaffold",
+      "use_case": "gameplay_hint",
+      "template_version": "1.0.0",
+      "locale": "pl-PL",
+      "role": "kid",
+      "age_band": "CHILD_6_8",
+      "input": "Brak monet i nie wiem co dalej",
+      "expected_markers": [
+        "wskazowki warstwowo",
+        "nie zdradzaj"
+      ]
+    }
+  ]
+}

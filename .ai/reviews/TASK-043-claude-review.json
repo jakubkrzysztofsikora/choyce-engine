@@ -1,0 +1,74 @@
+{
+  "task_id": "TASK-043",
+  "reviewer": "claude",
+  "verdict": "APPROVE",
+  "summary": "Well-structured AI memory layer with clean hexagonal separation (port, adapter, service). Role-based retrieval correctly filters blocked/parent-only content for kids and redacts for parents. Compaction properly preserves audit refs without leaking blocked text. 2 medium + 5 low findings — all improvement suggestions, no blockers.",
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "src/application/ai_memory_layer_service.gd",
+      "lines": "35, 63, 121",
+      "title": "Unbounded read pattern: list_session_entries(limit=100000) on every operation",
+      "detail": "record_turn, compact_project_history, and build_retrieval_context all call list_session_entries with limit=100000 to read all entries. For record_turn, this is solely to compute the next sequence number (existing.size() + 1). This is O(n) memory on every turn recording, where n grows with session length.",
+      "recommendation": "Add a count_session_entries(session_id) method to AIMemoryStorePort to avoid loading all entries just for counting. Alternatively, store the sequence counter as session metadata."
+    },
+    {
+      "severity": "medium",
+      "file": "src/application/ai_memory_layer_service.gd",
+      "lines": "197-198",
+      "title": "Non-cryptographic hash for audit content references",
+      "detail": "_hash_text uses GDScript's built-in .hash() (a non-cryptographic hash) for content_hash. These hashes are used as blocked_entry_refs in audit summaries. GDScript .hash() can produce collisions, meaning two different blocked texts could generate the same audit reference, making traceability ambiguous. For audit purposes (FR-AI-012), collision resistance matters.",
+      "recommendation": "Use a deterministic hash with lower collision risk. Consider computing an SHA-256 via HashingContext or at minimum combining .hash() with text length: 'h_%d_%d' % [absi(text.hash()), text.length()]."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_memory_layer_service.gd",
+      "lines": "153-154",
+      "title": "build_retrieval_context has auto-compaction side effect",
+      "detail": "When no project summary exists, build_retrieval_context automatically calls compact_project_history. This means a read-only retrieval operation triggers a write. Could be surprising for callers expecting retrieval to be side-effect-free.",
+      "recommendation": "Either document this behavior clearly or return an empty summary instead of auto-compacting, letting the caller decide when to compact."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_memory_layer_service.gd",
+      "lines": "79-82",
+      "title": "Parent-only entries excluded from compaction lose long-term visibility",
+      "detail": "Parent-only entries are skipped during compact_project_history (comment says 'retained in session memory only'). If session entries are ever pruned for storage, parent notes are permanently lost with no compacted representation.",
+      "recommendation": "Consider adding a parent_note_count field to the summary, or optionally include parent note excerpts in a parent-visible section of the summary."
+    },
+    {
+      "severity": "low",
+      "file": "src/adapters/outbound/in_memory_ai_memory_store.gd",
+      "lines": "10-18",
+      "title": "No maximum session entries cap",
+      "detail": "InMemoryAIMemoryStore allows unbounded entry accumulation per session. A long or buggy session could fill memory. The 100000 limit in service calls is a soft cap that doesn't prevent the store itself from growing beyond that.",
+      "recommendation": "Add an optional max_entries_per_session parameter with FIFO eviction when exceeded."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_memory_layer_service.gd",
+      "lines": "59-104",
+      "title": "No concurrency protection on compact_project_history",
+      "detail": "The version field increments from the current summary, but concurrent compaction calls (e.g., from parallel sessions in local co-op) could overwrite each other. The version number would still increment but intermediate data could be lost.",
+      "recommendation": "Acceptable for MVP single-player/local-co-op. Document as a known limitation for future multi-session scenarios."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_memory_layer_service.gd",
+      "lines": "44-56",
+      "title": "Empty content entries still stored and increment sequence counter",
+      "detail": "If content is empty after strip_edges(), the entry is still appended with empty content. It won't appear in compaction excerpts, but it consumes a sequence number and storage slot. Consider rejecting empty content entries early.",
+      "recommendation": "Add early return false for empty trimmed_content, or mark it explicitly as a no-op entry."
+    }
+  ],
+  "positive_observations": [
+    "Clean hexagonal architecture: port -> adapter -> service separation with proper DI",
+    "Role-based retrieval correctly differentiates kid (hide blocked/parent-only) from parent (show all, redact blocked)",
+    "Compaction preserves blocked_entry_refs without leaking blocked text — good audit/safety balance",
+    "Polish-first messages ('Brak bezpiecznych wpisów pamięci projektu.', '[zablokowane]')",
+    "Deterministic sequencing via seq counter ensures repeatable ordering",
+    "Content hashing provides audit traceability for blocked entries",
+    "Comprehensive 43 test assertions covering edge cases, role-based filtering, and deterministic ordering",
+    "Optional moderation integration — entries can be auto-checked or pre-flagged via metadata"
+  ]
+}

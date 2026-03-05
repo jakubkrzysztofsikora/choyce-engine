@@ -1,0 +1,66 @@
+{
+  "task_id": "TASK-014",
+  "reviewer": "claude",
+  "verdict": "APPROVE",
+  "summary": "Well-implemented AI patch workflow with clean Preview/Apply/Undo lifecycle, multi-level parent gating, and transactional execution with reverse-order rollback. Also addresses 6/6 of my TASK-013 review findings (cache eviction, requires_approval in impact assessment, safety_check validation, context stripping, fingerprint type info, unknown-handler test). 1 medium + 4 low findings.",
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "src/application/ai_patch_workflow_service.gd",
+      "lines": "94-117",
+      "title": "undo() does not emit any domain event",
+      "detail": "apply() emits AIAssistanceAppliedEvent, but undo() only records in the action log without emitting a domain event. This creates an audit gap — event bus subscribers (including the audit ledger from TASK-019 and parent timeline views) will not see undo/revert actions. A reverted action should have visibility for safety auditing.",
+      "recommendation": "Emit a new domain event (e.g., AIAssistanceRevertedEvent) or reuse AIAssistanceAppliedEvent with a 'reverted' flag when an action is undone."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_patch_workflow_service.gd",
+      "lines": "80-81",
+      "title": "APPROVED status is set then immediately overwritten to APPLIED",
+      "detail": "Line 80 sets action.status = APPROVED, then line 81 calls mark_applied() which overwrites to APPLIED. The APPROVED state is transient and never observable. If the intent is to record the transition through APPROVED, the action log at line 84 records previous_state as 'APPROVED' which is technically the state set 1 line above, not the real previous state (PROPOSED/PREVIEWING).",
+      "recommendation": "Either remove the explicit APPROVED assignment (rely on mark_applied only) or record the actual previous state. Current behavior is functionally correct but semantically misleading in the action log."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_patch_workflow_service.gd",
+      "lines": "43-44",
+      "title": "preview() mutates action status as a side effect",
+      "detail": "preview() transitions PROPOSED -> PREVIEWING on first call. This makes preview a mutating operation rather than a pure read. Subsequent preview calls don't re-trigger (already PREVIEWING), so it's idempotent after first call, but callers expecting preview to be side-effect-free may be surprised.",
+      "recommendation": "Document this behavior. Alternatively, make PREVIEWING a separate explicit step if the workflow requires it."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_patch_workflow_service.gd",
+      "lines": "11, 27-31",
+      "title": "_actions dictionary is unbounded and in-memory only",
+      "detail": "Actions tracked via track_action() accumulate without limit and are not persisted. All tracked actions are lost on service restart. For MVP this is acceptable, but a long session with many AI interactions will accumulate stale actions.",
+      "recommendation": "Consider adding a max_tracked_actions cap with eviction for completed/reverted/rejected actions, or a cleanup method."
+    },
+    {
+      "severity": "low",
+      "file": "src/application/ai_patch_workflow_service.gd",
+      "lines": "84-89",
+      "title": "Action log records inaccurate previous_state for apply transition",
+      "detail": "The action log records previous_state as {status: 'APPROVED'} for the apply transition. But the action was PROPOSED or PREVIEWING before line 80 momentarily set it to APPROVED. The recorded 'previous' is technically the state set 1 line above, not the original status.",
+      "recommendation": "Capture the original status before mutation: var prev = _status_name(action.status) at the start of apply(), then use it in _record_state_change."
+    }
+  ],
+  "task_013_fixes_verified": {
+    "unbounded_cache": "FIXED — MAX_CACHE_ENTRIES=1000 with FIFO eviction via _cache_order",
+    "requires_approval_ignored": "FIXED — _assess_impact now checks inv.requires_approval first (line 141)",
+    "safety_check_empty": "FIXED — custom validation requires at least text or image_ref (line 105-112)",
+    "default_execute_leaks_context": "FIXED — _default_execute no longer includes context in result (line 133-138)",
+    "unsupported_type_collision": "FIXED — fingerprint now includes type ID: <unsupported:%d> (line 193)",
+    "unknown_handler_test": "FIXED — test added at line 56-59 in gateway contract test"
+  },
+  "positive_observations": [
+    "Clean action-card lifecycle: PROPOSED -> PREVIEWING -> APPROVED -> APPLIED (or REVERTED/REJECTED)",
+    "Multi-level parent gating: action.needs_approval(), tool.requires_approval, hardcoded script_edit/asset_import",
+    "Transactional execution with reverse-order rollback matches TASK-012 pattern",
+    "Action log integration records both apply and undo state changes",
+    "Event emission on apply for audit trail",
+    "All 6 TASK-013 review findings addressed as part of this work",
+    "13 test assertions covering parent gating, kid blocking, apply, undo, and edge cases",
+    "Proper DI with optional dependencies (tool_gateway, action_log, event_bus)"
+  ]
+}

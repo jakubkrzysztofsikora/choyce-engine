@@ -1,0 +1,153 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/adapters/inbound/scenes/parent/parent_zone_shell.gd" id="1_parent_script"]
+
+[node name="ParentZoneShell" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_parent_script")
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="VBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Strefa rodzica"
+
+[node name="Info" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Zarządzaj bezpieczeństwem, limitami i publikacją."
+autowrap_mode = 3
+
+[node name="AuditSummary" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "Audyt: brak danych."
+autowrap_mode = 3
+
+[node name="AISummary" type="Label" parent="Layout/Header"]
+layout_mode = 2
+text = "AI: brak danych."
+autowrap_mode = 3
+
+[node name="ControlsPanel" type="PanelContainer" parent="Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Controls" type="VBoxContainer" parent="Layout/ControlsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ControlsTitle" type="Label" parent="Layout/ControlsPanel/Controls"]
+layout_mode = 2
+text = "Kontrola rodzicielska"
+
+[node name="SettingsGrid" type="GridContainer" parent="Layout/ControlsPanel/Controls"]
+layout_mode = 2
+columns = 2
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
+
+[node name="DailyLimitLabel" type="Label" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+text = "Limit dzienny (min)"
+
+[node name="DailyLimitSpin" type="SpinBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+custom_minimum_size = Vector2(140, 40)
+layout_mode = 2
+min_value = 0.0
+max_value = 480.0
+step = 5.0
+value = 60.0
+
+[node name="SessionLimitLabel" type="Label" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+text = "Limit sesji (min)"
+
+[node name="SessionLimitSpin" type="SpinBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+custom_minimum_size = Vector2(140, 40)
+layout_mode = 2
+min_value = 0.0
+max_value = 180.0
+step = 5.0
+value = 30.0
+
+[node name="AIAccessLabel" type="Label" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+text = "Dostęp AI"
+
+[node name="AIAccessOption" type="OptionButton" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+
+[node name="SharingToggle" type="CheckBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+text = "Pozwól na udostępnianie"
+
+[node name="SpacerSharing" type="Control" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+
+[node name="LanguageOverrideToggle" type="CheckBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+text = "Zezwól na zmianę języka"
+
+[node name="SpacerLanguage" type="Control" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+
+[node name="CloudSyncToggle" type="CheckBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+text = "Zezwól na synchronizację chmury"
+
+[node name="SpacerCloud" type="Control" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
+layout_mode = 2
+
+[node name="ApplyPolicyButton" type="Button" parent="Layout/ControlsPanel/Controls"]
+custom_minimum_size = Vector2(200, 44)
+layout_mode = 2
+text = "Zapisz ustawienia"
+
+[node name="PolicyStatus" type="Label" parent="Layout/ControlsPanel/Controls"]
+layout_mode = 2
+text = ""
+autowrap_mode = 3
+
+[node name="Actions" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="UndoButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(88, 44)
+layout_mode = 2
+text = "Cofnij"
+
+[node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+text = "Przywróć bezpieczny zapis"
+
+[node name="GoCreateButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(176, 44)
+layout_mode = 2
+text = "Przejdź do tworzenia"
+
+[node name="GoPlayButton" type="Button" parent="Layout/Actions"]
+custom_minimum_size = Vector2(140, 44)
+layout_mode = 2
+text = "Przejdź do gry"

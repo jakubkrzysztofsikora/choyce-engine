@@ -1,0 +1,5 @@
+{
+  "small": "qwen2.5:3b-instruct",
+  "medium": "qwen2.5:7b-instruct",
+  "multimodal": "llava:7b"
+}

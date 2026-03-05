@@ -1,0 +1,44 @@
+{
+  "task_id": "TASK-004",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "medium",
+      "message": "Read model contract tests only validate method presence and return types. They don't verify that update_from_event() actually mutates internal state, or that queries return meaningful data after event consumption. While acceptable for port contract tests (behavior is adapter-specific), this means the CQRS projection pipeline has no behavioral coverage until adapter tests are written.",
+      "path": "tests/contracts/kid_status_read_model_port_contract_test.gd"
+    },
+    {
+      "severity": "low",
+      "message": "DomainEventBus._record() trims history using remove_at(0) in a loop which is O(n) per removal for Array. For the default max_history of 500 this is fine, but if max_history grows significantly, consider using a ring buffer or Array.slice() for O(1) trimming.",
+      "path": "src/domain/events/event_bus.gd:123"
+    },
+    {
+      "severity": "low",
+      "message": "Publishing services (publish_to_family_library_service.gd, review_publish_request_service.gd, unpublish_world_service.gd) have not been wired to emit events through the DomainEventBus yet. Events are created locally but not propagated. This is expected since those services are from TASK-010 and wiring should happen when publishing is finalized, but it should be tracked.",
+      "path": "src/application/publish_to_family_library_service.gd"
+    },
+    {
+      "severity": "low",
+      "message": "ParentAuditReadModel.get_timeline() accepts from_iso and to_iso as strings but doesn't specify the expected format or validation behavior. Contract test doesn't exercise date range filtering. Document the expected ISO 8601 format and out-of-range behavior.",
+      "path": "src/ports/outbound/parent_audit_read_model.gd:7"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "domain_events_emitted": "PASS - WorldEditedEvent, RuleChangedEvent, AIAssistanceRequestedEvent, and SafetyInterventionTriggeredEvent are emitted through DomainEventBus in their respective application services. The bus uses a null-safe optional injection pattern (DomainEventBus = null).",
+      "read_model_interfaces": "PASS - KidStatusReadModel (project status, recent projects), ParentAuditReadModel (timeline, interventions), and AIPerformanceReadModel (metrics, tool statistics) are defined as outbound ports with update_from_event() projection hooks."
+    },
+    "hexagonal_boundaries": "PASS - DomainEventBus extends RefCounted, lives in src/domain/events/, and has no Node/scene dependencies. Read models are outbound ports in src/ports/outbound/. Event bus is injected via DI, not imported as singleton.",
+    "kid_safety_and_parental_controls": "PASS - SafetyInterventionTriggeredEvent is emitted on both input and output moderation blocks with decision_type, policy_rule, trigger_context, and safe_alternative_offered fields. ParentAuditReadModel provides get_interventions() for parent visibility.",
+    "contract_tests": "PARTIAL - DomainEventBus contract test is thorough (subscribe, emit, history cap, unsubscribe). Read model contract tests are shallow (method presence + type validation only). See medium finding.",
+    "cross_agent_review": "This review constitutes the required cross-agent review for TASK-004."
+  },
+  "positive_notes": [
+    "Clean consistent DI pattern: event bus is optional (= null) in all service setup() methods, with null-check before emit. Services work without event bus wired.",
+    "DomainEventBus supports both type-filtered and wildcard subscriptions with deduplication — well-designed for CQRS projections.",
+    "Safety event wiring in RequestAICreationHelpService emits SafetyInterventionTriggeredEvent for both input and output moderation blocks — complete audit trail.",
+    "Event bus contract test verifies history cap, subscribe/unsubscribe lifecycle, and type routing."
+  ],
+  "summary": "TASK-004 delivers a clean, well-designed event bus infrastructure with proper CQRS-lite read model interfaces. Event wiring covers world, rule, AI, and safety actions through consistent null-safe DI. One medium finding: read model contract tests lack behavioral coverage (update_from_event doesn't verify state mutation). Three low findings for future tracking. Overall: APPROVE."
+}

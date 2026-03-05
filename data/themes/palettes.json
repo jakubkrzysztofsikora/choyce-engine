@@ -1,0 +1,78 @@
+{
+  "palettes": {
+    "city_sunrise": {
+      "name_pl": "Miejskie Świtanie",
+      "colors": ["#5B8DEF", "#F7B267", "#7CC576", "#F4F1DE", "#2D3142"]
+    },
+    "city_neon": {
+      "name_pl": "Neonowe Miasto",
+      "colors": ["#00D1FF", "#FF4ECD", "#A0FF4E", "#1A1A2E", "#16213E"]
+    },
+    "city_pastel": {
+      "name_pl": "Pastelowa Metropolia",
+      "colors": ["#A5C9FF", "#FFC6E5", "#C8FACC", "#FFF5E1", "#5C5C7A"]
+    },
+    "arcade_pop": {
+      "name_pl": "Arcade Pop",
+      "colors": ["#FF595E", "#FFCA3A", "#8AC926", "#1982C4", "#6A4C93"]
+    },
+    "arcade_candy": {
+      "name_pl": "Cukierkowa Zabawa",
+      "colors": ["#FF85A1", "#FFD166", "#7BDFF2", "#B2F7EF", "#CDB4DB"]
+    },
+    "arcade_neon": {
+      "name_pl": "Neonowy Tor",
+      "colors": ["#39FF14", "#FF10F0", "#00E5FF", "#FFFB00", "#0F0F1B"]
+    },
+    "farm_meadow": {
+      "name_pl": "Łąkowy Poranek",
+      "colors": ["#7CB518", "#AACC00", "#D4E09B", "#F1F7ED", "#5A7D2B"]
+    },
+    "farm_autumn": {
+      "name_pl": "Jesienna Farma",
+      "colors": ["#BC6C25", "#DDA15E", "#FEFAE0", "#606C38", "#283618"]
+    },
+    "farm_sunny": {
+      "name_pl": "Słoneczne Plony",
+      "colors": ["#F4D35E", "#EE964B", "#F95738", "#8CB369", "#2A9D8F"]
+    },
+    "urban_steel": {
+      "name_pl": "Stalowe Centrum",
+      "colors": ["#4F5D75", "#BFC0C0", "#EF8354", "#2D3142", "#FFFFFF"]
+    },
+    "urban_twilight": {
+      "name_pl": "Miejski Zmierzch",
+      "colors": ["#3A506B", "#5BC0BE", "#E0FBFC", "#1C2541", "#6FFFE9"]
+    },
+    "urban_green": {
+      "name_pl": "Zielone Miasto",
+      "colors": ["#2A9D8F", "#8AB17D", "#E9C46A", "#F4A261", "#264653"]
+    },
+    "island_lagoon": {
+      "name_pl": "Lazurowa Laguna",
+      "colors": ["#00B4D8", "#90E0EF", "#CAF0F8", "#F9C74F", "#2A9D8F"]
+    },
+    "island_sunset": {
+      "name_pl": "Zachód na Wyspie",
+      "colors": ["#F9844A", "#F9C74F", "#F94144", "#577590", "#43AA8B"]
+    },
+    "island_jungle": {
+      "name_pl": "Dżungla Odkrywców",
+      "colors": ["#2D6A4F", "#40916C", "#74C69D", "#D8F3DC", "#1B4332"]
+    }
+  },
+  "template_defaults": {
+    "tycoon": "city_sunrise",
+    "obby": "arcade_pop",
+    "farm": "farm_meadow",
+    "city": "urban_steel",
+    "adventure": "island_lagoon"
+  },
+  "template_alternatives": {
+    "tycoon": ["city_neon", "city_pastel"],
+    "obby": ["arcade_candy", "arcade_neon"],
+    "farm": ["farm_autumn", "farm_sunny"],
+    "city": ["urban_twilight", "urban_green"],
+    "adventure": ["island_sunset", "island_jungle"]
+  }
+}

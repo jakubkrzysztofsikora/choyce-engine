@@ -2,55 +2,881 @@ version: 1
 project: choyce-engine
 strategy:
   orchestrator: codex
-  objective: Build a child-safe 3D family game engine foundation using Godot + Ollama + hexagonal architecture.
+  objective: Fully implement the child-safe 3D family game engine scope using Godot + Ollama + hexagonal architecture.
 
 tasks:
   - id: TASK-001
-    title: Define core domain entities and use-case ports
+    title: Define bounded contexts and core domain model primitives
     owner: claude
     specialty: architecture
     inputs:
       - docs/requirements/architecture-requirements.md
+      - docs/requirements/functionality-requirements.md
     acceptance_criteria:
-      - Domain interfaces are framework-agnostic
-      - Inbound and outbound ports documented
+      - World Authoring, Gameplay, AI Orchestration, Identity and Safety, and Publishing contexts are defined
+      - Core entities and value objects are implemented as framework-agnostic domain types
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: TASK-002
-    title: Implement AI safety policy gate with reversible patches
+    title: Implement inbound use-case ports and application services
+    owner: claude
+    specialty: architecture
+    inputs:
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-001]
+    acceptance_criteria:
+      - Required inbound ports are exposed as independent use cases
+      - Use-case implementations are decoupled from Godot, network, and storage adapters
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-003
+    title: Implement outbound ports and contract test harness
+    owner: codex
+    specialty: architecture
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-001]
+    acceptance_criteria:
+      - Required outbound ports are defined with stable contracts
+      - Contract tests exist for each port-adapter pair scaffold
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-004
+    title: Implement domain event bus and CQRS-lite read model interfaces
+    owner: codex
+    specialty: architecture
+    inputs:
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-001, TASK-002]
+    acceptance_criteria:
+      - Domain events are emitted for world, rule, AI, and safety actions
+      - Read model interfaces exist for kid status, parent audit timeline, and AI performance
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-005
+    title: Implement local project format and filesystem storage adapters
+    owner: codex
+    specialty: data-platform
+    inputs:
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-003]
+    acceptance_criteria:
+      - Project manifest format supports JSON metadata and binary assets
+      - ProjectStorePort and AssetRepositoryPort filesystem adapters are implemented
+    cross_review_by: mistral
+    status: done
+
+  - id: TASK-006
+    title: Implement event-sourced action log for undo redo and checkpoints
+    owner: codex
+    specialty: gameplay-core
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-004, TASK-005]
+    acceptance_criteria:
+      - Undo and redo operate through event log replay
+      - Safe checkpoint restore is available for world edits and AI patches
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-007
+    title: Implement core utility adapters for consent, clock, telemetry, and localization policy
+    owner: codex
+    specialty: platform-core
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-003]
+    acceptance_criteria:
+      - IdentityConsentPort, ClockPort, TelemetryPort, and LocalizationPolicyPort adapters are wired
+      - Localization policy defaults to Polish and supports parent-approved override
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-008
+    title: Build Godot inbound adapters for create play and parent dashboard surfaces
+    owner: copilot
+    specialty: engine-adapters
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-002, TASK-007]
+    acceptance_criteria:
+      - Godot adapters call inbound ports without leaking domain concerns into UI scenes
+      - Create, Play, Family Library, and Parent Zone shells are navigable
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-009
+    title: Implement template pack data loader and plugin SDK boundaries
+    owner: mistral
+    specialty: extensibility
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-002, TASK-003]
+    acceptance_criteria:
+      - Template packs load from data definitions rather than hardcoded logic
+      - Plugin SDK enforces declared ports and rejects undeclared capabilities
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-010
+    title: Implement publishing domain for family library workflow
+    owner: claude
+    specialty: domain-design
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-002, TASK-004]
+    acceptance_criteria:
+      - PublishToFamilyLibrary use case enforces parent approval and safety prerequisites
+      - Publishing state model supports private-by-default sharing and review states
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-011
+    title: Implement Ollama LLM adapter with model catalog and fallback chain
+    owner: codex
+    specialty: llm-integration
+    inputs:
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-003]
+    acceptance_criteria:
+      - LLMPort supports tool calls and model selection across small and medium local models
+      - Fallback chain honors consent before optional cloud escalation
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-012
+    title: Implement deterministic AI orchestration loop with policy gates
+    owner: codex
+    specialty: ai-orchestration
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-002, TASK-007, TASK-011]
+    acceptance_criteria:
+      - Loop executes intent, pre-check, tool planning, validation, transactional execution, post-check, and audit emission
+      - High-impact actions are blocked pending explicit human approval
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-013
+    title: Implement tool registry contracts for world logic asset playtest and safety tools
+    owner: codex
+    specialty: ai-tooling
+    inputs:
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-012]
+    acceptance_criteria:
+      - Tool schemas exist for scene edits, logic edits, asset import, playtest, and safety checks
+      - Tool execution enforces deterministic arguments and idempotency rules
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-014
+    title: Implement reversible AI patch workflow with preview apply and undo
     owner: codex
     specialty: ai-safety
     inputs:
       - docs/requirements/functionality-requirements.md
-    dependencies: [TASK-001]
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-006, TASK-012, TASK-013]
     acceptance_criteria:
-      - Pre/post moderation checks included
-      - Patch apply/undo represented in API
-    cross_review_by: mistral
-    status: todo
+      - AI action cards expose Preview, Apply, and Undo behaviors
+      - Parent approval gate exists for high-impact script and asset mutations
+    cross_review_by: claude
+    status: done
 
-  - id: TASK-003
-    title: Create kid-mode onboarding scene and parent advanced toggle
+  - id: TASK-015
+    title: Implement dual-filter moderation for text prompts outputs and generated visuals
+    owner: claude
+    specialty: ai-safety
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-003, TASK-012]
+    acceptance_criteria:
+      - Input and output moderation is enforced before rendering or applying content
+      - Unsafe results are blocked with safe alternatives and intervention events
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-016
+    title: Implement ElevenLabs TTS and audio generation adapters with governance checks
+    owner: codex
+    specialty: audio-ai
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-003, TASK-007, TASK-015]
+    acceptance_criteria:
+      - Polish voice presets are enforced by default for narration and NPC voice generation
+      - Audio moderation and licensing checks gate playback and publishing
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-017
+    title: Implement Polish-first STT pipeline with local-first and opt-in fallback
+    owner: mistral
+    specialty: voice-integration
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-003, TASK-007]
+    acceptance_criteria:
+      - SpeechToTextPort supports Polish recognition tuned for child pronunciation
+      - Cloud fallback requires parent opt-in and preserves Polish intent extraction
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-018
+    title: Implement AI failsafe mode and graceful helper degradation
+    owner: codex
+    specialty: reliability
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-012, TASK-015]
+    acceptance_criteria:
+      - Failsafe mode disables generative output while keeping core editor usable
+      - Rules-based hint helper activates when model services are unavailable
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-019
+    title: Implement tamper-evident AI and moderation audit ledger
+    owner: claude
+    specialty: governance
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-004, TASK-012, TASK-015]
+    acceptance_criteria:
+      - Prompts, tool invocations, moderation decisions, and parent overrides are logged with reason data
+      - Audit records are tamper-evident and queryable for parent timeline views
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-020
+    title: Build localized starter templates and theme palette selection
+    owner: copilot
+    specialty: gameplay-content
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-009]
+    acceptance_criteria:
+      - Tycoon, Obby-lite, Farm, City, and Adventure Island starter templates are available
+      - Template text and onboarding hints are QA-verified in Polish
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-021
+    title: Implement kid-mode build canvas tools with touch-friendly controls
     owner: copilot
     specialty: gameplay-ux
     inputs:
+      - docs/requirements/functionality-requirements.md
       - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-008, TASK-020]
     acceptance_criteria:
-      - Child-first flow in <=3 clicks
-      - Parent gate enforced
-    cross_review_by: claude
-    status: todo
+      - Place, paint, move, and duplicate tools support minimum target sizes and clear visual cues
+      - Undo and safe restore controls remain always accessible
+    cross_review_by: codex
+    status: done
 
-  - id: TASK-004
-    title: Review gameplay loop economy balancing heuristics
+  - id: TASK-022
+    title: Implement block logic editor and compile-to-rules pipeline
+    owner: codex
+    specialty: gameplay-logic
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-002, TASK-008]
+    acceptance_criteria:
+      - Block events, timers, scoring, win conditions, and spawns compile through inbound use cases
+      - Generated logic can bridge to editable advanced scripts in parent mode
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-023
+    title: Implement voice-to-intent creation flow with confirmation cards
+    owner: copilot
+    specialty: gameplay-ux
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-012, TASK-017, TASK-021]
+    acceptance_criteria:
+      - Voice prompts are translated into visual action cards before execution
+      - Child can accept, reject, or adjust proposed changes with bounded choices
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-024
+    title: Implement one-click playtest sessions with local single-player and local co-op
+    owner: codex
+    specialty: gameplay-runtime
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-008, TASK-021, TASK-022]
+    acceptance_criteria:
+      - Playtest can launch from current scene in one action
+      - Session runtime supports local solo and local co-op baselines
+    cross_review_by: mistral
+    status: done
+
+  - id: TASK-025
+    title: Implement progression loops with collectibles achievements unlocks and remix reset
     owner: mistral
     specialty: systems-design
     inputs:
       - docs/requirements/functionality-requirements.md
       - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-024]
     acceptance_criteria:
-      - Balance notes include age-appropriate pacing
-      - AI hints do not remove challenge
+      - Session progression persists collectibles, achievements, and unlock states
+      - World cloning and fast remix reset preserve safe authoring history
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-026
+    title: Implement parent economy data model editor for balancing controls
+    owner: mistral
+    specialty: systems-design
+    inputs:
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-022, TASK-024]
+    acceptance_criteria:
+      - Parent can edit prices, rates, and upgrade multipliers in advanced mode
+      - Balance changes generate auditable diffs before apply
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-027
+    title: Implement AI gameplay companion with tiered hints and adaptive quests
+    owner: codex
+    specialty: ai-gameplay
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-012, TASK-024, TASK-025]
+    acceptance_criteria:
+      - Hinting follows scaffold levels and avoids revealing full solutions by default
+      - Difficulty adapts gently using age profile and session context
     cross_review_by: copilot
+    status: in_review
+
+  - id: TASK-028
+    title: Implement parent advanced scripting editor with linting explain and diff preview
+    owner: codex
+    specialty: parent-tools
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-014, TASK-022]
+    acceptance_criteria:
+      - Parent mode includes script editing, AI explain, and refactor suggestions
+      - Every script mutation requires preview diff and supports rollback
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-029
+    title: Implement parent zone controls for time limits social permissions and AI policies
+    owner: claude
+    specialty: safety-controls
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-008, TASK-007, TASK-019]
+    acceptance_criteria:
+      - Parent dashboard can configure playtime, sharing permissions, and AI access limits
+      - Policy changes are role-checked and logged with attribution
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-030
+    title: Implement publish flow with moderation checks and parent approval gates
+    owner: copilot
+    specialty: publishing
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-010, TASK-014, TASK-015, TASK-029]
+    acceptance_criteria:
+      - Publish flow enforces child-safe checks for text, visuals, and audio
+      - Parent approval is required before family library visibility changes
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-031
+    title: Implement Polish-first UI localization pipeline and glossary constraints
+    owner: copilot
+    specialty: localization
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-008, TASK-020]
+    acceptance_criteria:
+      - Child and parent interfaces default to pl-PL strings across navigation, dialogs, and tooltips
+      - Localization glossary enforces child-safe wording and parent technical terminology consistency
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-032
+    title: Implement Polish-first LLM prompt wrappers and language override policy controls
+    owner: codex
+    specialty: localization-ai
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-012, TASK-029]
+    acceptance_criteria:
+      - Kid and parent AI interactions default to Polish text and voice output
+      - Parent override can switch language while preserving kid-mode safety defaults
+    cross_review_by: copilot
+    status: in_review
+
+  - id: TASK-033
+    title: Implement accessibility baseline including captions dyslexia font and motor preset
+    owner: copilot
+    specialty: accessibility
+    inputs:
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-021, TASK-028, TASK-031]
+    acceptance_criteria:
+      - WCAG 2.2 AA contrast and navigation requirements are met in main flows
+      - Spoken AI guidance includes captions and accessible control presets
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-034
+    title: Implement kid onboarding confidence loops and first-fun instrumentation
+    owner: copilot
+    specialty: onboarding
+    inputs:
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-021, TASK-027, TASK-033]
+    acceptance_criteria:
+      - Child quick-start flow can reach first playable quest in targeted time
+      - Confidence feedback loop events are instrumented for validation metrics
+    cross_review_by: mistral
+    status: done
+
+  - id: TASK-035
+    title: Implement offline-first autosave and consent-gated cloud sync
+    owner: codex
+    specialty: reliability
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-005, TASK-006, TASK-029]
+    acceptance_criteria:
+      - Autosave runs at 30-second intervals without blocking active interaction
+      - Cloud sync remains optional and requires explicit parent consent
+    cross_review_by: copilot
+    status: in_review
+
+  - id: TASK-036
+    title: Implement security hardening for RBAC signed manifests and encrypted parent vault
+    owner: copilot
+    specialty: security
+    inputs:
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-007, TASK-029]
+    acceptance_criteria:
+      - Kid and parent capabilities are enforced by role-based policy gates
+      - Plugin and tool manifests are signed and parent settings are encrypted at rest
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-037
+    title: Implement child-safe telemetry dashboards for status audit and AI performance
+    owner: codex
+    specialty: analytics
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-019, TASK-024, TASK-029]
+    acceptance_criteria:
+      - Read models power kid project status, parent audit timeline, and AI performance views
+      - Analytics excludes ad-tech identifiers and preserves data minimization requirements
+    cross_review_by: copilot
+    status: in_review
+
+  - id: TASK-038
+    title: Implement CI quality gates for domain tests contract tests safety and prompt regressions
+    owner: codex
+    specialty: devops
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-003, TASK-015, TASK-019, TASK-044]
+    acceptance_criteria:
+      - CI enforces high domain test isolation from engine runtime and network dependencies
+      - Safety red-team and AI regression suites gate model and policy changes
+    cross_review_by: copilot
+    status: in_review
+
+  - id: TASK-039
+    title: Implement performance benchmark harness and optimization gates
+    owner: codex
+    specialty: performance
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-024, TASK-035]
+    acceptance_criteria:
+      - Golden scenes benchmark cold start, interaction latency, and FPS targets on defined hardware tiers
+      - Performance regressions fail quality checks with reproducible metrics
+    cross_review_by: copilot
+    status: todo
+
+  - id: TASK-040
+    title: Implement deployment profiles and feature flags for local family cloud and classroom modes
+    owner: codex
+    specialty: release-engineering
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-035, TASK-036, TASK-037]
+    acceptance_criteria:
+      - Deployment presets exist for local-only, family cloud, and classroom policy modes
+      - Feature flags control experimental AI capabilities and rollout safety
+    cross_review_by: copilot
+    status: in_progress
+
+  - id: TASK-041
+    title: Implement AI visual asset generation pipeline with child-safe style presets and moderation gates
+    owner: codex
+    specialty: ai-assets
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-003, TASK-012, TASK-015]
+    acceptance_criteria:
+      - Visual asset generation integrates through ports and deterministic tool-calling flow
+      - Child mode enforces safe preset styles and blocks photoreal-human generation by default
+      - Generated assets are moderated before preview or apply operations
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-042
+    title: Implement voice input moderation and transcript safety gating
+    owner: claude
+    specialty: ai-safety
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-015, TASK-017]
+    acceptance_criteria:
+      - STT transcripts are moderated before intent execution and unsafe input is blocked with safe alternatives
+      - Local-first transcription path is preferred and cloud fallback remains consent-gated
+      - Voice safety interventions are emitted to audit events with explainable reasons
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-043
+    title: Implement AI memory layer for session context and summarized project history
+    owner: codex
+    specialty: ai-orchestration
+    inputs:
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-005, TASK-011, TASK-012]
+    acceptance_criteria:
+      - Session memory and long-term project summaries are maintained through explicit outbound ports
+      - Memory compaction strategy preserves safety and audit requirements without leaking blocked content
+      - Retrieval policy is deterministic and test-covered for kid and parent modes
+    cross_review_by: claude
+    status: done
+
+  - id: TASK-044
+    title: Implement versioned prompt template registry with Polish-first age-band variants
+    owner: codex
+    specialty: prompt-governance
+    inputs:
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-011, TASK-015, TASK-032]
+    acceptance_criteria:
+      - Prompt templates are versioned by use-case, locale, role, and age-band policy
+      - Regression fixtures are tracked in-repo and referenced by quality gates
+      - Parent-approved language override is enforced without breaking Polish-default kid policy
+    cross_review_by: copilot
+    status: in_review
+
+  - id: TASK-045
+    title: Implement optional private online family sessions with invite and role policies
+    owner: copilot
+    specialty: engine-networking
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-008, TASK-029, TASK-035]
+    acceptance_criteria:
+      - Private online sessions support family-invite flows with no public discovery
+      - Kid and parent permissions are enforced for join, host, and share actions
+      - Local-only deployment mode can disable online features through policy flags
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-046
+    title: Implement curated template marketplace and family-shared creation catalog
+    owner: copilot
+    specialty: content-platform
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-009, TASK-030, TASK-037]
+    acceptance_criteria:
+      - Curated template packs and family-shared creations can be listed with safety status metadata
+      - Listing workflow enforces moderation, parent approval state, and private-by-default visibility
+      - Catalog read models support kid browsing and parent filtering needs
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-047
+    title: Implement AI-generated content provenance badges and project metadata tagging
+    owner: codex
+    specialty: transparency-ux
+    inputs:
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-008, TASK-016, TASK-019, TASK-041]
+    acceptance_criteria:
+      - Child and parent surfaces display clear badges for AI-generated text, visuals, and audio
+      - Project metadata stores generation provenance and links to audit timeline entries
+      - Transparency UX remains text-light and age-appropriate in kid mode
+    cross_review_by: copilot
+    status: in_review
+
+  - id: TASK-048
+    title: Implement COPPA/GDPR-K data lifecycle controls for export delete and retention
+    owner: copilot
+    specialty: compliance
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-029, TASK-036, TASK-037]
+    acceptance_criteria:
+      - Parent tools support data export and deletion flows with role checks and audit logs
+      - Retention policies enforce minimization and consent revocation behavior across local and cloud paths
+      - Data lifecycle operations are test-covered and documented for support workflows
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-049
+    title: Implement release threat-model updates and abuse-case regression pack
+    owner: copilot
+    specialty: security-governance
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/research-sources.md
+    dependencies: [TASK-036, TASK-038]
+    acceptance_criteria:
+      - Threat model is versioned and updated for each release candidate with mitigation status
+      - Abuse and jailbreak scenarios are mapped to automated regression checks
+      - High-risk findings define explicit release-blocking criteria
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-050
+    title: Implement end-to-end MVP acceptance suite for kid-parent-AI workflows
+    owner: codex
+    specialty: qa-automation
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-030, TASK-033, TASK-035, TASK-041, TASK-042, TASK-057, TASK-058]
+    acceptance_criteria:
+      - Automated scenarios cover create, play, AI assist, parent approval, and publish workflows
+      - Safety refusals and rollback flows are validated in both kid and parent paths
+      - MVP acceptance checks are executable and reported in CI artifacts
+    cross_review_by: copilot
+    status: todo
+
+  - id: TASK-051
+    title: Implement recurring usability study harness and KPI reporting pipeline
+    owner: copilot
+    specialty: ux-research-ops
+    inputs:
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/functionality-requirements.md
+    dependencies: [TASK-034, TASK-037, TASK-050]
+    acceptance_criteria:
+      - Playtest protocol captures monthly child-parent session metrics for ages 6-8
+      - Reports track time-to-first-fun, adult rescue rate, trust signals, and frustration events
+      - KPI outputs are consumable by product and safety review workflows
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-052
+    title: Implement release readiness runbooks and launch checklist for all deployment modes
+    owner: codex
+    specialty: release-readiness
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-039, TASK-040, TASK-045, TASK-046, TASK-047, TASK-048, TASK-049, TASK-050, TASK-051, TASK-053, TASK-054, TASK-055, TASK-056, TASK-057, TASK-058, TASK-059, TASK-060]
+    acceptance_criteria:
+      - Release checklist covers rollback, incident response, support escalation, and AI fallback controls
+      - Launch runbooks validate local-only, family cloud, and classroom deployment profiles
+      - Exit criteria define production readiness gates for safety, performance, and compliance
+    cross_review_by: copilot
+    status: todo
+
+  - id: TASK-053
+    title: Implement automated regression matrix for complete kid-parent-AI user journeys
+    owner: codex
+    specialty: qa-automation
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-038, TASK-045, TASK-046, TASK-047, TASK-050]
+    acceptance_criteria:
+      - Automated scenarios validate create, play, AI assist, publish, and family-sharing flows against stable fixtures
+      - Regression suite asserts rollback and fail-safe behavior for unsafe AI or policy-restricted actions
+      - Reports are emitted as CI artifacts with deterministic pass/fail summaries per scenario group
+    cross_review_by: copilot
+    status: todo
+
+  - id: TASK-054
+    title: Implement automated safety and compliance regression suite for policy evasion attempts
+    owner: copilot
+    specialty: safety-qa
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-038, TASK-048, TASK-049]
+    acceptance_criteria:
+      - Automated tests cover prompt, voice, and publish abuse cases including jailbreak-style and consent-bypass attempts
+      - Data lifecycle regressions verify export, deletion, retention, and consent revocation policy enforcement
+      - Release-blocking severity thresholds are codified and surfaced in machine-readable CI output
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-055
+    title: Execute manual kid-parent gameplay test charter across core MVP loops
+    owner: copilot
+    specialty: manual-qa
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-034, TASK-045, TASK-046, TASK-051, TASK-053, TASK-059]
+    acceptance_criteria:
+      - Manual test charter covers child quick-start, co-creation, AI hinting, co-op playtest, and private family sharing
+      - Runs are executed on Tier 1 and Tier 2 hardware profiles with defect evidence linked to reproducible steps
+      - Findings include severity triage and explicit release recommendations for user-facing risk
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-056
+    title: Execute manual localization and accessibility certification sweep for ship candidate
+    owner: copilot
+    specialty: accessibility-qa
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-032, TASK-033, TASK-047, TASK-054]
+    acceptance_criteria:
+      - Manual walkthrough verifies Polish-first defaults for kid and parent flows plus parent-approved language override behavior
+      - Accessibility checklist verifies captions, contrast, dyslexia font mode, and motor preset behavior in main journeys
+      - Output includes prioritized defect list and pass/fail traceability against UX-LANG and UX-A11Y requirements
+    cross_review_by: codex
+    status: todo
+
+  - id: TASK-057
+    title: Implement automated inbound shell regression suite for navigation role gates localization and accessibility toggles
+    owner: copilot
+    specialty: ui-test-automation
+    inputs:
+      - docs/requirements/ui-ux-requirements.md
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-008, TASK-031, TASK-033]
+    acceptance_criteria:
+      - Deterministic tests cover Create, Play, Library, and Parent shells including parent-role visibility guards
+      - Tests assert localized primary-control labels and accessibility toggle behavior without network dependencies
+      - Runner is integrated into quality-gate scripts with stable pass/fail reporting
+    cross_review_by: codex
+    status: done
+
+  - id: TASK-058
+    title: Implement automated persistence resilience suite for autosave replay rollback and safe-restore
+    owner: codex
+    specialty: qa-automation
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-005, TASK-006, TASK-035]
+    acceptance_criteria:
+      - Regression scenarios verify autosave cadence and non-blocking behavior under active edit load
+      - Restart/reload tests validate event-log replay and safe-restore consistency across sessions
+      - Results are emitted in machine-readable form and wired into quality-gate execution
+    cross_review_by: copilot
+    status: todo
+
+  - id: TASK-059
+    title: Execute manual pre-network kid-parent gameplay and trust charter
+    owner: copilot
+    specialty: manual-qa
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-024, TASK-031, TASK-033]
+    acceptance_criteria:
+      - Manual charter covers first playable loop, hint comprehension, and parent intervention clarity
+      - Sessions run on Tier 1 and Tier 2 hardware profiles with reproducible evidence capture
+      - Findings include severity triage, release risk notes, and requirement traceability
+    cross_review_by: codex
+    status: in_progress
+
+  - id: TASK-060
+    title: Execute manual safety-compliance operations drill for export delete retention and consent revocation
+    owner: copilot
+    specialty: compliance-qa
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-030, TASK-048, TASK-054]
+    acceptance_criteria:
+      - Drill script verifies parent-only data lifecycle operations and audit-trace visibility
+      - Manual abuse attempts document expected policy blocks for consent bypass and unsafe publish paths
+      - Output includes release-blocking findings and explicit remediation ownership
+    cross_review_by: codex
     status: todo

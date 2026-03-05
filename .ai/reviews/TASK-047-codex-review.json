@@ -1,0 +1,27 @@
+{
+  "task_id": "TASK-047",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "message": "Provenance badge UI exists but is not attached to any child or parent surfaces, so the acceptance criterion for visible badges in real user flows is not met.",
+      "path": "src/adapters/inbound/shared/ui/provenance_badge.gd"
+    },
+    {
+      "severity": "high",
+      "message": "No runtime path populates `SceneNode.provenance` for AI-generated text, visual, or audio actions; current code only serializes/deserializes provenance when already present. This leaves project metadata provenance and audit linkage functionally incomplete.",
+      "path": "src/adapters/outbound/filesystem_project_store.gd"
+    },
+    {
+      "severity": "medium",
+      "message": "`test_provenance_integration.gd` is not wired into any runner/CI path, so provenance badge and metadata behavior are not enforced by automated checks.",
+      "path": "tests/adapters/inbound/test_provenance_integration.gd"
+    },
+    {
+      "severity": "medium",
+      "message": "Badge copy is hardcoded in English (e.g., 'Human', 'AI (Text)', 'Source') and bypasses localization policy, conflicting with Polish-first UX requirements.",
+      "path": "src/adapters/inbound/shared/ui/provenance_badge.gd"
+    }
+  ]
+}

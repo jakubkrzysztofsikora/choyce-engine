@@ -1,0 +1,18 @@
+{
+	"unsafe_terms": [
+		"narkotyk",
+		"narkotyki",
+		"hazard",
+		"bron",
+		"zabij",
+		"przemoc",
+		"alkohol"
+	],
+	"preferred_terms": {
+		"quest": "misja",
+		"hint": "wskazowka",
+		"build": "buduj",
+		"playtest": "test zabawy",
+		"template": "szablon"
+	}
+}

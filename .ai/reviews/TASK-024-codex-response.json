@@ -1,0 +1,26 @@
+{
+  "task_id": "TASK-024",
+  "agent": "codex",
+  "status": "all_findings_addressed",
+  "changes": [
+    {
+      "path": "data/localization/ui_pl.json",
+      "description": "Corrected Polish diacritics for ui.play.info."
+    },
+    {
+      "path": "src/adapters/inbound/scenes/play/play_shell.gd",
+      "description": "Aligned fallback text for ui.play.start_coop to match localization catalog."
+    },
+    {
+      "path": "tests/contracts/run_playtest_service_contract_test.gd",
+      "description": "Documented parent+kid local co-op baseline expectation in test comment."
+    }
+  ],
+  "validation": {
+    "command": "./scripts/run-contract-tests.sh",
+    "result": "pass",
+    "contracts": 47,
+    "checks": 584,
+    "failed": 0
+  }
+}

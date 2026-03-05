@@ -1,0 +1,44 @@
+{
+  "task_id": "TASK-011",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "medium",
+      "message": "_plan_tools_locally() uses hardcoded Polish keywords for tool selection ('kolor' → paint, 'skopi' → duplicate, 'regu'/'timer' → logic_edit). This is a reasonable simulation placeholder but must be replaced with actual Ollama API tool-calling once HTTP integration is added. Document this as simulation-only behavior.",
+      "path": "src/adapters/outbound/ollama_llm_adapter.gd:154"
+    },
+    {
+      "severity": "low",
+      "message": "_simulate_local_failure is a test-only flag exposed in production code. Consider using a test double (e.g., a FailingOllamaStub) instead to keep the production adapter clean. Not blocking since it doesn't affect safety.",
+      "path": "src/adapters/outbound/ollama_llm_adapter.gd:91"
+    },
+    {
+      "severity": "low",
+      "message": "Model catalog validation in _load_model_catalog() only checks for 'small' and 'medium' keys. If someone provides a catalog with only 'multimodal', it gets silently ignored. Consider logging a warning for incomplete catalogs.",
+      "path": "src/adapters/outbound/ollama_llm_adapter.gd:237"
+    },
+    {
+      "severity": "low",
+      "message": "The _complete_local() response format includes '[ollama:model_name]' which is useful for debugging but should never be rendered directly in kid-facing UI. Callers must strip or replace this. Document this as simulation-mode behavior.",
+      "path": "src/adapters/outbound/ollama_llm_adapter.gd:144"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "llm_port_tool_calls_and_model_selection": "PASS - complete() and complete_with_tools() both implement model tier selection (small/medium). Tool calls return typed Array[ToolInvocation] with deterministic arguments, idempotency, and approval flags.",
+      "fallback_chain_honors_consent": "PASS - Cloud escalation requires three gates: _allow_cloud_fallback enabled, profile_id extracted from context_tags, AND has_consent(profile_id, 'cloud_llm') returns true. When all fail, returns Polish fallback text."
+    },
+    "hexagonal_boundaries": "PASS - OllamaLLMAdapter extends LLMPort (RefCounted), takes IdentityConsentPort for consent checks and optional LLMPort for cloud delegation. No domain entities imported. Model catalog loaded from external JSON.",
+    "kid_safety_and_parental_controls": "PASS - Cloud fallback is triple-gated with consent. Kid tool scope is respected via envelope.permitted_tools. Polish fallback text is kid-appropriate. No unsafe content generation paths.",
+    "contract_tests": "PASS - Comprehensive test covers: local completion with small tier, tool planning with medium tier, cloud fallback rejection without consent, cloud fallback with consent, and cloud tool delegation. Mock consent port and cloud LLM provide clean test doubles.",
+    "cross_agent_review": "This review constitutes the required cross-agent review for TASK-011."
+  },
+  "positive_notes": [
+    "Excellent consent-gating pattern: three independent checks (flag, port, profile consent) make accidental cloud escalation nearly impossible.",
+    "Polish-first with deterministic simulation: keyword-based tool planning and Polish fallback text work without network for local development.",
+    "Model catalog externalized to JSON with sensible hardcoded defaults — deployments can customize without code changes.",
+    "Contract test uses mock consent port and cloud LLM to validate the full fallback chain end-to-end."
+  ],
+  "summary": "TASK-011 delivers a clean local-first LLM adapter with robust consent-gated cloud fallback. The triple-gated escalation pattern (flag + port + consent) is excellent for child safety. One medium finding: local tool planning uses hardcoded Polish keywords that need replacement with real Ollama integration. Three low findings for test flag cleanup and documentation. Overall: APPROVE."
+}

@@ -1,0 +1,76 @@
+{
+  "task_id": "TASK-017",
+  "reviewer": "claude",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "message": "CloudSTTAdapter.transcribe() with empty profile_id (the default) bypasses consent check entirely — consent is only verified when profile_id != ''. This is a fail-open pattern: any caller that doesn't explicitly pass profile_id gets unguarded cloud access. For child safety, empty profile_id MUST block cloud transcription. Fix: if profile_id == '' or not _consent_port.has_consent(profile_id, 'cloud_stt'): return ''",
+      "path": "src/adapters/outbound/cloud_stt_adapter.gd:20"
+    },
+    {
+      "severity": "high",
+      "message": "PolishIntentExtractor references AgeBand.CHILD_5_7 and AgeBand.TEEN_13_15 which do not exist in the AgeBand enum. The actual values are AgeBand.Band.CHILD_6_8 and AgeBand.Band.TEEN. This will cause a runtime error. Also, setup() expects an AgeBand instance but the default value tries to use a non-existent enum constant.",
+      "path": "src/application/polish_intent_extractor.gd"
+    },
+    {
+      "severity": "high",
+      "message": "CloudSTTAdapter and STTFallbackChain break the SpeechToTextPort contract by adding extra parameters (profile_id, allow_cloud_fallback) to transcribe(). Callers holding a SpeechToTextPort reference cannot pass profile_id without knowing the concrete type, defeating port abstraction. profile_id should be injected via setup() or a set_profile() method, not through the transcribe() signature.",
+      "path": "src/adapters/outbound/cloud_stt_adapter.gd:16"
+    },
+    {
+      "severity": "medium",
+      "message": "Polish normalization uses global substring replacement: 'cie' -> 'ci' corrupts common words like 'ciekawy' (interesting), 'ciebie' (you), 'ciepły' (warm), 'ciemny' (dark). 'sia' -> 'się' corrupts 'Kasia' (name) → 'Kasię'. Use word-boundary or whole-word matching instead of String.replace().",
+      "path": "src/application/polish_intent_extractor.gd:27"
+    },
+    {
+      "severity": "medium",
+      "message": "STTFallbackChain stores concrete types (LocalSTTAdapter, CloudSTTAdapter) instead of SpeechToTextPort interface. This violates hexagonal architecture — application-layer services should depend on port interfaces only.",
+      "path": "src/application/stt_fallback_chain.gd"
+    },
+    {
+      "severity": "medium",
+      "message": "Intent extraction only matches infinitive verb forms ('budować', 'usunąć'). Polish children primarily use imperative forms: 'buduj', 'zbuduj', 'zrob', 'usuń', 'przesuń', 'zagraj'. Add these common imperative forms for child speech.",
+      "path": "src/application/polish_intent_extractor.gd"
+    },
+    {
+      "severity": "medium",
+      "message": "transcribe() mutates _language instance state as a side effect. Subsequent calls with empty language parameter silently use the previously-set language. Use the parameter locally without storing it: var effective_language := language if language != '' else _language.",
+      "path": "src/adapters/outbound/local_stt_adapter.gd:14"
+    },
+    {
+      "severity": "low",
+      "message": "PackedByteArray().fill(1, 250) in test is incorrect GDScript API — fill() returns void and takes a single value argument. Should be: var arr := PackedByteArray(); arr.resize(250); arr.fill(1).",
+      "path": "tests/adapters/test_local_stt_adapter.gd:33"
+    },
+    {
+      "severity": "low",
+      "message": "No dedicated unit test for CloudSTTAdapter consent enforcement. The consent gating (the most safety-critical path) is only indirectly tested through the fallback chain.",
+      "path": "tests/adapters/"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "polish_recognition_tuned_for_children": "PARTIAL - Local adapter defaults to pl-PL and simulates child speech. But normalization has false positives on common Polish words (see medium finding), and intent extraction misses imperative verb forms children use most.",
+      "cloud_fallback_requires_parent_opt_in": "FAIL - Empty profile_id bypasses consent check in CloudSTTAdapter (high finding). Port contract also broken by extra parameters (high finding)."
+    },
+    "hexagonal_boundaries": "FAIL - STTFallbackChain depends on concrete adapter types instead of SpeechToTextPort interface. CloudSTTAdapter breaks the transcribe() port contract signature.",
+    "kid_safety_and_parental_controls": "FAIL - Consent bypass with empty profile_id is a child safety issue. Must fail closed.",
+    "polish_localization": "PARTIAL - Good Polish defaults but normalization rules corrupt common Polish words via global substring replacement.",
+    "cross_agent_review": "This review constitutes the required cross-agent review for TASK-017."
+  },
+  "positive_notes": [
+    "Good local-first architecture: fallback chain correctly prefers local adapter before cloud.",
+    "Polish child speech concept is solid — normalizing child pronunciation patterns is the right approach.",
+    "Consent key 'cloud_stt' aligns with the established 'cloud_llm' pattern from TASK-011.",
+    "Good separation of concerns: intent extraction is a separate service from STT transcription."
+  ],
+  "remediation_priority": [
+    "1. Fix consent fail-open in CloudSTTAdapter (HIGH safety)",
+    "2. Fix AgeBand enum references — code will not run as-is (HIGH correctness)",
+    "3. Fix port contract — remove extra parameters from transcribe() (HIGH architecture)",
+    "4. Fix Polish normalization to use word-boundary matching (MEDIUM correctness)",
+    "5. Add imperative verb forms for child intent extraction (MEDIUM UX)"
+  ],
+  "summary": "TASK-017 has the right architecture (local-first, consent-gated cloud fallback, Polish child speech normalization) but has three high-severity issues that must be fixed: consent bypass with empty profile_id (child safety), nonexistent AgeBand enum values (runtime error), and broken port contract signature. Four medium findings affect Polish language correctness and hexagonal architecture. REQUEST CHANGES — fix the three high-severity findings before re-review."
+}

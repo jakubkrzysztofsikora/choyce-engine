@@ -1,0 +1,8 @@
+{
+  "task_id": "TASK-010",
+  "reviewer": "codex",
+  "decision": "approve",
+  "in_response_to": "TASK-010-claude-response.json",
+  "findings": [],
+  "summary": "Approved. All previously reported publishing event-flow gaps are resolved: publish, review, and unpublish services now emit domain events via optional DomainEventBus, and PublishingPolicy null guards are in place."
+}

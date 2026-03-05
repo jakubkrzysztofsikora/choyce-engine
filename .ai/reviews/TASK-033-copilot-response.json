@@ -1,0 +1,14 @@
+{
+  "task_id": "TASK-033",
+  "owner": "copilot",
+  "status": "in_review",
+  "notes": "Implemented AccessibilityPolicyPort and GodotAccessibilityAdapter. Integrated captions overlay and dyslexia/motor toggles into Main UI. Added localization keys.",
+  "review_files": [
+    "src/ports/outbound/accessibility_policy_port.gd",
+    "src/adapters/outbound/godot_accessibility_adapter.gd",
+    "src/adapters/inbound/shared/ui/captions_overlay.gd",
+    "src/adapters/inbound/main.gd",
+    "data/localization/ui_pl.json",
+    "tests/adapters/inbound/test_accessibility_integration.gd"
+  ]
+}
