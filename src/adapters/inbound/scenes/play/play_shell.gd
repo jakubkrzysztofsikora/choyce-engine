@@ -242,8 +242,8 @@ func _show_session_end_screen() -> void:
 				elapsed_secs = int(status.get("elapsed_seconds", elapsed_secs))
 
 	var stats_text: String
-	if collectibles == 0 and achievements == 0 and elapsed_secs < 30:
-		# Kid-positive framing: suppress bare zeros, show encouragement
+	if collectibles == 0 and achievements == 0:
+		# Kid-positive framing: suppress bare zeros, show encouragement regardless of session length
 		stats_text = _t("play.session.try_again_friend")
 	else:
 		var mins: int = elapsed_secs / 60
