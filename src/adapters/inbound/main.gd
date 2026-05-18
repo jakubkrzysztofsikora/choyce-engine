@@ -423,16 +423,13 @@ func _build_default_ports_phase_2() -> void:
 	ports_ready.emit()
 
 
-## Populate ProjectStore on first launch with 3 demo worlds derived from the
-## bundled templates (adventure / farm / city). Idempotent — no-op when the
-## store already has projects owned by the current profile.
+## Populate ProjectStore with the 3 named demo worlds (adventure / farm / city).
+## Idempotent per starter ID — only seeds worlds whose project_id is absent so
+## that pre-existing projects (e.g. older local_kid_1_starter_canvas entries)
+## do not block the 3 current starter worlds from appearing.
 func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -> void:
 	if store == null:
 		return
-	var existing: Array = store.list_projects()
-	for entry in existing:
-		if entry is Project and entry.owner_profile_id == _profile.profile_id:
-			return
 	var now := clock.now_iso() if clock != null else ""
 	var starters := [
 		{"id": "starter_adventure", "title": "Wyspa skarbów", "template": "adventure",
@@ -457,7 +454,22 @@ func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -
 			{"name": "Start", "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0, -2)},
 		]},
 	]
+	# Build a set of project IDs already owned by this profile.
+	var existing_ids: Dictionary = {}
+	for entry in store.list_projects():
+		if entry is Project and entry.owner_profile_id == _profile.profile_id:
+			existing_ids[entry.project_id] = true
+
+	# Collect only the starters that are not yet present.
+	var to_seed: Array = []
 	for seed in starters:
+		var pid: String = "%s_%s" % [_profile.profile_id, seed["id"]]
+		if not existing_ids.has(pid):
+			to_seed.append(seed)
+	if to_seed.is_empty():
+		return
+
+	for seed in to_seed:
 		var project_id: String = "%s_%s" % [_profile.profile_id, seed["id"]]
 		var project := Project.new(project_id, seed["title"])
 		project.owner_profile_id = _profile.profile_id
@@ -476,7 +488,7 @@ func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -
 			world.add_node(scene_node)
 		project.add_world(world)
 		store.save_project(project)
-	push_warning("Seeded %d starter worlds for profile %s" % [starters.size(), _profile.profile_id])
+	push_warning("Seeded %d starter worlds for profile %s" % [to_seed.size(), _profile.profile_id])
 
 
 ## Phase 6: Resolve the 32-byte AES-256 vault signing key.
