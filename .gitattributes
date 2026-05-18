@@ -1,0 +1,15 @@
+# Binary audio assets — prevent line-ending conversion
+data/audio/**/*.ogg binary
+data/audio/**/*.wav binary
+data/audio/**/*.mp3 binary
+
+# Binary image assets
+data/textures/**/*.png binary
+data/textures/**/*.jpg binary
+data/textures/**/*.svg binary
+
+# Binary 3D model assets
+data/models/**/*.glb binary
+data/models/**/*.fbx binary
+data/models/**/*.obj binary
+data/models/**/*.gltf binary
