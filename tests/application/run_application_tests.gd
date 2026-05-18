@@ -12,6 +12,7 @@ const TEST_SCRIPTS: Array[Script] = [
 	preload("res://tests/application/test_usability_kpi_reporting_service.gd"),
 	preload("res://tests/application/test_usability_telemetry_tracker.gd"),
 	preload("res://tests/application/test_persistence_resilience.gd"),
+	preload("res://tests/application/test_phase_7c_event_bus_migration.gd"),
 ]
 
 func _init() -> void:

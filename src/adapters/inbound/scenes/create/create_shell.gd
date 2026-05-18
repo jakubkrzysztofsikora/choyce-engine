@@ -26,6 +26,7 @@ var _run_playtest_port: RunPlaytestPort
 var _apply_world_edit_port: ApplyWorldEditCommandPort
 var _request_ai_help_port: RequestAICreationHelpPort
 var _speech_to_text_port: SpeechToTextPort
+var _event_bus: DomainEventBus = null
 var _active_tool: CanvasTool = CanvasTool.PLACE
 var _active_world_id: String = ""
 var _selected_node_id: String = ""
@@ -100,7 +101,8 @@ func setup(
 	apply_world_edit_port: ApplyWorldEditCommandPort,
 	request_ai_help_port: RequestAICreationHelpPort = null,
 	speech_to_text_port: SpeechToTextPort = null,
-	feature_flags: FeatureFlagService = null
+	feature_flags: FeatureFlagService = null,
+	event_bus: DomainEventBus = null
 ) -> CreateShell:
 	_navigator = navigator
 	_profile = profile
@@ -111,15 +113,21 @@ func setup(
 	_request_ai_help_port = request_ai_help_port
 	_speech_to_text_port = speech_to_text_port
 	_feature_flags = feature_flags
+	_event_bus = event_bus
 
 	if _provenance_badge != null and _provenance_badge.has_method("setup"):
 		_provenance_badge.call("setup", _localization_policy)
 
+	# Phase 7c: OnboardingService now publishes DomainEventBus events instead of Godot signals.
+	# Subscribe via event_bus when available; fall back to no-op so existing tests without
+	# an event_bus still construct without errors.
 	_onboarding_service = OnboardingServiceScript.new()
 	if _onboarding_service != null:
-		_onboarding_service.step_changed.connect(_on_onboarding_step_changed)
-		_onboarding_service.step_completed.connect(_on_onboarding_step_completed)
-		_onboarding_service.onboarding_finished.connect(_on_onboarding_finished)
+		if _event_bus != null:
+			_onboarding_service.setup(_event_bus)
+			_event_bus.subscribe("OnboardingStepChanged", _on_onboarding_step_changed_event)
+			_event_bus.subscribe("OnboardingStepCompleted", _on_onboarding_step_completed_event)
+			_event_bus.subscribe("OnboardingFinished", _on_onboarding_finished_event)
 		if _onboarding_overlay:
 			_onboarding_overlay.advance_requested.connect(_onboarding_service.acknowledge_welcome)
 		if _go_play_button:
@@ -747,12 +755,14 @@ func _hex_to_color(hex: String) -> Color:
 	return Color.WHITE
 
 
-# -- Onboarding Handlers --
+# -- Onboarding Handlers (Phase 7c: event-bus callbacks) --
 
-func _on_onboarding_step_changed(step_id: String, instruction_key: String) -> void:
+func _on_onboarding_step_changed_event(event: DomainEvent) -> void:
 	if not _onboarding_overlay:
 		return
-	
+	var step_id: String = event.payload.get("step_id", "")
+	var instruction_key: String = event.payload.get("instruction_key", "")
+
 	var target: Control = null
 	match step_id:
 		OnboardingServiceScript.STEP_WELCOME:
@@ -763,25 +773,25 @@ func _on_onboarding_step_changed(step_id: String, instruction_key: String) -> vo
 			target = _paint_button
 		OnboardingServiceScript.STEP_PLAY:
 			target = _go_play_button
-	
+
 	var text: String = _t(instruction_key)
-	if text.begins_with("KEY_NOT_FOUND"): 
+	if text.begins_with("KEY_NOT_FOUND"):
 		match step_id:
 			OnboardingServiceScript.STEP_WELCOME: text = "Witaj! Zaczynamy budowanie."
 			OnboardingServiceScript.STEP_PLACE_FIRST: text = "Kliknij tutaj, aby ustawić obiekt."
 			OnboardingServiceScript.STEP_PAINT_FIRST: text = "Teraz pomaluj swój obiekt."
 			OnboardingServiceScript.STEP_PLAY: text = "Naciśnij Graj, aby przetestować świat."
 			_: text = "Kontynuuj..."
-	
+
 	_onboarding_overlay.show_step(step_id, text, target)
 
 
-func _on_onboarding_step_completed(step_id: String) -> void:
+func _on_onboarding_step_completed_event(event: DomainEvent) -> void:
 	if _onboarding_overlay:
 		_onboarding_overlay.celebrate_completion()
 
 
-func _on_onboarding_finished() -> void:
+func _on_onboarding_finished_event(event: DomainEvent) -> void:
 	if _onboarding_overlay:
 		_onboarding_overlay.dismiss()
 

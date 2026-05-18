@@ -1,16 +1,21 @@
 ## Aggregate managing a collection of quests for a player session.
-## Tracks active quest, emits progress signals, and handles quest lifecycle.
+## Tracks active quest, publishes domain events via DomainEventBus, and handles quest lifecycle.
+## Signals have been removed (Phase 7c): all notifications go through event_bus.publish().
 class_name QuestLog
 extends RefCounted
 
-
-signal quest_progressed(quest_id: String, current_count: int, target_count: int)
-signal quest_completed(quest_id: String)
-signal quest_claimed(quest_id: String, reward_score: int, reward_unlocks: Array)
-signal active_quest_changed(quest_id: String)
-
 var quests: Array = []
 var active_quest_id: String = ""
+
+## actor_id is stored so published events carry the player identity.
+var _actor_id: String = ""
+var _event_bus: DomainEventBus = null
+
+
+func setup(event_bus: DomainEventBus, actor_id: String = "") -> QuestLog:
+	_event_bus = event_bus
+	_actor_id = actor_id
+	return self
 
 
 func add_quest(quest) -> void:
@@ -31,7 +36,8 @@ func set_active_quest(quest_id: String) -> bool:
 	if quest.status == 0:  # LOCKED
 		quest.status = 1  # ACTIVE
 	active_quest_id = quest_id
-	active_quest_changed.emit(quest_id)
+	if _event_bus != null:
+		_event_bus.emit(ActiveQuestChangedEvent.new(quest_id, _actor_id))
 	return true
 
 
@@ -48,10 +54,12 @@ func progress_quest(quest_id: String, amount: int = 1) -> void:
 
 	var was_complete = quest.is_complete()
 	quest.advance(amount)
-	quest_progressed.emit(quest_id, quest.current_count, quest.target_count)
+	if _event_bus != null:
+		_event_bus.emit(QuestProgressedEvent.new(quest_id, quest.current_count, quest.target_count, _actor_id))
 
 	if not was_complete and quest.is_complete():
-		quest_completed.emit(quest_id)
+		if _event_bus != null:
+			_event_bus.emit(QuestCompletedEvent.new(quest_id, _actor_id))
 
 
 func claim_quest(quest_id: String) -> bool:
@@ -60,7 +68,8 @@ func claim_quest(quest_id: String) -> bool:
 		return false
 	if not quest.claim():
 		return false
-	quest_claimed.emit(quest_id, quest.reward_score, quest.reward_unlocks.duplicate())
+	if _event_bus != null:
+		_event_bus.emit(QuestClaimedEvent.new(quest_id, quest.reward_score, quest.reward_unlocks.duplicate(), _actor_id))
 	return true
 
 
