@@ -80,6 +80,26 @@ var _nav_buttons: Dictionary = {}
 var _accent_color := Color8(120, 210, 255)
 
 
+func _process(delta: float) -> void:
+	# Drive debounced filesystem stores. Adapters that don't implement
+	# flush_if_due are skipped — this avoids per-adapter knowledge here
+	# and lets new debounced stores plug in without touching main.gd.
+	if _ports.is_empty():
+		return
+	var elapsed_msec := int(delta * 1000.0)
+	for port in _ports.values():
+		if port != null and port.has_method("flush_if_due"):
+			port.flush_if_due(elapsed_msec)
+
+
+func _notification(what: int) -> void:
+	# Synchronous flush on shutdown so the last write isn't lost.
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
+		for port in _ports.values():
+			if port != null and port.has_method("flush"):
+				port.flush()
+
+
 func _ready() -> void:
 	if _accessibility_policy == null:
 		_accessibility_policy = GodotAccessibilityAdapter.new().setup(self)
