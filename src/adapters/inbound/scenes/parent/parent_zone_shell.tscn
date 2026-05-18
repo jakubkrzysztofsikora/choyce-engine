@@ -201,3 +201,30 @@ text = "🔨 Przejdź do tworzenia"
 custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
 text = "▶ Przejdź do gry"
+
+[node name="DaneTab" type="PanelContainer" parent="Layout"]
+layout_mode = 2
+
+[node name="DaneContent" type="VBoxContainer" parent="Layout/DaneTab"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="DaneTitle" type="Label" parent="Layout/DaneTab/DaneContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Dane mojego dziecka"
+
+[node name="ExportButton" type="Button" parent="Layout/DaneTab/DaneContent"]
+custom_minimum_size = Vector2(220, 48)
+layout_mode = 2
+text = "Eksportuj dane"
+
+[node name="DeleteButton" type="Button" parent="Layout/DaneTab/DaneContent"]
+custom_minimum_size = Vector2(220, 48)
+layout_mode = 2
+text = "Usuń dane"
+
+[node name="StatusLabel" type="Label" parent="Layout/DaneTab/DaneContent"]
+layout_mode = 2
+text = ""
+autowrap_mode = 3

@@ -111,6 +111,14 @@ func _load_defaults() -> void:
 		"captions.font_size.label": "Powiększ tekst",
 		"captions.high_contrast.label": "Mocne kolory",
 		"captions.tts_narration.label": "Czytaj napisy głosem",
+		# Phase 2: COPPA parent data-lifecycle tab keys (parent-only UI)
+		"parent.coppa.tab": "Dane mojego dziecka",
+		"parent.coppa.export": "Eksportuj dane",
+		"parent.coppa.delete": "Usuń dane",
+		"parent.coppa.delete_confirm.title": "Usunąć dane?",
+		"parent.coppa.delete_confirm.body": "To zniknie i nie wróci.",
+		"parent.coppa.export_ok": "Zapisałem dane.",
+		"parent.coppa.delete_ok": "Usunąłem dane.",
 	}
 
 	_unsafe_terms = {}

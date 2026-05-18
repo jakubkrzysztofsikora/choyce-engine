@@ -11,7 +11,14 @@ var _localization_policy: LocalizationPolicyPort
 var _set_parental_controls_port: SetParentalControlsPort
 var _parent_audit_read_model: ParentAuditReadModel
 var _ai_performance_read_model: AIPerformanceReadModel
+var _manage_data_lifecycle_port: ManageDataLifecyclePort
 var _provenance_badge: ProvenanceBadge
+
+# COPPA data tab controls (created at runtime in _setup_coppa_panel)
+var _coppa_export_button: Button
+var _coppa_delete_button: Button
+var _coppa_status_label: Label
+var _coppa_confirm_dialog: ConfirmationDialog
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -46,8 +53,10 @@ const AI_FULL := 2
 
 func _ready() -> void:
 	_setup_provenance_badge()
+	_setup_coppa_panel()
 	_wire_actions()
-	_apply_role_guard()
+	# Role guard intentionally NOT called here — _profile may be null at _ready().
+	# It is called unconditionally from setup() after profile is bound.
 	_refresh_labels()
 	_apply_theme()
 
@@ -58,7 +67,8 @@ func setup(
 	localization_policy: LocalizationPolicyPort,
 	set_parental_controls_port: SetParentalControlsPort,
 	parent_audit_read_model: ParentAuditReadModel = null,
-	ai_performance_read_model: AIPerformanceReadModel = null
+	ai_performance_read_model: AIPerformanceReadModel = null,
+	manage_data_lifecycle_port: ManageDataLifecyclePort = null
 ) -> ParentZoneShell:
 	_navigator = navigator
 	_profile = profile
@@ -66,19 +76,27 @@ func setup(
 	_set_parental_controls_port = set_parental_controls_port
 	_parent_audit_read_model = parent_audit_read_model
 	_ai_performance_read_model = ai_performance_read_model
+	_manage_data_lifecycle_port = manage_data_lifecycle_port
 	if _provenance_badge != null and _provenance_badge.has_method("setup"):
 		_provenance_badge.call("setup", _localization_policy)
 
 	if is_node_ready():
+		# Profile is now bound — safe to apply role guard unconditionally.
 		_apply_role_guard()
 		_refresh_labels()
 		_refresh_dashboard_summaries()
+		_refresh_coppa_labels()
 
 	return self
 
 
 func _apply_role_guard() -> void:
-	var is_parent_user := _profile != null and _profile.is_parent()
+	# Guard: profile may be null before setup() is called (e.g. during _ready()).
+	# No-op in that case — shell remains in its default state.
+	if _profile == null:
+		return
+
+	var is_parent_user := _profile.is_parent()
 	visible = is_parent_user
 
 	_go_create_button.disabled = not is_parent_user
@@ -92,6 +110,12 @@ func _apply_role_guard() -> void:
 	_language_override_toggle.disabled = not is_parent_user
 	_cloud_sync_toggle.disabled = not is_parent_user
 	_apply_policy_button.disabled = not is_parent_user
+
+	# COPPA buttons follow the same guard
+	if _coppa_export_button != null:
+		_coppa_export_button.disabled = not is_parent_user
+	if _coppa_delete_button != null:
+		_coppa_delete_button.disabled = not is_parent_user
 
 
 func _wire_actions() -> void:
@@ -207,6 +231,118 @@ func _build_playtime_summary() -> String:
 	return "%s 120 min\n%s 45 min" % [IconFont.get_icon("time"), IconFont.get_icon("chart")]
 
 
+func _setup_coppa_panel() -> void:
+	# Create "Dane mojego dziecka" panel programmatically so the .tscn node
+	# matches the DaneTab section added there.  If the DaneTab node already
+	# exists in the scene tree (from .tscn edit) we skip creation to avoid
+	# duplicates.
+	if has_node("Layout/DaneTab"):
+		var tab := get_node("Layout/DaneTab") as Control
+		_coppa_export_button = tab.find_child("ExportButton", true, false)
+		_coppa_delete_button = tab.find_child("DeleteButton", true, false)
+		_coppa_status_label  = tab.find_child("StatusLabel", true, false)
+	else:
+		# Build the panel in code (fallback when .tscn node not yet present).
+		var panel := PanelContainer.new()
+		panel.name = "DaneTab"
+		var vbox := VBoxContainer.new()
+		vbox.name = "DaneContent"
+
+		var title := Label.new()
+		title.name = "DaneTitle"
+		title.text = _t("parent.coppa.tab")
+
+		_coppa_export_button = Button.new()
+		_coppa_export_button.name = "ExportButton"
+		_coppa_export_button.custom_minimum_size = Vector2(220, 48)
+		_coppa_export_button.text = _t("parent.coppa.export")
+
+		_coppa_delete_button = Button.new()
+		_coppa_delete_button.name = "DeleteButton"
+		_coppa_delete_button.custom_minimum_size = Vector2(220, 48)
+		_coppa_delete_button.text = _t("parent.coppa.delete")
+
+		_coppa_status_label = Label.new()
+		_coppa_status_label.name = "StatusLabel"
+		_coppa_status_label.text = ""
+		_coppa_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+		vbox.add_child(title)
+		vbox.add_child(_coppa_export_button)
+		vbox.add_child(_coppa_delete_button)
+		vbox.add_child(_coppa_status_label)
+		panel.add_child(vbox)
+		$Layout.add_child(panel)
+
+	# Wire confirmation dialog
+	_coppa_confirm_dialog = ConfirmationDialog.new()
+	_coppa_confirm_dialog.title = _t("parent.coppa.delete_confirm.title")
+	_coppa_confirm_dialog.dialog_text = _t("parent.coppa.delete_confirm.body")
+	add_child(_coppa_confirm_dialog)
+
+	if _coppa_export_button != null:
+		_coppa_export_button.pressed.connect(_on_coppa_export_pressed)
+	if _coppa_delete_button != null:
+		_coppa_delete_button.pressed.connect(_on_coppa_delete_pressed)
+	_coppa_confirm_dialog.confirmed.connect(_on_coppa_delete_confirmed)
+
+
+func _refresh_coppa_labels() -> void:
+	if _coppa_export_button != null:
+		_coppa_export_button.text = _t("parent.coppa.export")
+	if _coppa_delete_button != null:
+		_coppa_delete_button.text = _t("parent.coppa.delete")
+	if _coppa_confirm_dialog != null:
+		_coppa_confirm_dialog.title = _t("parent.coppa.delete_confirm.title")
+		_coppa_confirm_dialog.dialog_text = _t("parent.coppa.delete_confirm.body")
+
+
+func _on_coppa_export_pressed() -> void:
+	if _manage_data_lifecycle_port == null or _profile == null:
+		_set_coppa_status(_t("ui.parent.controls.save_failed"))
+		return
+	var subject_id := _get_subject_profile_id()
+	var result := _manage_data_lifecycle_port.request_export(_profile, subject_id)
+	if result.get("ok", false):
+		_set_coppa_status(_t("parent.coppa.export_ok"))
+	else:
+		_set_coppa_status(_t("ui.parent.controls.save_failed"))
+
+
+func _on_coppa_delete_pressed() -> void:
+	if _coppa_confirm_dialog != null:
+		_coppa_confirm_dialog.popup_centered()
+
+
+func _on_coppa_delete_confirmed() -> void:
+	if _manage_data_lifecycle_port == null or _profile == null:
+		_set_coppa_status(_t("ui.parent.controls.save_failed"))
+		return
+	var subject_id := _get_subject_profile_id()
+	var result := _manage_data_lifecycle_port.request_delete(_profile, subject_id)
+	if result.get("ok", false):
+		_set_coppa_status(_t("parent.coppa.delete_ok"))
+	else:
+		_set_coppa_status(_t("ui.parent.controls.save_failed"))
+
+
+func _get_subject_profile_id() -> String:
+	# Derive managed kid profile ID from parent's preferences (first managed, or default).
+	if _profile == null:
+		return ""
+	var managed_variant = _profile.preferences.get("managed_profiles", [])
+	if managed_variant is Array and not (managed_variant as Array).is_empty():
+		return str((managed_variant as Array)[0])
+	# Fallback: use conventional kid ID derived from family
+	var family_id := str(_profile.preferences.get("family_id", "family_local"))
+	return "%s_kid_1" % family_id
+
+
+func _set_coppa_status(text: String) -> void:
+	if _coppa_status_label != null:
+		_coppa_status_label.text = text
+
+
 func _apply_theme() -> void:
 	var theme := load("res://data/themes/choyce_theme.tres") as Theme
 	if theme != null:
@@ -283,6 +419,13 @@ func _t(key: String) -> String:
 		"ui.parent.audit.template": "Audyt 24h: %d zdarzeń, %d interwencji",
 		"ui.parent.ai.no_data": "AI: brak danych.",
 		"ui.parent.ai.template": "AI 7d: %d żądań, %d%% skuteczności, %d blokad",
+		"parent.coppa.tab": "Dane mojego dziecka",
+		"parent.coppa.export": "Eksportuj dane",
+		"parent.coppa.delete": "Usuń dane",
+		"parent.coppa.delete_confirm.title": "Usunąć dane?",
+		"parent.coppa.delete_confirm.body": "To zniknie i nie wróci.",
+		"parent.coppa.export_ok": "Zapisałem dane.",
+		"parent.coppa.delete_ok": "Usunąłem dane.",
 	}
 	return fallback.get(key, key)
 

@@ -20,6 +20,7 @@ const KEY_SPEECH_TO_TEXT_PORT := "speech_to_text"
 const KEY_KID_STATUS_READ_MODEL := "kid_status_read_model"
 const KEY_PARENT_AUDIT_READ_MODEL := "parent_audit_read_model"
 const KEY_AI_PERFORMANCE_READ_MODEL := "ai_performance_read_model"
+const KEY_DATA_LIFECYCLE_PORT := "data_lifecycle_port"
 const ENV_PROFILE_ROLE := "CHOYCE_PROFILE_ROLE"
 const ENV_PROFILE_ID := "CHOYCE_PROFILE_ID"
 const ENV_PROFILE_NAME := "CHOYCE_PROFILE_NAME"
@@ -144,7 +145,7 @@ func _build_default_ports() -> Dictionary:
 	var publishing_policy := PublishingPolicy.new()
 	var policy_store := InMemoryParentalPolicyStore.new().setup()
 	var telemetry := LocalTelemetry.new().setup()
-	var consent_store := LocalConsentStore.new().setup()
+	var consent_store := FilesystemConsentStore.new().setup("user://choyce_consent")
 	var audit_ledger: AuditLedgerPort
 	if OS.get_environment("CHOYCE_AUDIT_IN_MEMORY") == "1":
 		audit_ledger = InMemoryAuditLedger.new().setup()
@@ -160,6 +161,14 @@ func _build_default_ports() -> Dictionary:
 
 	var llm := OllamaLLMAdapter.new().setup(consent_store)
 	var tool_gateway := DeterministicToolExecutionGateway.new().setup()
+
+	var data_lifecycle := ManageDataLifecycleService.new().setup(
+		null,          # DataLifecyclePort backend — no cloud backend in default build
+		null,          # RoleTokenGuard — optional, omitted in default build
+		clock,
+		audit_ledger,
+		policy_store
+	)
 
 	return {
 		KEY_CREATE_PORT: CreateProjectService.new().setup(project_store, clock),
@@ -214,6 +223,7 @@ func _build_default_ports() -> Dictionary:
 		KEY_KID_STATUS_READ_MODEL: kid_status,
 		KEY_PARENT_AUDIT_READ_MODEL: parent_audit,
 		KEY_AI_PERFORMANCE_READ_MODEL: ai_performance,
+		KEY_DATA_LIFECYCLE_PORT: data_lifecycle,
 	}
 
 
@@ -301,7 +311,8 @@ func _wire_shell_dependencies() -> void:
 		_localization_policy,
 		_ports.get(KEY_PARENTAL_CONTROLS_PORT, null),
 		_ports.get(KEY_PARENT_AUDIT_READ_MODEL, null),
-		_ports.get(KEY_AI_PERFORMANCE_READ_MODEL, null)
+		_ports.get(KEY_AI_PERFORMANCE_READ_MODEL, null),
+		_ports.get(KEY_DATA_LIFECYCLE_PORT, null)
 	)
 	if not _create_shell.world_context_changed.is_connected(_on_world_context_changed):
 		_create_shell.world_context_changed.connect(_on_world_context_changed)
