@@ -533,15 +533,10 @@ func _build_action_provenance(audit_id: String) -> ProvenanceData:
 func _resolve_llm_model_name() -> String:
 	if _llm == null:
 		return ""
-	if _llm.has_method("get_last_selected_model"):
-		var selected_model: Variant = _llm.call("get_last_selected_model")
-		var clean_selected := str(selected_model).strip_edges()
-		if not clean_selected.is_empty():
-			return clean_selected
-	if _llm.has_method("get_last_provider"):
-		var provider: Variant = _llm.call("get_last_provider")
-		return str(provider).strip_edges()
-	return ""
+	var selected_model := _llm.get_last_selected_model().strip_edges()
+	if not selected_model.is_empty():
+		return selected_model
+	return _llm.get_last_provider().strip_edges()
 
 
 func _tag_tool_invocation_provenance(action: AIAssistantAction) -> void:

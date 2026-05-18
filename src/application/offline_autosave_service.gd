@@ -11,7 +11,7 @@ const MAX_PENDING_SNAPSHOTS := 8
 var _project_store: ProjectStorePort
 var _clock: ClockPort
 var _consent: IdentityConsentPort
-var _cloud_sync: RefCounted
+var _cloud_sync: CloudProjectSyncPort
 var _autosave_interval_msec: int = DEFAULT_AUTOSAVE_INTERVAL_MSEC
 var _interaction_active: bool = false
 var _last_scheduled_at: Dictionary = {}
@@ -22,7 +22,7 @@ func setup(
 	project_store: ProjectStorePort,
 	clock: ClockPort,
 	consent: IdentityConsentPort,
-	cloud_sync: RefCounted = null,
+	cloud_sync: CloudProjectSyncPort = null,
 	autosave_interval_msec: int = DEFAULT_AUTOSAVE_INTERVAL_MSEC
 ) -> OfflineAutosaveService:
 	_project_store = project_store
@@ -88,13 +88,12 @@ func process_pending(max_items: int = 1) -> int:
 
 		var log_data: Dictionary = payload.get("action_log", {})
 		if not log_data.is_empty():
-			if _project_store.has_method("save_action_log"):
-				_project_store.save_action_log(snapshot.project_id, log_data)
+			_project_store.save_action_log(snapshot.project_id, log_data)
 		
 		var actor_id := str(payload.get("actor_id", ""))
 		var consent_profile_id := str(payload.get("consent_profile_id", ""))
 		if _should_cloud_sync(snapshot, actor_id, consent_profile_id):
-			_cloud_sync.call("sync_project", snapshot)
+			_cloud_sync.sync_project(snapshot)
 
 		processed += 1
 
@@ -137,9 +136,7 @@ func _should_cloud_sync(
 ) -> bool:
 	if _cloud_sync == null:
 		return false
-	if not _cloud_sync.has_method("is_available") or not _cloud_sync.has_method("sync_project"):
-		return false
-	if not bool(_cloud_sync.call("is_available")):
+	if not _cloud_sync.is_available():
 		return false
 	if _consent == null:
 		return false
