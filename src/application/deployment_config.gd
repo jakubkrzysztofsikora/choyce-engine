@@ -20,9 +20,11 @@ func _init(p_mode: Mode = Mode.FAMILY_CLOUD) -> void:
 	mode = p_mode
 	_apply_defaults()
 
-## Detects the deployment mode from environment variables or feature files.
-static func from_environment() -> DeploymentConfig:
-	var mode_str := OS.get_environment(ENV_VAR_MODE).strip_edges().to_lower()
+## Detects the deployment mode from an EnvironmentPort.
+## Pass an OSEnvironmentAdapter in production; pass a stub in tests.
+static func from_environment(env: EnvironmentPort = null) -> DeploymentConfig:
+	var _env: EnvironmentPort = env if env != null else OSEnvironmentAdapter.new()
+	var mode_str := _env.get_env(ENV_VAR_MODE, "").strip_edges().to_lower()
 	var selected_mode := _mode_from_string(mode_str)
 	return DeploymentConfig.new(selected_mode)
 

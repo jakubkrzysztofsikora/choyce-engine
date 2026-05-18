@@ -9,6 +9,7 @@ signal feature_changed(feature_key: String, enabled: bool)
 const ENV_VAR_OVERRIDES := "CHOYCE_FEATURE_OVERRIDES"
 
 var _config: DeploymentConfig
+var _env: EnvironmentPort
 var _overrides: Dictionary = {}
 
 func _init(config: DeploymentConfig = null) -> void:
@@ -16,10 +17,22 @@ func _init(config: DeploymentConfig = null) -> void:
 		_config = config
 	else:
 		_config = DeploymentConfig.new()
+	# _env stays null here; setup() wires it. _load_environment_overrides() guards
+	# with a null check so _init()-only construction remains safe.
 	_load_environment_overrides()
 
+## Dependency-injection entry point. Call after _init() to supply the port.
+## Returns self for chaining: FeatureFlagService.new(config).setup(env_port)
+func setup(env: EnvironmentPort) -> FeatureFlagService:
+	_env = env
+	# Re-run override loading with the injected port (replaces any _init default run).
+	_overrides.clear()
+	_load_environment_overrides()
+	return self
+
 func _load_environment_overrides() -> void:
-	var overrides_str := OS.get_environment(ENV_VAR_OVERRIDES)
+	var _resolved_env: EnvironmentPort = _env if _env != null else OSEnvironmentAdapter.new()
+	var overrides_str := _resolved_env.get_env(ENV_VAR_OVERRIDES, "")
 	if overrides_str.is_empty():
 		return
 

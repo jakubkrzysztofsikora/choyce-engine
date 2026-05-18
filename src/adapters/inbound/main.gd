@@ -66,8 +66,9 @@ func _ready() -> void:
 	_accessibility_policy.apply_baseline_contrast()
 	
 	if _feature_flags == null:
-		var config = DeploymentConfig.from_environment()
-		_feature_flags = FeatureFlagService.new(config)
+		var _env_adapter := OSEnvironmentAdapter.new()
+		var config = DeploymentConfig.from_environment(_env_adapter)
+		_feature_flags = FeatureFlagService.new(config).setup(_env_adapter)
 
 	_ensure_runtime_composition()
 	_setup_a11y_ui()
@@ -137,6 +138,10 @@ func _build_default_profile() -> PlayerProfile:
 
 
 func _build_default_ports() -> Dictionary:
+	# Phase 7b: single OSEnvironmentAdapter instance shared by all consumers in
+	# this composition root. No application or domain code calls OS.get_environment directly.
+	var env := OSEnvironmentAdapter.new()
+
 	var clock := SystemClock.new()
 	var event_bus := DomainEventBus.new()
 	var project_store := FilesystemProjectStore.new().setup()
@@ -145,7 +150,7 @@ func _build_default_ports() -> Dictionary:
 	var moderation := LocalModerationAdapter.new().setup()
 	var publishing_policy := PublishingPolicy.new()
 	# Phase 6: encrypted parental policy vault replaces in-memory variant.
-	var signing_key := _resolve_vault_signing_key()
+	var signing_key := _resolve_vault_signing_key(env)
 	var encrypted_storage := LocalEncryptedStorage.new().setup()
 	var policy_store := EncryptedParentalPolicyStore.new().setup(
 		encrypted_storage,
@@ -156,7 +161,7 @@ func _build_default_ports() -> Dictionary:
 	var telemetry := LocalTelemetry.new().setup()
 	var consent_store := FilesystemConsentStore.new().setup("user://choyce_consent")
 	var audit_ledger: AuditLedgerPort
-	if OS.get_environment("CHOYCE_AUDIT_IN_MEMORY") == "1":
+	if env.get_env("CHOYCE_AUDIT_IN_MEMORY", "") == "1":
 		audit_ledger = InMemoryAuditLedger.new().setup()
 	else:
 		audit_ledger = FilesystemAuditLedger.new().setup("user://choyce_audit")
@@ -237,17 +242,18 @@ func _build_default_ports() -> Dictionary:
 
 
 ## Phase 6: Resolve the 32-byte AES-256 vault signing key.
+## Phase 7b: accepts EnvironmentPort so OS.get_environment is not called directly here.
 ## Priority:
 ##   1. CHOYCE_VAULT_KEY env var (hex-encoded, 64 chars → 32 bytes).
 ##   2. Dev mode: auto-generate per-install key, persist in user://choyce_vault/key.
 ##   3. Prod mode (FAMILY_CLOUD, CLASSROOM): hard-fail — no key means no vault.
-func _resolve_vault_signing_key() -> PackedByteArray:
+func _resolve_vault_signing_key(env: EnvironmentPort) -> PackedByteArray:
 	const VAULT_KEY_ENV := "CHOYCE_VAULT_KEY"
 	const KEY_FILE := "user://choyce_vault/key"
 	const KEY_SIZE := 32
 
 	# 1. Environment variable (highest priority).
-	var env_key := OS.get_environment(VAULT_KEY_ENV).strip_edges()
+	var env_key := env.get_env(VAULT_KEY_ENV, "").strip_edges()
 	if not env_key.is_empty():
 		var bytes := env_key.hex_decode()
 		if bytes.size() == KEY_SIZE:
@@ -258,7 +264,7 @@ func _resolve_vault_signing_key() -> PackedByteArray:
 		# Fall through to per-install path — safer than crashing on a mis-formatted env var in dev.
 
 	# 2. Per-install key in user:// directory.
-	var config := DeploymentConfig.from_environment()
+	var config := DeploymentConfig.from_environment(env)
 	var is_dev := config.mode == DeploymentConfig.Mode.LOCAL_ONLY
 
 	if not is_dev:
