@@ -96,8 +96,11 @@ func _notification(what: int) -> void:
 	# Synchronous flush on shutdown so the last write isn't lost.
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
 		for port in _ports.values():
-			if port != null and port.has_method("flush"):
-				port.flush()
+			if port != null:
+				if port.has_method("flush"):
+					port.flush()
+				if port.has_method("flush_rotation"):
+					port.flush_rotation()
 
 
 func _ready() -> void:
