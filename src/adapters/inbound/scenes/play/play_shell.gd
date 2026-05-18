@@ -18,6 +18,7 @@ var _no_world_cta_button: Button = null
 var _voice_prompt_port: VoicePromptPort = null
 var _cta_voice_timer: Timer = null
 var _session_start_time: float = 0.0
+var _project_store: ProjectStorePort = null  # injected for direct-launch path
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -82,6 +83,46 @@ func setup(
 
 func setup_voice_prompt(port: VoicePromptPort) -> void:
 	_voice_prompt_port = port
+
+
+func setup_for_direct_launch(project_store: ProjectStorePort) -> void:
+	_project_store = project_store
+
+
+func set_profile(profile: PlayerProfile) -> void:
+	_profile = profile
+
+
+func launch_world_by_id(project_id: String, world_id: String) -> void:
+	if _project_store == null:
+		push_warning("PlayShell.launch_world_by_id called before _project_store wired")
+		return
+	var project: Project = _project_store.load_project(project_id)
+	if project == null:
+		push_warning("PlayShell.launch_world_by_id: project not found %s" % project_id)
+		return
+	# Find the world inside the project
+	var world: World = null
+	for w in project.worlds:
+		if w.world_id == world_id or (world_id.is_empty() and w.is_playable):
+			world = w
+			break
+	if world == null and not project.worlds.is_empty():
+		world = project.worlds[0]
+	if world == null:
+		push_warning("PlayShell.launch_world_by_id: no world in project %s" % project_id)
+		return
+	# Set context and start a session directly via _run_playtest_port
+	_active_world_id = world.world_id
+	if _run_playtest_port == null:
+		push_warning("PlayShell.launch_world_by_id: run_playtest_port not ready")
+		return
+	var players := PackedStringArray([_profile.profile_id]) if _profile != null else PackedStringArray()
+	var session: Session = _run_playtest_port.execute(world.world_id, players)
+	if session == null:
+		push_warning("PlayShell.launch_world_by_id: session creation failed")
+		return
+	_start_gameplay(world, session)
 
 
 func set_world_context(world_id: String) -> void:

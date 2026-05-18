@@ -31,14 +31,42 @@ func get_spawn_position(index: int = 0) -> Vector3:
 # before falling back to the primitive-mesh branches below. Lower-cased
 # keys with leading-/trailing-whitespace stripped at lookup time.
 const PROP_GLTF_MAP: Dictionary = {
+	# --- original entries ---
 	"skała": "res://data/models/props/rock.gltf",
+	"znajdźka": "res://data/models/props/coin.gltf",
+	# --- beach / island world ---
 	"skrzynia": "res://data/models/props/chest.gltf",
 	"palma": "res://data/models/props/palm.gltf",
-	"trawa": "res://data/models/props/grass_tuft.gltf",
-	"znajdźka": "res://data/models/props/coin.gltf",
+	"łódka": "res://data/models/props/boat.gltf",
+	"flaga": "res://data/models/props/flag_pole.gltf",
+	"most": "res://data/models/props/rope_bridge.gltf",
 	"moneta": "res://data/models/props/coin.gltf",
+	"rozgwiazda": "res://data/models/props/starfish.gltf",
+	"perła": "res://data/models/props/pearl.gltf",
+	# --- universal / shared ---
+	"trawa": "res://data/models/props/grass_tuft.gltf",
 	"start": "res://data/models/props/spawn_crystal.gltf",
-	"płot": "res://data/models/props/fence.gltf",
+	"płot": "res://data/models/props/fence_segment.gltf",
+	# --- farm world ---
+	"stodoła": "res://data/models/props/barn.gltf",
+	"jabłoń": "res://data/models/props/apple_tree.gltf",
+	"beli siana": "res://data/models/props/hay_bale.gltf",
+	"wiatrak": "res://data/models/props/windmill.gltf",
+	"kura": "res://data/models/props/chicken.gltf",
+	"koryto": "res://data/models/props/water_trough.gltf",
+	"jabłko": "res://data/models/props/apple.gltf",
+	"jajko": "res://data/models/props/egg.gltf",
+	# --- forest world ---
+	"dąb": "res://data/models/props/oak_tree.gltf",
+	"grzyb": "res://data/models/props/mushroom_large.gltf",
+	"grzyb mały": "res://data/models/props/mushroom_small.gltf",
+	"kłoda": "res://data/models/props/hollow_log.gltf",
+	"kamień z mchem": "res://data/models/props/mossy_rock.gltf",
+	"kwiaty": "res://data/models/props/flower_patch.gltf",
+	"świetlik": "res://data/models/props/firefly_jar.gltf",
+	"słoik świetlików": "res://data/models/props/firefly_jar.gltf",
+	"żołądź": "res://data/models/props/glowing_acorn.gltf",
+	"skała z mchem": "res://data/models/props/rock_pile.gltf",
 }
 
 
