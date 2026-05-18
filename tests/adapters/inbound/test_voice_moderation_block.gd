@@ -103,7 +103,7 @@ func _test_blocked_transcript_does_not_call_ai() -> void:
 	var overlay := _make_overlay(stt, ai)
 
 	overlay.call("_on_record_pressed")
-	await get_tree().create_timer(1.5).timeout
+	await create_timer(1.5).timeout
 
 	_assert(
 		ai.execute_call_count == 0,
@@ -122,7 +122,7 @@ func _test_blocked_transcript_shows_blocked_toast() -> void:
 	var overlay := _make_overlay(stt, ai)
 
 	overlay.call("_on_record_pressed")
-	await get_tree().create_timer(1.5).timeout
+	await create_timer(1.5).timeout
 
 	var status_label = overlay.get("_status_label")
 	_assert(
@@ -154,7 +154,7 @@ func _test_empty_not_blocked_does_not_call_ai() -> void:
 	var overlay := _make_overlay(stt, ai)
 
 	overlay.call("_on_record_pressed")
-	await get_tree().create_timer(1.5).timeout
+	await create_timer(1.5).timeout
 
 	_assert(
 		ai.execute_call_count == 0,
@@ -173,7 +173,7 @@ func _test_empty_not_blocked_shows_no_speech_toast() -> void:
 	var overlay := _make_overlay(stt, ai)
 
 	overlay.call("_on_record_pressed")
-	await get_tree().create_timer(1.5).timeout
+	await create_timer(1.5).timeout
 
 	var status_label = overlay.get("_status_label")
 	_assert(
@@ -203,7 +203,7 @@ func _test_safe_transcript_calls_ai_with_correct_prompt() -> void:
 	var overlay := _make_overlay(stt, ai)
 
 	overlay.call("_on_record_pressed")
-	await get_tree().create_timer(1.5).timeout
+	await create_timer(1.5).timeout
 
 	_assert(
 		ai.execute_call_count == 1,
