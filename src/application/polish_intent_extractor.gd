@@ -1,7 +1,8 @@
 ## Polish intent extractor for child speech normalization.
 ## Converts raw Polish transcription to structured intent for AI orchestration.
+## Implements IntentExtractorPort so the service layer can type-check it.
 class_name PolishIntentExtractor
-extends RefCounted
+extends IntentExtractorPort
 
 var _age_band: AgeBand
 
