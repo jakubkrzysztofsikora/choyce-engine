@@ -1,5 +1,5 @@
 ## tests/adapters/inbound/test_library_shell_rbac.gd
-## Phase 9: Tests for library_shell server-side RBAC + ports_ready gate.
+## Phase 9 + Wave C: Tests for library_shell server-side RBAC + ports_ready gate.
 ##
 ## Acceptance criteria verified:
 ## MUST-1: Kid profile + direct _on_approve_pressed() → review_publish_port NOT called.
@@ -11,6 +11,8 @@
 ## MUST-7: Parent + ports_ready=true  + _on_approve_pressed()  → port IS called.
 ## MUST-8: Parent + ports_ready=true  + _on_reject_pressed()   → port IS called.
 ## MUST-9: Parent + ports_ready=true  + _on_unpublish_pressed() → port IS called.
+## MUST-C4: Kid profile + _on_approve_pressed() → publish_status text matches
+##          library.rbac.ask_parent (not the old library.access_denied bare text).
 extends SceneTree
 
 const LibraryShell = preload("res://src/adapters/inbound/scenes/library/library_shell.gd")
@@ -97,8 +99,106 @@ func _make_shell_headless(
 # Tests
 # ---------------------------------------------------------------------------
 
+## MUST-C4: Kid profile + _on_approve_pressed() → publish_status text contains
+##          library.rbac.ask_parent text ("Tylko rodzic. Poproś rodzica.").
+func _test_kid_approve_toast_shows_ask_parent_message() -> void:
+	var review := MockReviewPort.new()
+	var unpublish := MockUnpublishPort.new()
+	var kid := PlayerProfile.new("kid_1", PlayerProfile.Role.KID)
+	var shell := _make_shell_headless(kid, review, unpublish)
+	if shell == null:
+		print("SKIP: could not instantiate library_shell.tscn")
+		return
+
+	shell.set("_ports_ready", true)
+	shell.call("_on_approve_pressed")
+	await process_frame
+
+	var status_label = shell.get("_publish_status")
+	if status_label == null:
+		print("SKIP: _publish_status label not found")
+		shell.queue_free()
+		await process_frame
+		return
+
+	# library.rbac.ask_parent resolves via shell _t() fallback or policy
+	var expected: String = shell.call("_t", "library.rbac.ask_parent")
+	var old_denied: String = shell.call("_t", "library.access_denied")
+
+	_assert(
+		status_label.text == expected,
+		"MUST-C4: kid approve toast shows library.rbac.ask_parent text"
+	)
+	_assert(
+		status_label.text != old_denied or expected == old_denied,
+		"MUST-C4: toast is NOT bare library.access_denied text (follow-up included)"
+	)
+	shell.queue_free()
+	await process_frame
+
+
+## MUST-C4b: Kid profile + _on_reject_pressed() → toast text is library.rbac.ask_parent.
+func _test_kid_reject_toast_shows_ask_parent_message() -> void:
+	var review := MockReviewPort.new()
+	var unpublish := MockUnpublishPort.new()
+	var kid := PlayerProfile.new("kid_1", PlayerProfile.Role.KID)
+	var shell := _make_shell_headless(kid, review, unpublish)
+	if shell == null:
+		print("SKIP: could not instantiate library_shell.tscn")
+		return
+
+	shell.set("_ports_ready", true)
+	shell.call("_on_reject_pressed")
+	await process_frame
+
+	var status_label = shell.get("_publish_status")
+	if status_label == null:
+		print("SKIP: _publish_status label not found")
+		shell.queue_free()
+		await process_frame
+		return
+
+	var expected: String = shell.call("_t", "library.rbac.ask_parent")
+	_assert(
+		status_label.text == expected,
+		"MUST-C4b: kid reject toast shows library.rbac.ask_parent text"
+	)
+	shell.queue_free()
+	await process_frame
+
+
+## MUST-C4c: Kid profile + _on_unpublish_pressed() → toast text is library.rbac.ask_parent.
+func _test_kid_unpublish_toast_shows_ask_parent_message() -> void:
+	var review := MockReviewPort.new()
+	var unpublish := MockUnpublishPort.new()
+	var kid := PlayerProfile.new("kid_1", PlayerProfile.Role.KID)
+	var shell := _make_shell_headless(kid, review, unpublish)
+	if shell == null:
+		print("SKIP: could not instantiate library_shell.tscn")
+		return
+
+	shell.set("_ports_ready", true)
+	shell.call("_on_unpublish_pressed")
+	await process_frame
+
+	var status_label = shell.get("_publish_status")
+	if status_label == null:
+		print("SKIP: _publish_status label not found")
+		shell.queue_free()
+		await process_frame
+		return
+
+	var expected: String = shell.call("_t", "library.rbac.ask_parent")
+	_assert(
+		status_label.text == expected,
+		"MUST-C4c: kid unpublish toast shows library.rbac.ask_parent text"
+	)
+	shell.queue_free()
+	await process_frame
+
+
 func _run_tests() -> void:
-	print("=== Phase 9: library_shell RBAC + ports_ready gate tests ===")
+	print("=== Phase 9 + Wave C: library_shell RBAC + ports_ready gate tests ===")
 
 	await _test_kid_approve_does_not_call_port()
 	await _test_kid_reject_does_not_call_port()
@@ -111,6 +211,11 @@ func _run_tests() -> void:
 	await _test_parent_ports_ready_unpublish_calls_port()
 	await _test_ports_ready_initially_false()
 	await _test_notify_ports_ready_sets_flag()
+
+	# Wave C: RBAC toast shows ask-parent follow-up
+	await _test_kid_approve_toast_shows_ask_parent_message()
+	await _test_kid_reject_toast_shows_ask_parent_message()
+	await _test_kid_unpublish_toast_shows_ask_parent_message()
 
 	quit(_exit_code)
 

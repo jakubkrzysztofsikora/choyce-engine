@@ -132,7 +132,7 @@ func _on_publish_pressed() -> void:
 func _on_approve_pressed() -> void:
 	# Phase 9: server-side RBAC — role check at handler entry, not just button.disabled.
 	if not _is_parent_profile():
-		_show_toast(_t("library.access_denied"))
+		_show_toast(_t("library.rbac.ask_parent"))
 		return
 	# Phase 9: ports_ready gate — guard against pre-wiring invocations.
 	if not _ports_ready:
@@ -155,7 +155,7 @@ func _on_approve_pressed() -> void:
 func _on_reject_pressed() -> void:
 	# Phase 9: server-side RBAC — role check at handler entry, not just button.disabled.
 	if not _is_parent_profile():
-		_show_toast(_t("library.access_denied"))
+		_show_toast(_t("library.rbac.ask_parent"))
 		return
 	# Phase 9: ports_ready gate.
 	if not _ports_ready:
@@ -183,7 +183,7 @@ func _on_reject_pressed() -> void:
 func _on_unpublish_pressed() -> void:
 	# Phase 9: server-side RBAC — role check at handler entry, not just button.disabled.
 	if not _is_parent_profile():
-		_show_toast(_t("library.access_denied"))
+		_show_toast(_t("library.rbac.ask_parent"))
 		return
 	# Phase 9: ports_ready gate.
 	if not _ports_ready:
@@ -286,6 +286,8 @@ func _t(key: String) -> String:
 		"ui.library.go_play": "Przejdź do gry",
 		# Phase 9 / Phase 4: RBAC + ports_ready feedback keys
 		"library.access_denied": "Tylko rodzic.",
+		# Wave C: kid RBAC follow-up (ask parent)
+		"library.rbac.ask_parent": "Tylko rodzic. Poproś rodzica.",
 		"library.approve.toast_ok": "Zatwierdzone.",
 		"library.reject.toast_ok": "Odrzucone.",
 		"library.unpublish.toast_ok": "Cofnięte.",
