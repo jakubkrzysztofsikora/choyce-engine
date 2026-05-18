@@ -119,6 +119,9 @@ func _load_defaults() -> void:
 		"parent.coppa.delete_confirm.body": "To zniknie i nie wróci.",
 		"parent.coppa.export_ok": "Zapisałem dane.",
 		"parent.coppa.delete_ok": "Usunąłem dane.",
+		# FR-022: voice moderation feedback keys (kid-register: ≤6 words, clear feedback)
+		"voice.blocked_try_again": "Spróbuj inaczej.",
+		"voice.no_speech": "Nie usłyszałem cię. Spróbuj jeszcze raz.",
 	}
 
 	_unsafe_terms = {}

@@ -9,18 +9,22 @@ var _stt: SpeechToTextPort
 var _ai_help: RequestAICreationHelpPort
 var _profile: PlayerProfile
 var _session_id: String = "session_default"
+var _localization = null  # Optional LocalizationPolicyPort
 
 ## Phase 8d: input gate — stays false until ports_ready signal fires.
 ## While false: voice record button is disabled and _on_record_pressed returns
 ## immediately with a defensive block (safety default = BLOCK during gate).
 var _ports_ready: bool = false
 var _loading_hint: Label
+## FR-022: status label shown briefly for blocked / no-speech feedback.
+var _status_label: Label
 
-func setup(stt: SpeechToTextPort, ai_help: RequestAICreationHelpPort, profile: PlayerProfile, session_id: String) -> void:
+func setup(stt: SpeechToTextPort, ai_help: RequestAICreationHelpPort, profile: PlayerProfile, session_id: String, localization = null) -> void:
 	_stt = stt
 	_ai_help = ai_help
 	_profile = profile
 	_session_id = session_id
+	_localization = localization
 
 
 func _init() -> void:
@@ -45,6 +49,12 @@ func _init() -> void:
 	_loading_hint.add_theme_color_override("font_color", Color8(100, 100, 120))
 	_loading_hint.visible = true
 	add_child(_loading_hint)
+
+	# FR-022: status label for blocked / no-speech toast messages.
+	_status_label = Label.new()
+	_status_label.visible = false
+	_status_label.add_theme_color_override("font_color", Color8(200, 60, 60))
+	add_child(_status_label)
 
 	_card = VoiceAssistantCard.new()
 	_card.visible = false
@@ -89,8 +99,25 @@ func _on_record_pressed() -> void:
 
 	if _ai_help != null and _profile != null:
 		var prompt := _capture_prompt_from_stt()
+
+		# FR-022: inspect moderation side-channel before calling AI port.
+		# ModeratingSttAdapter exposes last_result dict after transcribe() returns.
+		# Duck-typed: other SpeechToTextPort adapters may not expose this field;
+		# absence is treated as "not blocked" so non-moderated STT still works.
+		var last_result: Dictionary = {}
+		if _stt != null and "last_result" in _stt:
+			last_result = _stt.last_result
+
+		if last_result.get("blocked", false) == true:
+			# Moderation BLOCK — show toast and bail; never call AI.
+			_show_status(_t("voice.blocked_try_again"))
+			return
+
 		if prompt.is_empty():
-			prompt = "Dodaj spokojny plac zabaw"
+			# Genuine STT failure (no speech detected) — show toast and bail.
+			_show_status(_t("voice.no_speech"))
+			return
+
 		var action := _ai_help.execute(_session_id, prompt, _profile, true)
 		if action:
 			if action.status == AIAssistantAction.ActionStatus.PROPOSED:
@@ -138,3 +165,23 @@ func _capture_prompt_from_stt() -> String:
 	# Temporary capture bridge until microphone recording adapter is wired.
 	var probe_audio := PackedByteArray([16, 32, 64, 128])
 	return _stt.transcribe(probe_audio, "pl-PL").strip_edges()
+
+
+## FR-022: display a brief status message on the status label.
+func _show_status(message: String) -> void:
+	if _status_label == null:
+		return
+	_status_label.text = message
+	_status_label.visible = true
+	# Auto-hide after 3 seconds if inside a scene tree.
+	if is_inside_tree():
+		await get_tree().create_timer(3.0).timeout
+		if _status_label != null:
+			_status_label.visible = false
+
+
+## Internal localization helper. Falls back to key when no port injected.
+func _t(key: String) -> String:
+	if _localization != null and _localization.has_method("translate"):
+		return _localization.translate(key)
+	return key
