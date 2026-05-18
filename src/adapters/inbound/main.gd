@@ -439,7 +439,12 @@ func _resolve_vault_signing_key(env: EnvironmentPort) -> PackedByteArray:
 
 	# 2. Per-install key in user:// directory.
 	var config := DeploymentConfig.from_environment(env)
-	var is_dev := config.mode == DeploymentConfig.Mode.LOCAL_ONLY
+	# Editor runs (godot --path .) count as dev so first-time launches without
+	# CHOYCE_VAULT_KEY auto-generate a per-install key instead of crashing.
+	# Exported binaries don't carry the "editor" feature, so prod still
+	# hard-fails when the key is unset.
+	var is_dev := config.mode == DeploymentConfig.Mode.LOCAL_ONLY \
+		or OS.has_feature("editor")
 
 	# Load existing key file before evaluating dev/prod path so that a corrupt
 	# key file in production triggers OS.crash rather than silently regenerating.
