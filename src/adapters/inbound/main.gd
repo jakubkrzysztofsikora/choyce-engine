@@ -219,12 +219,27 @@ func _build_default_ports() -> Dictionary:
 			null,
 			null
 		),
-		KEY_SPEECH_TO_TEXT_PORT: LocalSTTAdapter.new().setup(),
+		KEY_SPEECH_TO_TEXT_PORT: _build_moderating_stt(moderation, event_bus),
 		KEY_KID_STATUS_READ_MODEL: kid_status,
 		KEY_PARENT_AUDIT_READ_MODEL: parent_audit,
 		KEY_AI_PERFORMANCE_READ_MODEL: ai_performance,
 		KEY_DATA_LIFECYCLE_PORT: data_lifecycle,
 	}
+
+
+## Build the moderating STT adapter (Phase 3, FR-022).
+## Composes LocalSTTAdapter + PolishIntentExtractor + VoiceInputModerationService.
+## VoiceInputModerationService is NOT registered as a port — it is an internal
+## implementation detail of the adapter.
+func _build_moderating_stt(
+	moderation: ModerationPort,
+	event_bus: DomainEventBus
+) -> ModeratingSttAdapter:
+	var raw_stt := LocalSTTAdapter.new().setup()
+	var intent_extractor := PolishIntentExtractor.new()
+	var voice_mod := VoiceInputModerationService.new().setup(moderation, intent_extractor, event_bus)
+	var moderating_stt := ModeratingSttAdapter.new().setup(raw_stt, voice_mod)
+	return moderating_stt
 
 
 func _register_shells() -> void:
