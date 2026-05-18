@@ -14,6 +14,10 @@ var _get_world_callback: Callable
 var _active_world_id: String = ""
 var _gameplay_runtime: GameplayRuntime
 var _provenance_badge: ProvenanceBadge
+var _no_world_cta_button: Button = null
+var _voice_prompt_port: VoicePromptPort = null
+var _cta_voice_timer: Timer = null
+var _session_start_time: float = 0.0
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -67,6 +71,10 @@ func setup(
 	return self
 
 
+func setup_voice_prompt(port: VoicePromptPort) -> void:
+	_voice_prompt_port = port
+
+
 func set_world_context(world_id: String) -> void:
 	_active_world_id = world_id
 	_refresh_kid_status_summary()
@@ -80,6 +88,46 @@ func set_context_provenance(provenance: Variant) -> void:
 		_provenance_badge.visible = false
 		return
 	_provenance_badge.set_provenance(provenance)
+
+
+func get_no_world_cta_button() -> Button:
+	return _no_world_cta_button
+
+
+func _show_no_world_cta() -> void:
+	if _no_world_cta_button != null:
+		_no_world_cta_button.queue_free()
+		_no_world_cta_button = null
+	if _cta_voice_timer != null:
+		_cta_voice_timer.queue_free()
+		_cta_voice_timer = null
+
+	_no_world_cta_button = Button.new()
+	_no_world_cta_button.text = "%s %s" % [
+		IconFont.get_icon("hammer"),
+		_t("play.cta.create_world")
+	]
+	_no_world_cta_button.pressed.connect(func() -> void:
+		if _navigator != null:
+			_navigator.show_shell(SHELL_CREATE)
+	)
+	var content_parent: Node = get_node_or_null("Layout/MainContent")
+	if content_parent != null:
+		content_parent.add_child(_no_world_cta_button)
+	else:
+		add_child(_no_world_cta_button)
+
+	# Voice prompt after 3s for non-readers (optional port)
+	if _voice_prompt_port != null:
+		_cta_voice_timer = Timer.new()
+		_cta_voice_timer.wait_time = 3.0
+		_cta_voice_timer.one_shot = true
+		_cta_voice_timer.timeout.connect(func() -> void:
+			if _voice_prompt_port != null and _voice_prompt_port.is_available():
+				_voice_prompt_port.speak(_t("play.cta.create_world_voice"))
+		)
+		add_child(_cta_voice_timer)
+		_cta_voice_timer.start()
 
 
 func _wire_actions() -> void:
@@ -110,8 +158,8 @@ func _refresh_labels() -> void:
 	_safe_restore_button.text = "%s %s" % [IconFont.get_icon("restore"), _t("ui.common.safe_restore")]
 	_go_create_button.text = "%s %s" % [IconFont.get_icon("build"), _t("ui.play.go_create")]
 	_go_library_button.text = "%s %s" % [IconFont.get_icon("library"), _t("ui.play.go_library")]
-	_quest_title.text = "%s Misje" % IconFont.get_icon("quest")
-	_session_end_close.text = "%s Wróć" % IconFont.get_icon("check")
+	_quest_title.text = "%s %s" % [IconFont.get_icon("quest"), _t("play.quest.title")]
+	_session_end_close.text = "%s %s" % [IconFont.get_icon("check"), _t("play.session.close")]
 	_refresh_kid_status_summary()
 	_refresh_quest_tracker()
 
@@ -120,7 +168,7 @@ func _launch_playtest(local_coop: bool) -> Session:
 	if _run_playtest_port == null or _profile == null:
 		return null
 	if _active_world_id.is_empty():
-		_info.text = "Brak aktywnego świata do testu."
+		_info.text = _t("play.error.no_world")
 		return null
 
 	var world: World = null
@@ -128,28 +176,27 @@ func _launch_playtest(local_coop: bool) -> Session:
 		world = _get_world_callback.call()
 
 	if world == null:
-		_info.text = "Nie udało się pobrać świata."
+		_info.text = _t("play.error.load_failed")
 		return null
 
 	if world.scene_nodes.is_empty():
-		_info.text = "Najpierw stwórz świat!"
+		_info.text = _t("play.error.create_first")
 		return null
 
 	var players: Array = [_profile]
 	if local_coop:
 		var guest := PlayerProfile.new("%s_local_guest" % _profile.profile_id, PlayerProfile.Role.KID)
-		guest.display_name = "Gość"
+		guest.display_name = _t("play.guest.name")
 		players.append(guest)
 
 	var session := _run_playtest_port.execute(_active_world_id, players)
 	if session == null:
-		_info.text = "Nie udało się uruchomić playtestu."
+		_info.text = _t("play.error.start_failed")
 		return null
 
-	_info.text = "Test uruchomiony: %s (%s)" % [
-		"kooperacja" if local_coop else "solo",
-		session.session_id
-	]
+	var mode_label: String = _t("play.mode.coop") if local_coop else _t("play.mode.solo")
+	_info.text = "%s: %s (%s)" % [_t("play.session.started"), mode_label, session.session_id]
+	_session_start_time = Time.get_ticks_msec() / 1000.0
 	_start_gameplay(world, session)
 	return session
 
@@ -172,16 +219,42 @@ func _on_session_ended() -> void:
 		_gameplay_runtime.queue_free()
 		_gameplay_runtime = null
 	$Layout.visible = true
-	_info.text = "Sesja zakończona."
+	_info.text = _t("play.session.ended")
 	_show_session_end_screen()
 
 
 func _show_session_end_screen() -> void:
-	var stats_text := "Znajdźki: %d\nOsiągnięcia: %d\nCzas: %s" % [
-		randi() % 5,
-		randi() % 3,
-		"~2 min"
-	]
+	var elapsed_secs: int = 0
+	if _session_start_time > 0.0:
+		elapsed_secs = int(Time.get_ticks_msec() / 1000.0 - _session_start_time)
+	_session_start_time = 0.0
+
+	var collectibles: int = 0
+	var achievements: int = 0
+
+	if _kid_status_read_model != null and _profile != null and not _active_world_id.is_empty():
+		var status := _kid_status_read_model.get_project_status(_active_world_id, _profile.profile_id)
+		if not status.is_empty():
+			collectibles = int(status.get("collectibles_found", 0))
+			achievements = int(status.get("achievements_earned", 0))
+			# elapsed_seconds from read model if available (richer adapter); else use in-shell timer
+			if status.has("elapsed_seconds") and int(status.get("elapsed_seconds", 0)) > 0:
+				elapsed_secs = int(status.get("elapsed_seconds", elapsed_secs))
+
+	var stats_text: String
+	if collectibles == 0 and achievements == 0 and elapsed_secs < 30:
+		# Kid-positive framing: suppress bare zeros, show encouragement
+		stats_text = _t("play.session.try_again_friend")
+	else:
+		var mins: int = elapsed_secs / 60
+		var secs: int = elapsed_secs % 60
+		var time_str: String = "%d:%02d" % [mins, secs]
+		stats_text = "%s: %d\n%s: %d\n%s: %s" % [
+			_t("play.stats.collectibles"), collectibles,
+			_t("play.stats.achievements"), achievements,
+			_t("play.stats.time"), time_str
+		]
+
 	_session_end_stats.text = stats_text
 	_session_end_panel.visible = true
 	_session_end_panel.modulate.a = 0.0
@@ -206,24 +279,24 @@ func _refresh_quest_tracker() -> void:
 		return
 	for child in _quest_list.get_children():
 		child.queue_free()
-	
+
 	var world: World = null
 	if _get_world_callback != null and _get_world_callback.is_valid():
 		world = _get_world_callback.call()
-	
+
 	var quests: Array[Dictionary] = []
 	if world != null:
 		var meta = world.get("metadata")
 		if meta is Dictionary and meta.has("quests"):
 			quests = meta["quests"]
-	
+
 	if quests.is_empty():
 		var empty := Label.new()
-		empty.text = "Brak aktywnych misji."
+		empty.text = _t("play.quests.empty")
 		empty.add_theme_color_override("font_color", Color(0.5, 0.5, 0.6))
 		_quest_list.add_child(empty)
 		return
-	
+
 	for quest in quests:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
@@ -232,7 +305,7 @@ func _refresh_quest_tracker() -> void:
 		icon.add_theme_color_override("font_color", Color.GOLD if quest.get("completed", false) else Color.SILVER)
 		row.add_child(icon)
 		var lbl := Label.new()
-		lbl.text = str(quest.get("title", "Misja"))
+		lbl.text = str(quest.get("title", _t("play.quest.default_title")))
 		row.add_child(lbl)
 		_quest_list.add_child(row)
 
@@ -251,7 +324,26 @@ func _t(key: String) -> String:
 		"ui.common.undo": "Cofnij",
 		"ui.common.safe_restore": "Przywróć bezpieczny zapis",
 		"ui.play.go_create": "Wróć do tworzenia",
-		"ui.play.go_library": "Przejdź do biblioteki"
+		"ui.play.go_library": "Przejdź do biblioteki",
+		"play.error.no_world": "Najpierw stwórz świat.",
+		"play.error.load_failed": "Świat nie wczytał się.",
+		"play.error.create_first": "Najpierw stwórz świat!",
+		"play.error.start_failed": "Test nie ruszył.",
+		"play.session.ended": "Koniec gry!",
+		"play.session.close": "Wróć",
+		"play.session.started": "Test uruchomiony",
+		"play.session.try_again_friend": "Świetnie! Wróć po więcej.",
+		"play.quests.empty": "Brak misji.",
+		"play.quest.title": "Misje",
+		"play.quest.default_title": "Misja",
+		"play.mode.coop": "kooperacja",
+		"play.mode.solo": "solo",
+		"play.guest.name": "Gość",
+		"play.stats.collectibles": "Znajdźki",
+		"play.stats.achievements": "Osiągnięcia",
+		"play.stats.time": "Czas",
+		"play.cta.create_world": "Stwórz świat",
+		"play.cta.create_world_voice": "Stwórz swój świat!",
 	}
 	return fallback.get(key, key)
 
@@ -288,7 +380,7 @@ func _apply_theme() -> void:
 	var theme := load("res://data/themes/choyce_theme.tres") as Theme
 	if theme != null:
 		self.theme = theme
-	
+
 	if _side_panel != null:
 		var side_style := StyleBoxFlat.new()
 		side_style.bg_color = Color8(250, 252, 255)
@@ -304,7 +396,7 @@ func _apply_theme() -> void:
 		side_style.shadow_color = Color(0, 0, 0, 0.08)
 		side_style.shadow_size = 6
 		_side_panel.add_theme_stylebox_override("panel", side_style)
-	
+
 	if _minimap_panel != null:
 		var mm_style := StyleBoxFlat.new()
 		mm_style.bg_color = Color8(220, 240, 255)
@@ -318,7 +410,7 @@ func _apply_theme() -> void:
 		mm_style.border_width_bottom = 1
 		mm_style.border_color = Color8(180, 210, 240)
 		_minimap_panel.add_theme_stylebox_override("panel", mm_style)
-	
+
 	if _session_end_panel != null:
 		var se_style := StyleBoxFlat.new()
 		se_style.bg_color = Color8(255, 250, 230)

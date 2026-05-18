@@ -193,6 +193,37 @@ func _load_defaults() -> void:
 		"library.unpublish.toast_ok": "Cofnięte.",
 		"library.error.port_unavailable": "Coś nie działa. Spróbuj później.",
 		"library.error.ports_not_ready": "Chwilę...",
+		# Phase 4a-2: play_shell Polish extraction (kid-register: ≤6 words, 2nd person, imperatives)
+		"play.error.no_world": "Najpierw stwórz świat.",
+		"play.error.load_failed": "Świat nie wczytał się.",
+		"play.error.create_first": "Najpierw stwórz świat!",
+		"play.error.start_failed": "Test nie ruszył.",
+		"play.session.ended": "Koniec gry!",
+		"play.session.close": "Wróć",
+		"play.session.started": "Test uruchomiony",
+		"play.session.try_again_friend": "Świetnie! Wróć po więcej.",
+		"play.quests.empty": "Brak misji.",
+		"play.quest.title": "Misje",
+		"play.quest.default_title": "Misja",
+		"play.mode.coop": "kooperacja",
+		"play.mode.solo": "solo",
+		"play.guest.name": "Gość",
+		# Phase 8f: real session-end stats labels (kid-register)
+		"play.stats.collectibles": "Znajdźki",
+		"play.stats.achievements": "Osiągnięcia",
+		"play.stats.time": "Czas",
+		# Phase 9: non-reader CTA (kid-register: short imperative + voice prompt)
+		"play.cta.create_world": "Stwórz świat",
+		"play.cta.create_world_voice": "Stwórz swój świat!",
+		# ui.play.* keys (registered here as policy source of truth for play_shell)
+		"ui.play.title": "Tryb gry",
+		"ui.play.info": "Wybierz świat i uruchom sesję.",
+		"ui.play.status.no_data": "Brak danych postępu.",
+		"ui.play.status.template": "Postęp: %d%% | Znajdźki: %d | Osiągnięcia: %d",
+		"ui.play.start_solo": "Graj Solo",
+		"ui.play.start_coop": "Graj w Kooperacji",
+		"ui.play.go_create": "Wróć do tworzenia",
+		"ui.play.go_library": "Przejdź do biblioteki",
 	}
 
 	_unsafe_terms = {}
