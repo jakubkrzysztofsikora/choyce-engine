@@ -10,16 +10,6 @@ const CHILD_SAFE_STYLES := [
 	"pixel_fantasy",
 	"watercolor",
 ]
-const PHOTOREAL_HUMAN_TERMS := [
-	"photoreal",
-	"photo-real",
-	"realistic human",
-	"human portrait",
-	"selfie",
-	"fotorealistyczny",
-	"realistyczny czlowiek",
-	"portret czlowieka",
-]
 const MAX_PREVIEW_CACHE := 24
 
 var _visual_generator: VisualGenerationPort
@@ -69,14 +59,6 @@ func request_preview(
 
 	var style_resolution := _resolve_style_for_actor(style_preset, actor)
 	var resolved_style := str(style_resolution.get("style", "cartoon"))
-	if actor != null and actor.is_kid() and _is_photoreal_human_request(clean_prompt, resolved_style):
-		return _blocked_preview(
-			"Photoreal human generation is blocked in kid mode.",
-			"Uzyj stylu 'cartoon' i przyjaznej postaci kreskowkowej.",
-			"VISUAL_PHOTOREAL_HUMAN_BLOCK",
-			clean_prompt,
-			actor.profile_id
-		)
 	if bool(style_resolution.get("blocked", false)):
 		var safe_style := str(style_resolution.get("safe_style", "cartoon"))
 		return _blocked_preview(
@@ -87,6 +69,7 @@ func request_preview(
 			actor.profile_id
 		)
 
+	# Single moderation call covers photoreal_human category (Phase 5b)
 	var prompt_check := _moderation.check_text(clean_prompt, actor.age_band)
 	if prompt_check.is_blocked():
 		var safe_alt := prompt_check.safe_alternative if not prompt_check.safe_alternative.is_empty() else "Opisz spokojny, przyjazny obraz."
@@ -262,7 +245,7 @@ func _resolve_style_for_actor(style_preset: String, actor: PlayerProfile) -> Dic
 	var forced := false
 
 	if actor != null and actor.is_kid():
-		if chosen.contains("photoreal") and _contains_human_terms(chosen):
+		if chosen.contains("photoreal"):
 			return {
 				"style": safe_style,
 				"safe_style": safe_style,
@@ -279,31 +262,6 @@ func _resolve_style_for_actor(style_preset: String, actor: PlayerProfile) -> Dic
 		"forced": forced,
 		"blocked": false,
 	}
-
-
-func _contains_human_terms(text: String) -> bool:
-	var normalized := text.to_lower()
-	for term in PHOTOREAL_HUMAN_TERMS:
-		if normalized.contains(str(term)):
-			return true
-	if normalized.contains("human"):
-		return true
-	if normalized.contains("czlowiek"):
-		return true
-	return false
-
-
-func _is_photoreal_human_request(prompt: String, style: String) -> bool:
-	var normalized_prompt := prompt.to_lower()
-	var normalized_style := style.to_lower()
-	var photoreal_requested := (
-		normalized_prompt.contains("photoreal")
-		or normalized_prompt.contains("fotorealistyczny")
-		or normalized_style.contains("photoreal")
-	)
-	if not photoreal_requested:
-		return false
-	return _contains_human_terms(normalized_prompt)
 
 
 func _build_preview_id(project_id: String, world_id: String, provider_asset_id: String, style_preset: String) -> String:

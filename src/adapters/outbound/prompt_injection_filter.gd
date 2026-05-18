@@ -5,6 +5,7 @@ class_name PromptInjectionFilter
 extends RefCounted
 
 var _patterns: Array[Dictionary] = [
+	# English patterns
 	{"pattern": "ignore previous instructions", "reason": "instruction_override"},
 	{"pattern": "ignore all prior", "reason": "instruction_override"},
 	{"pattern": "system prompt:", "reason": "system_leak"},
@@ -12,6 +13,17 @@ var _patterns: Array[Dictionary] = [
 	{"pattern": "disregard", "reason": "instruction_override"},
 	{"pattern": "dlsregard", "reason": "instruction_override"},
 	{"pattern": "new instructions:", "reason": "instruction_override"},
+	# Polish patterns — hard floor of 7 curated phrases (plan §5, no auto-merge)
+	{"pattern": "ignoruj poprzednie instrukcje", "reason": "instruction_override"},
+	{"pattern": "zignoruj wszystkie", "reason": "instruction_override"},
+	{"pattern": "teraz jesteś", "reason": "role_override"},
+	{"pattern": "nowe instrukcje:", "reason": "instruction_override"},
+	{"pattern": "od teraz", "reason": "instruction_override"},
+	{"pattern": "zapomnij", "reason": "instruction_override"},
+	{"pattern": "udawaj że", "reason": "role_override"},
+	# Diacritic-stripped variants for evasion defence (ś→s, ż→z)
+	{"pattern": "teraz jestes", "reason": "role_override"},
+	{"pattern": "udawaj ze", "reason": "role_override"},
 ]
 
 

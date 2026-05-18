@@ -240,6 +240,20 @@ func _load_defaults() -> void:
 			"safe_alternative": "Uzyj milszych slow w swojej grze.",
 			"severity": "block",
 		},
+		# Merged from VisualAssetGenerationService.PHOTOREAL_HUMAN_TERMS (Phase 5b).
+		# Multi-word originals ("realistic human", "human portrait", "portret czlowieka")
+		# are split to their most distinctive single token so that whole-word matching works.
+		# "photo-real" hyphen tokenizes to "photo"+"real"; "photoreal" (no hyphen) is the
+		# canonical form and is kept as-is.
+		"photoreal_human": {
+			"terms": [
+				"photoreal",
+				"fotorealistyczny",
+				"selfie",
+			],
+			"safe_alternative": "Uzyj stylu 'cartoon' i przyjaznej postaci kreskowkowej.",
+			"severity": "block",
+		},
 	}
 	_age_overrides = {
 		"CHILD_6_8": {
