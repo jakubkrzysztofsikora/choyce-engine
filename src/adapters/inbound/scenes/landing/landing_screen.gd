@@ -52,22 +52,59 @@ func _build_scene_tree() -> void:
 	bg_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg_layer)
 
-	var sky := ColorRect.new()
-	sky.name = "SkyGradient"
-	sky.set_anchors_preset(Control.PRESET_FULL_RECT)
-	sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sky.color = Color(0.44, 0.73, 0.98)
-	bg_layer.add_child(sky)
+	var sky_tex: Texture2D = load("res://data/textures/landing/sky_main.png") if ResourceLoader.exists("res://data/textures/landing/sky_main.png") else null
+	if sky_tex != null:
+		var sky := TextureRect.new()
+		sky.name = "SkyGradient"
+		sky.texture = sky_tex
+		sky.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		sky.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		sky.set_anchors_preset(Control.PRESET_FULL_RECT)
+		sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg_layer.add_child(sky)
+	else:
+		var sky := ColorRect.new()
+		sky.name = "SkyGradient"
+		sky.set_anchors_preset(Control.PRESET_FULL_RECT)
+		sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sky.color = Color(0.44, 0.73, 0.98)
+		bg_layer.add_child(sky)
+
+	# Sun element (above sky, below clouds)
+	var sun_tex: Texture2D = load("res://data/textures/landing/sun.png") if ResourceLoader.exists("res://data/textures/landing/sun.png") else null
+	if sun_tex != null:
+		var sun := TextureRect.new()
+		sun.name = "Sun"
+		sun.texture = sun_tex
+		sun.custom_minimum_size = Vector2(192, 192)
+		sun.size = Vector2(192, 192)
+		sun.position = Vector2(1540, 60)
+		sun.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg_layer.add_child(sun)
 
 	# Clouds
+	var cloud_files := ["res://data/textures/landing/cloud_01.png", "res://data/textures/landing/cloud_02.png", "res://data/textures/landing/cloud_03.png"]
 	for i in range(1, 4):
-		var cloud := ColorRect.new()
-		cloud.name = "Cloud%d" % i
-		cloud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cloud.color = Color(1, 1, 1, 0.82 - i * 0.04)
-		cloud.size = Vector2(360 - i * 60, 48)
-		cloud.position = Vector2(-200, 70 + i * 120)
-		bg_layer.add_child(cloud)
+		var cloud_path: String = cloud_files[i - 1]
+		var cloud_tex: Texture2D = load(cloud_path) if ResourceLoader.exists(cloud_path) else null
+		if cloud_tex != null:
+			var cloud := TextureRect.new()
+			cloud.name = "Cloud%d" % i
+			cloud.texture = cloud_tex
+			cloud.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			cloud.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			cloud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cloud.size = Vector2(420 - i * 60, 140)
+			cloud.position = Vector2(-200, 40 + i * 100)
+			bg_layer.add_child(cloud)
+		else:
+			var cloud := ColorRect.new()
+			cloud.name = "Cloud%d" % i
+			cloud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cloud.color = Color(1, 1, 1, 0.82 - i * 0.04)
+			cloud.size = Vector2(360 - i * 60, 48)
+			cloud.position = Vector2(-200, 70 + i * 120)
+			bg_layer.add_child(cloud)
 
 	# Sparkles
 	var sparkles := CPUParticles2D.new()
@@ -84,6 +121,19 @@ func _build_scene_tree() -> void:
 	sparkles.scale_amount_max = 5.0
 	sparkles.color = Color(1, 0.95, 0.4, 1)
 	bg_layer.add_child(sparkles)
+
+	# Grass foreground strip (bottom of screen, above clouds/sparkles but below UI)
+	var grass_tex: Texture2D = load("res://data/textures/landing/grass_foreground.png") if ResourceLoader.exists("res://data/textures/landing/grass_foreground.png") else null
+	if grass_tex != null:
+		var grass := TextureRect.new()
+		grass.name = "GrassForeground"
+		grass.texture = grass_tex
+		grass.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		grass.stretch_mode = TextureRect.STRETCH_TILE
+		grass.size = Vector2(1920, 180)
+		grass.position = Vector2(0, 900)
+		grass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg_layer.add_child(grass)
 
 	# Title label
 	var title := Label.new()
