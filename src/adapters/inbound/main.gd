@@ -722,17 +722,18 @@ func _apply_global_theme() -> void:
 
 
 func _apply_navigation_theme() -> void:
+	# Warm cream pill with primary orange border
 	var pill_style := StyleBoxFlat.new()
-	pill_style.bg_color = Color8(245, 248, 252)
-	pill_style.corner_radius_top_left = 24
-	pill_style.corner_radius_top_right = 24
-	pill_style.corner_radius_bottom_left = 24
-	pill_style.corner_radius_bottom_right = 24
-	pill_style.border_width_left = 2
-	pill_style.border_width_top = 2
-	pill_style.border_width_right = 2
-	pill_style.border_width_bottom = 2
-	pill_style.border_color = Color8(210, 225, 240)
+	pill_style.bg_color = Color(1, 0.97, 0.94, 0.95)
+	pill_style.corner_radius_top_left = 32
+	pill_style.corner_radius_top_right = 32
+	pill_style.corner_radius_bottom_left = 32
+	pill_style.corner_radius_bottom_right = 32
+	pill_style.border_width_left = 3
+	pill_style.border_width_top = 3
+	pill_style.border_width_right = 3
+	pill_style.border_width_bottom = 3
+	pill_style.border_color = Color(1.0, 0.42, 0.21, 1)
 	pill_style.shadow_color = Color(0, 0, 0, 0.08)
 	pill_style.shadow_size = 6
 	pill_style.shadow_offset = Vector2(0, 3)
@@ -741,36 +742,39 @@ func _apply_navigation_theme() -> void:
 	pill_style.content_margin_right = 12
 	pill_style.content_margin_bottom = 8
 	_nav_bar.add_theme_stylebox_override("panel", pill_style)
-	
-	_title_label.add_theme_color_override("font_color", Color8(18, 26, 38))
+
+	# Title in primary orange
+	_title_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.21, 1))
 	_title_label.add_theme_font_size_override("font_size", 22)
-	
+
 	if _active_indicator != null:
 		var indicator_style := StyleBoxFlat.new()
-		indicator_style.bg_color = _accent_color
-		indicator_style.corner_radius_top_left = 2
-		indicator_style.corner_radius_top_right = 2
-		indicator_style.corner_radius_bottom_left = 2
-		indicator_style.corner_radius_bottom_right = 2
+		# Active indicator: primary orange, height 6, radius 3
+		indicator_style.bg_color = Color(1.0, 0.42, 0.21, 1)
+		indicator_style.corner_radius_top_left = 3
+		indicator_style.corner_radius_top_right = 3
+		indicator_style.corner_radius_bottom_left = 3
+		indicator_style.corner_radius_bottom_right = 3
 		_active_indicator.add_theme_stylebox_override("panel", indicator_style)
+		_active_indicator.custom_minimum_size.y = 6
 		_active_indicator.visible = false
-	
+
 	_nav_buttons = {
 		SHELL_CREATE: _nav_create,
 		SHELL_PLAY: _nav_play,
 		SHELL_LIBRARY: _nav_library,
 		SHELL_PARENT: _nav_parent,
 	}
-	
+
 	for shell_id in _nav_buttons.keys():
 		var btn: Button = _nav_buttons[shell_id]
 		if btn == null:
 			continue
 		btn.flat = true
 		btn.add_theme_font_size_override("font_size", 18)
-		btn.add_theme_color_override("font_color", Color8(80, 90, 110))
-		btn.add_theme_color_override("font_hover_color", Color8(40, 50, 70))
-		btn.add_theme_color_override("font_pressed_color", Color8(20, 30, 45))
+		btn.add_theme_color_override("font_color", Color(0.42, 0.36, 0.31, 1))
+		btn.add_theme_color_override("font_hover_color", Color(1.0, 0.90, 0.43, 1))
+		btn.add_theme_color_override("font_pressed_color", Color(1.0, 0.42, 0.21, 1))
 		btn.focus_mode = Control.FOCUS_NONE
 	
 	_update_active_indicator(SHELL_CREATE)
