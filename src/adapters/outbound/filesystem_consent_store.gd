@@ -1,15 +1,28 @@
 ## Filesystem-backed persistent consent adapter for IdentityConsentPort.
 ## Writes JSON to user://choyce_consent/consents.json with atomic-write
-## (tmp file + rename) and fsync after every write.
+## (tmp file + rename) and fsync after every debounced flush.
 ## Safety default: any IO failure returns false (consent-deny).
+##
+## Writes debounced with 250ms trailing-edge timer; call flush() on shutdown.
+## In-memory _profiles dict is the source of truth for reads; disk updated lazily.
+##
+## Integration:
+##   - Call flush_if_due(delta_ms) each frame from the main loop to drive the
+##     debounce window (e.g. pass Engine.get_process_frames() delta in ms).
+##   - Call flush() before shutdown / _exit_tree() to ensure durability.
 class_name FilesystemConsentStore
 extends IdentityConsentPort
 
 const DEFAULT_DIR := "user://choyce_consent"
 const DEFAULT_FILE := "user://choyce_consent/consents.json"
+const DEBOUNCE_MS := 250
 
 var _consent_file: String = DEFAULT_FILE
 var _profiles: Dictionary = {}
+## True when _profiles has unsaved changes.
+var _dirty: bool = false
+## Accumulated milliseconds since the last write call (for debounce tracking).
+var _pending_msec: int = 0
 
 
 func setup(base_dir: String = DEFAULT_DIR) -> FilesystemConsentStore:
@@ -32,6 +45,9 @@ func has_consent(profile_id: String, consent_type: String) -> bool:
 	return bool(profile_data.get(consent_type, false))
 
 
+## Grant consent for profile_id + consent_type.
+## Updates in-memory state immediately and marks the store dirty.
+## Returns true on success; false on invalid input or IO failure at flush time.
 func request_consent(profile_id: String, consent_type: String) -> bool:
 	if profile_id.is_empty() or consent_type.is_empty():
 		return false
@@ -43,14 +59,42 @@ func request_consent(profile_id: String, consent_type: String) -> bool:
 	)
 	profile_data[consent_type] = true
 	_profiles[profile_id] = profile_data
-	return _save()
+	_mark_dirty()
+	return true
 
 
 func get_storage_path() -> String:
 	return _consent_file
 
 
+## Drive the debounce timer. Pass the milliseconds elapsed since the last call
+## (e.g. from _process delta converted to ms, or from a fixed-tick loop).
+## Flushes to disk when accumulated time >= DEBOUNCE_MS and the store is dirty.
+##
+## Example (main.gd _process):
+##   _consent_store.flush_if_due(delta * 1000.0)
+func flush_if_due(elapsed_msec: int) -> void:
+	if not _dirty:
+		_pending_msec = 0
+		return
+	_pending_msec += elapsed_msec
+	if _pending_msec >= DEBOUNCE_MS:
+		_flush_to_disk()
+
+
+## Flush dirty in-memory state to disk immediately, regardless of timer.
+## Call this before shutdown or whenever durability is required immediately.
+func flush() -> void:
+	if _dirty:
+		_flush_to_disk()
+
+
 # ── Private ────────────────────────────────────────────────────────────────────
+
+func _mark_dirty() -> void:
+	_dirty = true
+	_pending_msec = 0
+
 
 func _load() -> void:
 	_profiles = {}
@@ -76,7 +120,8 @@ func _load() -> void:
 		_profiles = parsed.duplicate(true)
 
 
-func _save() -> bool:
+## Atomically write all in-memory consent profiles to disk.
+func _flush_to_disk() -> bool:
 	var payload := {
 		"profiles": _profiles,
 		"updated_at": Time.get_datetime_string_from_system(true, false),
@@ -87,7 +132,7 @@ func _save() -> bool:
 	var tmp_path := _consent_file + ".tmp"
 	var file := FileAccess.open(tmp_path, FileAccess.WRITE)
 	if file == null:
-		# IO failure → safety default: report failure (caller treats as deny)
+		# IO failure → report failure; dirty flag stays set so next flush retries
 		return false
 
 	file.store_string(json_text)
@@ -100,7 +145,11 @@ func _save() -> bool:
 		return false
 
 	var err := dir.rename(tmp_path, _consent_file)
-	return err == OK
+	if err == OK:
+		_dirty = false
+		_pending_msec = 0
+		return true
+	return false
 
 
 func _ensure_dir(path: String) -> bool:

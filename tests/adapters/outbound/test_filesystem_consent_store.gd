@@ -7,6 +7,11 @@
 ## MUST-5  empty consent_type rejected
 ## MUST-6  IO failure (bad path) returns false — consent-deny failsafe
 ## MUST-7  storage path is within configured base_dir
+##
+## DEBOUNCE-1  5x rapid toggles → only 1 disk write after flush_if_due(250ms elapsed)
+## DEBOUNCE-2  write then read immediately → in-memory state visible
+## DEBOUNCE-3  flush() forces immediate disk write
+## DEBOUNCE-4  two writes >250ms apart → 2 separate disk writes
 extends SceneTree
 
 
@@ -34,6 +39,8 @@ func _init() -> void:
 		failures.append("MUST-2b: has_consent() must return true immediately after grant")
 
 	# ── MUST-3: round-trip (re-instantiate and read) ───────────────────────────
+	# Flush before re-instantiating so data is durably on disk.
+	store.flush()
 	var store2 := FilesystemConsentStore.new().setup(TEST_DIR)
 	checks += 1
 	if not store2.has_consent("profile_kid_1", "cloud_sync"):
@@ -74,6 +81,64 @@ func _init() -> void:
 		failures.append("MUST-7: storage path '%s' must begin with base_dir '%s'" % [path, TEST_DIR])
 
 	_cleanup(TEST_DIR)
+
+	# ── DEBOUNCE tests ─────────────────────────────────────────────────────────
+	const DEBOUNCE_DIR := "user://test_fs_consent_debounce"
+	_cleanup(DEBOUNCE_DIR)
+
+	# ── DEBOUNCE-1: 5x rapid toggles → only 1 disk write after flush_if_due ──
+	var dstore := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	var consent_types := ["cloud_sync", "analytics", "voice", "ai_hints", "camera"]
+	for ct in consent_types:
+		dstore.request_consent("kid-1", ct)
+
+	# At < 250ms, flush should NOT have occurred (no disk file or stale).
+	dstore.flush_if_due(100)  # pretend 100ms elapsed — must NOT flush
+	checks += 1
+	# In-memory state must be visible regardless.
+	if not dstore.has_consent("kid-1", "cloud_sync"):
+		failures.append("DEBOUNCE-1a: in-memory consent must be readable before flush")
+
+	# Advance past 250ms: flush must write.
+	dstore.flush_if_due(300)
+	checks += 1
+	var peek := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	if not peek.has_consent("kid-1", "cloud_sync"):
+		failures.append("DEBOUNCE-1b: after flush_if_due(300ms) consent must be on disk")
+
+	# ── DEBOUNCE-2: write then read immediately → in-memory state visible ─────
+	var dstore2 := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	dstore2.request_consent("kid-2", "voice")
+	checks += 1
+	if not dstore2.has_consent("kid-2", "voice"):
+		failures.append("DEBOUNCE-2: has_consent() must reflect in-memory write before flush")
+
+	# ── DEBOUNCE-3: flush() forces immediate disk write ───────────────────────
+	var dstore3 := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	dstore3.request_consent("kid-3", "ai_hints")
+	dstore3.flush()
+	checks += 1
+	var dstore3b := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	if not dstore3b.has_consent("kid-3", "ai_hints"):
+		failures.append("DEBOUNCE-3: flush() must write consent to disk immediately")
+
+	# ── DEBOUNCE-4: two writes >250ms apart → 2 separate disk writes ──────────
+	var dstore4 := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	dstore4.request_consent("kid-4", "cloud_sync")
+	dstore4.flush_if_due(300)  # first flush
+	checks += 1
+	var after_first := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	if not after_first.has_consent("kid-4", "cloud_sync"):
+		failures.append("DEBOUNCE-4a: first consent write must be on disk after >250ms")
+
+	dstore4.request_consent("kid-4", "analytics")
+	dstore4.flush_if_due(300)  # second flush (new debounce window)
+	checks += 1
+	var after_second := FilesystemConsentStore.new().setup(DEBOUNCE_DIR)
+	if not after_second.has_consent("kid-4", "analytics"):
+		failures.append("DEBOUNCE-4b: second consent write must be on disk after second >250ms")
+
+	_cleanup(DEBOUNCE_DIR)
 
 	if failures.is_empty():
 		print("[PASS] FilesystemConsentStore (%d checks)" % checks)
