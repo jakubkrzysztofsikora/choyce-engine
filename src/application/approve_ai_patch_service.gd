@@ -4,10 +4,13 @@
 class_name ApproveAIPatchService
 extends ApproveAIPatchPort
 
+const MAX_PENDING := 200
+
 var _clock: ClockPort
 var _action_log: EventSourcedActionLog
 var _event_bus: DomainEventBus
 var _pending_actions: Dictionary = {}
+var _pending_order: Array[String] = []
 
 
 func setup(
@@ -22,8 +25,17 @@ func setup(
 
 
 func register_pending_action(action: AIAssistantAction) -> void:
-	if action != null and not action.action_id.is_empty():
+	if action == null or action.action_id.is_empty():
+		return
+	if _pending_actions.has(action.action_id):
 		_pending_actions[action.action_id] = action
+		return
+	if _pending_actions.size() >= MAX_PENDING:
+		var oldest: String = _pending_order[0]
+		_pending_order.remove_at(0)
+		_pending_actions.erase(oldest)
+	_pending_actions[action.action_id] = action
+	_pending_order.append(action.action_id)
 
 
 func execute(action_id: String, approved: bool, approver: PlayerProfile) -> AIAssistantAction:

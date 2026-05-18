@@ -4,11 +4,14 @@
 class_name AIPatchWorkflowService
 extends RefCounted
 
+const MAX_PENDING := 200
+
 var _clock: ClockPort
 var _tool_gateway: ToolExecutionGateway
 var _action_log: EventSourcedActionLog
 var _event_bus: DomainEventBus
 var _actions: Dictionary = {}
+var _actions_order: Array[String] = []
 
 
 func setup(
@@ -27,7 +30,15 @@ func setup(
 func track_action(action: AIAssistantAction) -> bool:
 	if action == null or action.action_id.is_empty():
 		return false
+	if _actions.has(action.action_id):
+		_actions[action.action_id] = action
+		return true
+	if _actions.size() >= MAX_PENDING:
+		var oldest: String = _actions_order[0]
+		_actions_order.remove_at(0)
+		_actions.erase(oldest)
 	_actions[action.action_id] = action
+	_actions_order.append(action.action_id)
 	return true
 
 
