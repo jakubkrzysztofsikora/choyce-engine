@@ -448,9 +448,9 @@ func _build_term_lookup() -> void:
 
 	if truncated:
 		push_warning(
-			"LocalModerationAdapter: term dict capped at %d (was over limit). " +
-			"Add terms to a higher-priority category or raise MAX_MODERATION_TERMS." %
-			MAX_MODERATION_TERMS
+			("LocalModerationAdapter: term dict capped at %d (was over limit). "
+			+ "Add terms to a higher-priority category or raise MAX_MODERATION_TERMS.")
+			% MAX_MODERATION_TERMS
 		)
 
 

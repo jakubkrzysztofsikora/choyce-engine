@@ -484,8 +484,8 @@ func _resolve_vault_signing_key(env: EnvironmentPort) -> PackedByteArray:
 
 	# Dev path: generate a fresh random key and persist it.
 	push_warning(
-		"_resolve_vault_signing_key: no vault key found — generating per-install key at '%s'. "
-		+ "This is only acceptable in LOCAL_ONLY / dev mode." % KEY_FILE
+		("_resolve_vault_signing_key: no vault key found — generating per-install key at '%s'. "
+		+ "This is only acceptable in LOCAL_ONLY / dev mode.") % KEY_FILE
 	)
 	var crypto := Crypto.new()
 	var new_key := crypto.generate_random_bytes(KEY_SIZE)
