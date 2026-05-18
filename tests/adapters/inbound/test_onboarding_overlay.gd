@@ -170,7 +170,7 @@ func _test_tts_speak_invoked_when_port_available() -> void:
 	overlay.queue_free()
 
 
-class MockTTSPort extends TextToSpeechPort:
+class MockTTSPort extends VoicePromptPort:
 	var speak_calls: Array[String] = []
 
 	func speak(text: String, _locale: String = "pl-PL") -> void:

@@ -21,7 +21,7 @@ var _skip_button: Button
 var _auto_dismiss_timer: Timer
 var _tts_prompt_timer: Timer
 var _localization: LocalizationPolicyPort
-var _tts: TextToSpeechPort
+var _tts: VoicePromptPort
 var _tts_warning_shown: bool = false
 
 
@@ -66,7 +66,7 @@ func _ready() -> void:
 
 
 ## Inject TTS port. Call before show_step() for voice prompts to work.
-func setup_tts(port: TextToSpeechPort) -> void:
+func setup_tts(port: VoicePromptPort) -> void:
 	_tts = port
 
 

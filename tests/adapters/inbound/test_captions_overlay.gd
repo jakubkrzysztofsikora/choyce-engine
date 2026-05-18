@@ -6,7 +6,7 @@
 ##   M4 - tts_narration toggle stored and accessible
 ##   M5 - show_message still works after option changes
 ##   M6 - DEFAULT_FONT_SIZE is 32 (readable for emergent readers)
-##   M7 - setup_tts(port) wires typed TextToSpeechPort; speak() called on show_message when narration enabled
+##   M7 - setup_tts(port) wires typed VoicePromptPort; speak() called on show_message when narration enabled
 extends SceneTree
 
 
@@ -199,7 +199,7 @@ func _test_setup_tts_speak_on_show_message() -> void:
 	overlay.queue_free()
 
 
-class MockTTSPort extends TextToSpeechPort:
+class MockTTSPort extends VoicePromptPort:
 	var speak_calls: Array[String] = []
 
 	func speak(text: String, _locale: String = "pl-PL") -> void:

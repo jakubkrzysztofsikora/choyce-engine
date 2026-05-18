@@ -22,9 +22,10 @@ var _high_contrast: bool = false
 var _caption_position: String = "bottom"
 var _tts_narration: bool = false
 
-# Optional TTS port (Phase 4d): inject TextToSpeechPort to enable voice narration
-# for captions. Typed port replaces previous duck-typed audio-governance reference.
-var _tts: TextToSpeechPort = null
+# Optional voice prompt port (Phase 4d): inject VoicePromptPort to enable voice
+# narration for captions. Distinct from TextToSpeechPort (audio-governance pipeline
+# producing raw bytes) — overlay only needs fire-and-forget speech.
+var _tts: VoicePromptPort = null
 
 
 func _init() -> void:
@@ -143,7 +144,7 @@ func is_tts_narration_enabled() -> bool:
 
 ## Inject TTS port for voice narration (optional).
 ## Replaces legacy setup_audio_governance() — callers must update to this signature.
-func setup_tts(port: TextToSpeechPort) -> void:
+func setup_tts(port: VoicePromptPort) -> void:
 	_tts = port
 
 
