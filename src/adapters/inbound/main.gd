@@ -418,15 +418,8 @@ func _resolve_vault_signing_key(env: EnvironmentPort) -> PackedByteArray:
 	var config := DeploymentConfig.from_environment(env)
 	var is_dev := config.mode == DeploymentConfig.Mode.LOCAL_ONLY
 
-	if not is_dev:
-		# Prod / classroom: must have an explicit key — hard fail.
-		push_error(
-			"_resolve_vault_signing_key: CHOYCE_VAULT_KEY not set in production build. Vault cannot start."
-		)
-		OS.crash("CHOYCE_VAULT_KEY required in production. Set the environment variable.")
-		return PackedByteArray()  # unreachable
-
-	# Dev path: load or generate a per-install key.
+	# Load existing key file before evaluating dev/prod path so that a corrupt
+	# key file in production triggers OS.crash rather than silently regenerating.
 	var key_dir := KEY_FILE.get_base_dir()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(key_dir))
 
@@ -436,8 +429,37 @@ func _resolve_vault_signing_key(env: EnvironmentPort) -> PackedByteArray:
 			var stored := file.get_buffer(KEY_SIZE)
 			if stored.size() == KEY_SIZE:
 				return stored
+			# Key file exists but is not the expected size — corrupt on-disk state.
+			# Silently regenerating would destroy all existing encrypted vault data.
+			push_error(
+				"_resolve_vault_signing_key: vault key file corrupt: %d bytes (expected %d)."
+				% [stored.size(), KEY_SIZE]
+			)
+			push_error(
+				"_resolve_vault_signing_key: delete user://choyce_vault/key to reset "
+				+ "(existing encrypted policies will be unreadable after reset)."
+			)
+			if not is_dev:
+				OS.crash(
+					"Vault key file corrupt — manual reset required. "
+					+ "Delete user://choyce_vault/key to recover."
+				)
+				return PackedByteArray()  # unreachable in prod
+			# Dev mode only: warn and fall through to regenerate so developers can recover.
+			push_warning(
+				"_resolve_vault_signing_key: dev mode — regenerating key despite corrupt file. "
+				+ "Existing encrypted policies will be unreadable."
+			)
 
-	# Generate a fresh random key and persist it.
+	if not is_dev:
+		# Prod / classroom: must have an explicit key — hard fail.
+		push_error(
+			"_resolve_vault_signing_key: CHOYCE_VAULT_KEY not set in production build. Vault cannot start."
+		)
+		OS.crash("CHOYCE_VAULT_KEY required in production. Set the environment variable.")
+		return PackedByteArray()  # unreachable
+
+	# Dev path: generate a fresh random key and persist it.
 	push_warning(
 		"_resolve_vault_signing_key: no vault key found — generating per-install key at '%s'. "
 		+ "This is only acceptable in LOCAL_ONLY / dev mode." % KEY_FILE
