@@ -1,9 +1,14 @@
 ## Local-first Ollama LLM adapter with model-tier selection and consent-gated cloud fallback.
 ## Keeps provider details behind LLMPort while exposing deterministic tool-call planning.
 ##
-## Async streaming: uses an HTTPRequest Node (parented under a caller-supplied parent Node or
-## Engine.get_main_loop().root) to avoid blocking the main thread. Tokens are coalesced in a
-## ring buffer and flushed at 30 Hz via a connected process tick from a helper Node.
+## Non-streaming note: complete() uses HTTPRequest.use_threads=true to avoid blocking the main
+## thread, but HTTPRequest.request_completed delivers the FULL body in one signal — incremental
+## token delivery is not supported by this adapter. on_token is called at most once (with the
+## full accumulated text) immediately before on_done. Callers that display streaming UI should
+## treat on_token as an optional hint; on_done is the authoritative completion signal.
+##
+## To receive true per-token streaming, replace this adapter with one that uses raw HTTPClient
+## on a Thread and polls read_response_body_chunk() per iteration.
 ##
 ## Mock mode (enabled by default for unit tests): on_done is called synchronously in the same
 ## frame with a deterministic response — no Node or HTTP required.
@@ -81,9 +86,11 @@ func setup(
 	return self
 
 
-## Async streaming completion.
+## Async completion via HTTPRequest (non-incremental).
 ## In mock mode: on_done is invoked synchronously with a deterministic text.
-## In real mode: starts HTTPRequest, feeds tokens to ring buffer, flushes at 30 Hz.
+## In real mode: starts HTTPRequest on a background thread (use_threads=true). on_token is
+## called once with the full response text immediately before on_done fires. No incremental
+## token delivery occurs — HTTPRequest.request_completed delivers the full body in one shot.
 func complete(
 	envelope: PromptEnvelope,
 	_options: Dictionary,
@@ -273,6 +280,8 @@ func _drain_buffer() -> void:
 
 
 ## Finalise the request: clear state and invoke on_done.
+## Non-streaming adapter: if on_token is valid and the response has text, on_token is called
+## once with the full accumulated text immediately before on_done fires.
 func _finish_request(stopped: bool) -> void:
 	_request_active = false
 	var result_text := _full_response_text
@@ -282,11 +291,17 @@ func _finish_request(stopped: bool) -> void:
 	_full_response_text = ""
 	_active_envelope = null
 
-	if _active_on_done.is_valid():
-		var cb := _active_on_done
-		_active_on_done = Callable()
-		_active_on_token = Callable()
-		cb.call({"text": result_text, "provider": provider, "model": model, "stopped": stopped})
+	var token_cb := _active_on_token
+	var done_cb := _active_on_done
+	_active_on_done = Callable()
+	_active_on_token = Callable()
+
+	# Deliver full text as single on_token call before on_done (non-streaming contract).
+	if token_cb.is_valid() and not result_text.is_empty():
+		token_cb.call(result_text)
+
+	if done_cb.is_valid():
+		done_cb.call({"text": result_text, "provider": provider, "model": model, "stopped": stopped})
 
 
 ## Ensure the HTTPRequest helper node exists and is in the scene tree.
