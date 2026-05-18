@@ -5,7 +5,8 @@
 ## MUST-3  comma-separated overrides parsed and applied when env stub returns them
 ## MUST-4  empty override string → no overrides applied, defaults from config used
 ## MUST-5  DeploymentConfig.from_environment(env) uses the supplied port
-## MUST-6  FeatureFlagService constructed without setup() still functions (backward compat)
+## MUST-6  FeatureFlagService constructed without setup() returns base-config (push_warning, no crash)
+## MUST-7  setup(null) push_errors and is rejected; service stays queryable
 extends SceneTree
 
 
@@ -25,14 +26,37 @@ func _init() -> void:
 	var failures: Array[String] = []
 	var checks := 0
 
-	# MUST-6: backward compat — no setup(), OS.get_environment not called into application
-	var svc_no_setup := FeatureFlagService.new()
+	# MUST-6: no setup() — is_enabled returns base-config, push_warning fired, no crash
+	var svc_no_setup := FeatureFlagService.new(DeploymentConfig.new(DeploymentConfig.Mode.FAMILY_CLOUD))
 	checks += 1
 	if not svc_no_setup.has_method("is_enabled"):
 		failures.append("MUST-6: FeatureFlagService must have is_enabled() after _init() only")
 	checks += 1
 	if not svc_no_setup.has_method("setup"):
 		failures.append("MUST-6: FeatureFlagService must have setup() method")
+	# is_enabled must not crash and must return base-config (FAMILY_CLOUD enables ai_generation)
+	checks += 1
+	var pre_setup_result := svc_no_setup.is_enabled("ai_generation")
+	if not pre_setup_result:
+		failures.append("MUST-6: pre-setup is_enabled must return base-config (ai_generation enabled in FAMILY_CLOUD)")
+	# Calling again must not crash (warning fires at most once)
+	checks += 1
+	var pre_setup_result2 := svc_no_setup.is_enabled("telemetry")
+	# telemetry enabled in FAMILY_CLOUD by default
+	if not pre_setup_result2:
+		failures.append("MUST-6: pre-setup second call must not crash")
+
+	# MUST-7: setup(null) push_errors and is rejected — service stays queryable
+	var svc_null_setup := FeatureFlagService.new(DeploymentConfig.new(DeploymentConfig.Mode.FAMILY_CLOUD))
+	var returned_self := svc_null_setup.setup(null)
+	checks += 1
+	if returned_self != svc_null_setup:
+		failures.append("MUST-7: setup(null) must return self")
+	checks += 1
+	# After null rejection, base-config still queryable without crash
+	var after_null_result := svc_null_setup.is_enabled("ai_generation")
+	if not after_null_result:
+		failures.append("MUST-7: after setup(null) rejection, base-config still queryable")
 
 	# MUST-4: stub returns empty string → no overrides, defaults apply
 	var stub_empty := StubEnv.new()

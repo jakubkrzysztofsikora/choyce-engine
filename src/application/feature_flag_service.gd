@@ -3,6 +3,10 @@ extends RefCounted
 
 ## Service managing feature availability across deployment modes and runtime overrides.
 ## Decouples application code from deployment specifics.
+##
+## Hexagonal: application layer — no adapter imports allowed.
+## Call setup(env) before querying. Querying pre-setup emits one push_warning and
+## returns base-config behavior (no overrides applied).
 
 signal feature_changed(feature_key: String, enabled: bool)
 
@@ -11,28 +15,33 @@ const ENV_VAR_OVERRIDES := "CHOYCE_FEATURE_OVERRIDES"
 var _config: DeploymentConfig
 var _env: EnvironmentPort
 var _overrides: Dictionary = {}
+var _setup_called: bool = false
+var _pre_setup_warned: bool = false
 
 func _init(config: DeploymentConfig = null) -> void:
 	if config:
 		_config = config
 	else:
 		_config = DeploymentConfig.new()
-	# _env stays null here; setup() wires it. _load_environment_overrides() guards
-	# with a null check so _init()-only construction remains safe.
-	_load_environment_overrides()
+	# _overrides start empty; no env loading here.
+	# setup(env) is the ONLY place that loads env overrides.
 
 ## Dependency-injection entry point. Call after _init() to supply the port.
 ## Returns self for chaining: FeatureFlagService.new(config).setup(env_port)
 func setup(env: EnvironmentPort) -> FeatureFlagService:
+	if env == null:
+		push_error("FeatureFlagService.setup() called with null EnvironmentPort — setup rejected")
+		return self
 	_env = env
-	# Re-run override loading with the injected port (replaces any _init default run).
+	_setup_called = true
+	# Load overrides from the injected port (replaces any stale state).
 	_overrides.clear()
 	_load_environment_overrides()
 	return self
 
 func _load_environment_overrides() -> void:
-	var _resolved_env: EnvironmentPort = _env if _env != null else OSEnvironmentAdapter.new()
-	var overrides_str := _resolved_env.get_env(ENV_VAR_OVERRIDES, "")
+	# _env must be non-null; callers must guard.
+	var overrides_str := _env.get_env(ENV_VAR_OVERRIDES, "")
 	if overrides_str.is_empty():
 		return
 
@@ -58,7 +67,14 @@ func _load_environment_overrides() -> void:
 
 ## Returns true if the feature is available.
 ## Checks overrides first, then deployment defaults.
+## If setup() has not been called, emits push_warning ONCE and returns base-config behavior.
 func is_enabled(feature_key: String) -> bool:
+	if not _setup_called and not _pre_setup_warned:
+		push_warning(
+			"FeatureFlagService.is_enabled() called before setup(env) — " +
+			"no env overrides applied; returning base-config values"
+		)
+		_pre_setup_warned = true
 	if _config != null and _config.is_feature_hard_disabled(feature_key):
 		return false
 	if _overrides.has(feature_key):
