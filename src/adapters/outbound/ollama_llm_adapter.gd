@@ -1,8 +1,12 @@
 ## Local-first Ollama LLM adapter with model-tier selection and consent-gated cloud fallback.
 ## Keeps provider details behind LLMPort while exposing deterministic tool-call planning.
 ##
-## HTTP mode: set_mock_mode(false) to talk to a real Ollama instance at localhost:11434.
-## Mock mode: enabled by default for testability without a running server.
+## Async streaming: uses an HTTPRequest Node (parented under a caller-supplied parent Node or
+## Engine.get_main_loop().root) to avoid blocking the main thread. Tokens are coalesced in a
+## ring buffer and flushed at 30 Hz via a connected process tick from a helper Node.
+##
+## Mock mode (enabled by default for unit tests): on_done is called synchronously in the same
+## frame with a deterministic response — no Node or HTTP required.
 class_name OllamaLLMAdapter
 extends LLMPort
 
@@ -14,8 +18,12 @@ const DEFAULT_MODEL_CATALOG := {
 }
 const DEFAULT_HOST := "localhost"
 const DEFAULT_PORT := 11434
-const LOCAL_TIMEOUT_MS := 30000
-const CLOUD_TIMEOUT_MS := 60000
+const LOCAL_TIMEOUT_SEC := 30
+const CLOUD_TIMEOUT_SEC := 60
+## Maximum unread token buffer size in bytes before oldest tokens are dropped.
+const TOKEN_BUFFER_MAX_BYTES := 4096
+## Flush interval in seconds (approximately 30 Hz).
+const FLUSH_INTERVAL_SEC := 1.0 / 30.0
 
 var _model_catalog: Dictionary = DEFAULT_MODEL_CATALOG.duplicate(true)
 var _consent_port: IdentityConsentPort
@@ -27,17 +35,41 @@ var _last_selected_tier: String = ""
 var _last_selected_model: String = ""
 var _last_provider: String = "none"
 
+## Active streaming state — cleared when on_done is called.
+var _active_on_token: Callable
+var _active_on_done: Callable
+var _active_envelope: PromptEnvelope
+
+## Token ring buffer: accumulated partial token text awaiting the next flush tick.
+var _token_buffer: PackedStringArray = PackedStringArray()
+var _token_buffer_bytes: int = 0
+
+## Helper Node that owns the HTTPRequest and drives _process ticks.
+## Created lazily on first real (non-mock) complete() call.
+var _helper: _OllamaHelperNode = null
+
+## Parent node to attach the helper to. Injected via setup(); falls back to scene root.
+var _parent_node: Node = null
+
+## Accumulated full response text for on_done.
+var _full_response_text: String = ""
+
+## Whether a request is currently in flight.
+var _request_active: bool = false
+
 
 func setup(
 	consent_port: IdentityConsentPort = null,
 	cloud_adapter: LLMPort = null,
 	allow_cloud_fallback: bool = false,
 	model_catalog: Dictionary = {},
-	model_catalog_path: String = DEFAULT_MODEL_CATALOG_PATH
+	model_catalog_path: String = DEFAULT_MODEL_CATALOG_PATH,
+	parent_node: Node = null
 ) -> OllamaLLMAdapter:
 	_consent_port = consent_port
 	_cloud_adapter = cloud_adapter
 	_allow_cloud_fallback = allow_cloud_fallback
+	_parent_node = parent_node
 	_model_catalog = DEFAULT_MODEL_CATALOG.duplicate(true)
 
 	if not model_catalog_path.strip_edges().is_empty():
@@ -49,25 +81,65 @@ func setup(
 	return self
 
 
-func complete(envelope: PromptEnvelope) -> String:
+## Async streaming completion.
+## In mock mode: on_done is invoked synchronously with a deterministic text.
+## In real mode: starts HTTPRequest, feeds tokens to ring buffer, flushes at 30 Hz.
+func complete(
+	envelope: PromptEnvelope,
+	_options: Dictionary,
+	on_token: Callable,
+	on_done: Callable
+) -> void:
 	if envelope == null:
-		return ""
+		on_done.call({"text": "", "provider": "fallback", "model": "", "stopped": false})
+		return
 
 	var tier := _select_completion_tier(envelope)
 	_record_model_selection(tier)
 
-	var local_response := _complete_local(envelope)
-	if not local_response.is_empty():
+	if _simulate_local_failure:
+		var profile_id := _extract_profile_id(envelope)
+		if _can_escalate_to_cloud(profile_id) and _cloud_adapter != null:
+			_last_provider = "cloud"
+			_cloud_adapter.complete(envelope, _options, on_token, on_done)
+			return
+		_last_provider = "fallback"
+		var fallback := _fallback_text(envelope)
+		on_done.call({"text": fallback, "provider": "fallback", "model": _last_selected_model, "stopped": false})
+		return
+
+	if _mock_mode:
 		_last_provider = "ollama-local"
-		return local_response
+		var prefix := "Jasne! " if envelope.is_polish() else "Sure! "
+		var preview := envelope.prompt_text
+		if preview.length() > 96:
+			preview = "%s..." % preview.substr(0, 96)
+		var text := "%s[ollama:%s] %s" % [prefix, _last_selected_model, preview]
+		on_done.call({"text": text, "provider": "ollama-local", "model": _last_selected_model, "stopped": false})
+		return
 
-	var profile_id := _extract_profile_id(envelope)
-	if _can_escalate_to_cloud(profile_id) and _cloud_adapter != null:
-		_last_provider = "cloud"
-		return _cloud_adapter.complete(envelope)
+	# Real async path.
+	_last_provider = "ollama-local"
+	_active_on_token = on_token
+	_active_on_done = on_done
+	_active_envelope = envelope
+	_full_response_text = ""
+	_token_buffer = PackedStringArray()
+	_token_buffer_bytes = 0
+	_request_active = true
 
-	_last_provider = "fallback"
-	return _fallback_text(envelope)
+	_ensure_helper()
+	_helper.start_request(envelope, _last_selected_model)
+
+
+## Cancel in-flight request. Drains buffer, fires on_done with stopped=true.
+func cancel() -> void:
+	if not _request_active:
+		return
+	if _helper != null:
+		_helper.cancel_request()
+	_drain_buffer()
+	_finish_request(true)
 
 
 func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
@@ -120,6 +192,119 @@ func get_last_provider() -> String:
 	return _last_provider
 
 
+## Called by helper Node on each received streaming chunk (raw body bytes for that chunk).
+func _on_chunk_received(chunk_text: String) -> void:
+	# Ollama streams one JSON object per line; each has {"response": "...", "done": false}
+	# or {"response": "", "done": true} at end.
+	for line in chunk_text.split("\n"):
+		var trimmed := line.strip_edges()
+		if trimmed.is_empty():
+			continue
+		var parsed: Variant = JSON.parse_string(trimmed)
+		if not parsed is Dictionary:
+			continue
+		var parsed_dict: Dictionary = parsed
+		var token := str(parsed_dict.get("response", parsed_dict.get("content", ""))).strip_edges()
+		if token.is_empty():
+			continue
+
+		# Ring buffer overflow policy: drop oldest if buffer exceeds 4 KB.
+		var token_bytes := token.length()
+		if _token_buffer_bytes + token_bytes > TOKEN_BUFFER_MAX_BYTES:
+			if _token_buffer.size() > 0:
+				var dropped := _token_buffer[0]
+				_token_buffer.remove_at(0)
+				_token_buffer_bytes -= dropped.length()
+				push_warning("OllamaLLMAdapter: token buffer overflow — oldest token dropped (%d bytes)" % dropped.length())
+
+		_token_buffer.append(token)
+		_token_buffer_bytes += token_bytes
+		_full_response_text += token
+
+
+## Called by helper Node on the flush tick (30 Hz).
+func _on_flush_tick() -> void:
+	if not _request_active:
+		return
+	_drain_buffer()
+
+
+## Called by helper Node when request_completed signal fires.
+func _on_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	# Flush any remaining buffered tokens.
+	_drain_buffer()
+
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		push_error("OllamaLLMAdapter: HTTP error result=%d code=%d" % [result, response_code])
+		if _full_response_text.is_empty():
+			_full_response_text = _fallback_text(_active_envelope)
+
+	if _full_response_text.is_empty() and body.size() > 0:
+		# Non-streaming fallback: parse the complete body.
+		var body_text := body.get_string_from_utf8()
+		for line in body_text.split("\n"):
+			var trimmed := line.strip_edges()
+			if trimmed.is_empty():
+				continue
+			var parsed: Variant = JSON.parse_string(trimmed)
+			if not parsed is Dictionary:
+				continue
+			var parsed_dict: Dictionary = parsed
+			var path := _last_selected_path()
+			if path == "/api/chat":
+				var message: Dictionary = parsed_dict.get("message", {})
+				_full_response_text += str(message.get("content", "")).strip_edges()
+			else:
+				_full_response_text += str(parsed_dict.get("response", "")).strip_edges()
+
+	_finish_request(false)
+
+
+## Drain all pending buffered tokens via a single on_token call.
+func _drain_buffer() -> void:
+	if _token_buffer.is_empty():
+		return
+	if not _active_on_token.is_valid():
+		return
+	var combined := "".join(Array(_token_buffer))
+	_token_buffer = PackedStringArray()
+	_token_buffer_bytes = 0
+	_active_on_token.call(combined)
+
+
+## Finalise the request: clear state and invoke on_done.
+func _finish_request(stopped: bool) -> void:
+	_request_active = false
+	var result_text := _full_response_text
+	var provider := _last_provider
+	var model := _last_selected_model
+
+	_full_response_text = ""
+	_active_envelope = null
+
+	if _active_on_done.is_valid():
+		var cb := _active_on_done
+		_active_on_done = Callable()
+		_active_on_token = Callable()
+		cb.call({"text": result_text, "provider": provider, "model": model, "stopped": stopped})
+
+
+## Ensure the HTTPRequest helper node exists and is in the scene tree.
+func _ensure_helper() -> void:
+	if _helper != null:
+		return
+	_helper = _OllamaHelperNode.new()
+	_helper.adapter = self
+
+	if _parent_node != null:
+		_parent_node.add_child(_helper)
+	else:
+		# Defer add to root so this works even before _ready().
+		var main_loop := Engine.get_main_loop()
+		if main_loop != null and main_loop.root != null:
+			main_loop.root.call_deferred("add_child", _helper)
+
+
 func _select_completion_tier(envelope: PromptEnvelope) -> String:
 	var prompt := envelope.prompt_text.strip_edges()
 	if prompt.length() > 180:
@@ -141,58 +326,10 @@ func _record_model_selection(tier: String) -> void:
 	_last_selected_model = str(_model_catalog.get(tier, _model_catalog.get("small", "unknown")))
 
 
-func _complete_local(envelope: PromptEnvelope) -> String:
-	if _simulate_local_failure:
-		return ""
-
-	var prompt := envelope.prompt_text.strip_edges()
-	if prompt.is_empty():
-		return ""
-
-	if _mock_mode:
-		var prefix := "Jasne! " if envelope.is_polish() else "Sure! "
-		var preview := prompt
-		if preview.length() > 96:
-			preview = "%s..." % preview.substr(0, 96)
-		return "%s[ollama:%s] %s" % [prefix, _last_selected_model, preview]
-
-	# Real HTTP path
-	var body: Dictionary
-	var path := "/api/generate"
-
-	if not envelope.system_prompt.strip_edges().is_empty():
-		# Use chat endpoint when a system prompt is present
-		path = "/api/chat"
-		body = {
-			"model": _last_selected_model,
-			"messages": [
-				{"role": "system", "content": envelope.system_prompt.strip_edges()},
-				{"role": "user", "content": prompt},
-			],
-			"stream": false,
-			"options": {"temperature": 0.7},
-		}
-	else:
-		body = {
-			"model": _last_selected_model,
-			"prompt": prompt,
-			"stream": false,
-			"options": {"temperature": 0.7},
-		}
-
-	var response := _http_post(DEFAULT_HOST, DEFAULT_PORT, path, body, LOCAL_TIMEOUT_MS)
-	if response.has("error"):
-		push_error("OllamaLLMAdapter._complete_local HTTP error: %s" % response.get("error"))
-		return ""
-
-	var text := ""
-	if path == "/api/chat":
-		var message: Dictionary = response.get("message", {})
-		text = str(message.get("content", "")).strip_edges()
-	else:
-		text = str(response.get("response", "")).strip_edges()
-
-	return text
+func _last_selected_path() -> String:
+	if _active_envelope != null and not _active_envelope.system_prompt.strip_edges().is_empty():
+		return "/api/chat"
+	return "/api/generate"
 
 
 func _plan_tools_locally(envelope: PromptEnvelope) -> Array[ToolInvocation]:
@@ -205,7 +342,7 @@ func _plan_tools_locally(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 	if _mock_mode:
 		return _plan_tools_locally_heuristic(envelope)
 
-	# Structured JSON prompt approach
+	# Structured JSON prompt approach — synchronous HTTP (tool calls require atomic JSON).
 	var tools_list := ", ".join(envelope.permitted_tools)
 	var system_prompt := "You are a tool selection assistant. Given a user request, select the appropriate tools " \
 		+ "from the permitted list and return ONLY a JSON object in this exact format:\n" \
@@ -224,7 +361,7 @@ func _plan_tools_locally(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 	if _supports_json_mode(_last_selected_model):
 		body["format"] = "json"
 
-	var response := _http_post(DEFAULT_HOST, DEFAULT_PORT, "/api/generate", body, LOCAL_TIMEOUT_MS)
+	var response := _http_post_sync(DEFAULT_HOST, DEFAULT_PORT, "/api/generate", body, LOCAL_TIMEOUT_SEC)
 	if response.has("error"):
 		push_error("OllamaLLMAdapter._plan_tools_locally HTTP error: %s" % response.get("error"))
 		return _plan_tools_locally_heuristic(envelope)
@@ -233,7 +370,6 @@ func _plan_tools_locally(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 	if raw_text.is_empty():
 		return _plan_tools_locally_heuristic(envelope)
 
-	# Try to extract JSON from possible markdown fences
 	var json_text := _extract_json_block(raw_text)
 	var parsed: Variant = JSON.parse_string(json_text)
 	if parsed == null or not parsed is Dictionary:
@@ -320,8 +456,11 @@ func _supports_json_mode(model_name: String) -> bool:
 	return normalized.contains("qwen") or normalized.contains("llama") or normalized.contains("mistral")
 
 
-func _http_post(host: String, port: int, path: String, body: Dictionary, timeout_ms: int = LOCAL_TIMEOUT_MS) -> Dictionary:
+## Synchronous HTTP POST — used only for complete_with_tools (structured JSON output).
+## NOT used for streaming complete(); that path goes through HTTPRequest Node.
+func _http_post_sync(host: String, port: int, path: String, body: Dictionary, timeout_sec: int = LOCAL_TIMEOUT_SEC) -> Dictionary:
 	var client := HTTPClient.new()
+	var timeout_ms := timeout_sec * 1000
 	var start_time := Time.get_ticks_msec()
 
 	var err := client.connect_to_host(host, port)
@@ -356,7 +495,6 @@ func _http_post(host: String, port: int, path: String, body: Dictionary, timeout
 
 	var response_status := client.get_response_code()
 	if response_status < 200 or response_status >= 300:
-		# Still read body for error details
 		var error_body := ""
 		while client.get_status() == HTTPClient.STATUS_BODY:
 			client.poll()
@@ -435,7 +573,7 @@ func _can_escalate_to_cloud(profile_id: String) -> bool:
 
 
 func _fallback_text(envelope: PromptEnvelope) -> String:
-	if envelope.is_polish():
+	if envelope != null and envelope.is_polish():
 		return "Nie moge teraz skorzystac z modelu. Sprobuj prostszej prosby."
 	return "Model is unavailable right now. Try a simpler request."
 
@@ -463,3 +601,81 @@ func _load_model_catalog(path: String) -> void:
 	var candidate: Dictionary = parsed
 	if candidate.has("small") and candidate.has("medium"):
 		_model_catalog = candidate.duplicate(true)
+
+
+## Inner helper Node that owns the HTTPRequest and drives the flush timer.
+## Exists entirely within the adapter boundary — application code never sees it.
+class _OllamaHelperNode:
+	extends Node
+
+	var adapter: OllamaLLMAdapter
+	var _http_request: HTTPRequest
+	var _flush_accumulator: float = 0.0
+	var _request_active: bool = false
+
+	func _ready() -> void:
+		_http_request = HTTPRequest.new()
+		_http_request.use_threads = true
+		add_child(_http_request)
+		_http_request.request_completed.connect(_on_request_completed)
+
+	func start_request(envelope: PromptEnvelope, model: String) -> void:
+		if _http_request == null:
+			push_error("_OllamaHelperNode: HTTPRequest not ready")
+			return
+
+		var path: String
+		var body: Dictionary
+
+		if not envelope.system_prompt.strip_edges().is_empty():
+			path = "/api/chat"
+			body = {
+				"model": model,
+				"messages": [
+					{"role": "system", "content": envelope.system_prompt.strip_edges()},
+					{"role": "user", "content": envelope.prompt_text.strip_edges()},
+				],
+				"stream": true,
+				"options": {"temperature": 0.7},
+			}
+		else:
+			path = "/api/generate"
+			body = {
+				"model": model,
+				"prompt": envelope.prompt_text.strip_edges(),
+				"stream": true,
+				"options": {"temperature": 0.7},
+			}
+
+		var url := "http://%s:%d%s" % [OllamaLLMAdapter.DEFAULT_HOST, OllamaLLMAdapter.DEFAULT_PORT, path]
+		var headers := ["Content-Type: application/json"]
+		var body_json := JSON.stringify(body)
+
+		_http_request.timeout = OllamaLLMAdapter.LOCAL_TIMEOUT_SEC
+		_request_active = true
+		var err := _http_request.request(url, headers, HTTPClient.METHOD_POST, body_json)
+		if err != OK:
+			_request_active = false
+			push_error("_OllamaHelperNode: request failed err=%d" % err)
+			if adapter != null:
+				adapter._on_request_completed(HTTPRequest.RESULT_CONNECTION_ERROR, 0, PackedStringArray(), PackedByteArray())
+
+	func cancel_request() -> void:
+		if _http_request != null:
+			_http_request.cancel_request()
+		_request_active = false
+
+	func _process(delta: float) -> void:
+		if not _request_active:
+			return
+		if adapter == null:
+			return
+		_flush_accumulator += delta
+		if _flush_accumulator >= OllamaLLMAdapter.FLUSH_INTERVAL_SEC:
+			_flush_accumulator = 0.0
+			adapter._on_flush_tick()
+
+	func _on_request_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+		_request_active = false
+		if adapter != null:
+			adapter._on_request_completed(result, response_code, headers, body)
