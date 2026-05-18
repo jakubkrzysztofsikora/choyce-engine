@@ -1,6 +1,10 @@
 class_name WorldRenderer
 extends Node3D
 
+# Toon cel shader — applied to every MeshInstance3D rendered by this adapter
+# (both glTF prop instances and primitive-mesh fallbacks).
+const TOON_CEL_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/toon_cel.gdshader")
+
 var _spawn_points: Array[Vector3] = []
 
 func render_world(world: World) -> void:
@@ -70,6 +74,33 @@ const PROP_GLTF_MAP: Dictionary = {
 }
 
 
+## Returns a new ShaderMaterial using the toon cel shader, tinted with
+## base_color. The shadow_color is automatically derived (darkened 35 %).
+func _make_toon_material(base_color: Color) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = TOON_CEL_SHADER
+	mat.set_shader_parameter("albedo", base_color)
+	mat.set_shader_parameter("light_steps", 2.0)
+	mat.set_shader_parameter("shadow_color", base_color.darkened(0.35))
+	return mat
+
+
+## Walk all MeshInstance3D descendants of a glTF prop instance and apply the
+## toon material, preserving the original StandardMaterial3D albedo_color where
+## available so the prop keeps its authored colour palette.
+func _apply_toon_to_prop(root: Node) -> void:
+	# owned=false so programmatically-instanced glTF nodes (no SceneTree owner) are found.
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi: MeshInstance3D = node
+		var color := Color.WHITE
+		var existing_mat := mi.get_surface_override_material(0)
+		if existing_mat == null and mi.mesh != null:
+			existing_mat = mi.get_active_material(0)
+		if existing_mat is StandardMaterial3D:
+			color = existing_mat.albedo_color
+		mi.material_override = _make_toon_material(color)
+
+
 func _create_node(node: SceneNode) -> void:
 	var godot_node: Node3D = null
 
@@ -122,6 +153,8 @@ func _create_prop_node(gltf_path: String, node: SceneNode) -> Node3D:
 	var body := StaticBody3D.new()
 	body.name = node.display_name if node != null else "Prop"
 	body.add_child(instance)
+	# Apply toon cel shader to every MeshInstance3D inside the glTF scene.
+	_apply_toon_to_prop(instance)
 	# A loose collider sized to the node's bounding intent — keeps it cheap.
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
@@ -139,7 +172,7 @@ func _create_object_node(node: SceneNode) -> Node3D:
 	mesh_instance.mesh = mesh
 
 	var color_hint: Color = node.properties.get("color", Color.WHITE)
-	mesh_instance.material_override = PlaceholderMaterials.get_material_for_node_type(SceneNode.NodeType.OBJECT, color_hint)
+	mesh_instance.material_override = _make_toon_material(color_hint)
 
 	var size: Variant = node.properties.get("size", Vector3.ONE)
 	if size is Vector3:
@@ -163,11 +196,7 @@ func _create_terrain_node(node: SceneNode) -> Node3D:
 	mesh_instance.mesh = mesh
 
 	var color_hint: Color = node.properties.get("color", Color.WHITE)
-	var mat := PlaceholderMaterials.get_material_for_node_type(SceneNode.NodeType.TERRAIN, color_hint)
-	if mat is StandardMaterial3D:
-		mat.roughness = 0.85
-		mat.metallic = 0.1
-	mesh_instance.material_override = mat
+	mesh_instance.material_override = _make_toon_material(color_hint)
 
 	var shape := BoxShape3D.new()
 	shape.size = Vector3(50, 0.5, 50)
@@ -266,7 +295,7 @@ func _create_decoration_node(node: SceneNode) -> Node3D:
 	mesh_instance.mesh = mesh
 
 	var color_hint: Color = node.properties.get("color", Color.WHITE)
-	mesh_instance.material_override = PlaceholderMaterials.get_material_for_node_type(SceneNode.NodeType.DECORATION, color_hint)
+	mesh_instance.material_override = _make_toon_material(color_hint)
 
 	var size: Variant = node.properties.get("size", Vector3.ONE)
 	if size is Vector3:
