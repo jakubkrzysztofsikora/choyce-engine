@@ -322,8 +322,15 @@ func _build_default_ports_phase_2() -> void:
 
 	var llm := OllamaLLMAdapter.new().setup(consent_store)
 
+	var data_lifecycle_adapter := FilesystemDataLifecycleAdapter.new().setup(
+		project_store,
+		consent_store,
+		audit_ledger,
+		clock
+	)
+
 	var data_lifecycle := ManageDataLifecycleService.new().setup(
-		null,
+		data_lifecycle_adapter,
 		null,
 		clock,
 		audit_ledger,
