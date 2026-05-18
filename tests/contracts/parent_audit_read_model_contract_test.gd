@@ -14,7 +14,7 @@ func run() -> Dictionary:
 	_assert_eq(impl.get_interventions("parent-1").size(), 0, "Initial interventions list is empty")
 
 	# Simulate content moderation block
-	var block_event = ModeratedContentBlockedEvent.new("child-1", "text", "Violence detected", "2026-03-02T10:00:00Z")
+	var block_event = MockSafetyInterventionTriggeredEvent.new("BLOCK", "MODERATION_BLOCK", "Violence detected", "2026-03-02T10:00:00Z")
 	impl.update_from_event(block_event)
 
 	var timeline = impl.get_timeline("parent-1")
@@ -27,7 +27,7 @@ func run() -> Dictionary:
 	_assert_true(interventions[0].get("reason") != "", "Should include reason")
 
 	# Simulate policy override
-	var override_event = PolicyOverriddenEvent.new("parent-1", "screen_time_limit", "Extended evening session", "2026-03-02T11:00:00Z")
+	var override_event = MockPolicyOverriddenEvent.new("parent-1", "screen_time_limit", "Extended evening session", "2026-03-02T11:00:00Z")
 	impl.update_from_event(override_event)
 
 	timeline = impl.get_timeline("parent-1")
@@ -55,19 +55,19 @@ func run() -> Dictionary:
 
 
 # Mock domain events for testing
-class ModeratedContentBlockedEvent extends DomainEvent:
-	var child_id: String
-	var content_type: String
-	var reason: String
+class MockSafetyInterventionTriggeredEvent extends DomainEvent:
+	var decision_type: String
+	var policy_rule: String
+	var trigger_context: String
 
-	func _init(p_child_id: String, p_type: String, p_reason: String, p_timestamp: String) -> void:
-		super._init("ModeratedContentBlockedEvent", "", p_timestamp)
-		child_id = p_child_id
-		content_type = p_type
-		reason = p_reason
+	func _init(p_decision_type: String = "", p_policy_rule: String = "", p_trigger_context: String = "", p_timestamp: String = "") -> void:
+		super._init("SafetyInterventionTriggered", "", p_timestamp)
+		decision_type = p_decision_type
+		policy_rule = p_policy_rule
+		trigger_context = p_trigger_context
 
 
-class PolicyOverriddenEvent extends DomainEvent:
+class MockPolicyOverriddenEvent extends DomainEvent:
 	var parent_id: String
 	var policy_name: String
 	var reason: String
@@ -89,13 +89,9 @@ class MockPublishApprovedEvent extends DomainEvent:
 		parent_id = p_parent_id
 
 
-class AIToolExecutedEvent extends DomainEvent:
-	var tool_name: String
-	var latency_ms: float
-	var success: bool
+class MockAIAssistanceAppliedEvent extends DomainEvent:
+	var action_id: String
 
-	func _init(p_tool: String, p_latency: float, p_success: bool, p_timestamp: String) -> void:
-		super._init("AIToolExecutedEvent", "", p_timestamp)
-		tool_name = p_tool
-		latency_ms = p_latency
-		success = p_success
+	func _init(p_action_id: String, p_timestamp: String) -> void:
+		super._init("AIAssistanceApplied", "", p_timestamp)
+		action_id = p_action_id

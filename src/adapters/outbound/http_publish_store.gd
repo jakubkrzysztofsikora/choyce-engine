@@ -63,6 +63,7 @@ func _request_json(method: String, path: String, payload: Dictionary = {}) -> Di
 	var client := HTTPClient.new()
 	var parsed := _parse_base_url(_base_url)
 	if parsed.is_empty():
+		client.close()
 		return {"status": 0, "body": {}}
 
 	var host := str(parsed.get("host", ""))
@@ -70,15 +71,18 @@ func _request_json(method: String, path: String, payload: Dictionary = {}) -> Di
 	var use_tls := bool(parsed.get("tls", true))
 	var err := client.connect_to_host(host, port, use_tls)
 	if err != OK:
+		client.close()
 		return {"status": 0, "body": {}}
 
 	var deadline := Time.get_ticks_msec() + _timeout_msec
 	while client.get_status() in [HTTPClient.STATUS_CONNECTING, HTTPClient.STATUS_RESOLVING]:
 		client.poll()
 		if Time.get_ticks_msec() > deadline:
+			client.close()
 			return {"status": 0, "body": {}}
 
 	if client.get_status() != HTTPClient.STATUS_CONNECTED:
+		client.close()
 		return {"status": 0, "body": {}}
 
 	var headers := PackedStringArray([
@@ -94,16 +98,19 @@ func _request_json(method: String, path: String, payload: Dictionary = {}) -> Di
 	var method_code := _http_method_code(method)
 	err = client.request(method_code, path, headers, body)
 	if err != OK:
+		client.close()
 		return {"status": 0, "body": {}}
 
 	while client.get_status() == HTTPClient.STATUS_REQUESTING:
 		client.poll()
 		if Time.get_ticks_msec() > deadline:
+			client.close()
 			return {"status": 0, "body": {}}
 
 	while client.get_status() == HTTPClient.STATUS_BODY:
 		client.poll()
 		if Time.get_ticks_msec() > deadline:
+			client.close()
 			return {"status": 0, "body": {}}
 
 	var status := client.get_response_code()
@@ -117,10 +124,13 @@ func _request_json(method: String, path: String, payload: Dictionary = {}) -> Di
 
 	var text := chunks.get_string_from_utf8().strip_edges()
 	if text.is_empty():
+		client.close()
 		return {"status": status, "body": {}}
 	var parsed_body: Variant = JSON.parse_string(text)
 	if parsed_body == null:
+		client.close()
 		return {"status": status, "body": {}}
+	client.close()
 	return {"status": status, "body": parsed_body}
 
 
@@ -184,6 +194,8 @@ func _serialize_request(request: PublishRequest) -> Dictionary:
 		"visibility": int(request.visibility),
 		"requester_id": request.requester_id,
 		"reviewer_id": request.reviewer_id,
+		"family_id": request.family_id,
+		"classroom_id": request.classroom_id,
 		"moderation_results": moderation_rows,
 		"rejection_reason": request.rejection_reason,
 		"created_at": request.created_at,
@@ -200,6 +212,8 @@ func _deserialize_request(data: Dictionary) -> PublishRequest:
 	req.visibility = int(data.get("visibility", PublishRequest.Visibility.PRIVATE))
 	req.requester_id = str(data.get("requester_id", ""))
 	req.reviewer_id = str(data.get("reviewer_id", ""))
+	req.family_id = str(data.get("family_id", ""))
+	req.classroom_id = str(data.get("classroom_id", ""))
 	req.rejection_reason = str(data.get("rejection_reason", ""))
 	req.created_at = str(data.get("created_at", ""))
 	req.published_at = str(data.get("published_at", ""))

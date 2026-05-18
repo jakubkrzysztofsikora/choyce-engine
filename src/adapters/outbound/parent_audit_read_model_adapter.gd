@@ -5,6 +5,16 @@
 class_name ParentAuditReadModelAdapter
 extends ParentAuditReadModel
 
+const ADTECH_TOKENS: Array[String] = [
+	"advertising",
+	"ad_id",
+	"adid",
+	"idfa",
+	"gaid",
+	"idfv",
+	"adtech",
+]
+
 var _ledger: AuditLedgerPort
 var _clock: ClockPort
 var _record_counter: int = 0
@@ -55,7 +65,9 @@ func get_timeline(
 		if not to_iso.strip_edges().is_empty():
 			filter["to_iso"] = to_iso
 		var records := _ledger.get_records(filter)
-		result.append_array(records)
+		for record_variant in records:
+			if record_variant is AuditRecord:
+				result.append(_sanitize_record(record_variant))
 
 	# Sort by timestamp ascending and apply limit
 	result.sort_custom(_compare_by_timestamp)
@@ -79,7 +91,9 @@ func get_interventions(parent_profile_id: String, limit: int = 50) -> Array:
 			"limit": limit,
 		}
 		var records := _ledger.get_records(filter)
-		result.append_array(records)
+		for record_variant in records:
+			if record_variant is AuditRecord:
+				result.append(_sanitize_record(record_variant))
 
 	result.sort_custom(_compare_by_timestamp)
 	if result.size() > limit:
@@ -116,4 +130,46 @@ func _resolve_family_ids(parent_profile_id: String) -> Array:
 static func _compare_by_timestamp(a: Variant, b: Variant) -> bool:
 	if a is AuditRecord and b is AuditRecord:
 		return a.timestamp < b.timestamp
+	return false
+
+
+func _sanitize_record(record: AuditRecord) -> AuditRecord:
+	var sanitized_payload: Variant = _sanitize_value(record.payload)
+	if not (sanitized_payload is Dictionary):
+		sanitized_payload = {}
+	return AuditRecord.new(
+		record.record_id,
+		record.event_type,
+		record.event_id,
+		record.actor_id,
+		record.timestamp,
+		sanitized_payload,
+		record.previous_hash
+	)
+
+
+func _sanitize_value(value: Variant) -> Variant:
+	if value is Dictionary:
+		var input_dict: Dictionary = value
+		var output_dict: Dictionary = {}
+		for key_variant in input_dict.keys():
+			var key := str(key_variant)
+			if _is_adtech_key(key):
+				continue
+			output_dict[key] = _sanitize_value(input_dict[key_variant])
+		return output_dict
+	if value is Array:
+		var input_arr: Array = value
+		var output_arr: Array = []
+		for item in input_arr:
+			output_arr.append(_sanitize_value(item))
+		return output_arr
+	return value
+
+
+func _is_adtech_key(key: String) -> bool:
+	var normalized := key.strip_edges().to_lower()
+	for token in ADTECH_TOKENS:
+		if normalized.find(token) >= 0:
+			return true
 	return false

@@ -17,8 +17,7 @@ func set_profile(profile_id: String) -> void:
 	_profile_id = profile_id
 
 func transcribe(audio: PackedByteArray, language: String = "") -> String:
-	if language != "":
-		_language = language
+	var effective_language := language if language != "" else _language
 
 	# FAIL-CLOSED: Block cloud STT if no profile or no consent
 	if _profile_id == "" or not _consent_port.has_consent(_profile_id, "cloud_stt"):

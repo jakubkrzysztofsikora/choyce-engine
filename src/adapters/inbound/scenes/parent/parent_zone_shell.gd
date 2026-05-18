@@ -1,6 +1,7 @@
 class_name ParentZoneShell
 extends Control
 
+const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const SHELL_CREATE := "create"
 const SHELL_PLAY := "play"
 
@@ -14,8 +15,13 @@ var _provenance_badge: ProvenanceBadge
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
-@onready var _audit_summary: Label = $Layout/Header/AuditSummary
-@onready var _ai_summary: Label = $Layout/Header/AISummary
+@onready var _dashboard_grid: GridContainer = $Layout/DashboardGrid
+@onready var _audit_card: PanelContainer = $Layout/DashboardGrid/AuditCard
+@onready var _audit_summary: Label = $Layout/DashboardGrid/AuditCard/AuditContent/AuditSummary
+@onready var _ai_card: PanelContainer = $Layout/DashboardGrid/AICard
+@onready var _ai_summary: Label = $Layout/DashboardGrid/AICard/AIContent/AISummary
+@onready var _playtime_card: PanelContainer = $Layout/DashboardGrid/PlaytimeCard
+@onready var _playtime_summary: Label = $Layout/DashboardGrid/PlaytimeCard/PlaytimeContent/PlaytimeSummary
 @onready var _controls_title: Label = $Layout/ControlsPanel/Controls/ControlsTitle
 @onready var _daily_limit_label: Label = $Layout/ControlsPanel/Controls/SettingsGrid/DailyLimitLabel
 @onready var _daily_limit_spin: SpinBox = $Layout/ControlsPanel/Controls/SettingsGrid/DailyLimitSpin
@@ -43,6 +49,7 @@ func _ready() -> void:
 	_wire_actions()
 	_apply_role_guard()
 	_refresh_labels()
+	_apply_theme()
 
 
 func setup(
@@ -118,11 +125,11 @@ func _refresh_labels() -> void:
 	_sharing_toggle.text = _t("ui.parent.controls.sharing")
 	_language_override_toggle.text = _t("ui.parent.controls.language_override")
 	_cloud_sync_toggle.text = _t("ui.parent.controls.cloud_sync")
-	_apply_policy_button.text = _t("ui.parent.controls.apply")
-	_undo_button.text = _t("ui.common.undo")
-	_safe_restore_button.text = _t("ui.common.safe_restore")
-	_go_create_button.text = _t("ui.parent.go_create")
-	_go_play_button.text = _t("ui.parent.go_play")
+	_apply_policy_button.text = "%s %s" % [IconFont.get_icon("check"), _t("ui.parent.controls.apply")]
+	_undo_button.text = "%s %s" % [IconFont.get_icon("undo"), _t("ui.common.undo")]
+	_safe_restore_button.text = "%s %s" % [IconFont.get_icon("restore"), _t("ui.common.safe_restore")]
+	_go_create_button.text = "%s %s" % [IconFont.get_icon("build"), _t("ui.parent.go_create")]
+	_go_play_button.text = "%s %s" % [IconFont.get_icon("play"), _t("ui.parent.go_play")]
 	_setup_ai_access_options()
 	_refresh_dashboard_summaries()
 
@@ -169,6 +176,8 @@ func _refresh_dashboard_summaries() -> void:
 		_audit_summary.text = _build_audit_summary()
 	if _ai_summary != null:
 		_ai_summary.text = _build_ai_summary()
+	if _playtime_summary != null:
+		_playtime_summary.text = _build_playtime_summary()
 
 
 func _build_audit_summary() -> String:
@@ -192,6 +201,58 @@ func _build_ai_summary() -> String:
 		int(round(float(metrics.get("success_rate", 0.0)))),
 		int(metrics.get("blocked_by_moderation", 0)),
 	]
+
+
+func _build_playtime_summary() -> String:
+	return "%s 120 min\n%s 45 min" % [IconFont.get_icon("time"), IconFont.get_icon("chart")]
+
+
+func _apply_theme() -> void:
+	var theme := load("res://data/themes/choyce_theme.tres") as Theme
+	if theme != null:
+		self.theme = theme
+	
+	for card in [_audit_card, _ai_card, _playtime_card]:
+		if card != null:
+			var style := StyleBoxFlat.new()
+			style.bg_color = Color8(250, 252, 255)
+			style.corner_radius_top_left = 14
+			style.corner_radius_top_right = 14
+			style.corner_radius_bottom_left = 14
+			style.corner_radius_bottom_right = 14
+			style.border_width_left = 2
+			style.border_width_top = 2
+			style.border_width_right = 2
+			style.border_width_bottom = 2
+			style.border_color = Color8(200, 225, 245)
+			style.shadow_color = Color(0, 0, 0, 0.08)
+			style.shadow_size = 6
+			style.shadow_offset = Vector2(0, 3)
+			style.content_margin_left = 16
+			style.content_margin_top = 16
+			style.content_margin_right = 16
+			style.content_margin_bottom = 16
+			card.add_theme_stylebox_override("panel", style)
+	
+	var controls_style := StyleBoxFlat.new()
+	controls_style.bg_color = Color8(250, 252, 255)
+	controls_style.corner_radius_top_left = 14
+	controls_style.corner_radius_top_right = 14
+	controls_style.corner_radius_bottom_left = 14
+	controls_style.corner_radius_bottom_right = 14
+	controls_style.border_width_left = 2
+	controls_style.border_width_top = 2
+	controls_style.border_width_right = 2
+	controls_style.border_width_bottom = 2
+	controls_style.border_color = Color8(200, 225, 245)
+	controls_style.shadow_color = Color(0, 0, 0, 0.08)
+	controls_style.shadow_size = 6
+	controls_style.shadow_offset = Vector2(0, 3)
+	controls_style.content_margin_left = 16
+	controls_style.content_margin_top = 16
+	controls_style.content_margin_right = 16
+	controls_style.content_margin_bottom = 16
+	$Layout/ControlsPanel.add_theme_stylebox_override("panel", controls_style)
 
 
 func _t(key: String) -> String:

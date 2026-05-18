@@ -45,6 +45,9 @@ func load_script(project_id: String, script_path: String, actor: PlayerProfile) 
 
 
 func explain_script(project_id: String, script_path: String, actor: PlayerProfile) -> Dictionary:
+	if _llm == null:
+		return {"ok": false, "error": "LLM not available", "explanation": ""}
+
 	var loaded := load_script(project_id, script_path, actor)
 	if not loaded.get("ok", false):
 		return loaded
@@ -62,6 +65,9 @@ func explain_script(project_id: String, script_path: String, actor: PlayerProfil
 
 
 func suggest_refactor(project_id: String, script_path: String, actor: PlayerProfile) -> Dictionary:
+	if _llm == null:
+		return {"ok": false, "error": "LLM not available", "suggestion": ""}
+
 	var loaded := load_script(project_id, script_path, actor)
 	if not loaded.get("ok", false):
 		return loaded

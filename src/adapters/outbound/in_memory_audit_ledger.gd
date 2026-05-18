@@ -87,3 +87,32 @@ func record_count() -> int:
 
 func last_hash() -> String:
 	return _last_hash
+
+
+## Convenience alias for append_record.
+func append(record: AuditRecord) -> bool:
+	return append_record(record)
+
+
+## Typed query wrapper over get_records.
+func query(actor_id: String = "", event_type: String = "", from_iso: String = "", to_iso: String = "", limit: int = 100) -> Array[AuditRecord]:
+	var filter := {}
+	if not actor_id.is_empty():
+		filter["actor_id"] = actor_id
+	if not event_type.is_empty():
+		filter["event_type"] = event_type
+	if not from_iso.is_empty():
+		filter["from_iso"] = from_iso
+	if not to_iso.is_empty():
+		filter["to_iso"] = to_iso
+	filter["limit"] = limit
+	var result: Array[AuditRecord] = []
+	for item in get_records(filter):
+		if item is AuditRecord:
+			result.append(item)
+	return result
+
+
+## Convenience alias for last_hash.
+func get_latest_hash() -> String:
+	return last_hash()

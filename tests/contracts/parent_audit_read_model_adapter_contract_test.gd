@@ -118,4 +118,62 @@ func run() -> Dictionary:
 			"Safety record payload should contain policy_rule"
 		)
 
+	# Data-minimization gate: ad-tech identifiers should be redacted from read-model payloads.
+	var adtech_event := AdtechSafetyEvent.new("kid-1", "2026-03-02T14:00:04Z")
+	adapter.update_from_event(adtech_event)
+	var sanitized_timeline := adapter.get_timeline("parent-1", "", "", 10)
+	var found_sanitized := false
+	for row_variant in sanitized_timeline:
+		if not (row_variant is AuditRecord):
+			continue
+		var row: AuditRecord = row_variant
+		if row.event_id == adtech_event.event_id:
+			found_sanitized = true
+			_assert_false(
+				row.payload.has("advertising_id"),
+				"Timeline payload should remove advertising_id"
+			)
+			var meta_variant: Variant = row.payload.get("device_meta", {})
+			if meta_variant is Dictionary:
+				var meta: Dictionary = meta_variant
+				_assert_false(meta.has("gaid"), "Timeline payload should remove nested gaid")
+	_assert_true(found_sanitized, "Sanitized ad-tech audit event should remain visible in timeline")
+
+	var sanitized_interventions := adapter.get_interventions("parent-1", 10)
+	var intervention_sanitized := false
+	for row_variant in sanitized_interventions:
+		if not (row_variant is AuditRecord):
+			continue
+		var row: AuditRecord = row_variant
+		if row.event_id == adtech_event.event_id:
+			intervention_sanitized = true
+			_assert_false(
+				row.payload.has("advertising_id"),
+				"Intervention payload should remove advertising_id"
+			)
+	_assert_true(
+		intervention_sanitized,
+		"Sanitized ad-tech audit event should remain visible in interventions"
+	)
+
 	return _build_result("ParentAuditReadModelAdapter")
+
+
+class AdtechSafetyEvent:
+	extends DomainEvent
+
+	var decision_type: String
+	var policy_rule: String
+	var trigger_context: String
+	var safe_alternative_offered: bool
+	var advertising_id: String
+	var device_meta: Dictionary
+
+	func _init(actor_id: String, timestamp: String) -> void:
+		super._init("SafetyInterventionTriggered", actor_id, timestamp)
+		decision_type = "BLOCK"
+		policy_rule = "MODERATION_BLOCK"
+		trigger_context = "ad-tech regression seed"
+		safe_alternative_offered = true
+		advertising_id = "ad-parent-123"
+		device_meta = {"gaid": "gaid-001", "platform": "desktop"}

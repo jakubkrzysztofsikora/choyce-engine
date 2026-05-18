@@ -41,6 +41,7 @@ func run() -> Dictionary:
 	var consent := MockConsentPort.new()
 	var cloud := MockCloudLLM.new()
 	var adapter := OllamaLLMAdapter.new().setup(consent, cloud, true)
+	adapter.set_mock_mode(true)
 
 	_assert_has_method(adapter, "complete")
 	_assert_has_method(adapter, "complete_with_tools")

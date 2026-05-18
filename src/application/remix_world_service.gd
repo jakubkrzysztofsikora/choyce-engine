@@ -26,7 +26,7 @@ func reset_player_progress(profile_id: String, world_id: String) -> bool:
 	var cleared = _progress_store.clear_progress(profile_id, world_id)
 
 	if cleared and _event_bus != null:
-		var timestamp = _clock_port.now_iso8601() if _clock_port != null else ""
+		var timestamp = _clock_port.now_iso() if _clock_port != null else ""
 		var event = WorldRemixedEvent.new(world_id, profile_id, timestamp)
 		_event_bus.emit(event)
 

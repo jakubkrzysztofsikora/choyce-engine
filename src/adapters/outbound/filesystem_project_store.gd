@@ -7,6 +7,7 @@ class_name FilesystemProjectStore
 extends ProjectStorePort
 
 const MANIFEST_FILE := "manifest.json"
+const ACTION_LOG_FILE := "action_log.json"
 const WORLDS_DIR := "worlds"
 const ASSETS_DIR := "assets"
 const FORMAT_VERSION := 1
@@ -91,6 +92,31 @@ func load_project(project_id: String) -> Project:
 				project.add_world(world)
 
 	return project
+
+
+func save_action_log(project_id: String, log_data: Dictionary) -> bool:
+	if project_id.strip_edges().is_empty():
+		return false
+
+	var project_dir := _project_dir(project_id)
+	if not _ensure_dir(project_dir):
+		return false
+	
+	return _write_json("%s/%s" % [project_dir, ACTION_LOG_FILE], log_data)
+
+
+func load_action_log(project_id: String) -> Dictionary:
+	if project_id.strip_edges().is_empty():
+		return {}
+
+	var log_path := "%s/%s" % [_project_dir(project_id), ACTION_LOG_FILE]
+	if not FileAccess.file_exists(log_path):
+		return {}
+
+	var data = _read_json(log_path)
+	if data is Dictionary:
+		return data
+	return {}
 
 
 func list_projects() -> Array:

@@ -99,7 +99,30 @@ Local quality-gate entrypoints:
 - `./scripts/ci/check-domain-isolation.sh`
 - `./scripts/ci/run-prompt-regression.sh`
 - `./scripts/ci/run-safety-gates.sh`
+- `./scripts/ci/run-safety-compliance-regression.sh`
+- `./scripts/ci/run-abuse-regression.sh`
+- `./scripts/ci/run-persistence-resilience.sh`
+- `./scripts/ci/run-mvp-acceptance-suite.sh`
+- `./scripts/ci/run-kid-parent-ai-regression-matrix.sh`
+- `./scripts/ci/run-usability-kpi-pipeline.sh`
+- `./scripts/ci/run-performance-gates.sh`
 - `./scripts/run-quality-gates.sh`
+
+Performance gate defaults:
+- `./scripts/ci/run-performance-gates.sh` runs all configured tiers (`tier1`, `tier2`) by default.
+- For faster local iteration, run a single tier:
+  - `CHOYCE_PERF_RUN_ALL_TIERS=0 CHOYCE_HARDWARE_TIER=tier1 ./scripts/ci/run-performance-gates.sh`
+
+## Release runbooks
+Release-readiness docs for all deployment modes:
+- `docs/release/launch-checklist.md`
+- `docs/release/runbook-local-only.md`
+- `docs/release/runbook-family-cloud.md`
+- `docs/release/runbook-classroom.md`
+- `docs/release/release-exit-criteria.md`
+
+Manual evidence completeness check:
+- `./scripts/ci/validate-manual-qa-artifacts.sh`
 
 ## Focused test suites
 Use focused suites during active implementation/review:

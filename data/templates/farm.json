@@ -16,17 +16,124 @@
       {
         "type": "TERRAIN",
         "display_name_pl": "Grządki",
-        "position": [0, 0, 0]
+        "position": [0, 0, 0],
+        "properties": {
+          "color": "#7CB518",
+          "mesh_type": "box",
+          "size": [10, 0.3, 8]
+        }
       },
       {
         "type": "OBJECT",
         "display_name_pl": "Studnia",
-        "position": [-2, 0, 2]
+        "position": [-3, 0, 4],
+        "properties": {
+          "color": "#5BC0BE",
+          "mesh_type": "cylinder",
+          "size": [1.5, 2, 1.5]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Stodoła",
+        "position": [5, 0, -3],
+        "properties": {
+          "color": "#BC6C25",
+          "mesh_type": "box",
+          "size": [4, 3, 3]
+        }
       },
       {
         "type": "OBJECT",
         "display_name_pl": "Stragan",
-        "position": [4, 0, -1]
+        "position": [4, 0, 4],
+        "properties": {
+          "color": "#DDA15E",
+          "mesh_type": "box",
+          "size": [2.5, 2, 1.5]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Płot",
+        "position": [0, 0, -5],
+        "properties": {
+          "color": "#8B4513",
+          "mesh_type": "box",
+          "size": [10, 1.5, 0.2]
+        }
+      },
+      {
+        "type": "SPAWN_POINT",
+        "display_name_pl": "Wejście na Farmę",
+        "position": [0, 0.5, 5],
+        "properties": {
+          "color": "#00FF00",
+          "mesh_type": "cylinder",
+          "size": [1, 0.2, 1]
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Zbiorów",
+        "position": [0, 0, 0],
+        "properties": {
+          "color": "#F4D35E",
+          "mesh_type": "box",
+          "size": [8, 0.1, 6],
+          "trigger_type": "harvest_zone"
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Targu",
+        "position": [4, 0, 4],
+        "properties": {
+          "color": "#EE964B",
+          "mesh_type": "box",
+          "size": [3, 0.1, 2.5],
+          "trigger_type": "sell_zone"
+        }
+      },
+      {
+        "type": "LIGHT",
+        "display_name_pl": "Słońce",
+        "position": [0, 8, 0],
+        "properties": {
+          "color": "#FEFAE0",
+          "light_type": "directional",
+          "intensity": 1.0
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Drzewo Jabłoni",
+        "position": [-5, 0, -2],
+        "properties": {
+          "color": "#2A9D8F",
+          "mesh_type": "sphere",
+          "size": [2, 2.5, 2]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Kwiaty",
+        "position": [3, 0, 6],
+        "properties": {
+          "color": "#FF85A1",
+          "mesh_type": "sphere",
+          "size": [0.4, 0.6, 0.4]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Kamień",
+        "position": [-4, 0, 6],
+        "properties": {
+          "color": "#A0A0A0",
+          "mesh_type": "sphere",
+          "size": [0.8, 0.6, 0.8]
+        }
       }
     ],
     "rules": [
@@ -37,19 +144,81 @@
       },
       {
         "type": "SCORING",
-        "display_name_pl": "Monety za sprzedaż",
+        "display_name_pl": "Monety za sprzedaż plonów",
         "compiled_logic": "on_sell_crop:add_score(8)"
+      },
+      {
+        "type": "ITEM_SPAWN",
+        "display_name_pl": "Spawning marchewek na grządkach",
+        "compiled_logic": "every_45s:spawn_item('carrot', 2)"
+      },
+      {
+        "type": "WIN_CONDITION",
+        "display_name_pl": "Wygrana po zebraniu 10 marchewek",
+        "compiled_logic": "on_collect_carrot_10:win_level()"
+      },
+      {
+        "type": "EVENT_TRIGGER",
+        "display_name_pl": "Odblokowanie większej grządki",
+        "compiled_logic": "on_score_40:unlock_area('big_field')"
       }
     ]
   },
   "onboarding_hints_pl": [
-    "Zasadź pierwsze nasiona na grządce.",
-    "Podlewaj rośliny regularnie.",
-    "Sprzedaj plony na straganie, aby kupić ulepszenia."
+    "Witaj na Wesołej Farmie! Twoim zadaniem jest sadzenie i zbieranie plonów.",
+    "Kliknij na grządkę, aby zasadzić pierwsze nasiona marchewki.",
+    "Idź do studni i kliknij, aby podlać rośliny — wtedy szybciej rosną.",
+    "Gdy marchewki są gotowe, kliknij na strefę zbiorów, aby je zebrać.",
+    "Zanieś plony na stragan i kliknij, aby je sprzedać za monety.",
+    "Sprzedawaj plony regularnie, aby kupić ulepszenia farmy.",
+    "Zbierz 10 marchewek, aby wygrać poziom!"
   ],
   "quest_text_pl": [
     "Zbierz 5 marchewek.",
     "Sprzedaj plony za 40 monet.",
-    "Odblokuj większą grządkę."
-  ]
+    "Podlej rośliny 3 razy.",
+    "Zbierz 10 marchewek i wygraj poziom."
+  ],
+  "quests": [
+    {
+      "quest_id": "f_q1",
+      "title_pl": "Pierwsze nasiona",
+      "description_pl": "Zasadź 3 nasiona na grządkach.",
+      "objective_type": "build",
+      "target_count": 3,
+      "reward_score": 20,
+      "reward_unlocks": ["flower_patch_1"]
+    },
+    {
+      "quest_id": "f_q2",
+      "title_pl": "Zbiory",
+      "description_pl": "Zbierz 5 marchewek.",
+      "objective_type": "collect",
+      "target_count": 5,
+      "reward_score": 30,
+      "reward_unlocks": ["barn_upgrade"]
+    },
+    {
+      "quest_id": "f_q3",
+      "title_pl": "Farmer handlowiec",
+      "description_pl": "Sprzedaj plony za 40 monet.",
+      "objective_type": "score",
+      "target_count": 40,
+      "reward_score": 50,
+      "reward_unlocks": ["big_field"]
+    },
+    {
+      "quest_id": "f_q4",
+      "title_pl": "Mistrz upraw",
+      "description_pl": "Zbierz 10 marchewek i wygraj poziom.",
+      "objective_type": "collect",
+      "target_count": 10,
+      "reward_score": 100,
+      "reward_unlocks": ["farm_trophy"]
+    }
+  ],
+  "difficulty": "easy",
+  "estimated_playtime_min": 15,
+  "tags_pl": ["rolnictwo", "zbieranie", "symulacja"],
+  "suggested_age": "6-8"
 }

@@ -6,7 +6,6 @@ var _label: Label
 var _timer: Timer
 
 func _init() -> void:
-	# Build UI hierarchy dynamically to avoid .tscn dep without editor
 	_panel = PanelContainer.new()
 	_panel.anchor_left = 0.5
 	_panel.anchor_top = 0.85
@@ -14,20 +13,21 @@ func _init() -> void:
 	_panel.anchor_bottom = 0.95
 	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	# Centered width approx 600px
-	_panel.custom_minimum_size = Vector2(600, 80)
+	_panel.custom_minimum_size = Vector2(640, 80)
 	
-	# Style
 	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0, 0, 0, 0.7)
-	style.corner_radius_top_left = 12
-	style.corner_radius_top_right = 12
-	style.corner_radius_bottom_right = 12
-	style.corner_radius_bottom_left = 12
-	style.content_margin_left = 20
-	style.content_margin_right = 20
-	style.content_margin_top = 10
-	style.content_margin_bottom = 10
+	style.bg_color = Color(0.08, 0.10, 0.14, 0.82)
+	style.corner_radius_top_left = 16
+	style.corner_radius_top_right = 16
+	style.corner_radius_bottom_right = 16
+	style.corner_radius_bottom_left = 16
+	style.content_margin_left = 24
+	style.content_margin_right = 24
+	style.content_margin_top = 14
+	style.content_margin_bottom = 14
+	style.shadow_color = Color(0, 0, 0, 0.2)
+	style.shadow_size = 6
+	style.shadow_offset = Vector2(0, 3)
 	_panel.add_theme_stylebox_override("panel", style)
 
 	_label = Label.new()
@@ -58,13 +58,16 @@ func show_message(text: String, duration: float = 3.0) -> void:
 	_label.text = text
 	visible = true
 	
-	# Reset any active fade out
 	var tween := create_tween()
-	tween.tween_property(_panel, "modulate:a", 1.0, 0.2).set_trans(Tween.TRANS_CUBIC)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(_panel, "modulate:a", 1.0, 0.25)
 	
 	_timer.start(max(duration, 0.1))
 
 func _on_timeout() -> void:
 	var tween := create_tween()
-	tween.tween_property(_panel, "modulate:a", 0.0, 0.5).set_trans(Tween.TRANS_CUBIC)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.set_ease(Tween.EASE_IN)
+	tween.tween_property(_panel, "modulate:a", 0.0, 0.4)
 	tween.finished.connect(func(): visible = false)

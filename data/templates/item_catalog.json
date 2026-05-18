@@ -1,0 +1,44 @@
+{
+  "items": {
+    "coin": {
+      "name_pl": "Moneta",
+      "icon_hint": "gold_circle",
+      "score_value": 10
+    },
+    "gem": {
+      "name_pl": "Klejnot",
+      "icon_hint": "blue_diamond",
+      "score_value": 50
+    },
+    "star": {
+      "name_pl": "Gwiazdka",
+      "icon_hint": "yellow_star",
+      "score_value": 25
+    },
+    "carrot": {
+      "name_pl": "Marchewka",
+      "icon_hint": "orange_carrot",
+      "score_value": 8
+    },
+    "pearl": {
+      "name_pl": "Perła",
+      "icon_hint": "white_pearl",
+      "score_value": 30
+    },
+    "wood": {
+      "name_pl": "Drewno",
+      "icon_hint": "brown_log",
+      "score_value": 5
+    },
+    "apple": {
+      "name_pl": "Jabłko",
+      "icon_hint": "red_apple",
+      "score_value": 12
+    },
+    "adventure_token": {
+      "name_pl": "Moneta Przygody",
+      "icon_hint": "gold_compass",
+      "score_value": 12
+    }
+  }
+}

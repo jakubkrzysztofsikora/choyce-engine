@@ -38,5 +38,6 @@ run_and_check() {
 run_and_check "Accessibility integration" "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_accessibility_integration.gd
 run_and_check "Onboarding integration" "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_onboarding_integration.gd
 run_and_check "Parent controls integration" "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_parent_zone_controls_integration.gd
+run_and_check "Dashboard read-model integration" "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_dashboard_read_models_integration.gd
 run_and_check "Voice assistant integration" "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_voice_assistant_integration.gd
 run_and_check "Provenance integration" "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_provenance_integration.gd

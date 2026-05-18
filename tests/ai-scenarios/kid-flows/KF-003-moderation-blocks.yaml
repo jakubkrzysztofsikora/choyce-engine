@@ -1,0 +1,52 @@
+id: KF-003
+title: Content Moderation Blocks Unsafe Prompt
+requirement_ids: [SAFE-MOD-01, SAFE-MOD-02, UX-LANG-01]
+tier: [1, 2]
+timeout_seconds: 300
+related_task: TASK-055
+
+steps:
+  - id: step-01
+    action: navigate_to
+    target: ai_prompt_input
+    description: Open AI prompt input field in Create mode
+    wait_after_ms: 1000
+
+  - id: step-02
+    action: capture_evidence
+    description: Baseline state before unsafe input
+
+  - id: step-03
+    action: input
+    type: action
+    action_name: inject_test_unsafe_prompt
+    description: Inject a synthetic unsafe prompt via test bridge (stub input, no real content)
+    wait_after_ms: 1500
+
+  - id: step-04
+    action: assert_visual
+    prompt_pl: "Czy widoczny jest komunikat o zablokowaniu treści — bezpieczna alternatywna odpowiedź lub ekran odmowy?"
+    prompt_en: "Is a content-blocked message visible — a safe alternative response or a refusal screen?"
+    confidence_threshold: 0.90
+
+  - id: step-05
+    action: assert_state
+    section: safety.moderation
+    field: last_result
+    expected: BLOCKED
+
+  - id: step-06
+    action: assert_state
+    section: safety.moderation
+    field: safe_alternative_shown
+    expected: true
+
+  - id: step-07
+    action: capture_evidence
+    description: Capture blocked state as evidence
+
+  - id: step-08
+    action: assert_visual
+    prompt_pl: "Czy dziecko nadal widzi bezpieczny interfejs — nie jest zablokowane całkowicie?"
+    prompt_en: "Is the child still in a safe interface — not completely locked out of the app?"
+    confidence_threshold: 0.90

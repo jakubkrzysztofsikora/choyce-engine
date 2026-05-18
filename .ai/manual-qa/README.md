@@ -14,3 +14,8 @@ Each run should include:
 3. Step-by-step scenarios with expected vs actual
 4. Evidence links (screenshots/logs/videos)
 5. Severity-triaged findings and release recommendation
+
+Validation command:
+
+- `./scripts/ci/validate-manual-qa-artifacts.sh`
+- Output artifact: `.ai/reports/manual-qa/latest-validation.json`

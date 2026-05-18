@@ -1,6 +1,7 @@
 class_name LibraryShell
 extends Control
 
+const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const SHELL_CREATE := "create"
 const SHELL_PLAY := "play"
 
@@ -14,14 +15,16 @@ var _provenance_badge: ProvenanceBadge
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
-@onready var _project_id_input: LineEdit = $Layout/PublishPanel/ProjectIdInput
-@onready var _world_id_input: LineEdit = $Layout/PublishPanel/WorldIdInput
-@onready var _request_id_input: LineEdit = $Layout/PublishPanel/RequestIdInput
-@onready var _publish_button: Button = $Layout/PublishPanel/Actions/PublishButton
-@onready var _approve_button: Button = $Layout/PublishPanel/Actions/ApproveButton
-@onready var _reject_button: Button = $Layout/PublishPanel/Actions/RejectButton
-@onready var _unpublish_button: Button = $Layout/PublishPanel/Actions/UnpublishButton
-@onready var _publish_status: Label = $Layout/PublishPanel/Status
+@onready var _project_id_input: LineEdit = $Layout/MainContent/PublishCard/PublishForm/ProjectIdInput
+@onready var _world_id_input: LineEdit = $Layout/MainContent/PublishCard/PublishForm/WorldIdInput
+@onready var _request_id_input: LineEdit = $Layout/MainContent/PublishCard/PublishForm/RequestIdInput
+@onready var _publish_button: Button = $Layout/MainContent/PublishCard/PublishForm/Actions/PublishButton
+@onready var _approve_button: Button = $Layout/MainContent/PublishCard/PublishForm/Actions/ApproveButton
+@onready var _reject_button: Button = $Layout/MainContent/PublishCard/PublishForm/Actions/RejectButton
+@onready var _unpublish_button: Button = $Layout/MainContent/PublishCard/PublishForm/Actions/UnpublishButton
+@onready var _publish_status: Label = $Layout/MainContent/PublishCard/PublishForm/Status
+@onready var _status_dot: PanelContainer = $Layout/MainContent/PublishCard/PublishForm/StatusRow/StatusDot
+@onready var _status_text: Label = $Layout/MainContent/PublishCard/PublishForm/StatusRow/StatusText
 @onready var _undo_button: Button = $Layout/Actions/UndoButton
 @onready var _safe_restore_button: Button = $Layout/Actions/SafeRestoreButton
 @onready var _go_create_button: Button = $Layout/Actions/GoCreateButton
@@ -32,6 +35,8 @@ func _ready() -> void:
 	_setup_provenance_badge()
 	_wire_actions()
 	_refresh_labels()
+	_apply_theme()
+	_update_status_dot("ready")
 
 
 func setup(
@@ -93,42 +98,43 @@ func _refresh_labels() -> void:
 	_reject_button.text = _t("ui.library.reject")
 	_unpublish_button.text = _t("ui.library.unpublish")
 	_publish_status.text = _t("ui.library.status.ready")
-	_undo_button.text = _t("ui.common.undo")
-	_safe_restore_button.text = _t("ui.common.safe_restore")
-	_go_create_button.text = _t("ui.library.go_create")
-	_go_play_button.text = _t("ui.library.go_play")
+	_status_text.text = _t("ui.library.status.ready")
+	_undo_button.text = "%s %s" % [IconFont.get_icon("undo"), _t("ui.common.undo")]
+	_safe_restore_button.text = "%s %s" % [IconFont.get_icon("restore"), _t("ui.common.safe_restore")]
+	_go_create_button.text = "%s %s" % [IconFont.get_icon("build"), _t("ui.library.go_create")]
+	_go_play_button.text = "%s %s" % [IconFont.get_icon("play"), _t("ui.library.go_play")]
 	_apply_role_state()
 
 
 func _on_publish_pressed() -> void:
 	if _publish_port == null or _profile == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
 	var project_id := _project_id_input.text.strip_edges()
 	var world_id := _world_id_input.text.strip_edges()
 	var request := _publish_port.execute(project_id, world_id, _profile)
 	if request == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
 	_request_id_input.text = request.request_id
-	_publish_status.text = _t("ui.library.status.submitted")
+	_set_status("submitted")
 
 
 func _on_approve_pressed() -> void:
 	if _review_publish_port == null or _profile == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
 	var request_id := _request_id_input.text.strip_edges()
 	var request := _review_publish_port.execute(request_id, true, _profile, "")
 	if request == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
-	_publish_status.text = _t("ui.library.status.approved")
+	_set_status("approved")
 
 
 func _on_reject_pressed() -> void:
 	if _review_publish_port == null or _profile == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
 	var request_id := _request_id_input.text.strip_edges()
 	var request := _review_publish_port.execute(
@@ -138,21 +144,50 @@ func _on_reject_pressed() -> void:
 		_t("ui.library.reject_reason")
 	)
 	if request == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
-	_publish_status.text = _t("ui.library.status.rejected")
+	_set_status("rejected")
 
 
 func _on_unpublish_pressed() -> void:
 	if _unpublish_port == null or _profile == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
 	var request_id := _request_id_input.text.strip_edges()
 	var request := _unpublish_port.execute(request_id, _profile, _t("ui.library.unpublish_reason"))
 	if request == null:
-		_publish_status.text = _t("ui.library.status.failed")
+		_set_status("failed")
 		return
-	_publish_status.text = _t("ui.library.status.unpublished")
+	_set_status("unpublished")
+
+
+func _set_status(status_key: String) -> void:
+	var text := _t("ui.library.status." + status_key)
+	_publish_status.text = text
+	_status_text.text = text
+	_update_status_dot(status_key)
+
+
+func _update_status_dot(status_key: String) -> void:
+	if _status_dot == null:
+		return
+	var color := Color.GRAY
+	match status_key:
+		"approved", "published":
+			color = Color8(120, 210, 140)
+		"submitted", "pending":
+			color = Color8(255, 200, 80)
+		"failed", "rejected", "unpublished":
+			color = Color8(255, 120, 120)
+		_:
+			color = Color8(180, 190, 200)
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.corner_radius_top_left = 8
+	style.corner_radius_top_right = 8
+	style.corner_radius_bottom_left = 8
+	style.corner_radius_bottom_right = 8
+	_status_dot.add_theme_stylebox_override("panel", style)
 
 
 func _apply_role_state() -> void:
@@ -160,6 +195,12 @@ func _apply_role_state() -> void:
 	_approve_button.disabled = not is_parent
 	_reject_button.disabled = not is_parent
 	_unpublish_button.disabled = not is_parent
+
+
+func _apply_theme() -> void:
+	var theme := load("res://data/themes/choyce_theme.tres") as Theme
+	if theme != null:
+		self.theme = theme
 
 
 func _t(key: String) -> String:

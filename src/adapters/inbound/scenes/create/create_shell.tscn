@@ -22,14 +22,15 @@ offset_right = -16.0
 offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 14
 
 [node name="Header" type="VBoxContainer" parent="Layout"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Layout/Header"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 26
 text = "Tryb tworzenia"
 
 [node name="Info" type="Label" parent="Layout/Header"]
@@ -37,54 +38,126 @@ layout_mode = 2
 text = "Wybierz szablon, zbuduj świat i uruchom test."
 autowrap_mode = 3
 
-[node name="Tools" type="HBoxContainer" parent="Layout"]
+[node name="TemplateScroll" type="ScrollContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/h_separation = 10
+
+[node name="TemplateList" type="HBoxContainer" parent="Layout/TemplateScroll"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="WorkspaceCard" type="PanelContainer" parent="Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="WorkspaceLayout" type="HBoxContainer" parent="Layout/WorkspaceCard"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
+[node name="Workspace" type="VBoxContainer" parent="Layout/WorkspaceCard/WorkspaceLayout"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="StatusTitle" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Status tworzenia"
+
+[node name="StatusMessage" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
+layout_mode = 2
+text = "Kliknij „Umieść”, aby dodać pierwszy obiekt."
+autowrap_mode = 3
+
+[node name="WorldSummary" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
+layout_mode = 2
+text = "Świat: brak | Obiekty: 0"
+autowrap_mode = 3
+
+[node name="SelectionLabel" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
+layout_mode = 2
+text = "Zaznaczenie: brak"
+autowrap_mode = 3
+
+[node name="NodeListTitle" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Obiekty w świecie"
+
+[node name="NodeList" type="ItemList" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+size_flags_vertical = 3
+auto_height = true
+
+[node name="PreviewPanel" type="PanelContainer" parent="Layout/WorkspaceCard/WorkspaceLayout"]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+
+[node name="PreviewGrid" type="GridContainer" parent="Layout/WorkspaceCard/WorkspaceLayout/PreviewPanel"]
+layout_mode = 2
+columns = 4
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+
+[node name="Tools" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
 [node name="PlaceButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(120, 44)
+custom_minimum_size = Vector2(130, 52)
 layout_mode = 2
 toggle_mode = true
-text = "🟦 Umieść"
+text = "➕ Umieść"
 
 [node name="PaintButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(120, 44)
+custom_minimum_size = Vector2(130, 52)
 layout_mode = 2
 toggle_mode = true
-text = "🟩 Pomaluj"
+text = "🎨 Pomaluj"
 
 [node name="MoveButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(120, 44)
+custom_minimum_size = Vector2(130, 52)
 layout_mode = 2
 toggle_mode = true
-text = "🔷 Przesuń"
+text = "✋ Przesuń"
 
 [node name="DuplicateButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(132, 44)
+custom_minimum_size = Vector2(140, 52)
 layout_mode = 2
 toggle_mode = true
-text = "🟪 Duplikuj"
+text = "📋 Duplikuj"
 
 [node name="Actions" type="HBoxContainer" parent="Layout"]
 layout_mode = 2
 theme_override_constants/separation = 12
+alignment = 1
 
 [node name="UndoButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(88, 44)
+custom_minimum_size = Vector2(100, 48)
 layout_mode = 2
-text = "Cofnij"
+text = "↩ Cofnij"
 
 [node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(180, 44)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Przywróć bezpieczny zapis"
+text = "🔧 Przywróć bezpieczny zapis"
 
 [node name="GoPlayButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(140, 44)
+custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
-text = "Przejdź do gry"
+text = "▶ Przejdź do gry"
 
 [node name="GoLibraryButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(176, 44)
+custom_minimum_size = Vector2(180, 48)
 layout_mode = 2
-text = "Przejdź do biblioteki"
+text = "📚 Przejdź do biblioteki"
+
+[node name="ToastBanner" type="PanelContainer" parent="Layout"]
+visible = false
+layout_mode = 2
+
+[node name="ToastLabel" type="Label" parent="Layout/ToastBanner"]
+layout_mode = 2
+horizontal_alignment = 1

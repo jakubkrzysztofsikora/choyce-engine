@@ -10,6 +10,6 @@ var profile_id: String
 
 
 func _init(p_world_id: String, p_profile_id: String, p_timestamp: String = "") -> void:
-	super._init(p_timestamp)
+	super._init("WorldRemixed", p_profile_id, p_timestamp)
 	world_id = p_world_id
 	profile_id = p_profile_id

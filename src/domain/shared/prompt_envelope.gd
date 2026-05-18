@@ -11,6 +11,7 @@ var context_tags: Array[String]
 var max_tokens: int
 var permitted_tools: Array[String]
 var session_id: String
+var system_prompt: String
 
 
 func _init(
@@ -25,6 +26,7 @@ func _init(
 	max_tokens = 512
 	permitted_tools = []
 	session_id = ""
+	system_prompt = ""
 
 
 func is_polish() -> bool:

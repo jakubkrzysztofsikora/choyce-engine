@@ -9,6 +9,16 @@ const DELETE_SENTINEL := "__deleted__"
 var _streams: Dictionary = {}
 
 
+func export_state() -> Dictionary:
+	return _streams.duplicate(true)
+
+
+func import_state(state: Dictionary) -> void:
+	if state == null:
+		return
+	_streams = state.duplicate(true)
+
+
 func record_world_edit(event: WorldEditedEvent) -> bool:
 	if event == null or event.world_id.strip_edges().is_empty():
 		return false

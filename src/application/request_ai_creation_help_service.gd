@@ -15,6 +15,20 @@ var _failsafe: AIFailsafeController
 var _language_policy: PolishFirstLanguagePolicyService
 var _prompt_templates: RefCounted
 
+const INJECTION_PATTERNS: Array[String] = [
+	"ignore previous instructions",
+	"ignore all prior",
+	"system prompt:",
+	"you are now",
+	"disregard",
+	"new instructions:",
+]
+
+# Maps profile_id -> Array[int] of timestamps (msec) for rate limiting.
+var _recent_requests: Dictionary = {}
+var _rate_limiter: AIRateLimiter
+var _injection_filter: PromptInjectionFilter
+
 
 func setup(
 	llm: LLMPort,
@@ -27,7 +41,9 @@ func setup(
 	failsafe: AIFailsafeController = null,
 	parental_policy_store: ParentalPolicyStorePort = null,
 	language_policy: PolishFirstLanguagePolicyService = null,
-	prompt_templates: RefCounted = null
+	prompt_templates: RefCounted = null,
+	rate_limiter: AIRateLimiter = null,
+	injection_filter: PromptInjectionFilter = null
 ) -> RequestAICreationHelpService:
 	_llm = llm
 	_moderation = moderation
@@ -39,6 +55,9 @@ func setup(
 	_failsafe = failsafe
 	_language_policy = language_policy if language_policy != null else PolishFirstLanguagePolicyService.new().setup(localization, parental_policy_store)
 	_prompt_templates = prompt_templates
+	_rate_limiter = rate_limiter
+	_injection_filter = injection_filter
+	_recent_requests = {}
 	return self
 
 
@@ -58,6 +77,47 @@ func execute(session_id: String, prompt_text: String, actor: PlayerProfile, prev
 		envelope.permitted_tools = ["scene_edit", "paint", "duplicate", "visual_generate"]
 	else:
 		envelope.permitted_tools = ["scene_edit", "paint", "duplicate", "logic_edit", "script_edit", "asset_import", "visual_generate"]
+
+	# Rate limit check (external rate limiter)
+	if _rate_limiter != null and not _rate_limiter.can_request(actor.profile_id):
+		_emit_safety_block_event(
+			"%s_rate_limit_%s" % [session_id, _clock.now_msec()],
+			actor.profile_id,
+			prompt_text,
+			"Poczekaj chwilę przed kolejną prośbą.",
+			"rate_limit"
+		)
+		var rate_limited_action := AIAssistantAction.new(
+			"%s_ratelimit_%s" % [session_id, _clock.now_msec()],
+			prompt_text
+		)
+		rate_limited_action.status = AIAssistantAction.ActionStatus.REJECTED
+		rate_limited_action.explanation = "Poczekaj chwilę przed kolejną prośbą."
+		rate_limited_action.created_at = _clock.now_iso()
+		return rate_limited_action
+	elif _rate_limiter != null:
+		_rate_limiter.record_request(actor.profile_id)
+
+	# Prompt injection pre-filter (external filter)
+	if _injection_filter != null:
+		var injection_check := _injection_filter.check_prompt(prompt_text)
+		if not injection_check.get("clean", true):
+			var injection_reason: String = injection_check.get("reason", "prompt_injection")
+			_emit_safety_block_event(
+				"%s_injection_%s" % [session_id, _clock.now_msec()],
+				actor.profile_id,
+				prompt_text,
+				"Twoja prośba zawiera niedozwolone słowa. Spróbuj inaczej.",
+				"prompt_injection"
+			)
+			var injection_action := AIAssistantAction.new(
+				"%s_injection_%s" % [session_id, _clock.now_msec()],
+				prompt_text
+			)
+			injection_action.status = AIAssistantAction.ActionStatus.REJECTED
+			injection_action.explanation = "Twoja prośba zawiera niedozwolone słowa. Spróbuj inaczej."
+			injection_action.created_at = _clock.now_iso()
+			return injection_action
 
 	_emit_ai_request_event(session_id, actor, envelope, prompt_text)
 
@@ -90,6 +150,40 @@ func execute(session_id: String, prompt_text: String, actor: PlayerProfile, prev
 		blocked_action.explanation = input_check.safe_alternative if input_check.safe_alternative else input_check.reason
 		blocked_action.created_at = _clock.now_iso()
 		return blocked_action
+
+	# Step 2b: Prompt injection filter
+	if _check_prompt_injection(prompt_text):
+		var injection_id := "%s_injection_%s" % [session_id, _clock.now_msec()]
+		_emit_safety_block_event(
+			injection_id,
+			actor.profile_id,
+			prompt_text,
+			"Twoja wiadomość wygląda na próbę oszukania systemu. Opisz po prostu, co chcesz zbudować.",
+			"PROMPT_INJECTION",
+			{"reason": "prompt_injection", "details": "Blocked suspected prompt injection attempt."}
+		)
+		var injection_action := AIAssistantAction.new(injection_id, prompt_text)
+		injection_action.status = AIAssistantAction.ActionStatus.REJECTED
+		injection_action.explanation = "Twoja wiadomość wygląda na próbę oszukania systemu. Opisz po prostu, co chcesz zbudować."
+		injection_action.created_at = _clock.now_iso()
+		return injection_action
+
+	# Step 2c: Rate limiting
+	if _check_rate_limit(actor.profile_id):
+		var rate_id := "%s_rate_limit_%s" % [session_id, _clock.now_msec()]
+		_emit_safety_block_event(
+			rate_id,
+			actor.profile_id,
+			prompt_text,
+			"Zbyt wiele próśb. Odczekaj minutę.",
+			"RATE_LIMIT",
+			{"reason": "rate_limit", "details": "More than 30 requests in 60 seconds."}
+		)
+		var rate_action := AIAssistantAction.new(rate_id, prompt_text)
+		rate_action.status = AIAssistantAction.ActionStatus.REJECTED
+		rate_action.explanation = "Zbyt wiele próśb. Odczekaj minutę."
+		rate_action.created_at = _clock.now_iso()
+		return rate_action
 
 	# Step 3: Ask LLM to propose tool calls
 	var tool_invocations := _llm.complete_with_tools(envelope)
@@ -362,7 +456,8 @@ func _emit_safety_block_event(
 	actor_id: String,
 	trigger_context: String,
 	safe_alternative: String,
-	policy_rule: String = "MODERATION_BLOCK"
+	policy_rule: String = "MODERATION_BLOCK",
+	payload: Dictionary = {}
 ) -> void:
 	if _event_bus == null:
 		return
@@ -376,7 +471,38 @@ func _emit_safety_block_event(
 	event.policy_rule = policy_rule
 	event.trigger_context = trigger_context
 	event.safe_alternative_offered = not safe_alternative.is_empty()
+	if not payload.is_empty():
+		event.payload = payload
 	_event_bus.emit(event)
+
+
+func _check_prompt_injection(prompt_text: String) -> bool:
+	var normalized := prompt_text.to_lower()
+	for pattern in INJECTION_PATTERNS:
+		if normalized.contains(pattern):
+			return true
+	return false
+
+
+func _check_rate_limit(profile_id: String) -> bool:
+	var now_msec := _clock.now_msec()
+	_prune_old_requests(profile_id, now_msec)
+	var timestamps: Array = _recent_requests.get(profile_id, []) as Array
+	if timestamps.size() >= 30:
+		return true
+	timestamps.append(now_msec)
+	_recent_requests[profile_id] = timestamps
+	return false
+
+
+func _prune_old_requests(profile_id: String, now_msec: int) -> void:
+	var timestamps: Array = _recent_requests.get(profile_id, []) as Array
+	var window_msec := 60 * 1000
+	var pruned: Array = []
+	for ts in timestamps:
+		if (ts is int or ts is float) and (now_msec - int(ts)) < window_msec:
+			pruned.append(ts)
+	_recent_requests[profile_id] = pruned
 
 
 func _emit_ai_applied_event(action: AIAssistantAction, actor: PlayerProfile) -> void:

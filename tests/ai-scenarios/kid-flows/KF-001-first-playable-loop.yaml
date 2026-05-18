@@ -1,0 +1,70 @@
+id: KF-001
+title: First Playable Loop — Time to Fun
+requirement_ids: [UX-ONBOARD-01, FUNC-PLAY-01, UX-LANG-01]
+tier: [1, 2]
+timeout_seconds: 900
+related_task: TASK-059
+
+steps:
+  - id: step-01
+    action: capture_evidence
+    description: Baseline screenshot at app launch
+
+  - id: step-02
+    action: assert_visual
+    prompt_pl: "Czy ekran startowy jest widoczny z polskim interfejsem i przyciskiem Utwórz lub Zagraj?"
+    prompt_en: "Is the main start screen visible with Polish-language UI and a Create or Play button?"
+    confidence_threshold: 0.90
+
+  - id: step-03
+    action: navigate_to
+    target: create_shell
+    description: Child opens Create mode
+    wait_after_ms: 1500
+
+  - id: step-04
+    action: assert_visual
+    prompt_pl: "Czy tryb Tworzenia jest widoczny z polskim tytułem i płótnem budowania?"
+    prompt_en: "Is the Create shell visible with a Polish-language title and a build canvas area?"
+    confidence_threshold: 0.90
+
+  - id: step-05
+    action: assert_state
+    section: session
+    field: current_shell
+    expected: create
+
+  - id: step-06
+    action: input
+    type: mouse_button
+    position: [0.5, 0.6]
+    description: Tap on a starter template tile
+    wait_after_ms: 2000
+
+  - id: step-07
+    action: assert_visual
+    prompt_pl: "Czy widoczne jest płótno budowania z narzędziami i szablonem startowym?"
+    prompt_en: "Is the build canvas visible with creation tools and a starter template loaded?"
+    confidence_threshold: 0.85
+
+  - id: step-08
+    action: navigate_to
+    target: play_shell
+    description: Child switches to Play mode
+    wait_after_ms: 2000
+
+  - id: step-09
+    action: assert_visual
+    prompt_pl: "Czy tryb Grania jest aktywny — widoczna jest scena gry lub przycisk startu?"
+    prompt_en: "Is the Play mode active — is a game scene or a start button visible?"
+    confidence_threshold: 0.85
+
+  - id: step-10
+    action: assert_state
+    section: session
+    field: current_shell
+    expected: play
+
+  - id: step-11
+    action: capture_evidence
+    description: Final state after first playable loop

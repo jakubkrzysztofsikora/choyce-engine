@@ -7,6 +7,7 @@ extends ApproveAIPatchPort
 var _clock: ClockPort
 var _action_log: EventSourcedActionLog
 var _event_bus: DomainEventBus
+var _pending_actions: Dictionary = {}
 
 
 func setup(
@@ -20,6 +21,11 @@ func setup(
 	return self
 
 
+func register_pending_action(action: AIAssistantAction) -> void:
+	if action != null and not action.action_id.is_empty():
+		_pending_actions[action.action_id] = action
+
+
 func execute(action_id: String, approved: bool, approver: PlayerProfile) -> AIAssistantAction:
 	# In a full implementation, this would load the action from a repository.
 	# For now, we validate the approval rules and return a status-updated action.
@@ -29,9 +35,13 @@ func execute(action_id: String, approved: bool, approver: PlayerProfile) -> AIAs
 		rejected.mark_rejected("Rejected by %s" % approver.profile_id)
 		return rejected
 
-	# Only parents can approve high-impact actions
-	var action := AIAssistantAction.new(action_id, "")
+	# Look up pending action from cache; fall back to a fresh instance with warning.
+	var action: AIAssistantAction = _pending_actions.get(action_id, null)
+	if action == null:
+		push_warning("ApproveAIPatchService: no pending action found for '%s'; creating fresh instance" % action_id)
+		action = AIAssistantAction.new(action_id, "")
 
+	# Only parents can approve high-impact actions
 	if action.needs_approval() and approver.is_kid():
 		var denied := AIAssistantAction.new(action_id, "")
 		denied.mark_rejected("Kid cannot approve high-impact actions")

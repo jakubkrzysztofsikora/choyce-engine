@@ -26,22 +26,21 @@ func save_session_progress(session: Session) -> bool:
 	if _progress_store == null or session == null:
 		return false
 
-	var saved = _progress_store.save_progress(
-		session.player_ids[0] if session.player_ids.size() > 0 else "",
-		session.world_id,
-		session.progress
-	)
+	var all_saved := true
+	for player_id in session.player_ids:
+		var saved = _progress_store.save_progress(player_id, session.world_id, session.progress)
+		if not saved:
+			all_saved = false
+		if saved and _event_bus != null:
+			var event = SessionProgressUpdatedEvent.new(
+				session.session_id,
+				session.world_id,
+				player_id,
+				session.progress
+			)
+			_event_bus.emit(event)
 
-	if saved and _event_bus != null:
-		var event = SessionProgressUpdatedEvent.new(
-			session.session_id,
-			session.world_id,
-			session.player_ids[0] if session.player_ids.size() > 0 else "",
-			session.progress
-		)
-		_event_bus.emit(event)
-
-	return saved
+	return all_saved
 
 
 ## Load prior progression for UI display and session initialization.

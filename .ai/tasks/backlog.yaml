@@ -377,7 +377,7 @@ tasks:
       - Hinting follows scaffold levels and avoids revealing full solutions by default
       - Difficulty adapts gently using age profile and session context
     cross_review_by: copilot
-    status: in_review
+    status: done
 
   - id: TASK-028
     title: Implement parent advanced scripting editor with linting explain and diff preview
@@ -449,7 +449,7 @@ tasks:
       - Kid and parent AI interactions default to Polish text and voice output
       - Parent override can switch language while preserving kid-mode safety defaults
     cross_review_by: copilot
-    status: in_review
+    status: done
 
   - id: TASK-033
     title: Implement accessibility baseline including captions dyslexia font and motor preset
@@ -490,7 +490,7 @@ tasks:
       - Autosave runs at 30-second intervals without blocking active interaction
       - Cloud sync remains optional and requires explicit parent consent
     cross_review_by: copilot
-    status: in_review
+    status: done
 
   - id: TASK-036
     title: Implement security hardening for RBAC signed manifests and encrypted parent vault
@@ -519,7 +519,7 @@ tasks:
       - Read models power kid project status, parent audit timeline, and AI performance views
       - Analytics excludes ad-tech identifiers and preserves data minimization requirements
     cross_review_by: copilot
-    status: in_review
+    status: done
 
   - id: TASK-038
     title: Implement CI quality gates for domain tests contract tests safety and prompt regressions
@@ -533,7 +533,7 @@ tasks:
       - CI enforces high domain test isolation from engine runtime and network dependencies
       - Safety red-team and AI regression suites gate model and policy changes
     cross_review_by: copilot
-    status: in_review
+    status: done
 
   - id: TASK-039
     title: Implement performance benchmark harness and optimization gates
@@ -547,7 +547,7 @@ tasks:
       - Golden scenes benchmark cold start, interaction latency, and FPS targets on defined hardware tiers
       - Performance regressions fail quality checks with reproducible metrics
     cross_review_by: copilot
-    status: todo
+    status: done
 
   - id: TASK-040
     title: Implement deployment profiles and feature flags for local family cloud and classroom modes
@@ -561,7 +561,7 @@ tasks:
       - Deployment presets exist for local-only, family cloud, and classroom policy modes
       - Feature flags control experimental AI capabilities and rollout safety
     cross_review_by: copilot
-    status: in_progress
+    status: done
 
   - id: TASK-041
     title: Implement AI visual asset generation pipeline with child-safe style presets and moderation gates
@@ -625,7 +625,7 @@ tasks:
       - Regression fixtures are tracked in-repo and referenced by quality gates
       - Parent-approved language override is enforced without breaking Polish-default kid policy
     cross_review_by: copilot
-    status: in_review
+    status: done
 
   - id: TASK-045
     title: Implement optional private online family sessions with invite and role policies
@@ -641,7 +641,7 @@ tasks:
       - Kid and parent permissions are enforced for join, host, and share actions
       - Local-only deployment mode can disable online features through policy flags
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: TASK-046
     title: Implement curated template marketplace and family-shared creation catalog
@@ -657,7 +657,7 @@ tasks:
       - Listing workflow enforces moderation, parent approval state, and private-by-default visibility
       - Catalog read models support kid browsing and parent filtering needs
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: TASK-047
     title: Implement AI-generated content provenance badges and project metadata tagging
@@ -673,7 +673,7 @@ tasks:
       - Project metadata stores generation provenance and links to audit timeline entries
       - Transparency UX remains text-light and age-appropriate in kid mode
     cross_review_by: copilot
-    status: in_review
+    status: done
 
   - id: TASK-048
     title: Implement COPPA/GDPR-K data lifecycle controls for export delete and retention
@@ -689,7 +689,7 @@ tasks:
       - Retention policies enforce minimization and consent revocation behavior across local and cloud paths
       - Data lifecycle operations are test-covered and documented for support workflows
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: TASK-049
     title: Implement release threat-model updates and abuse-case regression pack
@@ -705,7 +705,7 @@ tasks:
       - Abuse and jailbreak scenarios are mapped to automated regression checks
       - High-risk findings define explicit release-blocking criteria
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: TASK-050
     title: Implement end-to-end MVP acceptance suite for kid-parent-AI workflows
@@ -721,7 +721,7 @@ tasks:
       - Safety refusals and rollback flows are validated in both kid and parent paths
       - MVP acceptance checks are executable and reported in CI artifacts
     cross_review_by: copilot
-    status: todo
+    status: done
 
   - id: TASK-051
     title: Implement recurring usability study harness and KPI reporting pipeline
@@ -736,7 +736,7 @@ tasks:
       - Reports track time-to-first-fun, adult rescue rate, trust signals, and frustration events
       - KPI outputs are consumable by product and safety review workflows
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: TASK-052
     title: Implement release readiness runbooks and launch checklist for all deployment modes
@@ -752,7 +752,7 @@ tasks:
       - Launch runbooks validate local-only, family cloud, and classroom deployment profiles
       - Exit criteria define production readiness gates for safety, performance, and compliance
     cross_review_by: copilot
-    status: todo
+    status: done
 
   - id: TASK-053
     title: Implement automated regression matrix for complete kid-parent-AI user journeys
@@ -768,7 +768,7 @@ tasks:
       - Regression suite asserts rollback and fail-safe behavior for unsafe AI or policy-restricted actions
       - Reports are emitted as CI artifacts with deterministic pass/fail summaries per scenario group
     cross_review_by: copilot
-    status: todo
+    status: done
 
   - id: TASK-054
     title: Implement automated safety and compliance regression suite for policy evasion attempts
@@ -784,7 +784,7 @@ tasks:
       - Data lifecycle regressions verify export, deletion, retention, and consent revocation policy enforcement
       - Release-blocking severity thresholds are codified and surfaced in machine-readable CI output
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: TASK-055
     title: Execute manual kid-parent gameplay test charter across core MVP loops
@@ -848,7 +848,7 @@ tasks:
       - Restart/reload tests validate event-log replay and safe-restore consistency across sessions
       - Results are emitted in machine-readable form and wired into quality-gate execution
     cross_review_by: copilot
-    status: todo
+    status: done
 
   - id: TASK-059
     title: Execute manual pre-network kid-parent gameplay and trust charter
@@ -880,3 +880,98 @@ tasks:
       - Output includes release-blocking findings and explicit remediation ownership
     cross_review_by: codex
     status: todo
+
+  - id: TASK-061
+    title: Design AI test agent harness architecture for Godot 4 visual and behavioral validation
+    owner: claude
+    specialty: architecture
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+    acceptance_criteria:
+      - Architecture document defines the test bridge port contract covering state inspection, screenshot capture, and input injection endpoints
+      - Scenario execution protocol is specified for Claude vision API as the AI assertion engine
+      - Document maps scenario categories to existing requirement IDs and existing CI quality gates
+      - Hexagonal boundary is preserved - test bridge is an outbound adapter, no domain logic leaks
+    cross_review_by: codex
+    status: in_review
+
+  - id: TASK-062
+    title: Implement Godot debug bridge adapter exposing state screenshot and input injection for AI agents
+    owner: codex
+    specialty: implementation
+    inputs:
+      - docs/requirements/architecture-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-061]
+    acceptance_criteria:
+      - GDScript HTTP adapter exposes JSON state endpoint, PNG screenshot endpoint, and input injection endpoint on localhost debug port
+      - Adapter is gated by a debug feature flag and disabled in production deployment profiles
+      - gdUnit4 headless runner script is provided for scene-level state assertions without display
+      - Port contract TestBridgePort is declared so the adapter can be swapped for stub in unit tests
+    cross_review_by: claude
+    status: in_review
+
+  - id: TASK-063
+    title: Implement Claude vision scenario runner for screenshot-based UI and safety assertion
+    owner: codex
+    specialty: qa-automation
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-061, TASK-062]
+    acceptance_criteria:
+      - Python runner script sends Godot screenshots to Claude vision API with structured scenario context and receives pass/fail verdicts with reasoning
+      - Scenario DSL supports step definitions with screenshot capture, expected UI state description, and assertion prompts in Polish and English
+      - Runner produces machine-readable JSON evidence with screenshot path, verdict, and explanation per step
+      - Integration with existing run-quality-gates.sh via a dedicated run-ai-vision-tests.sh entry point
+    cross_review_by: claude
+    status: in_review
+
+  - id: TASK-064
+    title: Implement AI-driven kid-flow scenario scripts covering create play AI-assist and safety moderation
+    owner: copilot
+    specialty: manual-qa
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/ui-ux-requirements.md
+    dependencies: [TASK-063]
+    acceptance_criteria:
+      - Scenario scripts cover first-playable-loop, AI hint comprehension, voice-to-intent creation, playtest launch, and co-op join flows
+      - Safety scenarios verify moderation blocks for unsafe prompts and voice inputs with expected refusal UI behavior
+      - Polish-first localization is visually asserted in each scenario via vision model label checks
+      - Evidence output conforms to existing manual-qa folder structure with tier1 and tier2 variants
+    cross_review_by: codex
+    status: in_review
+
+  - id: TASK-065
+    title: Implement AI-driven parent-flow and safety-compliance scenario scripts for policy enforcement validation
+    owner: claude
+    specialty: ai-safety
+    inputs:
+      - docs/requirements/functionality-requirements.md
+      - docs/requirements/technology-requirements.md
+    dependencies: [TASK-063]
+    acceptance_criteria:
+      - Scenario scripts cover parent dashboard controls, AI policy limits, time-limit enforcement, and approval gate flows
+      - Abuse scenarios test role-boundary enforcement including kid attempts to reach parent zone and consent-bypass paths
+      - COPPA compliance drill scenarios validate data export, deletion confirmation, and consent revocation UI
+      - Each scenario links to a requirement ID and produces a release-risk verdict in the evidence JSON
+    cross_review_by: codex
+    status: in_review
+
+  - id: TASK-066
+    title: Integrate AI vision test pipeline into CI quality gates with structured evidence reporting
+    owner: codex
+    specialty: devops
+    inputs:
+      - docs/requirements/technology-requirements.md
+      - docs/requirements/architecture-requirements.md
+    dependencies: [TASK-063, TASK-064, TASK-065]
+    acceptance_criteria:
+      - AI vision test runner is wired into run-quality-gates.sh alongside existing unit, contract, and safety gate scripts
+      - CI artifact bundle includes screenshots, per-scenario JSON verdicts, and a rollup pass/fail summary
+      - Pipeline supports headless Godot with Xvfb for Linux CI runners and documents macOS native display path
+      - Flaky scenario detection is built in with configurable retry threshold before marking a scenario as a hard failure
+    cross_review_by: claude
+    status: in_review

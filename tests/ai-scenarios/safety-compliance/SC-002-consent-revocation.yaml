@@ -1,0 +1,54 @@
+id: SC-002
+title: Consent Revocation — Immediate Halt of Data Collection
+requirement_ids: [COMP-COPPA-02, SAFE-CONSENT-01, COMP-GDPR-01]
+tier: [1, 2]
+timeout_seconds: 300
+related_task: TASK-060
+
+steps:
+  - id: step-01
+    action: assert_state
+    section: consent
+    field: cloud_sync_active
+    expected: true
+
+  - id: step-02
+    action: navigate_to
+    target: parent_zone
+    description: Parent enters Parent Zone
+    wait_after_ms: 2000
+
+  - id: step-03
+    action: navigate_to
+    target: privacy_settings
+    description: Parent opens Privacy Settings
+    wait_after_ms: 1500
+
+  - id: step-04
+    action: input
+    type: action
+    action_name: revoke_cloud_sync_consent
+    description: Parent revokes cloud sync consent
+    wait_after_ms: 1500
+
+  - id: step-05
+    action: assert_state
+    section: consent
+    field: cloud_sync_active
+    expected: false
+
+  - id: step-06
+    action: assert_state
+    section: audit
+    field: last_event_type
+    expected: consent_revoked
+
+  - id: step-07
+    action: capture_evidence
+    description: Capture revocation state
+
+  - id: step-08
+    action: assert_state
+    section: telemetry
+    field: collection_active
+    expected: false

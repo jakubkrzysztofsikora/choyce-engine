@@ -38,7 +38,15 @@ func adjust_parameter(world_id: String, category: String, param_name: String, ne
 	if economy == null:
 		return false
 
-	return economy.set_parameter(category, param_name, new_value)
+	var ok := economy.set_parameter(category, param_name, new_value)
+	if ok:
+		_economy_store.save_economy(world_id, economy)
+		if _event_bus != null:
+			var adjustments = economy.get_modified_parameters()
+			if adjustments.size() > 0:
+				var event = EconomyAdjustedEvent.new(world_id, adjustments, "", "")
+				_event_bus.emit(event)
+	return ok
 
 
 ## Get auditable diff of all modifications since last save.

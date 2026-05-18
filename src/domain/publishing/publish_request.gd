@@ -30,6 +30,8 @@ var state: PublishState
 var visibility: Visibility
 var requester_id: String
 var reviewer_id: String
+var family_id: String
+var classroom_id: String
 var moderation_results: Array  # of ModerationResult
 var rejection_reason: String
 var created_at: String  # ISO 8601
@@ -46,6 +48,8 @@ func _init(p_project_id: String = "", p_world_id: String = "") -> void:
 	visibility = Visibility.PRIVATE
 	requester_id = ""
 	reviewer_id = ""
+	family_id = ""
+	classroom_id = ""
 	moderation_results = []
 	rejection_reason = ""
 	created_at = ""

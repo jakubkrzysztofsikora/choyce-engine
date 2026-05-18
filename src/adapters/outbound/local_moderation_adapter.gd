@@ -2,6 +2,11 @@
 ## Enforces text and image safety checks using Polish-first word lists
 ## with age-band differentiated severity. Defaults to BLOCK for unknown
 ## failures (fail-closed).
+##
+## Hardened with homoglyph defense: Cyrillic lookalikes and fullwidth
+## characters are mapped to ASCII before matching. Polish diacritics
+## are stripped so both composed and decomposed forms match the
+## ASCII-based word lists.
 class_name LocalModerationAdapter
 extends ModerationPort
 
@@ -9,6 +14,48 @@ var _categories: Dictionary = {}
 var _age_overrides: Dictionary = {}
 var _image_rules: Dictionary = {}
 var _rules_file: String = "res://data/moderation/rules_pl.json"
+
+## Maps visually similar Unicode characters to their ASCII equivalents.
+## Covers Cyrillic homoglyphs and fullwidth Latin letters.
+const HOMOGLYPH_MAP := {
+	# Cyrillic lookalikes
+	"а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x",
+	"і": "i", "ј": "j", "ԛ": "q", "ѕ": "s", "ս": "u", "ν": "v",
+	"ω": "w", "у": "y",
+	# Fullwidth A-Z
+	"Ａ": "A", "Ｂ": "B", "Ｃ": "C", "Ｄ": "D", "Ｅ": "E",
+	"Ｆ": "F", "Ｇ": "G", "Ｈ": "H", "Ｉ": "I", "Ｊ": "J",
+	"Ｋ": "K", "Ｌ": "L", "Ｍ": "M", "Ｎ": "N", "Ｏ": "O",
+	"Ｐ": "P", "Ｑ": "Q", "Ｒ": "R", "Ｓ": "S", "Ｔ": "T",
+	"Ｕ": "U", "Ｖ": "V", "Ｗ": "W", "Ｘ": "X", "Ｙ": "Y",
+	"Ｚ": "Z",
+	# Fullwidth a-z
+	"ａ": "a", "ｂ": "b", "ｃ": "c", "ｄ": "d", "ｅ": "e",
+	"ｆ": "f", "ｇ": "g", "ｈ": "h", "ｉ": "i", "ｊ": "j",
+	"ｋ": "k", "ｌ": "l", "ｍ": "m", "ｎ": "n", "ｏ": "o",
+	"ｐ": "p", "ｑ": "q", "ｒ": "r", "ｓ": "s", "ｔ": "t",
+	"ｕ": "u", "ｖ": "v", "ｗ": "w", "ｘ": "x", "ｙ": "y",
+	"ｚ": "z",
+}
+
+## Maps Polish composed characters to their base Latin forms so that
+## terms like "zabić" normalize to "zabic" and match the word lists.
+const POLISH_DIACRITIC_MAP := {
+	"ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n",
+	"ó": "o", "ś": "s", "ź": "z", "ż": "z",
+}
+
+## Maps common leetspeak digits to their letter lookalikes so that
+## terms like "br0n" normalize to "bron" and match the word lists.
+const DIGIT_MAP := {
+	"0": "o",
+	"1": "i",
+	"3": "e",
+	"4": "a",
+	"5": "s",
+	"7": "t",
+	"8": "b",
+}
 
 
 func setup(
@@ -111,10 +158,32 @@ func _word_match(words: Array, term: String) -> bool:
 	return false
 
 
+## Normalizes text by mapping homoglyphs and stripping Polish diacritics,
+## then lowercasing. This ensures Unicode evasion tactics (e.g. Cyrillic
+## lookalikes) are caught by the ASCII-based word lists.
+func _normalize_text(text: String) -> String:
+	var lowered := text.to_lower()
+	var result := ""
+	for i in range(lowered.length()):
+		var ch := lowered[i]
+		if HOMOGLYPH_MAP.has(ch):
+			result += HOMOGLYPH_MAP[ch]
+		elif POLISH_DIACRITIC_MAP.has(ch):
+			result += POLISH_DIACRITIC_MAP[ch]
+		elif DIGIT_MAP.has(ch):
+			result += DIGIT_MAP[ch]
+		else:
+			result += ch
+	return result
+
+
 func _tokenize(text: String) -> Array:
-	var cleaned := text
+	var cleaned := _normalize_text(text)
 	for ch in [".", ",", "!", "?", ";", ":", "(", ")", "[", "]", "{", "}", "\"", "'", "-"]:
 		cleaned = cleaned.replace(ch, " ")
+	# Remove any remaining digits (e.g. "2" does not map to a lookalike).
+	for digit in ["2", "6", "9"]:
+		cleaned = cleaned.replace(digit, "")
 	var parts := cleaned.split(" ", false)
 	var tokens: Array = []
 	for part in parts:

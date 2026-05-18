@@ -1,0 +1,71 @@
+id: PF-001
+title: Parent Dashboard — Time Limits and Social Permissions
+requirement_ids: [FUNC-PARENT-01, SAFE-RBAC-01, UX-PARENT-01, UX-LANG-01]
+tier: [1, 2]
+timeout_seconds: 600
+related_task: TASK-059
+
+steps:
+  - id: step-01
+    action: navigate_to
+    target: parent_zone
+    description: Parent authenticates and enters Parent Zone
+    wait_after_ms: 2000
+
+  - id: step-02
+    action: assert_visual
+    prompt_pl: "Czy strefa rodzica jest widoczna z kontrolkami czasu, uprawnień i ustawień AI?"
+    prompt_en: "Is the Parent Zone visible with controls for time limits, social permissions, and AI settings?"
+    confidence_threshold: 0.90
+
+  - id: step-03
+    action: assert_state
+    section: session
+    field: current_role
+    expected: parent
+
+  - id: step-04
+    action: capture_evidence
+    description: Capture Parent Zone baseline
+
+  - id: step-05
+    action: input
+    type: mouse_button
+    position: [0.3, 0.4]
+    description: Open playtime limit settings
+    wait_after_ms: 1500
+
+  - id: step-06
+    action: assert_visual
+    prompt_pl: "Czy ustawienia limitu czasu gry są widoczne z możliwością zmiany wartości?"
+    prompt_en: "Are the playtime limit settings visible with an editable value?"
+    confidence_threshold: 0.85
+
+  - id: step-07
+    action: assert_state
+    section: parental_policy
+    field: settings_panel_open
+    expected: playtime
+
+  - id: step-08
+    action: input
+    type: action
+    action_name: set_playtime_limit_30
+    description: Set 30-minute session limit via test bridge
+    wait_after_ms: 1000
+
+  - id: step-09
+    action: assert_state
+    section: parental_policy
+    field: playtime_limit_minutes
+    expected: 30
+
+  - id: step-10
+    action: assert_state
+    section: audit
+    field: last_event_type
+    expected: parental_policy_updated
+
+  - id: step-11
+    action: capture_evidence
+    description: Capture audit confirmation of policy change

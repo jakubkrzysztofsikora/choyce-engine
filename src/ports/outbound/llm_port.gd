@@ -25,3 +25,8 @@ func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 ## "ollama-local", "cloud", "fallback", or "" when unavailable.
 func get_last_provider() -> String:
 	return ""
+
+
+## Optional model name for provenance/audit. Returns empty string when unavailable.
+func get_last_selected_model() -> String:
+	return ""

@@ -24,6 +24,36 @@
       "type": "string",
       "description": "Theme category (business, adventure, etc.)"
     },
+    "default_palette_id": {
+      "type": "string",
+      "description": "Default color palette identifier"
+    },
+    "palette_options": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Available color palette identifiers"
+    },
+    "difficulty": {
+      "type": "string",
+      "description": "Difficulty level (easy, medium, hard)"
+    },
+    "estimated_playtime_min": {
+      "type": "integer",
+      "description": "Estimated playtime in minutes"
+    },
+    "tags_pl": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Polish tags for categorization"
+    },
+    "suggested_age": {
+      "type": "string",
+      "description": "Suggested age range"
+    },
     "default_world": {
       "type": "object",
       "properties": {
@@ -52,6 +82,10 @@
                 "minItems": 3,
                 "maxItems": 3,
                 "description": "X, Y, Z position"
+              },
+              "properties": {
+                "type": "object",
+                "description": "Extensible node properties (color, mesh_type, size, etc.)"
               }
             },
             "required": ["type", "display_name_pl", "position"]
@@ -87,6 +121,46 @@
         "type": "string"
       },
       "description": "Polish onboarding hints"
+    },
+    "quest_text_pl": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Polish quest text snippets"
+    },
+    "quests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "quest_id": {
+            "type": "string"
+          },
+          "title_pl": {
+            "type": "string"
+          },
+          "description_pl": {
+            "type": "string"
+          },
+          "objective_type": {
+            "type": "string"
+          },
+          "target_count": {
+            "type": "integer"
+          },
+          "reward_score": {
+            "type": "integer"
+          },
+          "reward_unlocks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["quest_id", "title_pl", "description_pl", "objective_type", "target_count"]
+      }
     }
   },
   "required": ["template_id", "name_pl", "default_world"]

@@ -16,17 +16,135 @@
       {
         "type": "TERRAIN",
         "display_name_pl": "Start",
-        "position": [0, 0, 0]
+        "position": [0, 0, 0],
+        "properties": {
+          "color": "#8AC926",
+          "mesh_type": "box",
+          "size": [4, 0.5, 4]
+        }
       },
       {
         "type": "OBJECT",
-        "display_name_pl": "Platforma Skoku",
-        "position": [3, 1, 0]
+        "display_name_pl": "Platforma Skoku 1",
+        "position": [4, 1, 0],
+        "properties": {
+          "color": "#FF595E",
+          "mesh_type": "box",
+          "size": [2, 0.5, 2]
+        }
       },
       {
         "type": "OBJECT",
-        "display_name_pl": "Checkpoint",
-        "position": [8, 1, 0]
+        "display_name_pl": "Platforma Skoku 2",
+        "position": [8, 2, 0],
+        "properties": {
+          "color": "#FFCA3A",
+          "mesh_type": "box",
+          "size": [2, 0.5, 2]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Platforma Skoku 3",
+        "position": [12, 2, 2],
+        "properties": {
+          "color": "#1982C4",
+          "mesh_type": "box",
+          "size": [2, 0.5, 2]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Ściana",
+        "position": [16, 0, 2],
+        "properties": {
+          "color": "#6A4C93",
+          "mesh_type": "box",
+          "size": [1, 3, 3]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Meta",
+        "position": [20, 0, 2],
+        "properties": {
+          "color": "#FFD700",
+          "mesh_type": "cylinder",
+          "size": [1.5, 3, 1.5]
+        }
+      },
+      {
+        "type": "SPAWN_POINT",
+        "display_name_pl": "Punkt Odrodzenia",
+        "position": [0, 1, 0],
+        "properties": {
+          "color": "#00FF00",
+          "mesh_type": "cylinder",
+          "size": [1, 0.2, 1]
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Checkpoint 1",
+        "position": [8, 2.5, 0],
+        "properties": {
+          "color": "#00D1FF",
+          "mesh_type": "box",
+          "size": [2.2, 0.1, 2.2],
+          "trigger_type": "checkpoint"
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Checkpoint 2",
+        "position": [16, 3.5, 2],
+        "properties": {
+          "color": "#00D1FF",
+          "mesh_type": "box",
+          "size": [2.2, 0.1, 2.2],
+          "trigger_type": "checkpoint"
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Zwycięstwa",
+        "position": [20, 0, 2],
+        "properties": {
+          "color": "#FFD700",
+          "mesh_type": "box",
+          "size": [2, 0.1, 2],
+          "trigger_type": "win_zone"
+        }
+      },
+      {
+        "type": "LIGHT",
+        "display_name_pl": "Neonowe Światło",
+        "position": [10, 5, 1],
+        "properties": {
+          "color": "#FF10F0",
+          "light_type": "point",
+          "intensity": 1.5
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Gwiazda",
+        "position": [6, 3, -1],
+        "properties": {
+          "color": "#FFCA3A",
+          "mesh_type": "sphere",
+          "size": [0.5, 0.5, 0.5]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Chmura",
+        "position": [14, 4, 0],
+        "properties": {
+          "color": "#FFFFFF",
+          "mesh_type": "sphere",
+          "size": [2, 1, 1.5]
+        }
       }
     ],
     "rules": [
@@ -36,20 +154,82 @@
         "compiled_logic": "on_touch_checkpoint:set_respawn_point()"
       },
       {
+        "type": "SCORING",
+        "display_name_pl": "Punkty za dotarcie do platformy",
+        "compiled_logic": "on_reach_platform:add_score(5)"
+      },
+      {
+        "type": "TIMER",
+        "display_name_pl": "Spawning monet na torze",
+        "compiled_logic": "every_20s:spawn_item('coin', 2)"
+      },
+      {
         "type": "WIN_CONDITION",
         "display_name_pl": "Meta po dotknięciu flagi",
-        "compiled_logic": "on_touch_goal:end_level()"
+        "compiled_logic": "on_reach_flag:win_level()"
+      },
+      {
+        "type": "ITEM_SPAWN",
+        "display_name_pl": "Spawning gwiazdek bonusowych",
+        "compiled_logic": "every_45s:spawn_item('star', 1)"
       }
     ]
   },
   "onboarding_hints_pl": [
-    "Ustaw platformy od łatwej do trudniejszej.",
-    "Dodaj checkpoint po każdym trudnym skoku.",
-    "Przetestuj tor i popraw odległości skoków."
+    "Witaj na Kolorowym Torze Przeszkód! Użyj strzałek, aby się poruszać.",
+    "Skacz na czerwoną platformę — to pierwszy skok.",
+    "Jeśli spadniesz, wrócisz do ostatniego checkpointa.",
+    "Zbieraj monety po drodze — otworzą Ci bonusowe przejścia.",
+    "Nie śpiesz się — lepiej poczekać na dobrą chwilę do skoku.",
+    "Dotknij niebieskiego checkpointa, aby zapisać postęp.",
+    "Dotknij złotej flagi na końcu, aby wygrać poziom!"
   ],
   "quest_text_pl": [
     "Ukończ tor bez upadku.",
-    "Dodaj 2 nowe przeszkody.",
-    "Ustaw własną metę."
-  ]
+    "Zbierz 5 monet na torze.",
+    "Dotknij obu checkpointów.",
+    "Dotknij złotej flagi na mecie."
+  ],
+  "quests": [
+    {
+      "quest_id": "o_q1",
+      "title_pl": "Pierwszy skok",
+      "description_pl": "Dotrzyj do pierwszego checkpointa.",
+      "objective_type": "reach",
+      "target_count": 1,
+      "reward_score": 20,
+      "reward_unlocks": ["checkpoint_1_bonus"]
+    },
+    {
+      "quest_id": "o_q2",
+      "title_pl": "Zbieracz monet",
+      "description_pl": "Zbierz 5 monet na torze.",
+      "objective_type": "collect",
+      "target_count": 5,
+      "reward_score": 30,
+      "reward_unlocks": ["coin_gate_open"]
+    },
+    {
+      "quest_id": "o_q3",
+      "title_pl": "Mistrz skakania",
+      "description_pl": "Dotknij obu checkpointów bez upadku.",
+      "objective_type": "reach",
+      "target_count": 2,
+      "reward_score": 50,
+      "reward_unlocks": ["bonus_cloud"]
+    },
+    {
+      "quest_id": "o_q4",
+      "title_pl": "Zwycięzca toru",
+      "description_pl": "Dotknij złotej flagi na mecie.",
+      "objective_type": "reach",
+      "target_count": 1,
+      "reward_score": 100,
+      "reward_unlocks": ["obby_trophy"]
+    }
+  ],
+  "difficulty": "easy",
+  "estimated_playtime_min": 10,
+  "tags_pl": ["skakanie", "zręczność", "przygoda"],
+  "suggested_age": "6-8"
 }

@@ -16,40 +16,209 @@
       {
         "type": "TERRAIN",
         "display_name_pl": "Plac Ratuszowy",
-        "position": [0, 0, 0]
+        "position": [0, 0, 0],
+        "properties": {
+          "color": "#BFC0C0",
+          "mesh_type": "box",
+          "size": [14, 0.5, 14]
+        }
       },
       {
         "type": "OBJECT",
         "display_name_pl": "Ratusz",
-        "position": [1, 0, -3]
+        "position": [0, 0, -5],
+        "properties": {
+          "color": "#4F5D75",
+          "mesh_type": "box",
+          "size": [4, 4, 4]
+        }
       },
       {
         "type": "OBJECT",
-        "display_name_pl": "Skrzyżowanie",
-        "position": [-4, 0, 2]
+        "display_name_pl": "Blok Mieszkalny",
+        "position": [-5, 0, 2],
+        "properties": {
+          "color": "#EF8354",
+          "mesh_type": "box",
+          "size": [3, 4, 3]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Szkoła",
+        "position": [5, 0, 2],
+        "properties": {
+          "color": "#2D3142",
+          "mesh_type": "box",
+          "size": [4, 3, 3]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Park",
+        "position": [0, 0, 5],
+        "properties": {
+          "color": "#2A9D8F",
+          "mesh_type": "box",
+          "size": [4, 0.2, 4]
+        }
+      },
+      {
+        "type": "SPAWN_POINT",
+        "display_name_pl": "Wejście do Miasta",
+        "position": [0, 0.5, 7],
+        "properties": {
+          "color": "#00FF00",
+          "mesh_type": "cylinder",
+          "size": [1, 0.2, 1]
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Parku",
+        "position": [0, 0, 5],
+        "properties": {
+          "color": "#8AB17D",
+          "mesh_type": "box",
+          "size": [4.5, 0.1, 4.5],
+          "trigger_type": "park_zone"
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Szkoły",
+        "position": [5, 0, 2],
+        "properties": {
+          "color": "#5BC0BE",
+          "mesh_type": "box",
+          "size": [4.5, 0.1, 3.5],
+          "trigger_type": "school_zone"
+        }
+      },
+      {
+        "type": "LIGHT",
+        "display_name_pl": "Latarnia",
+        "position": [-3, 3, -3],
+        "properties": {
+          "color": "#E0FBFC",
+          "light_type": "point",
+          "intensity": 0.8
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Drzewo Miejskie",
+        "position": [-2, 0, 5],
+        "properties": {
+          "color": "#264653",
+          "mesh_type": "sphere",
+          "size": [1.5, 2, 1.5]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Kosz na Śmieci",
+        "position": [2, 0, 5],
+        "properties": {
+          "color": "#6A4C93",
+          "mesh_type": "cylinder",
+          "size": [0.5, 0.8, 0.5]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Znak Stop",
+        "position": [0, 0, 7],
+        "properties": {
+          "color": "#FF595E",
+          "mesh_type": "box",
+          "size": [0.8, 1.5, 0.1]
+        }
       }
     ],
     "rules": [
       {
         "type": "TIMER",
-        "display_name_pl": "Bilans energii",
+        "display_name_pl": "Bilans energii co 45 sekund",
         "compiled_logic": "every_45s:update_energy_balance()"
       },
       {
         "type": "SCORING",
         "display_name_pl": "Punkty za zadowolenie mieszkańców",
         "compiled_logic": "on_happiness_tick:add_score(6)"
+      },
+      {
+        "type": "ITEM_SPAWN",
+        "display_name_pl": "Spawning monet w parku",
+        "compiled_logic": "every_40s:spawn_item('coin', 2)"
+      },
+      {
+        "type": "WIN_CONDITION",
+        "display_name_pl": "Wygrana po osiągnięciu 70% zadowolenia",
+        "compiled_logic": "on_happiness_70:win_level()"
+      },
+      {
+        "type": "EVENT_TRIGGER",
+        "display_name_pl": "Odblokowanie szkoły po zadowoleniu 50%",
+        "compiled_logic": "on_happiness_50:unlock_area('school_zone')"
       }
     ]
   },
   "onboarding_hints_pl": [
-    "Połącz budynki drogą.",
+    "Witaj w Nowoczesnym Mieście! Twoim celem jest zadowolenie mieszkańców.",
+    "Połącz budynki drogami — kliknij na plac i wybierz drogę.",
+    "Dodaj park obok domów — mieszkańcy uwielbiają zieleń.",
+    "Zbieraj monety w parku, aby budować więcej budynków.",
     "Dbaj o równowagę między domami a usługami.",
-    "Dodaj park, aby zwiększyć zadowolenie mieszkańców."
+    "Gdy zadowolenie osiągnie 50%, odblokujesz szkołę.",
+    "Osiągnij 70% zadowolenia, aby wygrać poziom!"
   ],
   "quest_text_pl": [
     "Połącz 3 budynki drogami.",
-    "Osiągnij 70% zadowolenia mieszkańców.",
-    "Zbuduj pierwszy park miejski."
-  ]
+    "Zbuduj pierwszy park miejski.",
+    "Osiągnij 50% zadowolenia mieszkańców.",
+    "Osiągnij 70% zadowolenia i wygraj poziom."
+  ],
+  "quests": [
+    {
+      "quest_id": "c_q1",
+      "title_pl": "Pierwsze drogi",
+      "description_pl": "Połącz 3 budynki drogami.",
+      "objective_type": "build",
+      "target_count": 3,
+      "reward_score": 30,
+      "reward_unlocks": ["road_bonus"]
+    },
+    {
+      "quest_id": "c_q2",
+      "title_pl": "Zielone miasto",
+      "description_pl": "Zbuduj park miejski.",
+      "objective_type": "build",
+      "target_count": 1,
+      "reward_score": 25,
+      "reward_unlocks": ["park_zone"]
+    },
+    {
+      "quest_id": "c_q3",
+      "title_pl": "Zadowoleni mieszkańcy",
+      "description_pl": "Osiągnij 50% zadowolenia mieszkańców.",
+      "objective_type": "score",
+      "target_count": 50,
+      "reward_score": 60,
+      "reward_unlocks": ["school_zone"]
+    },
+    {
+      "quest_id": "c_q4",
+      "title_pl": "Idealne miasto",
+      "description_pl": "Osiągnij 70% zadowolenia i wygraj poziom.",
+      "objective_type": "score",
+      "target_count": 70,
+      "reward_score": 150,
+      "reward_unlocks": ["city_trophy"]
+    }
+  ],
+  "difficulty": "easy",
+  "estimated_playtime_min": 15,
+  "tags_pl": ["budowanie", "planowanie", "zarządzanie"],
+  "suggested_age": "6-8"
 }

@@ -16,40 +16,224 @@
       {
         "type": "TERRAIN",
         "display_name_pl": "Plaża Startowa",
-        "position": [0, 0, 0]
+        "position": [0, 0, 0],
+        "properties": {
+          "color": "#F9C74F",
+          "mesh_type": "box",
+          "size": [8, 0.3, 8]
+        }
       },
       {
         "type": "OBJECT",
         "display_name_pl": "Most Linowy",
-        "position": [5, 1, 3]
+        "position": [5, 1, 3],
+        "properties": {
+          "color": "#8B4513",
+          "mesh_type": "box",
+          "size": [4, 0.2, 1]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Wieża Odkrywców",
+        "position": [9, 0, 6],
+        "properties": {
+          "color": "#577590",
+          "mesh_type": "cylinder",
+          "size": [2, 5, 2]
+        }
       },
       {
         "type": "OBJECT",
         "display_name_pl": "Skrzynia Skarbów",
-        "position": [9, 0, -2]
+        "position": [12, 0, -2],
+        "properties": {
+          "color": "#FFD700",
+          "mesh_type": "box",
+          "size": [2, 1.5, 1.5]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Kamienna Brama",
+        "position": [8, 0, 0],
+        "properties": {
+          "color": "#A0A0A0",
+          "mesh_type": "box",
+          "size": [3, 3.5, 0.5]
+        }
+      },
+      {
+        "type": "SPAWN_POINT",
+        "display_name_pl": "Obóz Bazowy",
+        "position": [0, 0.5, 0],
+        "properties": {
+          "color": "#00FF00",
+          "mesh_type": "cylinder",
+          "size": [1, 0.2, 1]
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Skarbu",
+        "position": [12, 0, -2],
+        "properties": {
+          "color": "#FFD700",
+          "mesh_type": "box",
+          "size": [2.5, 0.1, 2],
+          "trigger_type": "treasure_zone"
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Zagadki",
+        "position": [8, 0, 0],
+        "properties": {
+          "color": "#90E0EF",
+          "mesh_type": "box",
+          "size": [3.5, 0.1, 3],
+          "trigger_type": "puzzle_zone"
+        }
+      },
+      {
+        "type": "LIGHT",
+        "display_name_pl": "Pochodnia",
+        "position": [6, 2, 1],
+        "properties": {
+          "color": "#F9844A",
+          "light_type": "point",
+          "intensity": 1.0
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Palma",
+        "position": [-3, 0, -3],
+        "properties": {
+          "color": "#2D6A4F",
+          "mesh_type": "cylinder",
+          "size": [0.8, 4, 0.8]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Koral",
+        "position": [2, 0, 5],
+        "properties": {
+          "color": "#FF85A1",
+          "mesh_type": "sphere",
+          "size": [0.6, 0.8, 0.6]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Muszla",
+        "position": [-2, 0, 4],
+        "properties": {
+          "color": "#FEFAE0",
+          "mesh_type": "sphere",
+          "size": [0.4, 0.3, 0.5]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Paprotka",
+        "position": [7, 0, -4],
+        "properties": {
+          "color": "#40916C",
+          "mesh_type": "sphere",
+          "size": [1, 1.2, 1]
+        }
       }
     ],
     "rules": [
       {
         "type": "SCORING",
-        "display_name_pl": "Zbieranie monet przygody",
+        "display_name_pl": "Punkty za zbieranie monet przygody",
         "compiled_logic": "on_collect_token:add_score(12)"
       },
       {
         "type": "EVENT_TRIGGER",
-        "display_name_pl": "Odblokowanie bramy zagadką",
+        "display_name_pl": "Odblokowanie bramy po rozwiązaniu zagadki",
         "compiled_logic": "on_solve_puzzle:open_gate()"
+      },
+      {
+        "type": "TIMER",
+        "display_name_pl": "Spawning perł na wyspie",
+        "compiled_logic": "every_35s:spawn_item('pearl', 2)"
+      },
+      {
+        "type": "ITEM_SPAWN",
+        "display_name_pl": "Spawning monet przygody na plaży",
+        "compiled_logic": "every_25s:spawn_item('adventure_token', 3)"
+      },
+      {
+        "type": "WIN_CONDITION",
+        "display_name_pl": "Wygrana po otwarciu skrzyni skarbów",
+        "compiled_logic": "on_open_treasure_chest:win_level()"
+      },
+      {
+        "type": "EVENT_TRIGGER",
+        "display_name_pl": "Odblokowanie wieży po zebraniu 5 monet",
+        "compiled_logic": "on_score_60:unlock_area('tower_zone')"
       }
     ]
   },
   "onboarding_hints_pl": [
-    "Idź ścieżką i szukaj świecących wskazówek.",
-    "Zbieraj monety przygody po drodze.",
-    "Rozwiąż zagadkę, aby otworzyć bramę do skarbu."
+    "Witaj na Wyspie Przygód! Twoim celem jest odkrycie wszystkich skarbów.",
+    "Idź ścieżką i szukaj świecących wskazówek — prowadzą do nagród.",
+    "Zbieraj monety przygody po drodze — są ukryte wszędzie.",
+    "Przejdź przez most linowy, aby dotrzeć do nowych terenów.",
+    "Rozwiąż zagadkę przy kamiennej bramie, aby ją otworzyć.",
+    "Zbieraj perły — otworzą Ci drogę do ukrytej zatoki.",
+    "Otwórz skrzynię skarbów, aby wygrać poziom!"
   ],
   "quest_text_pl": [
     "Zbierz 10 monet przygody.",
     "Rozwiąż pierwszą zagadkę wyspy.",
+    "Znajdź 3 perły na wyspie.",
     "Otwórz skrzynię skarbów."
-  ]
+  ],
+  "quests": [
+    {
+      "quest_id": "a_q1",
+      "title_pl": "Pierwsze kroki",
+      "description_pl": "Zbierz 5 monet przygody na plaży.",
+      "objective_type": "collect",
+      "target_count": 5,
+      "reward_score": 30,
+      "reward_unlocks": ["palm_bonus"]
+    },
+    {
+      "quest_id": "a_q2",
+      "title_pl": "Zagadka wyspy",
+      "description_pl": "Rozwiąż zagadkę przy kamiennej bramie.",
+      "objective_type": "reach",
+      "target_count": 1,
+      "reward_score": 50,
+      "reward_unlocks": ["gate_open"]
+    },
+    {
+      "quest_id": "a_q3",
+      "title_pl": "Poszukiwacz pereł",
+      "description_pl": "Znajdź 3 perły na wyspie.",
+      "objective_type": "collect",
+      "target_count": 3,
+      "reward_score": 40,
+      "reward_unlocks": ["tower_zone"]
+    },
+    {
+      "quest_id": "a_q4",
+      "title_pl": "Skarb laguny",
+      "description_pl": "Otwórz skrzynię skarbów i wygraj poziom.",
+      "objective_type": "reach",
+      "target_count": 1,
+      "reward_score": 150,
+      "reward_unlocks": ["adventure_trophy"]
+    }
+  ],
+  "difficulty": "easy",
+  "estimated_playtime_min": 15,
+  "tags_pl": ["przygoda", "eksploracja", "zagadki"],
+  "suggested_age": "6-8"
 }

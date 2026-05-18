@@ -7,6 +7,8 @@ Cross-reviewer: `copilot`
 ## Implemented
 - Expanded quality gate to run contracts, application suite, STT suite, and inbound shell regression.
 - Added parse/compile/load error detection in suite scripts so false-green runs fail fast.
+- Extended parse/compile/load detection to safety and prompt runner wrappers.
+- Wired safety/compliance regression runner into safety gates so policy-evasion + lifecycle checks are release-gating.
 - Fixed STT drift issues (`PolishIntentExtractor` regex API + STT runner instantiation).
 
 ## Files
@@ -15,12 +17,18 @@ Cross-reviewer: `copilot`
 - `scripts/ci/run-application-suite.sh`
 - `scripts/ci/run-stt-suite.sh`
 - `scripts/ci/run-inbound-shell-regression.sh`
+- `scripts/ci/run-safety-gates.sh`
+- `scripts/ci/run-safety-compliance-regression.sh`
+- `scripts/ci/run-prompt-regression.sh`
 - `tests/stt/run_stt_tests.gd`
 - `src/application/polish_intent_extractor.gd`
 - `tests/application/test_polish_intent_extractor.gd`
 
 ## Validation
 - `./scripts/run-contract-tests.sh` (Failed contracts: 0)
+- `./scripts/ci/run-safety-gates.sh` (exit 0)
+- `./scripts/ci/run-safety-compliance-regression.sh` (exit 0)
+- `./scripts/ci/run-prompt-regression.sh` (exit 0)
 - `./scripts/run-quality-gates.sh` (exit 0)
 
 Please confirm gate scope matches release expectations.

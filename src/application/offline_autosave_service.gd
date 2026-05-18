@@ -43,7 +43,8 @@ func set_interaction_active(active: bool) -> void:
 func maybe_schedule(
 	project: Project,
 	actor: PlayerProfile = null,
-	consent_profile_id: String = ""
+	consent_profile_id: String = "",
+	action_log_data: Dictionary = {}
 ) -> bool:
 	if _project_store == null or _clock == null:
 		return false
@@ -61,7 +62,7 @@ func maybe_schedule(
 	var actor_id := ""
 	if actor != null:
 		actor_id = actor.profile_id
-	_enqueue_snapshot(_clone_project(project), actor_id, consent_profile_id, now)
+	_enqueue_snapshot(_clone_project(project), actor_id, consent_profile_id, now, action_log_data)
 	_last_scheduled_at[project_id] = now
 	return true
 
@@ -85,6 +86,11 @@ func process_pending(max_items: int = 1) -> int:
 		if not _project_store.save_project(snapshot):
 			continue
 
+		var log_data: Dictionary = payload.get("action_log", {})
+		if not log_data.is_empty():
+			if _project_store.has_method("save_action_log"):
+				_project_store.save_action_log(snapshot.project_id, log_data)
+		
 		var actor_id := str(payload.get("actor_id", ""))
 		var consent_profile_id := str(payload.get("consent_profile_id", ""))
 		if _should_cloud_sync(snapshot, actor_id, consent_profile_id):
@@ -107,16 +113,21 @@ func _enqueue_snapshot(
 	project_snapshot: Project,
 	actor_id: String,
 	consent_profile_id: String,
-	queued_at_msec: int
+	queued_at_msec: int,
+	log_data: Dictionary = {}
 ) -> void:
-	if _pending.size() >= MAX_PENDING_SNAPSHOTS:
-		_pending.pop_front()
-	_pending.append({
+	var pending_data := {
 		"project": project_snapshot,
 		"actor_id": actor_id,
 		"consent_profile_id": consent_profile_id,
 		"queued_at_msec": queued_at_msec,
-	})
+	}
+	if not log_data.is_empty():
+		pending_data["action_log"] = log_data.duplicate(true)
+
+	if _pending.size() >= MAX_PENDING_SNAPSHOTS:
+		_pending.pop_front()
+	_pending.append(pending_data)
 
 
 func _should_cloud_sync(

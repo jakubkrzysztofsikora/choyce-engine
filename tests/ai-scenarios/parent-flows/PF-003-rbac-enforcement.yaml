@@ -1,0 +1,54 @@
+id: PF-003
+title: RBAC Enforcement — Kid Cannot Access Parent Zone
+requirement_ids: [SAFE-RBAC-01, SAFE-RBAC-02, FUNC-PARENT-01]
+tier: [1, 2]
+timeout_seconds: 300
+related_task: TASK-059
+
+steps:
+  - id: step-01
+    action: assert_state
+    section: session
+    field: current_role
+    expected: child
+
+  - id: step-02
+    action: navigate_to
+    target: parent_zone
+    description: Child attempts to navigate to Parent Zone without authentication
+    wait_after_ms: 1500
+
+  - id: step-03
+    action: assert_visual
+    prompt_pl: "Czy dostęp jest zablokowany — widoczny jest ekran uwierzytelnienia lub komunikat o braku uprawnień?"
+    prompt_en: "Is access blocked — is an authentication screen or permission-denied message visible?"
+    confidence_threshold: 0.90
+
+  - id: step-04
+    action: assert_state
+    section: session
+    field: current_shell
+    expected: create
+
+  - id: step-05
+    action: capture_evidence
+    description: Capture RBAC block as evidence
+
+  - id: step-06
+    action: input
+    type: action
+    action_name: inject_direct_parent_route
+    description: Attempt direct route injection via test bridge (abuse case)
+    wait_after_ms: 1000
+
+  - id: step-07
+    action: assert_state
+    section: session
+    field: current_role
+    expected: child
+
+  - id: step-08
+    action: assert_visual
+    prompt_pl: "Czy interfejs dziecka nadal jest widoczny bez eskalacji uprawnień?"
+    prompt_en: "Is the child interface still showing with no privilege escalation?"
+    confidence_threshold: 0.90

@@ -1,0 +1,61 @@
+id: KF-002
+title: AI Hint Comprehension — Kid Understands and Proceeds
+requirement_ids: [FUNC-AI-03, UX-HINT-01, UX-LANG-01]
+tier: [1, 2]
+timeout_seconds: 600
+related_task: TASK-059
+
+steps:
+  - id: step-01
+    action: navigate_to
+    target: create_shell
+    description: Open Create mode
+    wait_after_ms: 1500
+
+  - id: step-02
+    action: input
+    type: mouse_button
+    position: [0.5, 0.6]
+    description: Select a starter template
+    wait_after_ms: 2000
+
+  - id: step-03
+    action: navigate_to
+    target: ai_hint_trigger
+    description: Trigger the AI hint system (e.g. press hint button)
+    wait_after_ms: 2000
+
+  - id: step-04
+    action: assert_visual
+    prompt_pl: "Czy karta podpowiedzi AI jest widoczna z polskim tekstem i jasnymi opcjami wyboru dla dziecka?"
+    prompt_en: "Is the AI hint card visible with Polish text and clear bounded choices for the child?"
+    confidence_threshold: 0.90
+
+  - id: step-05
+    action: assert_state
+    section: ai_companion
+    field: hint_level
+    expected: scaffold_1
+
+  - id: step-06
+    action: capture_evidence
+    description: Capture hint card as evidence
+
+  - id: step-07
+    action: input
+    type: mouse_button
+    position: [0.5, 0.75]
+    description: Child accepts the first hint option
+    wait_after_ms: 1500
+
+  - id: step-08
+    action: assert_visual
+    prompt_pl: "Czy gra kontynuuje bez blokady — dziecko może dalej działać bez ingerencji dorosłego?"
+    prompt_en: "Does the game continue unblocked — can the child proceed without adult takeover?"
+    confidence_threshold: 0.85
+
+  - id: step-09
+    action: assert_state
+    section: session
+    field: adult_rescue_required
+    expected: false

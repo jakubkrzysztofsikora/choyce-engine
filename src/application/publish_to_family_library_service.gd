@@ -52,6 +52,8 @@ func execute(project_id: String, world_id: String, requester: PlayerProfile) -> 
 	var request := PublishRequest.new(project_id, world_id)
 	request.request_id = "%s_pub_%s" % [world_id, _clock.now_msec()]
 	request.requester_id = requester.profile_id
+	request.family_id = str(requester.preferences.get("family_id", "")).strip_edges()
+	request.classroom_id = str(requester.preferences.get("classroom_id", "")).strip_edges()
 	request.visibility = PublishRequest.Visibility.PRIVATE
 	request.created_at = now
 

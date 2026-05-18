@@ -1,0 +1,23 @@
+{
+  "task_id": "TASK-059",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "message": "Tier-1 and Tier-2 run files still contain placeholders and do not represent executed sessions.",
+      "path": ".ai/manual-qa/TASK-059/tier1-run.md"
+    },
+    {
+      "severity": "medium",
+      "message": "No concrete evidence assets are present under evidence/ (screenshots, logs, or recordings).",
+      "path": ".ai/manual-qa/TASK-059/evidence/"
+    },
+    {
+      "severity": "medium",
+      "message": "Triage and traceability artifacts still contain placeholders and do not include real findings with ownership.",
+      "path": ".ai/manual-qa/TASK-059/triage.md"
+    }
+  ],
+  "summary": "Changes requested. TASK-059 cannot be approved until real manual runs are executed and artifacts pass scripts/ci/validate-manual-qa-artifacts.sh TASK-059."
+}

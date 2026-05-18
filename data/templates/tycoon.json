@@ -16,17 +16,124 @@
       {
         "type": "TERRAIN",
         "display_name_pl": "Plac Główny",
-        "position": [0, 0, 0]
+        "position": [0, 0, 0],
+        "properties": {
+          "color": "#F4F1DE",
+          "mesh_type": "box",
+          "size": [12, 0.5, 12]
+        }
       },
       {
         "type": "OBJECT",
         "display_name_pl": "Sklep Spożywczy",
-        "position": [4, 0, 1]
+        "position": [4, 0, 2],
+        "properties": {
+          "color": "#7CC576",
+          "mesh_type": "box",
+          "size": [2, 2.5, 2]
+        }
       },
       {
         "type": "OBJECT",
-        "display_name_pl": "Dom Klienta",
-        "position": [-3, 0, -2]
+        "display_name_pl": "Cukiernia",
+        "position": [-3, 0, 3],
+        "properties": {
+          "color": "#FFC6E5",
+          "mesh_type": "box",
+          "size": [2, 2.2, 2]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Bank",
+        "position": [0, 0, -4],
+        "properties": {
+          "color": "#5B8DEF",
+          "mesh_type": "cylinder",
+          "size": [2.5, 3, 2.5]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Dom Klienta Alfa",
+        "position": [-5, 0, -2],
+        "properties": {
+          "color": "#F7B267",
+          "mesh_type": "box",
+          "size": [2, 2, 2]
+        }
+      },
+      {
+        "type": "OBJECT",
+        "display_name_pl": "Dom Klienta Beta",
+        "position": [6, 0, -3],
+        "properties": {
+          "color": "#F7B267",
+          "mesh_type": "box",
+          "size": [2, 2, 2]
+        }
+      },
+      {
+        "type": "SPAWN_POINT",
+        "display_name_pl": "Punkt Startu",
+        "position": [0, 0.5, 0],
+        "properties": {
+          "color": "#00FF00",
+          "mesh_type": "cylinder",
+          "size": [1, 0.2, 1]
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Sprzedaży",
+        "position": [4, 0, 2],
+        "properties": {
+          "color": "#FFD700",
+          "mesh_type": "box",
+          "size": [3, 0.1, 3],
+          "trigger_type": "sell_zone"
+        }
+      },
+      {
+        "type": "TRIGGER",
+        "display_name_pl": "Strefa Bonusowa",
+        "position": [-4, 0, -4],
+        "properties": {
+          "color": "#FF4ECD",
+          "mesh_type": "box",
+          "size": [2, 0.1, 2],
+          "trigger_type": "bonus_zone"
+        }
+      },
+      {
+        "type": "LIGHT",
+        "display_name_pl": "Lampa Placu",
+        "position": [0, 4, 0],
+        "properties": {
+          "color": "#FFF5E1",
+          "light_type": "point",
+          "intensity": 1.2
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Drzewo Miejskie",
+        "position": [-2, 0, 5],
+        "properties": {
+          "color": "#2D6A4F",
+          "mesh_type": "sphere",
+          "size": [1.5, 2, 1.5]
+        }
+      },
+      {
+        "type": "DECORATION",
+        "display_name_pl": "Ławka",
+        "position": [2, 0, 5],
+        "properties": {
+          "color": "#8B4513",
+          "mesh_type": "box",
+          "size": [1.5, 0.6, 0.5]
+        }
       }
     ],
     "rules": [
@@ -36,20 +143,87 @@
         "compiled_logic": "on_customer_served:add_score(10)"
       },
       {
+        "type": "SCORING",
+        "display_name_pl": "Bonus za ulepszenie sklepu",
+        "compiled_logic": "on_shop_upgrade:add_score(25)"
+      },
+      {
         "type": "TIMER",
         "display_name_pl": "Codzienna premia",
         "compiled_logic": "every_60s:add_score(5)"
+      },
+      {
+        "type": "ITEM_SPAWN",
+        "display_name_pl": "Spawning monet na placu",
+        "compiled_logic": "every_30s:spawn_item('coin', 3)"
+      },
+      {
+        "type": "WIN_CONDITION",
+        "display_name_pl": "Wygrana po zebraniu 100 monet",
+        "compiled_logic": "on_score_100:win_level()"
+      },
+      {
+        "type": "EVENT_TRIGGER",
+        "display_name_pl": "Odblokowanie strefy bonusowej",
+        "compiled_logic": "on_score_50:unlock_area('bonus_zone')"
       }
     ]
   },
   "onboarding_hints_pl": [
-    "Postaw pierwszy sklep blisko placu.",
-    "Dodaj ścieżkę, aby klienci szybciej docierali.",
-    "Ulepsz sklep, gdy zbierzesz pierwsze monety."
+    "Witaj w Biznesowym Mieście! Twoim celem jest budowanie sklepów.",
+    "Kliknij na Plac Główny, aby postawić pierwszy sklep.",
+    "Klienci przychodzą sami — kliknij na klienta, aby go obsłużyć.",
+    "Za każdego klienta dostajesz monety. Zbierz ich jak najwięcej!",
+    "Ulepsz sklep, gdy zbierzesz 20 monet — wtedy zarobisz więcej.",
+    "Szukaj złotych monet pojawiających się na placu.",
+    "Gdy zbierzesz 100 monet, wygrywasz poziom!"
   ],
   "quest_text_pl": [
     "Obsłuż 3 klientów.",
     "Zdobądź 50 monet.",
-    "Postaw drugi budynek usługowy."
-  ]
+    "Postaw drugi budynek usługowy.",
+    "Zbierz 100 monet i wygraj poziom."
+  ],
+  "quests": [
+    {
+      "quest_id": "t_q1",
+      "title_pl": "Pierwsze monety",
+      "description_pl": "Zbierz 5 monet na placu.",
+      "objective_type": "collect",
+      "target_count": 5,
+      "reward_score": 50,
+      "reward_unlocks": ["bonus_tree_1"]
+    },
+    {
+      "quest_id": "t_q2",
+      "title_pl": "Obsługa klientów",
+      "description_pl": "Obsłuż 3 klientów w sklepie.",
+      "objective_type": "collect",
+      "target_count": 3,
+      "reward_score": 30,
+      "reward_unlocks": ["cukiernia_unlock"]
+    },
+    {
+      "quest_id": "t_q3",
+      "title_pl": "Mały biznesmen",
+      "description_pl": "Zdobądź 50 monet.",
+      "objective_type": "score",
+      "target_count": 50,
+      "reward_score": 100,
+      "reward_unlocks": ["bonus_zone"]
+    },
+    {
+      "quest_id": "t_q4",
+      "title_pl": "Wielki magnat",
+      "description_pl": "Zdobądź 100 monet i wygraj poziom.",
+      "objective_type": "score",
+      "target_count": 100,
+      "reward_score": 200,
+      "reward_unlocks": ["tycoon_trophy"]
+    }
+  ],
+  "difficulty": "easy",
+  "estimated_playtime_min": 15,
+  "tags_pl": ["budowanie", "ekonomia", "zarządzanie"],
+  "suggested_age": "6-8"
 }

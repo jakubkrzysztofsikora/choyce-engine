@@ -22,14 +22,15 @@ offset_right = -16.0
 offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 14
 
 [node name="Header" type="VBoxContainer" parent="Layout"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Layout/Header"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 26
 text = "Strefa rodzica"
 
 [node name="Info" type="Label" parent="Layout/Header"]
@@ -37,15 +38,62 @@ layout_mode = 2
 text = "Zarządzaj bezpieczeństwem, limitami i publikacją."
 autowrap_mode = 3
 
-[node name="AuditSummary" type="Label" parent="Layout/Header"]
+[node name="DashboardGrid" type="GridContainer" parent="Layout"]
+layout_mode = 2
+columns = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 10
+
+[node name="AuditCard" type="PanelContainer" parent="Layout/DashboardGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="AuditContent" type="VBoxContainer" parent="Layout/DashboardGrid/AuditCard"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AuditTitle" type="Label" parent="Layout/DashboardGrid/AuditCard/AuditContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "📊 Audyt"
+
+[node name="AuditSummary" type="Label" parent="Layout/DashboardGrid/AuditCard/AuditContent"]
 layout_mode = 2
 text = "Audyt: brak danych."
-autowrap_mode = 3
 
-[node name="AISummary" type="Label" parent="Layout/Header"]
+[node name="AICard" type="PanelContainer" parent="Layout/DashboardGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="AIContent" type="VBoxContainer" parent="Layout/DashboardGrid/AICard"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="AITitle" type="Label" parent="Layout/DashboardGrid/AICard/AIContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "🤖 AI"
+
+[node name="AISummary" type="Label" parent="Layout/DashboardGrid/AICard/AIContent"]
 layout_mode = 2
 text = "AI: brak danych."
-autowrap_mode = 3
+
+[node name="PlaytimeCard" type="PanelContainer" parent="Layout/DashboardGrid"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="PlaytimeContent" type="VBoxContainer" parent="Layout/DashboardGrid/PlaytimeCard"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PlaytimeTitle" type="Label" parent="Layout/DashboardGrid/PlaytimeCard/PlaytimeContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "⏱ Czas gry"
+
+[node name="PlaytimeSummary" type="Label" parent="Layout/DashboardGrid/PlaytimeCard/PlaytimeContent"]
+layout_mode = 2
+text = "⏱ 120 min\n📊 45 min"
 
 [node name="ControlsPanel" type="PanelContainer" parent="Layout"]
 layout_mode = 2
@@ -57,20 +105,21 @@ theme_override_constants/separation = 10
 
 [node name="ControlsTitle" type="Label" parent="Layout/ControlsPanel/Controls"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 22
 text = "Kontrola rodzicielska"
 
 [node name="SettingsGrid" type="GridContainer" parent="Layout/ControlsPanel/Controls"]
 layout_mode = 2
 columns = 2
-theme_override_constants/h_separation = 12
-theme_override_constants/v_separation = 8
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 10
 
 [node name="DailyLimitLabel" type="Label" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
 layout_mode = 2
 text = "Limit dzienny (min)"
 
 [node name="DailyLimitSpin" type="SpinBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
-custom_minimum_size = Vector2(140, 40)
+custom_minimum_size = Vector2(140, 44)
 layout_mode = 2
 min_value = 0.0
 max_value = 480.0
@@ -82,7 +131,7 @@ layout_mode = 2
 text = "Limit sesji (min)"
 
 [node name="SessionLimitSpin" type="SpinBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
-custom_minimum_size = Vector2(140, 40)
+custom_minimum_size = Vector2(140, 44)
 layout_mode = 2
 min_value = 0.0
 max_value = 180.0
@@ -94,7 +143,7 @@ layout_mode = 2
 text = "Dostęp AI"
 
 [node name="AIAccessOption" type="OptionButton" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(220, 44)
 layout_mode = 2
 
 [node name="SharingToggle" type="CheckBox" parent="Layout/ControlsPanel/Controls/SettingsGrid"]
@@ -119,9 +168,9 @@ text = "Zezwól na synchronizację chmury"
 layout_mode = 2
 
 [node name="ApplyPolicyButton" type="Button" parent="Layout/ControlsPanel/Controls"]
-custom_minimum_size = Vector2(200, 44)
+custom_minimum_size = Vector2(220, 48)
 layout_mode = 2
-text = "Zapisz ustawienia"
+text = "✅ Zapisz ustawienia"
 
 [node name="PolicyStatus" type="Label" parent="Layout/ControlsPanel/Controls"]
 layout_mode = 2
@@ -131,23 +180,24 @@ autowrap_mode = 3
 [node name="Actions" type="HBoxContainer" parent="Layout"]
 layout_mode = 2
 theme_override_constants/separation = 12
+alignment = 1
 
 [node name="UndoButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(88, 44)
+custom_minimum_size = Vector2(100, 48)
 layout_mode = 2
-text = "Cofnij"
+text = "↩ Cofnij"
 
 [node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(180, 44)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Przywróć bezpieczny zapis"
+text = "🔧 Przywróć bezpieczny zapis"
 
 [node name="GoCreateButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(176, 44)
+custom_minimum_size = Vector2(180, 48)
 layout_mode = 2
-text = "Przejdź do tworzenia"
+text = "🔨 Przejdź do tworzenia"
 
 [node name="GoPlayButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(140, 44)
+custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
-text = "Przejdź do gry"
+text = "▶ Przejdź do gry"

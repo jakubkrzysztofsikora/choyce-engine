@@ -150,8 +150,6 @@ func _requires_parent_gate(action: AIAssistantAction) -> bool:
 		var tool: ToolInvocation = invocation
 		if tool.requires_approval:
 			return true
-		if tool.tool_name in ["script_edit", "asset_import"]:
-			return true
 	return false
 
 

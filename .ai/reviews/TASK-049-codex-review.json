@@ -1,0 +1,7 @@
+{
+  "task_id": "TASK-049",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [],
+  "summary": "Approved. Release threat model is versioned (2026-03-05), includes explicit mitigation status per threat, and codifies release-blocking policy for high-risk findings. Abuse and jailbreak scenarios are mapped to executable regressions in docs/security/ABUSE_REGRESSION_MAPPING.md and enforced via scripts/ci/run-abuse-regression.sh with machine-readable output (ABUSE_REGRESSION_REPORT_JSON)."
+}

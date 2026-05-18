@@ -7,3 +7,19 @@ config_version=5
 config/name="Choyce Engine"
 config/features=PackedStringArray("4.6")
 run/main_scene="res://src/adapters/inbound/main.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="choyce_engine"
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/subwindows/embed_subwindows=true
+
+[rendering]
+renderer/rendering_method="forward_plus"
+textures/vram_compression/import_etc2_astc=true
+
+[autoload]
+InputMapInitializer="*res://src/adapters/inbound/shared/input_map_initializer.gd"

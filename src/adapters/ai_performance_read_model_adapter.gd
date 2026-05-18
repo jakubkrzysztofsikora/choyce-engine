@@ -3,6 +3,15 @@
 class_name AIPerformanceReadModelAdapter
 extends AIPerformanceReadModel
 
+const ADTECH_TOKENS: Array[String] = [
+	"advertising",
+	"ad_id",
+	"adid",
+	"idfa",
+	"gaid",
+	"idfv",
+	"adtech",
+]
 
 var _metrics: Dictionary = {
 	"7d": {
@@ -10,6 +19,7 @@ var _metrics: Dictionary = {
 		"successful_completions": 0,
 		"blocked_by_moderation": 0,
 		"failed_executions": 0,
+		"total_latency_ms": 0.0,
 		"avg_latency_ms": 0.0,
 		"policy_gates_triggered": 0,
 	},
@@ -18,13 +28,13 @@ var _metrics: Dictionary = {
 		"successful_completions": 0,
 		"blocked_by_moderation": 0,
 		"failed_executions": 0,
+		"total_latency_ms": 0.0,
 		"avg_latency_ms": 0.0,
 		"policy_gates_triggered": 0,
 	},
 }
 
 var _tool_stats: Dictionary = {}  # {tool_name: {executions, success_rate, avg_latency_ms, last_used}}
-var _event_times: Array = []  # Track event timestamps for window calculations
 
 
 func get_metrics(window: String = "7d") -> Dictionary:
@@ -52,7 +62,7 @@ func get_metrics(window: String = "7d") -> Dictionary:
 	if data["total_requests"] > 0:
 		moderation_rate = float(data["blocked_by_moderation"]) / float(data["total_requests"]) * 100.0
 
-	return {
+	return _sanitize_dictionary({
 		"window": window,
 		"total_requests": data["total_requests"],
 		"successful_completions": data["successful_completions"],
@@ -62,23 +72,23 @@ func get_metrics(window: String = "7d") -> Dictionary:
 		"avg_latency_ms": data["avg_latency_ms"],
 		"policy_gates_triggered": data["policy_gates_triggered"],
 		"moderation_rate": moderation_rate,
-	}
+	})
 
 
 func get_tool_statistics(limit: int = 50) -> Array:
-	var result = []
+	var result: Array = []
 	var sorted_tools = _tool_stats.values()
 	sorted_tools.sort_custom(func(a, b): return a.get("executions", 0) > b.get("executions", 0))
 
 	for i in range(min(limit, sorted_tools.size())):
 		var tool = sorted_tools[i]
-		result.append({
+		result.append(_sanitize_dictionary({
 			"tool_name": tool.get("tool_name", ""),
 			"executions": tool.get("executions", 0),
 			"success_rate": tool.get("success_rate", 0.0),
 			"avg_latency_ms": tool.get("avg_latency_ms", 0.0),
 			"last_used": tool.get("last_used", ""),
-		})
+		}))
 
 	return result
 
@@ -87,17 +97,26 @@ func update_from_event(event: DomainEvent) -> void:
 	if event == null:
 		return
 	var event_type := str(event.event_type)
-	if event_type == "AIToolExecutedEvent":
+	if event_type == "AIAssistanceAppliedEvent":
 		_record_tool_execution(event)
-	elif event_type == "ModeratedContentBlockedEvent":
-		_record_moderation_block(event)
-	elif event_type == "PolicyGateTriggeredEvent":
+	elif event_type == "SafetyInterventionTriggeredEvent":
+		var decision_type := _event_string(event, "decision_type")
+		if decision_type == "BLOCK":
+			_record_moderation_block(event)
+		_record_policy_gate(event)
+	elif event_type == "ParentalPolicyUpdatedEvent":
 		_record_policy_gate(event)
 
 
 func _record_tool_execution(event: DomainEvent) -> void:
-	var tool_name := _event_string(event, "tool_name")
+	var tool_name := _event_string(event, "tool_name").strip_edges()
+	if tool_name.is_empty():
+		tool_name = _event_string(event, "action_id").strip_edges()
+	if tool_name.is_empty():
+		tool_name = "unknown_tool"
 	var latency_ms := _event_float(event, "latency_ms")
+	if latency_ms <= 0.0:
+		latency_ms = 1.0
 	var success := _event_bool(event, "success", true)
 
 	# Initialize tool stats if needed
@@ -125,9 +144,16 @@ func _record_tool_execution(event: DomainEvent) -> void:
 
 	# Update metrics for both windows
 	for window in _metrics.keys():
-		_metrics[window]["total_requests"] += 1
+		var window_metrics: Dictionary = _metrics[window]
+		window_metrics["total_requests"] += 1
 		if success:
-			_metrics[window]["successful_completions"] += 1
+			window_metrics["successful_completions"] += 1
+		else:
+			window_metrics["failed_executions"] += 1
+		window_metrics["total_latency_ms"] = float(window_metrics.get("total_latency_ms", 0.0)) + latency_ms
+		var total_requests: int = max(int(window_metrics["total_requests"]), 1)
+		window_metrics["avg_latency_ms"] = float(window_metrics["total_latency_ms"]) / float(total_requests)
+		_metrics[window] = window_metrics
 
 
 func _record_moderation_block(_event: DomainEvent) -> void:
@@ -159,3 +185,33 @@ func _event_bool(event: Object, field_name: String, default_value: bool = false)
 	if value == null:
 		return default_value
 	return bool(value)
+
+
+func _sanitize_dictionary(input: Dictionary) -> Dictionary:
+	var output: Dictionary = {}
+	for key_variant in input.keys():
+		var key := str(key_variant)
+		if _is_adtech_key(key):
+			continue
+		output[key] = _sanitize_value(input[key_variant])
+	return output
+
+
+func _sanitize_value(value: Variant) -> Variant:
+	if value is Dictionary:
+		return _sanitize_dictionary(value)
+	if value is Array:
+		var input_arr: Array = value
+		var output_arr: Array = []
+		for item in input_arr:
+			output_arr.append(_sanitize_value(item))
+		return output_arr
+	return value
+
+
+func _is_adtech_key(key: String) -> bool:
+	var normalized := key.strip_edges().to_lower()
+	for token in ADTECH_TOKENS:
+		if normalized.find(token) >= 0:
+			return true
+	return false

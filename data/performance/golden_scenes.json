@@ -1,0 +1,85 @@
+{
+  "version": "2026-03-05",
+  "hardware_tiers": {
+    "tier1": {
+      "description": "Low-end integrated GPU baseline",
+      "cold_start_ms_max": 500.0,
+      "interaction_latency_ms_max": 0.22,
+      "fps_min": 30.0
+    },
+    "tier2": {
+      "description": "Mid-range family laptop baseline",
+      "cold_start_ms_max": 360.0,
+      "interaction_latency_ms_max": 0.15,
+      "fps_min": 45.0
+    }
+  },
+  "scenes": [
+    {
+      "id": "golden_template_obby",
+      "description": "Default obby starter baseline",
+      "workload": {
+        "node_count": 220,
+        "interaction_ops": 8000,
+        "frame_samples": 24,
+        "frame_ops": 16000
+      },
+      "targets": {
+        "tier1": {
+          "cold_start_ms_max": 250.0,
+          "interaction_latency_ms_max": 0.12,
+          "fps_min": 30.0
+        },
+        "tier2": {
+          "cold_start_ms_max": 180.0,
+          "interaction_latency_ms_max": 0.08,
+          "fps_min": 45.0
+        }
+      }
+    },
+    {
+      "id": "golden_template_farm",
+      "description": "Default farm starter baseline",
+      "workload": {
+        "node_count": 420,
+        "interaction_ops": 13000,
+        "frame_samples": 24,
+        "frame_ops": 22000
+      },
+      "targets": {
+        "tier1": {
+          "cold_start_ms_max": 350.0,
+          "interaction_latency_ms_max": 0.16,
+          "fps_min": 30.0
+        },
+        "tier2": {
+          "cold_start_ms_max": 260.0,
+          "interaction_latency_ms_max": 0.11,
+          "fps_min": 45.0
+        }
+      }
+    },
+    {
+      "id": "golden_template_city",
+      "description": "Default city starter baseline",
+      "workload": {
+        "node_count": 700,
+        "interaction_ops": 22000,
+        "frame_samples": 24,
+        "frame_ops": 30000
+      },
+      "targets": {
+        "tier1": {
+          "cold_start_ms_max": 500.0,
+          "interaction_latency_ms_max": 0.22,
+          "fps_min": 30.0
+        },
+        "tier2": {
+          "cold_start_ms_max": 360.0,
+          "interaction_latency_ms_max": 0.15,
+          "fps_min": 45.0
+        }
+      }
+    }
+  ]
+}

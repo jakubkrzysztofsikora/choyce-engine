@@ -61,9 +61,13 @@ func update_from_event(event: DomainEvent) -> void:
 	}
 
 	# Log all events to timeline
-	if event_type == "ModeratedContentBlockedEvent":
+	if event_type == "ModeratedContentBlockedEvent" or event_type == "SafetyInterventionTriggered":
 		var content_type := _event_string(event, "content_type")
+		if content_type.is_empty():
+			content_type = _event_string(event, "trigger_context")
 		var reason := _event_string(event, "reason")
+		if reason.is_empty():
+			reason = _event_string(event, "policy_rule")
 		event_data["description"] = "Content blocked: unsafe %s" % content_type
 		event_data["reason"] = reason
 		_events.append(event_data)
@@ -87,8 +91,10 @@ func update_from_event(event: DomainEvent) -> void:
 			"reason": policy_reason,
 			"context": {"policy": policy_name},
 		})
-	elif event_type == "AIToolExecutedEvent":
+	elif event_type == "AIToolExecutedEvent" or event_type == "AIAssistanceApplied":
 		var tool_name := _event_string(event, "tool_name")
+		if tool_name.is_empty():
+			tool_name = _event_string(event, "action_id")
 		event_data["description"] = "AI tool executed: %s" % tool_name
 		event_data["reason"] = "Tool: %s" % tool_name
 		_events.append(event_data)

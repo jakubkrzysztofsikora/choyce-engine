@@ -17,3 +17,14 @@ func load_project(project_id: String) -> Project:
 func list_projects() -> Array:
 	push_error("ProjectStorePort.list_projects() not implemented")
 	return []
+
+
+func save_action_log(project_id: String, log_data: Dictionary) -> bool:
+	push_error("ProjectStorePort.save_action_log() not implemented")
+	return false
+
+
+func load_action_log(project_id: String) -> Dictionary:
+	push_error("ProjectStorePort.load_action_log() not implemented")
+	return {}
+

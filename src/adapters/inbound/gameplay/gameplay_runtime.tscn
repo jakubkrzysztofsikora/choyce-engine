@@ -1,0 +1,74 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/gameplay_runtime.gd" id="1_gameplay_runtime"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/world_renderer.gd" id="2_world_renderer"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/player_controller.gd" id="3_player_controller"]
+
+[sub_resource type="Environment" id="Environment_basic"]
+background_mode = 1
+background_color = Color(0.529412, 0.807843, 0.921569, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.45, 0.48, 0.55, 1)
+ambient_light_energy = 0.8
+ssao_enabled = true
+ssao_radius = 1.5
+ssao_intensity = 1.2
+fog_enabled = true
+fog_mode = 1
+fog_density = 0.02
+fog_sky_affect = 0.3
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_dust"]
+emission_shape = 3
+emission_box_extents = Vector3(25, 15, 25)
+gravity = Vector3(0, 0.05, 0)
+scale_min = 0.5
+scale_max = 1.5
+color = Color(1, 1, 0.9, 0.4)
+
+[sub_resource type="SphereMesh" id="SphereMesh_dust"]
+radius = 0.03
+height = 0.06
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dust"]
+transparency = 1
+albedo_color = Color(1, 1, 0.9, 0.5)
+emission_enabled = true
+emission = Color(1, 1, 0.8, 1)
+emission_energy_multiplier = 0.5
+
+[node name="GameplayRuntime" type="Node3D"]
+script = ExtResource("1_gameplay_runtime")
+
+[node name="WorldRenderer" type="Node3D" parent="."]
+script = ExtResource("2_world_renderer")
+
+[node name="PlayerController" type="CharacterBody3D" parent="."]
+script = ExtResource("3_player_controller")
+
+[node name="Camera3D" type="Camera3D" parent="PlayerController"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
+shadow_enabled = true
+shadow_blur = 1.5
+light_energy = 1.2
+light_color = Color(1, 0.98, 0.95, 1)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_basic")
+
+[node name="AmbientParticles" type="GPUParticles3D" parent="."]
+amount = 200
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0)
+lifetime = 8.0
+process_material = SubResource("ParticleProcessMaterial_dust")
+draw_pass_1 = SubResource("SphereMesh_dust")
+draw_pass_1.material = SubResource("StandardMaterial3D_dust")
+
+[node name="FillLight" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.5, -0.612372, 0.612372, 0, 0.707107, 0.707107, -0.866025, 0.353553, -0.353553, 0, 8, 0)
+light_energy = 0.4
+light_color = Color(0.75, 0.85, 1, 1)
+shadow_enabled = false

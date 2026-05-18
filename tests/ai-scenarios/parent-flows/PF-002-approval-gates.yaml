@@ -1,0 +1,70 @@
+id: PF-002
+title: Parent Approval Gate — Publish Flow Requires Explicit Consent
+requirement_ids: [FUNC-PUBLISH-02, SAFE-RBAC-01, FUNC-PARENT-01]
+tier: [1, 2]
+timeout_seconds: 600
+related_task: TASK-055
+
+steps:
+  - id: step-01
+    action: navigate_to
+    target: create_shell
+    description: Start from Create mode (kid context)
+    wait_after_ms: 1500
+
+  - id: step-02
+    action: navigate_to
+    target: publish_flow
+    description: Kid attempts to publish to Family Library
+    wait_after_ms: 2000
+
+  - id: step-03
+    action: assert_visual
+    prompt_pl: "Czy widoczna jest informacja, że publikacja wymaga zgody rodzica?"
+    prompt_en: "Is a message visible indicating that publishing requires parent approval?"
+    confidence_threshold: 0.90
+
+  - id: step-04
+    action: assert_state
+    section: publishing
+    field: state
+    expected: pending_parent_approval
+
+  - id: step-05
+    action: capture_evidence
+    description: Capture pending approval state
+
+  - id: step-06
+    action: navigate_to
+    target: parent_zone
+    description: Parent switches to Parent Zone to review
+    wait_after_ms: 2000
+
+  - id: step-07
+    action: assert_visual
+    prompt_pl: "Czy rodzic widzi powiadomienie o oczekującym żądaniu publikacji od dziecka?"
+    prompt_en: "Does the parent see a notification about a pending publish request from the child?"
+    confidence_threshold: 0.90
+
+  - id: step-08
+    action: input
+    type: mouse_button
+    position: [0.6, 0.5]
+    description: Parent approves the publish request
+    wait_after_ms: 2000
+
+  - id: step-09
+    action: assert_state
+    section: publishing
+    field: state
+    expected: approved
+
+  - id: step-10
+    action: assert_state
+    section: audit
+    field: last_event_type
+    expected: publish_approved_by_parent
+
+  - id: step-11
+    action: capture_evidence
+    description: Capture approval confirmation

@@ -1,0 +1,55 @@
+id: KF-004
+title: Voice-to-Intent Creation Flow with Confirmation Card
+requirement_ids: [FUNC-VOICE-01, SAFE-VOICE-01, UX-LANG-01, FUNC-AI-03]
+tier: [1, 2]
+timeout_seconds: 300
+related_task: TASK-055
+
+steps:
+  - id: step-01
+    action: navigate_to
+    target: create_shell
+    description: Open Create mode
+    wait_after_ms: 1500
+
+  - id: step-02
+    action: input
+    type: action
+    action_name: inject_test_voice_transcript
+    description: Inject a safe Polish voice transcript via test bridge
+    wait_after_ms: 2000
+
+  - id: step-03
+    action: assert_state
+    section: voice.moderation
+    field: last_transcript_result
+    expected: SAFE
+
+  - id: step-04
+    action: assert_visual
+    prompt_pl: "Czy karta akcji z tłumaczeniem głosu na zamierzenie jest widoczna przed wykonaniem zmiany?"
+    prompt_en: "Is the voice-to-intent action card visible before any change is applied?"
+    confidence_threshold: 0.90
+
+  - id: step-05
+    action: capture_evidence
+    description: Capture the voice action card
+
+  - id: step-06
+    action: input
+    type: mouse_button
+    position: [0.5, 0.7]
+    description: Child taps Accept on the action card
+    wait_after_ms: 1500
+
+  - id: step-07
+    action: assert_visual
+    prompt_pl: "Czy zmiana została zastosowana na płótnie — widoczna jest nowa zawartość zgodna z polskim poleceniem głosowym?"
+    prompt_en: "Has the change been applied to the canvas — is new content visible matching the voice command?"
+    confidence_threshold: 0.85
+
+  - id: step-08
+    action: assert_state
+    section: session
+    field: last_action_reversible
+    expected: true

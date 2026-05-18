@@ -1,0 +1,90 @@
+id: SC-001
+title: COPPA Data Lifecycle — Export and Deletion by Parent
+requirement_ids: [COMP-COPPA-01, COMP-GDPR-01, FUNC-PARENT-01, SAFE-RBAC-01]
+tier: [1, 2]
+timeout_seconds: 600
+related_task: TASK-060
+
+steps:
+  - id: step-01
+    action: navigate_to
+    target: parent_zone
+    description: Parent authenticates and enters Parent Zone
+    wait_after_ms: 2000
+
+  - id: step-02
+    action: navigate_to
+    target: data_lifecycle_panel
+    description: Parent opens Data & Privacy panel
+    wait_after_ms: 1500
+
+  - id: step-03
+    action: assert_visual
+    prompt_pl: "Czy panel zarządzania danymi jest widoczny z opcjami eksportu i usuwania danych?"
+    prompt_en: "Is the data management panel visible with export and deletion options?"
+    confidence_threshold: 0.90
+
+  - id: step-04
+    action: assert_state
+    section: session
+    field: current_role
+    expected: parent
+
+  - id: step-05
+    action: input
+    type: mouse_button
+    position: [0.4, 0.5]
+    description: Parent triggers data export
+    wait_after_ms: 3000
+
+  - id: step-06
+    action: assert_state
+    section: data_lifecycle
+    field: last_operation
+    expected: export_initiated
+
+  - id: step-07
+    action: assert_state
+    section: audit
+    field: last_event_type
+    expected: data_export_requested
+
+  - id: step-08
+    action: capture_evidence
+    description: Capture export confirmation
+
+  - id: step-09
+    action: input
+    type: mouse_button
+    position: [0.6, 0.6]
+    description: Parent requests data deletion
+    wait_after_ms: 2000
+
+  - id: step-10
+    action: assert_visual
+    prompt_pl: "Czy widoczne jest okno potwierdzające z ostrzeżeniem o trwałym usunięciu danych?"
+    prompt_en: "Is a confirmation dialog visible with a warning about permanent data deletion?"
+    confidence_threshold: 0.90
+
+  - id: step-11
+    action: input
+    type: mouse_button
+    position: [0.5, 0.65]
+    description: Parent confirms deletion
+    wait_after_ms: 3000
+
+  - id: step-12
+    action: assert_state
+    section: data_lifecycle
+    field: deletion_status
+    expected: completed
+
+  - id: step-13
+    action: assert_state
+    section: audit
+    field: last_event_type
+    expected: data_deletion_completed
+
+  - id: step-14
+    action: capture_evidence
+    description: Capture deletion confirmation as compliance evidence

@@ -22,14 +22,15 @@ offset_right = -16.0
 offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 14
 
 [node name="Header" type="VBoxContainer" parent="Layout"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Layout/Header"]
 layout_mode = 2
+theme_override_font_sizes/font_size = 26
 text = "Tryb gry"
 
 [node name="Info" type="Label" parent="Layout/Header"]
@@ -39,39 +40,115 @@ autowrap_mode = 3
 
 [node name="StatusSummary" type="Label" parent="Layout/Header"]
 layout_mode = 2
-text = "Brak danych postepu dla aktywnego swiata."
+text = "Brak danych postępu dla aktywnego świata."
 autowrap_mode = 3
+
+[node name="MainContent" type="HBoxContainer" parent="Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 16
+
+[node name="PlayButtons" type="VBoxContainer" parent="Layout/MainContent"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="PlaySoloButton" type="Button" parent="Layout/MainContent/PlayButtons"]
+custom_minimum_size = Vector2(200, 100)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 22
+text = "🧍\nGraj Solo"
+
+[node name="PlayCoopButton" type="Button" parent="Layout/MainContent/PlayButtons"]
+custom_minimum_size = Vector2(240, 100)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 22
+text = "🤝\nGraj w Kooperacji"
+
+[node name="SidePanel" type="PanelContainer" parent="Layout/MainContent"]
+custom_minimum_size = Vector2(220, 0)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="SideContent" type="VBoxContainer" parent="Layout/MainContent/SidePanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="QuestTracker" type="VBoxContainer" parent="Layout/MainContent/SidePanel/SideContent"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="QuestTitle" type="Label" parent="Layout/MainContent/SidePanel/SideContent/QuestTracker"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "📜 Misje"
+
+[node name="QuestList" type="VBoxContainer" parent="Layout/MainContent/SidePanel/SideContent/QuestTracker"]
+layout_mode = 2
+
+[node name="MinimapPanel" type="PanelContainer" parent="Layout/MainContent/SidePanel/SideContent"]
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="MinimapLabel" type="Label" parent="Layout/MainContent/SidePanel/SideContent/MinimapPanel"]
+layout_mode = 2
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "🗺 Minimapa"
 
 [node name="Actions" type="HBoxContainer" parent="Layout"]
 layout_mode = 2
 theme_override_constants/separation = 12
-
-[node name="PlaySoloButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(132, 44)
-layout_mode = 2
-text = "Start solo"
-
-[node name="PlayCoopButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(172, 44)
-layout_mode = 2
-text = "Start lokalnej kooperacji"
+alignment = 1
 
 [node name="UndoButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(88, 44)
+custom_minimum_size = Vector2(100, 48)
 layout_mode = 2
-text = "Cofnij"
+text = "↩ Cofnij"
 
 [node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(180, 44)
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
-text = "Przywróć bezpieczny zapis"
+text = "🔧 Przywróć bezpieczny zapis"
 
 [node name="GoCreateButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(168, 44)
+custom_minimum_size = Vector2(180, 48)
 layout_mode = 2
-text = "Wróć do tworzenia"
+text = "🔨 Wróć do tworzenia"
 
 [node name="GoLibraryButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(176, 44)
+custom_minimum_size = Vector2(180, 48)
 layout_mode = 2
-text = "Przejdź do biblioteki"
+text = "📚 Przejdź do biblioteki"
+
+[node name="SessionEndPanel" type="PanelContainer" parent="Layout"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="SessionEndContent" type="VBoxContainer" parent="Layout/SessionEndPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="SessionEndTitle" type="Label" parent="Layout/SessionEndPanel/SessionEndContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+horizontal_alignment = 1
+text = "⭐ Sesja zakończona!"
+
+[node name="SessionEndStats" type="Label" parent="Layout/SessionEndPanel/SessionEndContent"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Znajdźki: 0\nOsiągnięcia: 0\nCzas: ~2 min"
+
+[node name="SessionEndClose" type="Button" parent="Layout/SessionEndPanel/SessionEndContent"]
+custom_minimum_size = Vector2(160, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "✅ Wróć"
