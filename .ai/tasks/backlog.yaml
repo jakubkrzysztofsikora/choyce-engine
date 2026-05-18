@@ -350,7 +350,14 @@ tasks:
       - Session progression persists collectibles, achievements, and unlock states
       - World cloning and fast remix reset preserve safe authoring history
     cross_review_by: codex
-    status: done
+    status: in_review
+    blocking_reason: |
+      Wave C requirements audit (2026-05-18) confirmed CloneWorldService,
+      RemixWorldService, ManageProgressionService exist in
+      /src/application/ but are NOT wired in main.gd `_build_default_ports`.
+      No KEY_PROGRESSION/KEY_CLONE/KEY_REMIX port keys defined. FR-016
+      remains L1 (backend only). Flip back to `done` once main.gd
+      composition root threads these services to the play/create shells.
 
   - id: TASK-026
     title: Implement parent economy data model editor for balancing controls
