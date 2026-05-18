@@ -49,18 +49,26 @@ var _last_built_seal_hash: String = ""
 ## Rotation threshold.
 var _rotate_at: int = MAX_RECORDS
 
-## Active-window indexes.
+## Active-window indexes for O(1) actor_id / event_type lookup in the hot path.
+## Each key maps to Array[int] of indices into _active_window.
+## Rebuilt atomically on rotation; archived segments are scan-only (slow path).
 var _by_actor: Dictionary = {}
 var _by_event_type: Dictionary = {}
 
-## Incremental verify cache.
+## Incremental verify cache — highest active-window index verified.
+## verify_integrity("active") only re-checks from here onward.
+## Reset to -1 on rotation to prevent stale state across windows.
 var _last_verified_seq: int = -1
 
-## Mutex to protect active window during background rotation flush.
+## Mutex protecting _active_window and indexes during background rotation.
+## append_record() locks for the window-snapshot + swap only (microseconds).
+## Disk I/O (segment write) is never inside this lock.
 var _mutex: Mutex = Mutex.new()
 
-## Queue of pending rotation flushes. Each entry: {segment_id, records, seal}.
-## Using an Array so multiple consecutive rotations do not lose data.
+## Background rotation flush queue. Each entry: {segment_id, records, seal}.
+## append_record() enqueues and dispatches WorkerThreadPool task — never blocks on I/O.
+## flush_rotation() drains the queue synchronously (tests + shutdown).
+## Multiple consecutive rotations each enqueue separately; tasks pop_front() under lock.
 var _pending_flushes: Array = []
 var _flush_mutex: Mutex = Mutex.new()
 

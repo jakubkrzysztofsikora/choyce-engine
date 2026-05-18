@@ -34,14 +34,19 @@ var _last_hash: String = ""
 ##   { segment_id: int, records: Array[AuditRecord], seal: Dictionary }
 var _segments: Array = []
 
-## Active-window indexes for fast lookup.
-var _by_actor: Dictionary = {}       # actor_id -> Array of indices into _active_window
-var _by_event_type: Dictionary = {}  # event_type -> Array of indices into _active_window
+## Active-window indexes for O(1) actor_id / event_type lookup.
+## Each key maps to an Array of integer indices into _active_window.
+## Rebuilt atomically on each rotation (pointer swap — no partial state).
+## Archived segments are scan-only; no index maintained for archives.
+var _by_actor: Dictionary = {}       # actor_id -> Array[int] of indices into _active_window
+var _by_event_type: Dictionary = {}  # event_type -> Array[int] of indices into _active_window
 
 ## Rotation threshold (defaults to MAX_RECORDS; overridable for tests).
 var _rotate_at: int = MAX_RECORDS
 
-## Incremental verification cache.
+## Incremental verification cache — highest record index last fully verified.
+## verify_integrity("active") re-verifies only from _last_verified_seq onward.
+## Invalidated (reset to -1) on each rotation to prevent stale cache across windows.
 var _last_verified_seq: int = -1
 
 ## Hash of the most recent seal (or "" if no seals yet).
