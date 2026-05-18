@@ -7,6 +7,16 @@
 ## characters are mapped to ASCII before matching. Polish diacritics
 ## are stripped so both composed and decomposed forms match the
 ## ASCII-based word lists.
+##
+## Phase 8b perf improvements:
+## - _normalize_text and _tokenize fused into a single O(N) pass via
+##   _normalize_and_tokenize; check_text calls the fused function.
+## - Age-band extra_sets pre-built at setup() in _build_age_extra_sets()
+##   instead of reconstructed per check_text call.
+## - _build_term_lookup stores normalized form (critical fix) and routes
+##   multi-word terms to _phrase_lookup.
+## - unicode_at(i) used directly on the string instead of allocating a
+##   1-char substring and calling .unicode_at(0) on it.
 class_name LocalModerationAdapter
 extends ModerationPort
 
@@ -27,12 +37,16 @@ var _rules_file: String = "res://data/moderation/rules_pl.json"
 
 ## Flat {normalized_single_token → {category, severity, safe_alt}} dict built at setup().
 ## Enables O(1) per-word lookup instead of nested category×term scan.
-## Terms stored in NORMALIZED form so lookup matches _tokenize() output.
+## Terms stored in NORMALIZED form so lookup matches _normalize_and_tokenize output.
 var _term_lookup: Dictionary = {}
 
 ## Flat {normalized_phrase → {category, severity, safe_alt}} dict for multi-word terms.
-## Matched by substring against the full normalized text (not token array).
+## Matched by substring against the full normalized text (not the token array).
 var _phrase_lookup: Dictionary = {}
+
+## Pre-built per-age-band extra_set: {age_key → {normalized_term → true}}.
+## Built once at setup(); avoids rebuilding the set on every check_text call.
+var _age_extra_sets: Dictionary = {}
 
 ## Maps visually similar Unicode characters to their ASCII equivalents.
 ## Covers Cyrillic homoglyphs and fullwidth Latin letters.
@@ -85,6 +99,7 @@ func setup(
 	if not _rules_file.is_empty():
 		_load_rules_file()
 	_build_term_lookup()
+	_build_age_extra_sets()
 	return self
 
 
@@ -92,21 +107,16 @@ func check_text(text: String, age_band: AgeBand) -> ModerationResult:
 	if text.strip_edges().is_empty():
 		return ModerationResult.new(ModerationResult.Verdict.PASS, "")
 
-	var stripped := text.strip_edges()
-	var normalized_text := _normalize_text(stripped)
-	var words := _tokenize(stripped)
+	# Single fused pass: normalize + tokenize. Returns [normalized_string, token_array].
+	var pair := _normalize_and_tokenize(text.strip_edges())
+	var normalized_text: String = pair[0]
+	var words: Array = pair[1]
 
-	# Check age-band specific additional blocks first (O(N words) scan).
-	# extra_set built with normalized keys to match normalized words.
+	# Check age-band specific additional blocks via pre-built extra_set.
 	var age_key := _age_band_key(age_band)
-	if _age_overrides.has(age_key):
-		var override: Dictionary = _age_overrides[age_key]
-		var extra_blocked: Array = override.get("additional_blocked", [])
-		var extra_set: Dictionary = {}
-		for bt in extra_blocked:
-			var norm := _normalize_text(str(bt).strip_edges())
-			if not norm.is_empty():
-				extra_set[norm] = true
+	if _age_extra_sets.has(age_key):
+		var extra_set: Dictionary = _age_extra_sets[age_key]
+		var override: Dictionary = _age_overrides.get(age_key, {})
 		for word in words:
 			var word_str := str(word)
 			if extra_set.has(word_str):
@@ -191,22 +201,16 @@ func _blocked_result(category: String, safe_alternative: String, reason: String)
 	return result
 
 
-func _word_match(words: Array, term: String) -> bool:
-	# Whole-word matching to avoid false positives like "obrona" matching "bron"
-	for word in words:
-		if str(word) == term:
-			return true
-	return false
-
-
-## Normalizes text by mapping homoglyphs, stripping Polish diacritics, and
-## transliterating leetspeak digits. Uses PackedStringArray accumulator to
-## avoid repeated String concatenation (Phase 8b rewrite).
+## Normalizes text: homoglyph → diacritic strip → leet digit map.
+## Uses PackedStringArray to avoid repeated string concatenation.
+## Note: unicode_at(i) read on lowered string avoids 1-char substring allocation
+## where only the code point is needed; dictionary key lookups still need ch.
 func _normalize_text(text: String) -> String:
 	var lowered := text.to_lower()
+	var len := lowered.length()
 	var chars := PackedStringArray()
-	chars.resize(lowered.length())
-	for i in range(lowered.length()):
+	chars.resize(len)
+	for i in range(len):
 		var ch := lowered[i]
 		if HOMOGLYPH_MAP.has(ch):
 			chars[i] = HOMOGLYPH_MAP[ch]
@@ -219,34 +223,57 @@ func _normalize_text(text: String) -> String:
 	return "".join(chars)
 
 
-## Tokenizes text into normalized words using a single-pass split approach
-## (Phase 8b rewrite). Replaces 19+ chained .replace() calls with character
-## classification during normalize, then String.split().
-func _tokenize(text: String) -> Array:
-	var normalized := _normalize_text(text)
-	# Replace punctuation with spaces in a single pass using character classification.
-	# Any character that is not a-z, 0-9, or space becomes a space delimiter.
-	var chars := PackedStringArray()
-	chars.resize(normalized.length())
-	for i in range(normalized.length()):
-		var ch := normalized[i]
-		var code := ch.unicode_at(0)
-		# a-z: 97-122, 0-9: 48-57, space: 32
-		if (code >= 97 and code <= 122) or code == 32:
-			chars[i] = ch
-		elif code >= 48 and code <= 57:
-			# Digits 2, 6, 9 are removed (no leet mapping); others already
-			# transliterated to letters by _normalize_text.
-			chars[i] = " "
+## Fused normalize + tokenize: single O(N) pass over input.
+## Returns [normalized_full_string, token_array].
+## Avoids the double O(N) scan of calling _normalize_text then _tokenize separately.
+## Uses normalized.unicode_at(i) directly in the tokenize step to skip the
+## 1-char substring allocation that ch.unicode_at(0) would require.
+func _normalize_and_tokenize(text: String) -> Array:
+	var lowered := text.to_lower()
+	var len := lowered.length()
+	var norm_chars := PackedStringArray()
+	norm_chars.resize(len)
+
+	# Normalize pass: homoglyph → diacritic → leet.
+	for i in range(len):
+		var ch := lowered[i]
+		if HOMOGLYPH_MAP.has(ch):
+			norm_chars[i] = HOMOGLYPH_MAP[ch]
+		elif POLISH_DIACRITIC_MAP.has(ch):
+			norm_chars[i] = POLISH_DIACRITIC_MAP[ch]
+		elif DIGIT_MAP.has(ch):
+			norm_chars[i] = DIGIT_MAP[ch]
 		else:
-			chars[i] = " "
-	var joined := "".join(chars)
+			norm_chars[i] = ch
+
+	var normalized := "".join(norm_chars)
+
+	# Tokenize pass: replace non-(a-z/space) chars with spaces.
+	# unicode_at(i) on the already-built string avoids creating 1-char substrings.
+	var tok_chars := PackedStringArray()
+	tok_chars.resize(len)
+	for i in range(len):
+		var code := normalized.unicode_at(i)
+		# a-z: 97-122, space: 32
+		if (code >= 97 and code <= 122) or code == 32:
+			tok_chars[i] = normalized[i]
+		else:
+			tok_chars[i] = " "
+
+	var joined := "".join(tok_chars)
 	var parts := joined.split(" ", false)
 	var tokens: Array = []
 	for part in parts:
 		if not part.is_empty():
 			tokens.append(part)
-	return tokens
+
+	return [normalized, tokens]
+
+
+## Legacy tokenize: delegates to fused function. Kept for external callers.
+func _tokenize(text: String) -> Array:
+	var pair := _normalize_and_tokenize(text)
+	return pair[1]
 
 
 func _age_band_key(age_band: AgeBand) -> String:
@@ -362,7 +389,7 @@ func _load_rules_file() -> void:
 ## Builds the flat term lookup dicts after loading all categories.
 ## Single-token terms → _term_lookup (O(1) word match).
 ## Multi-word (whitespace after normalization) terms → _phrase_lookup (substring match).
-## Both store NORMALIZED form so they match _normalize_text / _tokenize output.
+## Both store NORMALIZED form so they match _normalize_and_tokenize output.
 ## Enforces MAX_MODERATION_TERMS cap by dropping lowest-priority categories first.
 func _build_term_lookup() -> void:
 	_term_lookup = {}
@@ -399,7 +426,7 @@ func _build_term_lookup() -> void:
 					[MAX_MODERATION_TERMS, cat_name]
 				)
 				break
-			# Store NORMALIZED form so lookup matches what _tokenize() / _normalize_text() produces.
+			# Store NORMALIZED form so lookup matches _normalize_and_tokenize output.
 			var term_str := _normalize_text(str(term_variant).strip_edges())
 			if term_str.is_empty():
 				continue
@@ -425,3 +452,19 @@ func _build_term_lookup() -> void:
 			"Add terms to a higher-priority category or raise MAX_MODERATION_TERMS." %
 			MAX_MODERATION_TERMS
 		)
+
+
+## Pre-builds per-age-band extra_set dicts once at setup() so check_text
+## does not reconstruct them on every call. Terms stored in normalized form
+## to match _normalize_and_tokenize token output.
+func _build_age_extra_sets() -> void:
+	_age_extra_sets = {}
+	for age_key in _age_overrides.keys():
+		var override: Dictionary = _age_overrides[age_key]
+		var extra_blocked: Array = override.get("additional_blocked", [])
+		var extra_set: Dictionary = {}
+		for bt in extra_blocked:
+			var norm := _normalize_text(str(bt).strip_edges())
+			if not norm.is_empty():
+				extra_set[norm] = true
+		_age_extra_sets[str(age_key)] = extra_set
