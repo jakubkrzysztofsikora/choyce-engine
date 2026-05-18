@@ -75,6 +75,7 @@ const TEST_SCRIPTS: Array[Script] = [
 	preload("res://tests/contracts/plugin_sdk_signing_contract_test.gd"),
 	preload("res://tests/contracts/manage_data_lifecycle_port_contract_test.gd"),
 	preload("res://tests/contracts/intent_extractor_port_contract_test.gd"),
+	preload("res://tests/contracts/environment_port_contract_test.gd"),
 ]
 
 
