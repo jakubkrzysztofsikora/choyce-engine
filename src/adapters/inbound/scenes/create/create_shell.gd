@@ -30,8 +30,13 @@ var _run_playtest_port: RunPlaytestPort
 var _apply_world_edit_port: ApplyWorldEditCommandPort
 var _request_ai_help_port: RequestAICreationHelpPort
 var _speech_to_text_port: SpeechToTextPort
+## Phase 9: VoicePromptPort for non-reader CTA TTS prompt (optional).
+var _voice_prompt = null
 var _event_bus: DomainEventBus = null
 var _active_tool: CanvasTool = CanvasTool.PLACE
+## Phase 9: timer for non-reader CTA 3s idle TTS prompt.
+var _cta_idle_timer: SceneTreeTimer = null
+var _cta_tts_fired: bool = false
 
 ## Phase 8d: input gate — false until InboundMain emits ports_ready.
 ## While false, voice/AI buttons are blocked by VoiceAssistantOverlay.
@@ -98,6 +103,8 @@ func _ready() -> void:
 	_build_template_cards()
 	_refresh_workspace_ui()
 	_toast_banner.visible = false
+	# Phase 9: start non-reader CTA idle TTS prompt after 3s of no interaction.
+	_start_cta_idle_timer()
 
 	# Phase 8d: connect own ports_ready signal to the handler so that both:
 	#   a) tests can call shell.emit_signal("ports_ready") directly, and
@@ -124,7 +131,9 @@ func setup(
 	request_ai_help_port: RequestAICreationHelpPort = null,
 	speech_to_text_port: SpeechToTextPort = null,
 	feature_flags: FeatureFlagService = null,
-	event_bus: DomainEventBus = null
+	event_bus: DomainEventBus = null,
+	## Phase 9: optional VoicePromptPort for non-reader CTA TTS prompt.
+	voice_prompt = null
 ) -> CreateShell:
 	_navigator = navigator
 	_profile = profile
@@ -134,6 +143,7 @@ func setup(
 	_apply_world_edit_port = apply_world_edit_port
 	_request_ai_help_port = request_ai_help_port
 	_speech_to_text_port = speech_to_text_port
+	_voice_prompt = voice_prompt
 	_feature_flags = feature_flags
 	_event_bus = event_bus
 
@@ -177,6 +187,7 @@ func setup(
 	if is_node_ready():
 		_refresh_labels()
 		_refresh_tool_states()
+		_refresh_tool_port_gate()
 		_refresh_workspace_ui()
 
 	return self
@@ -224,21 +235,25 @@ func get_active_world() -> World:
 
 func _wire_actions() -> void:
 	_place_button.pressed.connect(func() -> void:
+		_reset_cta_idle_timer()
 		_set_active_tool(CanvasTool.PLACE)
 		_apply_active_tool()
 		_animate_button_press(_place_button)
 	)
 	_paint_button.pressed.connect(func() -> void:
+		_reset_cta_idle_timer()
 		_set_active_tool(CanvasTool.PAINT)
 		_apply_active_tool()
 		_animate_button_press(_paint_button)
 	)
 	_move_button.pressed.connect(func() -> void:
+		_reset_cta_idle_timer()
 		_set_active_tool(CanvasTool.MOVE)
 		_apply_active_tool()
 		_animate_button_press(_move_button)
 	)
 	_duplicate_button.pressed.connect(func() -> void:
+		_reset_cta_idle_timer()
 		_set_active_tool(CanvasTool.DUPLICATE)
 		_apply_active_tool()
 		_animate_button_press(_duplicate_button)
@@ -258,9 +273,9 @@ func _wire_actions() -> void:
 
 func _refresh_labels() -> void:
 	_title.text = _t("ui.create.title")
-	_info.text = "Twórz krok po kroku: 1) Umieść 2) Pomaluj/Przesuń 3) Przetestuj."
-	_status_title.text = "Status tworzenia"
-	_node_list_title.text = "Obiekty w świecie"
+	_info.text = _t("create.steps.intro")
+	_status_title.text = _t("create.status.title")
+	_node_list_title.text = _t("create.node_list.title")
 	_place_button.text = "%s %s" % [IconFont.get_icon("place"), _t("ui.tool.place")]
 	_paint_button.text = "%s %s" % [IconFont.get_icon("paint"), _t("ui.tool.paint")]
 	_move_button.text = "%s %s" % [IconFont.get_icon("move"), _t("ui.tool.move")]
@@ -273,14 +288,15 @@ func _refresh_labels() -> void:
 	_safe_restore_button.text = "%s %s" % [IconFont.get_icon("restore"), _t("ui.common.safe_restore")]
 	_go_play_button.text = "%s %s" % [IconFont.get_icon("play"), _t("ui.create.go_play")]
 	_go_library_button.text = "%s %s" % [IconFont.get_icon("library"), _t("ui.create.go_library")]
-	_set_status_message("Wybierz narzędzie. Zacznij od \"Umieść\".", false)
+	_set_status_message(_t("create.hint.choose_tool"), false)
 	_refresh_tool_states()
+	_refresh_tool_port_gate()
 
 
 func _set_active_tool(tool: CanvasTool) -> void:
 	_active_tool = tool
 	_refresh_tool_states()
-	_set_status_message("Wybrane narzędzie: %s." % _tool_name(tool), false)
+	_set_status_message(_t("create.tool_selected") % _tool_name(tool), false)
 
 
 func _refresh_tool_states() -> void:
@@ -292,6 +308,20 @@ func _refresh_tool_states() -> void:
 	_style_tool_button(_paint_button, _active_tool == CanvasTool.PAINT, Color8(147, 228, 170))
 	_style_tool_button(_move_button, _active_tool == CanvasTool.MOVE, Color8(170, 190, 255))
 	_style_tool_button(_duplicate_button, _active_tool == CanvasTool.DUPLICATE, Color8(229, 180, 255))
+
+
+## Phase 9: disable/enable tool buttons depending on whether _apply_world_edit_port is wired.
+## Called from _refresh_labels() (initial) and setup() (after port injection).
+func _refresh_tool_port_gate() -> void:
+	var port_available := _apply_world_edit_port != null
+	var unavailable_tip := _t("create.tools.unavailable")
+	var tool_buttons: Array[Button] = [_place_button, _paint_button, _move_button, _duplicate_button]
+	for btn in tool_buttons:
+		if btn == null:
+			continue
+		btn.disabled = not port_available
+		if not port_available:
+			btn.tooltip_text = unavailable_tip
 
 
 func _style_tool_button(button: Button, active: bool, color: Color) -> void:
@@ -332,16 +362,16 @@ func _animate_button_press(button: Button) -> void:
 
 func _apply_active_tool() -> void:
 	if _apply_world_edit_port == null or _profile == null:
-		_set_status_message("Tryb tworzenia nie jest jeszcze gotowy. Spróbuj uruchomić ponownie.", true)
+		_set_status_message(_t("create.error.port_not_ready"), true)
 		return
 
 	_ensure_world_context()
 	if _active_world_id.is_empty():
-		_set_status_message("Nie znaleziono aktywnego świata. Kliknij \"Umieść\" jeszcze raz.", true)
+		_set_status_message(_t("create.error.no_world"), true)
 		return
 
 	if _selected_node_id.is_empty() and _active_tool != CanvasTool.PLACE:
-		_set_status_message("Najpierw wybierz obiekt z listy lub dodaj nowy przez \"Umieść\".", true)
+		_set_status_message(_t("create.error.no_selection"), true)
 		return
 
 	var command := WorldEditCommand.new()
@@ -356,7 +386,7 @@ func _apply_active_tool() -> void:
 			command.target_node_id = "%s_%d" % [prefix, Time.get_ticks_msec()]
 			command.node_data = {
 				"type": SceneNode.NodeType.OBJECT,
-				"display_name": "Nowy obiekt",
+				"display_name": _t("create.object.default_name"),
 				"position": Vector3(0, 0, 0),
 			}
 		CanvasTool.PAINT:
@@ -371,7 +401,7 @@ func _apply_active_tool() -> void:
 
 	var applied := _apply_world_edit_port.execute(_active_world_id, command, _profile)
 	if not applied:
-		_set_status_message("Zmiana nie została zapisana. Wybierz inny obiekt i spróbuj ponownie.", true)
+		_set_status_message(_t("create.error.edit_failed"), true)
 		return
 
 	_apply_command_to_local_world(command)
@@ -400,15 +430,15 @@ func _ensure_world_context() -> void:
 	if not _active_world_id.is_empty():
 		return
 	if _create_project_port == null or _profile == null:
-		_set_status_message("Brak konfiguracji projektu. Tryb tworzenia jest nieaktywny.", true)
+		_set_status_message(_t("create.error.no_config"), true)
 		return
 	var project := _create_project_port.execute("starter_canvas", _profile)
 	if project == null or project.worlds.is_empty():
-		_set_status_message("Nie udało się utworzyć nowego świata.", true)
+		_set_status_message(_t("create.error.world_create_failed"), true)
 		return
 	var world_variant: Variant = project.worlds[0]
 	if not (world_variant is World):
-		_set_status_message("Świat ma niepoprawny format.", true)
+		_set_status_message(_t("create.error.world_invalid"), true)
 		return
 	var world := world_variant as World
 	_active_world_id = world.world_id
@@ -420,32 +450,33 @@ func _ensure_world_context() -> void:
 		var first_node: Variant = _current_world_instance.scene_nodes[0]
 		if first_node is SceneNode:
 			set_selected_node((first_node as SceneNode).node_id)
-	_set_status_message("Świat gotowy. Dodaj pierwszy obiekt przez \"Umieść\".", false)
+	_set_status_message(_t("create.world_ready"), false)
 	_refresh_workspace_ui()
 	_update_preview_grid()
 
 
 func _launch_playtest(local_coop: bool = false) -> Session:
 	if _run_playtest_port == null or _profile == null:
-		_set_status_message("Playtest jest chwilowo niedostępny.", true)
+		_set_status_message(_t("create.error.playtest_unavailable"), true)
 		return null
 	_ensure_world_context()
 	if _active_world_id.is_empty():
-		_set_status_message("Najpierw utwórz świat przed startem playtestu.", true)
+		_set_status_message(_t("create.error.playtest_no_world"), true)
 		return null
 
 	var players: Array = [_profile]
 	if local_coop:
 		var guest := PlayerProfile.new("%s_local_guest" % _profile.profile_id, PlayerProfile.Role.KID)
-		guest.display_name = "Gość"
+		guest.display_name = _t("create.guest_name")
 		players.append(guest)
 
 	var session := _run_playtest_port.execute(_active_world_id, players)
 	if session != null:
-		_info.text = "Test uruchomiony: %s" % ("kooperacja" if session.mode == Session.SessionMode.CO_OP else "solo")
-		_set_status_message("Playtest uruchomiony. Możesz przejść do zakładki \"Graj\".", false)
+		var mode_str := _t("create.playtest.mode_coop") if session.mode == Session.SessionMode.CO_OP else _t("create.playtest.mode_solo")
+		_info.text = _t("create.playtest.running") % mode_str
+		_set_status_message(_t("create.playtest.started"), false)
 	else:
-		_set_status_message("Playtest nie wystartował. Dodaj obiekt i spróbuj ponownie.", true)
+		_set_status_message(_t("create.error.playtest_failed"), true)
 	return session
 
 
@@ -496,20 +527,20 @@ func _refresh_workspace_ui() -> void:
 		return
 
 	if _current_world_instance == null:
-		_world_summary.text = "Świat: brak | Obiekty: 0"
-		_selection_label.text = "Zaznaczenie: brak"
+		_world_summary.text = _t("create.world_summary.empty")
+		_selection_label.text = _t("create.selection.none")
 		_node_list.clear()
 		_node_list_ids = []
-		_node_list.add_item("Brak obiektów. Kliknij \"Umieść\".")
+		_node_list.add_item(_t("create.node_list.empty"))
 		_node_list.set_item_disabled(0, true)
 		return
 
 	var node_count := _current_world_instance.scene_nodes.size()
-	_world_summary.text = "Świat: %s | Obiekty: %d" % [_active_world_id, node_count]
+	_world_summary.text = _t("create.world_summary.full") % [_active_world_id, node_count]
 	_selection_label.text = (
-		"Zaznaczenie: %s" % _selected_node_id
+		_t("create.selection.active") % _selected_node_id
 		if not _selected_node_id.is_empty()
-		else "Zaznaczenie: brak"
+		else _t("create.selection.none")
 	)
 
 	_node_list.clear()
@@ -519,11 +550,11 @@ func _refresh_workspace_ui() -> void:
 			continue
 		var node: SceneNode = node_variant
 		_node_list_ids.append(node.node_id)
-		var title := node.display_name if not node.display_name.is_empty() else "Obiekt"
+		var title := node.display_name if not node.display_name.is_empty() else _t("create.object.fallback_name")
 		_node_list.add_item("%s (%s)" % [title, node.node_id])
 
 	if _node_list_ids.is_empty():
-		_node_list.add_item("Brak obiektów. Kliknij \"Umieść\".")
+		_node_list.add_item(_t("create.node_list.empty"))
 		_node_list.set_item_disabled(0, true)
 		return
 
@@ -536,7 +567,7 @@ func _on_node_list_item_selected(index: int) -> void:
 	if index < 0 or index >= _node_list_ids.size():
 		return
 	set_selected_node(_node_list_ids[index])
-	_set_status_message("Wybrano obiekt: %s." % _node_list_ids[index], false)
+	_set_status_message(_t("create.object_selected") % _node_list_ids[index], false)
 
 
 func _set_status_message(message: String, is_error: bool) -> void:
@@ -589,27 +620,27 @@ func _show_toast(message: String, is_error: bool) -> void:
 func _tool_name(tool: CanvasTool) -> String:
 	match tool:
 		CanvasTool.PLACE:
-			return "Umieść"
+			return _t("create.tool.place")
 		CanvasTool.PAINT:
-			return "Pomaluj"
+			return _t("create.tool.paint")
 		CanvasTool.MOVE:
-			return "Przesuń"
+			return _t("create.tool.move")
 		CanvasTool.DUPLICATE:
-			return "Duplikuj"
-	return "Narzędzie"
+			return _t("create.tool.duplicate")
+	return _t("create.tool.unknown")
 
 
 func _success_message_for(command: WorldEditCommand) -> String:
 	match command.action:
 		WorldEditCommand.Action.ADD_NODE:
-			return "Dodano nowy obiekt: %s." % command.target_node_id
+			return _t("create.success.add") % command.target_node_id
 		WorldEditCommand.Action.PAINT:
-			return "Pomalowano obiekt: %s." % command.target_node_id
+			return _t("create.success.paint") % command.target_node_id
 		WorldEditCommand.Action.MOVE_NODE:
-			return "Przesunięto obiekt: %s." % command.target_node_id
+			return _t("create.success.move") % command.target_node_id
 		WorldEditCommand.Action.DUPLICATE_NODE:
-			return "Utworzono kopię obiektu."
-	return "Zmiana zapisana."
+			return _t("create.success.duplicate")
+	return _t("create.success.generic")
 
 
 func _apply_friendly_theme() -> void:
@@ -728,7 +759,7 @@ func _build_template_cards() -> void:
 		btn.pressed.connect(func() -> void:
 			_active_palette = pid
 			_apply_friendly_theme()
-			_set_status_message("Wybrano szablon: %s" % display_names.get(pid, pid), false)
+			_set_status_message(_t("create.template_selected") % display_names.get(pid, pid), false)
 		)
 		_template_list.add_child(btn)
 		_template_buttons.append(btn)
@@ -799,11 +830,11 @@ func _on_onboarding_step_changed_event(event: DomainEvent) -> void:
 	var text: String = _t(instruction_key)
 	if text.begins_with("KEY_NOT_FOUND"):
 		match step_id:
-			OnboardingServiceScript.STEP_WELCOME: text = "Witaj! Zaczynamy budowanie."
-			OnboardingServiceScript.STEP_PLACE_FIRST: text = "Kliknij tutaj, aby ustawić obiekt."
-			OnboardingServiceScript.STEP_PAINT_FIRST: text = "Teraz pomaluj swój obiekt."
-			OnboardingServiceScript.STEP_PLAY: text = "Naciśnij Graj, aby przetestować świat."
-			_: text = "Kontynuuj..."
+			OnboardingServiceScript.STEP_WELCOME: text = _t("create.onboarding.welcome")
+			OnboardingServiceScript.STEP_PLACE_FIRST: text = _t("create.onboarding.place_first")
+			OnboardingServiceScript.STEP_PAINT_FIRST: text = _t("create.onboarding.paint_first")
+			OnboardingServiceScript.STEP_PLAY: text = _t("create.onboarding.play")
+			_: text = _t("create.onboarding.continue")
 
 	_onboarding_overlay.show_step(step_id, text, target)
 
@@ -843,9 +874,83 @@ func _t(key: String) -> String:
 		"ui.common.undo": "Cofnij",
 		"ui.common.safe_restore": "Przywróć bezpieczny zapis",
 		"ui.create.go_play": "Przejdź do gry",
-		"ui.create.go_library": "Przejdź do biblioteki"
+		"ui.create.go_library": "Przejdź do biblioteki",
+		# Phase 4a-1: create_shell keys
+		"create.steps.intro": "Stwórz: 1) Umieść 2) Pomaluj 3) Zagraj.",
+		"create.status.title": "Status tworzenia",
+		"create.node_list.title": "Obiekty w świecie",
+		"create.hint.choose_tool": "Wybierz narzędzie. Zacznij od Umieść.",
+		"create.tool_selected": "Wybrałeś: %s.",
+		"create.error.port_not_ready": "Tryb tworzenia niegotowy. Uruchom ponownie.",
+		"create.error.no_world": "Brak aktywnego świata. Kliknij Umieść.",
+		"create.error.no_selection": "Wybierz obiekt lub dodaj przez Umieść.",
+		"create.object.default_name": "Nowy obiekt",
+		"create.error.edit_failed": "Zmiana niezapisana. Wybierz inny obiekt.",
+		"create.error.no_config": "Brak konfiguracji. Tryb tworzenia nieaktywny.",
+		"create.error.world_create_failed": "Nie udało się utworzyć świata.",
+		"create.error.world_invalid": "Świat ma niepoprawny format.",
+		"create.world_ready": "Świat gotowy. Dodaj obiekt przez Umieść.",
+		"create.error.playtest_unavailable": "Playtest chwilowo niedostępny.",
+		"create.error.playtest_no_world": "Najpierw utwórz świat.",
+		"create.guest_name": "Gość",
+		"create.playtest.running": "Test uruchomiony: %s",
+		"create.playtest.mode_coop": "kooperacja",
+		"create.playtest.mode_solo": "solo",
+		"create.playtest.started": "Playtest uruchomiony. Przejdź do Graj.",
+		"create.error.playtest_failed": "Playtest nieudany. Dodaj obiekt.",
+		"create.world_summary.empty": "Świat: brak | Obiekty: 0",
+		"create.selection.none": "Zaznaczenie: brak",
+		"create.node_list.empty": "Brak obiektów. Kliknij Umieść.",
+		"create.world_summary.full": "Świat: %s | Obiekty: %d",
+		"create.selection.active": "Zaznaczenie: %s",
+		"create.object.fallback_name": "Obiekt",
+		"create.object_selected": "Wybrano obiekt: %s.",
+		"create.tool.place": "Umieść",
+		"create.tool.paint": "Pomaluj",
+		"create.tool.move": "Przesuń",
+		"create.tool.duplicate": "Duplikuj",
+		"create.tool.unknown": "Narzędzie",
+		"create.success.add": "Dodano obiekt: %s.",
+		"create.success.paint": "Pomalowano obiekt: %s.",
+		"create.success.move": "Przesunięto obiekt: %s.",
+		"create.success.duplicate": "Utworzono kopię obiektu.",
+		"create.success.generic": "Zmiana zapisana.",
+		"create.template_selected": "Wybrano szablon: %s",
+		"create.onboarding.welcome": "Witaj! Zaczynamy budowanie.",
+		"create.onboarding.place_first": "Kliknij tu, aby ustawić obiekt.",
+		"create.onboarding.paint_first": "Teraz pomaluj swój obiekt.",
+		"create.onboarding.play": "Naciśnij Graj, aby przetestować.",
+		"create.onboarding.continue": "Kontynuuj...",
+		"create.ai.applied": "Zmiana AI zatwierdzona i zastosowana.",
+		# Phase 9
+		"create.tools.unavailable": "Narzędzia niedostępne. Spróbuj ponownie.",
 	}
 	return fallback.get(key, key)
+
+
+## Phase 9: Non-reader CTA — start 3s idle timer. On timeout, fire VoicePromptPort if available.
+## The timer is (re-)started on shell ready. Any user interaction resets it via _reset_cta_idle_timer().
+func _start_cta_idle_timer() -> void:
+	if not is_inside_tree():
+		return
+	_cta_tts_fired = false
+	_cta_idle_timer = get_tree().create_timer(3.0)
+	_cta_idle_timer.timeout.connect(_on_cta_idle_timeout)
+
+
+func _reset_cta_idle_timer() -> void:
+	_cta_tts_fired = false
+	if is_inside_tree():
+		_cta_idle_timer = get_tree().create_timer(3.0)
+		_cta_idle_timer.timeout.connect(_on_cta_idle_timeout)
+
+
+func _on_cta_idle_timeout() -> void:
+	if _cta_tts_fired:
+		return
+	_cta_tts_fired = true
+	if _voice_prompt != null and _voice_prompt.has_method("speak"):
+		_voice_prompt.call("speak", _t("ui.create.go_play"))
 
 
 func _on_ai_action_confirmed(action: AIAssistantAction) -> void:
@@ -853,6 +958,6 @@ func _on_ai_action_confirmed(action: AIAssistantAction) -> void:
 		var executed = _request_ai_help_port.execute_pending_action(action, _profile)
 		if executed and executed.status == AIAssistantAction.ActionStatus.APPLIED:
 			print("AI Action executed: ", executed.action_id)
-			_set_status_message("Zmiana AI została zatwierdzona i zastosowana.", false)
+			_set_status_message(_t("create.ai.applied"), false)
 			if not _selected_node_id.is_empty():
 				set_selected_node(_selected_node_id)
