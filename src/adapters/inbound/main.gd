@@ -63,6 +63,7 @@ var _phase1_tool_gateway: DeterministicToolExecutionGateway
 @onready var _active_indicator: PanelContainer = $ActiveIndicator
 @onready var _title_label: Label = $Layout/NavBar/NavPill/TitleLabel
 
+@onready var _mascot: Mascot = $MascotOverlay
 @onready var _create_shell: CreateShell = $Layout/Body/CreateShell
 @onready var _play_shell: PlayShell = $Layout/Body/PlayShell
 @onready var _library_shell: LibraryShell = $Layout/Body/LibraryShell
@@ -120,6 +121,9 @@ func _ready() -> void:
 	_register_shells()
 	_connect_navigation()
 	_wire_shell_dependencies()
+	# Wire mascot after shell dependencies so _phase1_event_bus is populated.
+	if _mascot != null:
+		_mascot.setup(_phase1_event_bus, null)
 	_apply_localized_text()
 	_setup_transitions()
 	_navigator.show_shell(SHELL_CREATE)

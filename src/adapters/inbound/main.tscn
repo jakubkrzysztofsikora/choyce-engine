@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/create/create_shell.tscn" id="2_create_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/play/play_shell.tscn" id="3_play_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/library/library_shell.tscn" id="4_library_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/parent/parent_zone_shell.tscn" id="5_parent_scene"]
+[ext_resource type="PackedScene" path="res://src/adapters/inbound/shared/ui/mascot.tscn" id="6_mascot_scene"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -101,3 +102,5 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="MascotOverlay" parent="." instance=ExtResource("6_mascot_scene")]
