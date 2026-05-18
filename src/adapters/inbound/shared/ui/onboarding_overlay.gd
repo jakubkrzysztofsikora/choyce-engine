@@ -21,6 +21,8 @@ var _skip_button: Button
 var _auto_dismiss_timer: Timer
 var _tts_prompt_timer: Timer
 var _localization: LocalizationPolicyPort
+var _tts: TextToSpeechPort
+var _tts_warning_shown: bool = false
 
 
 func _ready() -> void:
@@ -61,6 +63,11 @@ func _ready() -> void:
 	add_child(_tts_prompt_timer)
 
 	modulate.a = 0.0
+
+
+## Inject TTS port. Call before show_step() for voice prompts to work.
+func setup_tts(port: TextToSpeechPort) -> void:
+	_tts = port
 
 
 ## Inject localization port. Call before show_step/celebrate_completion if translation needed.
@@ -142,11 +149,11 @@ func _on_auto_dismiss() -> void:
 
 
 func _on_tts_prompt() -> void:
-	# Delegate to TTS if available — future integration via audio-governance pipeline.
-	# For now emit a signal-like notification via overlay text. The audio-governance
-	# pipeline can be injected later via setup_localization extended API.
-	# We keep this hook present so the timer is wired and testable.
-	pass
+	if _tts != null and _tts.is_available():
+		_tts.speak(_t("onboarding.tts_prompt"))
+	elif not _tts_warning_shown:
+		_tts_warning_shown = true
+		push_warning("OnboardingOverlay: TTS port not wired or unavailable — voice prompt skipped.")
 
 
 func _draw() -> void:

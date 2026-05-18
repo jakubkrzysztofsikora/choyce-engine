@@ -1,21 +1,23 @@
-## Outbound port contract for text-to-speech generation.
-## Adapter implementations can map voice profiles to provider-specific IDs.
+## Outbound port contract for text-to-speech playback.
+## Hexagonal boundary: inbound UI adapters depend on this port, not on any concrete
+## TTS provider. Implementations live in src/adapters/outbound/.
+## Default implementation: silent / unavailable (safe fail-open for missing hardware).
 class_name TextToSpeechPort
 extends RefCounted
 
 
-func synthesize(text: String, voice_id: String, language: String) -> PackedByteArray:
-	push_error("TextToSpeechPort.synthesize() not implemented")
-	return PackedByteArray()
+## Speak text aloud. Locale defaults to Polish (product default).
+## Implementations MUST be fire-and-forget (no await required by callers).
+func speak(text: String, locale: String = "pl-PL") -> void:
+	pass
 
 
-## Optional role resolver for adapters with policy-controlled voice presets.
-## Default behavior is pass-through.
-func resolve_voice_for_role(role: String, _language: String = "") -> String:
-	return role
+## Returns true when a TTS backend is ready to produce audio on the current device.
+## UI adapters MUST call this before speak() to avoid silent failures.
+func is_available() -> bool:
+	return false
 
 
-## Metadata required for governance checks (licensing/watermark/attribution).
-## Adapters should return {} when unavailable.
-func get_last_request_metadata() -> Dictionary:
-	return {}
+## Cancel any in-progress speech immediately.
+func cancel() -> void:
+	pass

@@ -5,6 +5,8 @@
 ##   M3 - position toggle: bottom (anchor_top ~0.85) and top (anchor_top ~0.0)
 ##   M4 - tts_narration toggle stored and accessible
 ##   M5 - show_message still works after option changes
+##   M6 - DEFAULT_FONT_SIZE is 32 (readable for emergent readers)
+##   M7 - setup_tts(port) wires typed TextToSpeechPort; speak() called on show_message when narration enabled
 extends SceneTree
 
 
@@ -21,6 +23,8 @@ func _run() -> void:
 	await _test_position_bottom()
 	await _test_tts_narration_toggle()
 	await _test_show_message_still_works()
+	await _test_default_font_size_is_32()
+	await _test_setup_tts_speak_on_show_message()
 	print("ALL_CAPTIONS_OVERLAY_TESTS: PASS")
 	quit(0)
 
@@ -152,6 +156,60 @@ func _test_tts_narration_toggle() -> void:
 		return
 	print("PASS M4: TTS narration toggle stored correctly")
 	overlay.queue_free()
+
+
+## M6 - DEFAULT_FONT_SIZE is 32
+func _test_default_font_size_is_32() -> void:
+	var overlay := CaptionsOverlay.new()
+	get_root().add_child(overlay)
+	await process_frame
+	var label := overlay.get_label()
+	if label.get_theme_font_size("font_size") != 32:
+		print("FAIL M6: DEFAULT_FONT_SIZE should be 32, got %d" % label.get_theme_font_size("font_size"))
+		overlay.queue_free()
+		quit(1)
+		return
+	print("PASS M6: DEFAULT_FONT_SIZE is 32")
+	overlay.queue_free()
+
+
+## M7 - setup_tts wires port; speak() called when tts_narration enabled and message shown
+func _test_setup_tts_speak_on_show_message() -> void:
+	var overlay := CaptionsOverlay.new()
+	get_root().add_child(overlay)
+	await process_frame
+
+	var mock_tts := MockTTSPort.new()
+	overlay.setup_tts(mock_tts)
+	overlay.set_tts_narration(true)
+	overlay.show_message("Hej!", 0.5)
+	await process_frame
+
+	if mock_tts.speak_calls.size() == 0:
+		print("FAIL M7: speak() not called when TTS narration enabled")
+		overlay.queue_free()
+		quit(1)
+		return
+	if mock_tts.speak_calls[0] != "Hej!":
+		print("FAIL M7: speak() called with wrong text '%s'" % mock_tts.speak_calls[0])
+		overlay.queue_free()
+		quit(1)
+		return
+	print("PASS M7: setup_tts wired; speak() called on show_message")
+	overlay.queue_free()
+
+
+class MockTTSPort extends TextToSpeechPort:
+	var speak_calls: Array[String] = []
+
+	func speak(text: String, _locale: String = "pl-PL") -> void:
+		speak_calls.append(text)
+
+	func is_available() -> bool:
+		return true
+
+	func cancel() -> void:
+		pass
 
 
 ## M5 - show_message still works after option changes

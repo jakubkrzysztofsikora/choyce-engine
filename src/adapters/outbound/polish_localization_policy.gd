@@ -103,6 +103,7 @@ func _load_defaults() -> void:
 		# Phase 4a-4: onboarding_overlay keys (kid register: ≤6 words, 2nd person)
 		"onboarding.celebrate": "Świetna robota!",
 		"onboarding.skip": "Pomiń",
+		"onboarding.tts_prompt": "Możesz pominąć. Naciśnij ucho.",
 		# Phase 4a-5: captions_overlay keys (no hardcoded Polish in captions at runtime;
 		# keys reserved for future caption-label UI if added)
 		"captions.position.bottom": "Napisy: na dole",

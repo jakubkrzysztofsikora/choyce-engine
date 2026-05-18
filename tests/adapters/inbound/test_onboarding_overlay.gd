@@ -1,11 +1,12 @@
-## Tests for OnboardingOverlay: Phase 4a-4 (Polish l10n) + Phase 4c (skip UX).
+## Tests for OnboardingOverlay: Phase 4a-4 (Polish l10n) + Phase 4c (skip UX) + TTS port.
 ## MUST criteria tested here:
 ##   M1 - celebrate_completion uses _t("onboarding.celebrate") not hardcoded string
 ##   M2 - mouse_filter is MOUSE_FILTER_PASS (not MOUSE_FILTER_STOP)
 ##   M3 - auto-dismiss timer starts with 30s duration
 ##   M4 - "Pomij" skip button present and visible
 ##   M5 - skip button emits advance_requested when pressed
-##   M6 - TTS prompt scheduled at 5s ("Mozesz pominac")
+##   M6 - TTS prompt timer configured at 5s
+##   M7 - _on_tts_prompt() invokes tts.speak() when port injected and available
 extends SceneTree
 
 
@@ -20,6 +21,7 @@ func _run() -> void:
 	await _test_auto_dismiss_timer_30s()
 	await _test_celebration_uses_localized_key()
 	await _test_tts_prompt_at_5s()
+	await _test_tts_speak_invoked_when_port_available()
 	print("ALL_ONBOARDING_OVERLAY_TESTS: PASS")
 	quit(0)
 
@@ -139,6 +141,46 @@ func _test_tts_prompt_at_5s() -> void:
 		return
 	print("PASS M6: TTS prompt timer is 5s")
 	overlay.queue_free()
+
+
+## M7 - setup_tts() injects port; _on_tts_prompt() calls speak() when available
+func _test_tts_speak_invoked_when_port_available() -> void:
+	var overlay := OnboardingOverlay.new()
+	get_root().add_child(overlay)
+	await process_frame
+
+	var mock_tts := MockTTSPort.new()
+	overlay.setup_tts(mock_tts)
+
+	# Simulate the TTS prompt timer firing by calling the handler directly.
+	overlay._on_tts_prompt()
+	await process_frame
+
+	if mock_tts.speak_calls.size() == 0:
+		print("FAIL M7: speak() not called when TTS port available")
+		overlay.queue_free()
+		quit(1)
+		return
+	if mock_tts.speak_calls[0] != "onboarding.tts_prompt":
+		print("FAIL M7: speak() called with wrong text '%s'" % mock_tts.speak_calls[0])
+		overlay.queue_free()
+		quit(1)
+		return
+	print("PASS M7: speak() invoked with onboarding.tts_prompt key")
+	overlay.queue_free()
+
+
+class MockTTSPort extends TextToSpeechPort:
+	var speak_calls: Array[String] = []
+
+	func speak(text: String, _locale: String = "pl-PL") -> void:
+		speak_calls.append(text)
+
+	func is_available() -> bool:
+		return true
+
+	func cancel() -> void:
+		pass
 
 
 class MockLocalizationPolicy extends LocalizationPolicyPort:

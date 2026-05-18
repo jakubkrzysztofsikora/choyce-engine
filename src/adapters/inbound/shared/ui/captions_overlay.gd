@@ -7,7 +7,9 @@ class_name CaptionsOverlay
 extends Control
 
 const VALID_FONT_SIZES: Array[int] = [24, 32, 40]
-const DEFAULT_FONT_SIZE: int = 24
+## 32px default: more readable for emergent readers (ages 5-8) than 24px.
+## 24px remains available via set_font_size() for parent/advanced users.
+const DEFAULT_FONT_SIZE: int = 32
 
 var _panel: PanelContainer
 var _label: Label
@@ -20,9 +22,9 @@ var _high_contrast: bool = false
 var _caption_position: String = "bottom"
 var _tts_narration: bool = false
 
-# Optional audio-governance hook (Phase 4d): inject AudioGovernanceService to
-# enable TTS narration for captions. Kept as duck-typed to avoid hard dependency.
-var _audio_governance = null
+# Optional TTS port (Phase 4d): inject TextToSpeechPort to enable voice narration
+# for captions. Typed port replaces previous duck-typed audio-governance reference.
+var _tts: TextToSpeechPort = null
 
 
 func _init() -> void:
@@ -86,10 +88,8 @@ func show_message(text: String, duration: float = 3.0) -> void:
 	_timer.start(max(duration, 0.1))
 
 	# Phase 4d: delegate to TTS narration when enabled.
-	if _tts_narration and _audio_governance != null and _audio_governance.has_method("generate_narration"):
-		# Fire-and-forget; caller provides actor context externally.
-		# Governance pipeline invoked with null actor (anonymous/system context).
-		_audio_governance.generate_narration(text, null, "captions")
+	if _tts_narration and _tts != null and _tts.is_available():
+		_tts.speak(text)
 
 
 ## --- Phase 4d: option setters ---
@@ -141,9 +141,10 @@ func is_tts_narration_enabled() -> bool:
 	return _tts_narration
 
 
-## Inject audio-governance service for TTS narration (optional).
-func setup_audio_governance(governance) -> void:
-	_audio_governance = governance
+## Inject TTS port for voice narration (optional).
+## Replaces legacy setup_audio_governance() — callers must update to this signature.
+func setup_tts(port: TextToSpeechPort) -> void:
+	_tts = port
 
 
 ## --- Accessors for tests ---
