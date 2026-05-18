@@ -3,6 +3,9 @@
 ## Covers:
 ##   MUST-1  Term-lookup normalization: diacritic term stored normalized, matched via stripped input.
 ##   MUST-2  Age-override extra_set normalization: diacritic term in additional_blocked matched via stripped input.
+##   MUST-3  Multi-word phrase matching: 5 original photoreal phrases blocked as substrings.
+##   MUST-4  Single-token photoreal terms still blocked (regression guard).
+##   MUST-5  Default age-override words still blocked for 6yo.
 extends SceneTree
 
 
@@ -68,6 +71,65 @@ func _init() -> void:
 		failures.append(
 			"MUST-2b: age-override 'zabić' must also block diacritic form 'zabić cos'"
 		)
+
+	# ── MUST-3: multi-word phrase matching (photoreal coverage restore) ─────────
+	var adapter_phrases := LocalModerationAdapter.new().setup("")
+
+	checks += 1
+	var res_realistic_human := adapter_phrases.check_text("draw a realistic human for me", age_child)
+	if not res_realistic_human.is_blocked():
+		failures.append(
+			"MUST-3a: 'draw a realistic human for me' must be blocked (phrase: realistic human)"
+		)
+
+	checks += 1
+	var res_portret := adapter_phrases.check_text("portret czlowieka w grze", age_child)
+	if not res_portret.is_blocked():
+		failures.append(
+			"MUST-3b: 'portret czlowieka w grze' must be blocked (phrase: portret czlowieka)"
+		)
+
+	checks += 1
+	var res_portret_diacritic := adapter_phrases.check_text("portret człowieka", age_child)
+	if not res_portret_diacritic.is_blocked():
+		failures.append(
+			"MUST-3c: 'portret człowieka' (with diacritics) must be blocked"
+		)
+
+	checks += 1
+	var res_human_portrait := adapter_phrases.check_text("generate a human portrait", age_child)
+	if not res_human_portrait.is_blocked():
+		failures.append(
+			"MUST-3d: 'generate a human portrait' must be blocked (phrase: human portrait)"
+		)
+
+	checks += 1
+	var res_realistyczny := adapter_phrases.check_text("realistyczny czlowiek w tle", age_child)
+	if not res_realistyczny.is_blocked():
+		failures.append(
+			"MUST-3e: 'realistyczny czlowiek w tle' must be blocked (phrase: realistyczny czlowiek)"
+		)
+
+	checks += 1
+	var res_photo_real := adapter_phrases.check_text("styl photo-real prosze", age_child)
+	if not res_photo_real.is_blocked():
+		failures.append(
+			"MUST-3f: 'styl photo-real prosze' must be blocked (phrase: photo-real)"
+		)
+
+	# ── MUST-4: single-token photoreal terms still blocked ──────────────────────
+	for phrase in ["photoreal robot", "zrob selfie postaci", "fotorealistyczny las"]:
+		checks += 1
+		var r := adapter_phrases.check_text(phrase, age_child)
+		if not r.is_blocked():
+			failures.append("MUST-4: single-token '%s' must still be blocked" % phrase)
+
+	# ── MUST-5: default age-override terms blocked for 6yo ──────────────────────
+	for word in ["straszny", "potwor", "smierc"]:
+		checks += 1
+		var r := adapter_phrases.check_text(word, age_child)
+		if not r.is_blocked():
+			failures.append("MUST-5: age-restricted word '%s' must block for CHILD_6_8" % word)
 
 	if failures.is_empty():
 		print("[PASS] LocalModerationAdapterRegressions (%d checks)" % checks)

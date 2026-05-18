@@ -59,15 +59,28 @@ func _init() -> void:
 	if not photoreal_result.is_blocked():
 		failures.append("'fotorealistyczny portret dziecka' must be blocked by moderation (photoreal_human category)")
 
-	# ── Additional single-token photoreal terms ──────────────────────────────
-	# Multi-word originals ("photo-real", "realistic human") are not whole-word
-	# matchable; their canonical single-token form "photoreal" / "fotorealistyczny"
-	# are used instead. "selfie" is a standalone single token.
+	# ── Single-token photoreal terms ────────────────────────────────────────
 	for phrase in ["photoreal robot", "zrob selfie postaci", "fotorealistyczny las"]:
 		checks += 1
 		var res := moderation.check_text(phrase, age)
 		if not res.is_blocked():
-			failures.append("Photoreal-adjacent prompt '%s' must be blocked by moderation" % phrase)
+			failures.append("Photoreal single-token '%s' must be blocked by moderation" % phrase)
+
+	# ── Multi-word photoreal phrase matching (phrase-pass restore) ───────────
+	# These 5 original terms were dropped when whole-word tokenizer was introduced.
+	# They are now matched via phrase-substring pass on the full normalized text.
+	var multiword_cases: Array[String] = [
+		"draw a realistic human character",
+		"generate a human portrait please",
+		"realistyczny czlowiek w tle",
+		"portret czlowieka w grze",
+		"styl photo-real prosze",
+	]
+	for phrase in multiword_cases:
+		checks += 1
+		var res := moderation.check_text(phrase, age)
+		if not res.is_blocked():
+			failures.append("Multi-word photoreal '%s' must be blocked by moderation" % phrase)
 
 	if failures.is_empty():
 		print("[PASS] Phase5InjectionAndPhotoreal (%d checks)" % checks)

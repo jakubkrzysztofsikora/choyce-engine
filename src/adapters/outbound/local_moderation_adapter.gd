@@ -25,11 +25,14 @@ var _age_overrides: Dictionary = {}
 var _image_rules: Dictionary = {}
 var _rules_file: String = "res://data/moderation/rules_pl.json"
 
-## Flat {normalized_term: {category, severity, safe_alt}} dict built at setup().
+## Flat {normalized_single_token → {category, severity, safe_alt}} dict built at setup().
 ## Enables O(1) per-word lookup instead of nested category×term scan.
-## Terms stored in NORMALIZED form (homoglyph+diacritic+leet applied) so that
-## words produced by _tokenize() (which calls _normalize_text) hit the dict.
+## Terms stored in NORMALIZED form so lookup matches _tokenize() output.
 var _term_lookup: Dictionary = {}
+
+## Flat {normalized_phrase → {category, severity, safe_alt}} dict for multi-word terms.
+## Matched by substring against the full normalized text (not token array).
+var _phrase_lookup: Dictionary = {}
 
 ## Maps visually similar Unicode characters to their ASCII equivalents.
 ## Covers Cyrillic homoglyphs and fullwidth Latin letters.
@@ -89,7 +92,9 @@ func check_text(text: String, age_band: AgeBand) -> ModerationResult:
 	if text.strip_edges().is_empty():
 		return ModerationResult.new(ModerationResult.Verdict.PASS, "")
 
-	var words := _tokenize(text.strip_edges())
+	var stripped := text.strip_edges()
+	var normalized_text := _normalize_text(stripped)
+	var words := _tokenize(stripped)
 
 	# Check age-band specific additional blocks first (O(N words) scan).
 	# extra_set built with normalized keys to match normalized words.
@@ -108,7 +113,7 @@ func check_text(text: String, age_band: AgeBand) -> ModerationResult:
 				var alt: String = str(override.get("default_alternative", ""))
 				return _blocked_result("age_restricted", alt, word_str)
 
-	# O(N words) lookup via flat _term_lookup dict
+	# O(N words) single-token lookup via flat _term_lookup dict.
 	for word in words:
 		var word_str := str(word)
 		if _term_lookup.has(word_str):
@@ -123,6 +128,22 @@ func check_text(text: String, age_band: AgeBand) -> ModerationResult:
 				warn_result.safe_alternative = safe_alt
 				return warn_result
 			return _blocked_result(cat_name, safe_alt, word_str)
+
+	# Phrase (multi-word) substring pass on the full normalized text.
+	for phrase in _phrase_lookup.keys():
+		var phrase_str := str(phrase)
+		if normalized_text.contains(phrase_str):
+			var entry: Dictionary = _phrase_lookup[phrase_str]
+			var severity: String = str(entry.get("severity", "block"))
+			var cat_name: String = str(entry.get("category", ""))
+			var safe_alt: String = str(entry.get("safe_alt", ""))
+			if severity == "warn_child" and age_band != null and not age_band.is_child():
+				var warn_result := ModerationResult.new(ModerationResult.Verdict.WARN, phrase_str)
+				warn_result.category = cat_name
+				warn_result.confidence = 0.8
+				warn_result.safe_alternative = safe_alt
+				return warn_result
+			return _blocked_result(cat_name, safe_alt, phrase_str)
 
 	return ModerationResult.new(ModerationResult.Verdict.PASS, "")
 
@@ -275,11 +296,19 @@ func _load_defaults() -> void:
 			"safe_alternative": "Uzyj milszych slow w swojej grze.",
 			"severity": "block",
 		},
+		# All 5 original multi-word photoreal terms restored.
+		# Single-token terms → _term_lookup (O(1) word match).
+		# Multi-word terms (whitespace in normalized form) → _phrase_lookup (substring).
 		"photoreal_human": {
 			"terms": [
 				"photoreal",
 				"fotorealistyczny",
 				"selfie",
+				"realistic human",
+				"human portrait",
+				"realistyczny czlowiek",
+				"portret czlowieka",
+				"photo-real",
 			],
 			"safe_alternative": "Uzyj stylu 'cartoon' i przyjaznej postaci kreskowkowej.",
 			"severity": "block",
@@ -330,12 +359,14 @@ func _load_rules_file() -> void:
 		_image_rules = data["image_rules"]
 
 
-## Builds the flat {normalized_term → {category, severity, safe_alt}} lookup dict.
-## Called once at setup() after all categories are loaded. Enforces MAX_MODERATION_TERMS
-## cap by dropping lowest-priority categories first (Phase 8b).
-## Terms stored in NORMALIZED form so lookup matches _tokenize() output.
+## Builds the flat term lookup dicts after loading all categories.
+## Single-token terms → _term_lookup (O(1) word match).
+## Multi-word (whitespace after normalization) terms → _phrase_lookup (substring match).
+## Both store NORMALIZED form so they match _normalize_text / _tokenize output.
+## Enforces MAX_MODERATION_TERMS cap by dropping lowest-priority categories first.
 func _build_term_lookup() -> void:
 	_term_lookup = {}
+	_phrase_lookup = {}
 
 	# Determine category insertion order: priority list first, then remainder.
 	var ordered_cats: Array[String] = []
@@ -368,17 +399,25 @@ func _build_term_lookup() -> void:
 					[MAX_MODERATION_TERMS, cat_name]
 				)
 				break
-			# Store NORMALIZED form so lookup matches what _tokenize() produces.
+			# Store NORMALIZED form so lookup matches what _tokenize() / _normalize_text() produces.
 			var term_str := _normalize_text(str(term_variant).strip_edges())
 			if term_str.is_empty():
 				continue
-			if not _term_lookup.has(term_str):
-				_term_lookup[term_str] = {
-					"category": cat_name,
-					"severity": severity,
-					"safe_alt": safe_alt,
-				}
-				total += 1
+			var entry := {
+				"category": cat_name,
+				"severity": severity,
+				"safe_alt": safe_alt,
+			}
+			if " " in term_str:
+				# Multi-word → phrase lookup (substring match against full normalized text).
+				if not _phrase_lookup.has(term_str):
+					_phrase_lookup[term_str] = entry
+					total += 1
+			else:
+				# Single token → word lookup (O(1) dict hit).
+				if not _term_lookup.has(term_str):
+					_term_lookup[term_str] = entry
+					total += 1
 
 	if truncated:
 		push_warning(

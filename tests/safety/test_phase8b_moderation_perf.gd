@@ -18,6 +18,12 @@ func _init() -> void:
 		["photoreal portret", true],
 		["fotorealistyczny portret", true],
 		["selfie gracza", true],
+		# Multi-word phrase regression (normalize mismatch fix + phrase-pass restore)
+		["draw a realistic human", true],
+		["portret czlowieka", true],
+		["generate a human portrait", true],
+		["realistyczny czlowiek", true],
+		["styl photo-real prosze", true],
 	]
 	for pair in blocked_cases:
 		checks += 1
@@ -58,7 +64,7 @@ func _init() -> void:
 
 	# ── MAX_MODERATION_TERMS: flat dict never exceeds cap ────────────────────
 	checks += 1
-	var lookup_size: int = moderation._term_lookup.size()
+	var lookup_size: int = moderation._term_lookup.size() + moderation._phrase_lookup.size()
 	if lookup_size > LocalModerationAdapter.MAX_MODERATION_TERMS:
 		failures.append(
 			"Term dict size %d exceeds MAX_MODERATION_TERMS=%d" %
