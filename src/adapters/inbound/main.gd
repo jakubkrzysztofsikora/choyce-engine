@@ -405,6 +405,10 @@ func _build_default_ports_phase_2() -> void:
 	_ports[KEY_DATA_LIFECYCLE_PORT] = data_lifecycle
 	_ports[KEY_PARENT_AUDIT_READ_MODEL] = parent_audit
 
+	# Seed starter content on first launch so the kid sees ready-to-play
+	# worlds instead of an empty library + create shell.
+	_seed_starter_content_if_empty(project_store, clock)
+
 	# Re-wire shells with the persistent adapters.
 	if is_node_ready():
 		_wire_shell_dependencies()
@@ -413,6 +417,62 @@ func _build_default_ports_phase_2() -> void:
 
 	# Notify all listening shells that ports are ready.
 	ports_ready.emit()
+
+
+## Populate ProjectStore on first launch with 3 demo worlds derived from the
+## bundled templates (adventure / farm / city). Idempotent — no-op when the
+## store already has projects owned by the current profile.
+func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -> void:
+	if store == null:
+		return
+	var existing: Array = store.list_projects()
+	for entry in existing:
+		if entry is Project and entry.owner_profile_id == _profile.profile_id:
+			return
+	var now := clock.now_iso() if clock != null else ""
+	var starters := [
+		{"id": "starter_adventure", "title": "Wyspa skarbów", "template": "adventure",
+		 "nodes": [
+			{"name": "Skała", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(0, 0, 0)},
+			{"name": "Skrzynia", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(3, 0, 1)},
+			{"name": "Palma", "type": SceneNode.NodeType.DECORATION, "pos": Vector3(-2, 0, 2)},
+			{"name": "Start", "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0, -2)},
+		]},
+		{"id": "starter_farm", "title": "Mała farma", "template": "farm",
+		 "nodes": [
+			{"name": "Krowa", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(1, 0, 0)},
+			{"name": "Stodoła", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(-2, 0, -1)},
+			{"name": "Pole", "type": SceneNode.NodeType.TERRAIN, "pos": Vector3(0, 0, 2)},
+			{"name": "Start", "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0, 0)},
+		]},
+		{"id": "starter_city", "title": "Małe miasto", "template": "city",
+		 "nodes": [
+			{"name": "Dom", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(0, 0, 0)},
+			{"name": "Drzewo", "type": SceneNode.NodeType.DECORATION, "pos": Vector3(2, 0, 1)},
+			{"name": "Latarnia", "type": SceneNode.NodeType.LIGHT, "pos": Vector3(-1, 0, 1)},
+			{"name": "Start", "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0, -2)},
+		]},
+	]
+	for seed in starters:
+		var project_id: String = "%s_%s" % [_profile.profile_id, seed["id"]]
+		var project := Project.new(project_id, seed["title"])
+		project.owner_profile_id = _profile.profile_id
+		project.template_id = seed["template"]
+		project.description = seed["title"]
+		project.created_at = now
+		project.updated_at = now
+		var world := World.new("%s_world_1" % project_id, seed["title"])
+		world.is_playable = true
+		world.theme = seed["template"]
+		for n in seed["nodes"]:
+			var node_id: String = "%s_%s" % [world.world_id, str(n["name"]).to_lower()]
+			var scene_node := SceneNode.new(node_id, n["type"])
+			scene_node.display_name = n["name"]
+			scene_node.position = n["pos"]
+			world.add_node(scene_node)
+		project.add_world(world)
+		store.save_project(project)
+	push_warning("Seeded %d starter worlds for profile %s" % [starters.size(), _profile.profile_id])
 
 
 ## Phase 6: Resolve the 32-byte AES-256 vault signing key.

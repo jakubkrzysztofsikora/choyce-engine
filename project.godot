@@ -11,11 +11,15 @@ config/use_custom_user_dir=true
 config/custom_user_dir_name="choyce_engine"
 
 [display]
-window/size/viewport_width=1280
-window/size/viewport_height=720
+window/size/viewport_width=1600
+window/size/viewport_height=960
+window/size/mode=2
+window/size/resizable=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+window/stretch/scale=1.0
 window/subwindows/embed_subwindows=true
+window/per_pixel_transparency/allowed=false
 
 [rendering]
 renderer/rendering_method="forward_plus"
