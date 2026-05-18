@@ -128,12 +128,12 @@ func _load_defaults() -> void:
 		"create.node_list.title": "Obiekty w świecie",
 		"create.hint.choose_tool": "Wybierz narzędzie. Zacznij od Umieść.",
 		"create.tool_selected": "Wybrałeś: %s.",
-		"create.error.port_not_ready": "Tryb tworzenia niegotowy. Uruchom ponownie.",
+		"create.error.port_not_ready": "Tryb tworzenia śpi. Spróbuj zaraz.",
 		"create.error.no_world": "Brak aktywnego świata. Kliknij Umieść.",
 		"create.error.no_selection": "Wybierz obiekt lub dodaj przez Umieść.",
 		"create.object.default_name": "Nowy obiekt",
 		"create.error.edit_failed": "Zmiana niezapisana. Wybierz inny obiekt.",
-		"create.error.no_config": "Brak konfiguracji. Tryb tworzenia nieaktywny.",
+		"create.error.no_config": "Tryb tworzenia niegotowy. Spróbuj jeszcze raz.",
 		"create.error.world_create_failed": "Nie udało się utworzyć świata.",
 		"create.error.world_invalid": "Świat ma niepoprawny format.",
 		"create.world_ready": "Świat gotowy. Dodaj obiekt przez Umieść.",
@@ -170,10 +170,10 @@ func _load_defaults() -> void:
 		"create.onboarding.continue": "Kontynuuj...",
 		"create.ai.applied": "Zmiana AI zatwierdzona i zastosowana.",
 		# Phase 9: tool-buttons disabled tooltip when port unavailable
-		"create.tools.unavailable": "Narzędzia niedostępne. Spróbuj ponownie.",
+		"create.tools.unavailable": "Narzędzia śpią. Naciśnij za chwilę.",
 		# ui.create.* keys used by create_shell _t() fallback and PolishLocalizationPolicy
 		"ui.create.title": "Tryb tworzenia",
-		"ui.create.info": "Wybierz szablon, zbuduj świat i uruchom test.",
+		"ui.create.info": "Wybierz szablon. Buduj. Graj.",
 		"ui.create.go_play": "Przejdź do gry",
 		"ui.create.go_library": "Przejdź do biblioteki",
 		"ui.tool.place": "Umieść",
@@ -191,7 +191,7 @@ func _load_defaults() -> void:
 		"library.approve.toast_ok": "Zatwierdzone.",
 		"library.reject.toast_ok": "Odrzucone.",
 		"library.unpublish.toast_ok": "Cofnięte.",
-		"library.error.port_unavailable": "Coś nie działa. Spróbuj później.",
+		"library.error.port_unavailable": "Coś nie działa. Spróbuj za chwilę.",
 		"library.error.ports_not_ready": "Chwilę...",
 		# Phase 4a-2: play_shell Polish extraction (kid-register: ≤6 words, 2nd person, imperatives)
 		"play.error.no_world": "Najpierw stwórz świat.",
@@ -224,6 +224,11 @@ func _load_defaults() -> void:
 		"ui.play.start_coop": "Graj w Kooperacji",
 		"ui.play.go_create": "Wróć do tworzenia",
 		"ui.play.go_library": "Przejdź do biblioteki",
+		# Wave C: create_shell CTA voice prompt (kid-register: short imperative, ≤5 words)
+		"create.cta.build_world_voice": "Naciśnij narzędzie i coś zbuduj.",
+		"create.cta.build_world": "Stwórz coś!",
+		# Wave C: library RBAC kid follow-up message
+		"library.rbac.ask_parent": "Tylko rodzic. Poproś rodzica.",
 	}
 
 	_unsafe_terms = {}
