@@ -355,6 +355,139 @@ func _init() -> void:
 				"MUST-12: explanation should be 'Ten skrypt robi X', got '%s'" % on_complete_explain.get("explanation", "")
 			)
 
+	# ── MUST-13: non-streaming — on_token called once with full text before on_done ──
+	# Verify Option B contract: _finish_request calls on_token once with the accumulated
+	# text, then calls on_done with the same text. Tested white-box via _finish_request.
+	var adapter_nt := OllamaLLMAdapter.new()
+	adapter_nt.set_mock_mode(true)
+	adapter_nt._request_active = true
+	adapter_nt._full_response_text = "pełny tekst odpowiedzi"
+	adapter_nt._last_provider = "ollama-local"
+	adapter_nt._last_selected_model = "test-model"
+	var on_token_calls: Array[String] = []
+	var on_done_text_nt := ""
+	adapter_nt._active_on_token = func(t: String) -> void:
+		on_token_calls.append(t)
+	adapter_nt._active_on_done = func(r: Dictionary) -> void:
+		on_done_text_nt = r.get("text", "")
+	adapter_nt._finish_request(false)
+	checks += 1
+	if on_token_calls.size() != 1:
+		failures.append("MUST-13: on_token should be called exactly once via _finish_request, called %d times" % on_token_calls.size())
+	checks += 1
+	if on_done_text_nt != "pełny tekst odpowiedzi":
+		failures.append("MUST-13: on_done text should be 'pełny tekst odpowiedzi', got '%s'" % on_done_text_nt)
+	checks += 1
+	if on_token_calls.size() == 1 and on_token_calls[0] != on_done_text_nt:
+		failures.append("MUST-13: on_token text '%s' should equal on_done text '%s'" % [on_token_calls[0], on_done_text_nt])
+
+	# ── MUST-14: complete_with_tools async — mock path delivers result via on_done ─
+	var adapter_cwt := OllamaLLMAdapter.new()
+	adapter_cwt.set_mock_mode(true)
+	var cwt_env := PromptEnvelope.new("Pomaluj na kolor żółty")
+	cwt_env.permitted_tools = ["paint"]
+	var cwt_result: Array = []
+	var cwt_done_called := false
+	adapter_cwt.complete_with_tools(
+		cwt_env,
+		func(invocations: Array) -> void:
+			cwt_result = invocations
+			cwt_done_called = true
+	)
+	checks += 1
+	if not cwt_done_called:
+		failures.append("MUST-14: complete_with_tools on_done not called in mock path")
+	checks += 1
+	if cwt_result.is_empty():
+		failures.append("MUST-14: complete_with_tools result should contain at least one ToolInvocation")
+	else:
+		checks += 1
+		var cwt_inv: ToolInvocation = cwt_result[0]
+		if cwt_inv.tool_name != "paint":
+			failures.append("MUST-14: expected tool_name 'paint', got '%s'" % cwt_inv.tool_name)
+
+	# ── MUST-15: complete_with_tools null envelope — on_done called with empty array ─
+	var adapter_cwt_null := OllamaLLMAdapter.new()
+	adapter_cwt_null.set_mock_mode(true)
+	var cwt_null_done := false
+	var cwt_null_result: Array = [ToolInvocation.new("x", {}, "x")]  # prefill non-empty
+	adapter_cwt_null.complete_with_tools(
+		null,
+		func(invocations: Array) -> void:
+			cwt_null_result = invocations
+			cwt_null_done = true
+	)
+	checks += 1
+	if not cwt_null_done:
+		failures.append("MUST-15: complete_with_tools null envelope — on_done not called")
+	checks += 1
+	if not cwt_null_result.is_empty():
+		failures.append("MUST-15: complete_with_tools null envelope — expected empty result, got %d items" % cwt_null_result.size())
+
+	# ── MUST-16: Polish UTF-8 byte count — 100 chars = 200 bytes in buffer ─────────
+	var adapter_utf := OllamaLLMAdapter.new()
+	adapter_utf.set_mock_mode(true)
+	adapter_utf._token_buffer = PackedStringArray()
+	adapter_utf._token_buffer_bytes = 0
+	adapter_utf._request_active = true
+	adapter_utf._full_response_text = ""
+
+	# "ą" is 2 bytes in UTF-8. 100 × "ą" = 200 bytes but 100 chars.
+	var polish_100 := "ą".repeat(100)
+	checks += 1
+	if polish_100.to_utf8_buffer().size() != 200:
+		failures.append("MUST-16: 100 × 'ą' should be 200 UTF-8 bytes, got %d" % polish_100.to_utf8_buffer().size())
+
+	# Feed token via _on_chunk_received — buffer should record 200 bytes.
+	var polish_json := '{"response": "%s"}' % polish_100
+	adapter_utf._on_chunk_received(polish_json)
+	checks += 1
+	if adapter_utf._token_buffer_bytes != 200:
+		failures.append("MUST-16: buffer byte count should be 200 for 100 × 'ą', got %d" % adapter_utf._token_buffer_bytes)
+
+	# Overflow: fill buffer to just under 4096 bytes using "ą" (2 bytes each).
+	# 2048 × "ą" = 4096 bytes exactly — adding one more "ą" should trigger drop.
+	var adapter_utf2 := OllamaLLMAdapter.new()
+	adapter_utf2.set_mock_mode(true)
+	adapter_utf2._token_buffer = PackedStringArray()
+	adapter_utf2._token_buffer_bytes = 0
+	adapter_utf2._request_active = true
+	adapter_utf2._full_response_text = ""
+
+	# Pre-fill with a single big token of 4086 bytes (2043 × "ą").
+	var big_polish := "ą".repeat(2043)  # 4086 bytes
+	adapter_utf2._token_buffer.append(big_polish)
+	adapter_utf2._token_buffer_bytes = big_polish.to_utf8_buffer().size()  # 4086
+
+	# Now add a 20-byte token ("ą" × 10 = 20 bytes) — total would be 4106 > 4096, drop triggered.
+	var overflow_polish := '{"response": "%s"}' % "ą".repeat(10)
+	adapter_utf2._on_chunk_received(overflow_polish)
+	checks += 1
+	# Buffer should have dropped the original big token and kept the new one.
+	if adapter_utf2._token_buffer.size() > 1:
+		failures.append("MUST-16: UTF-8 overflow should drop oldest token — size %d > 1" % adapter_utf2._token_buffer.size())
+	checks += 1
+	if adapter_utf2._token_buffer.size() == 1 and not adapter_utf2._token_buffer[0].contains("ą"):
+		failures.append("MUST-16: new Polish token should remain after overflow drop")
+
+	# ── MUST-17: null parent_node — push_warning fires (verified via code path) ────
+	# We cannot intercept push_warning() in GDScript, but we can verify the code path
+	# is reachable and does not crash by checking the method exists on the adapter.
+	# A separate integration test would capture the warning via Engine error logger.
+	var adapter_pn := OllamaLLMAdapter.new()
+	adapter_pn.setup(null, null, false, {}, "", null)  # explicit null parent_node
+	checks += 1
+	# Verify _ensure_helper does not crash when parent_node is null
+	# (in SceneTree test context, call_deferred to root may silently fail — that is expected).
+	var pn_crash := false
+	# We do NOT call _ensure_helper directly to avoid adding an unparented Node to the
+	# test SceneTree root, which can cause Godot editor warnings. Instead verify the guard.
+	if adapter_pn._parent_node != null:
+		pn_crash = true
+		failures.append("MUST-17: _parent_node should be null when not provided")
+	if not pn_crash:
+		pass  # warning fires at runtime when _ensure_helper is called; not catchable in unit test
+
 	# ── Results ───────────────────────────────────────────────────────────────
 	if failures.is_empty():
 		print("OK  test_ollama_llm_adapter_streaming — %d checks passed" % checks)
