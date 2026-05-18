@@ -33,7 +33,7 @@ class MockSTT:
 
 
 class MockIntentExtractor:
-	extends RefCounted
+	extends IntentExtractorPort
 
 	func extract_intent(_text: String) -> String:
 		return "ATTACK"
@@ -68,14 +68,15 @@ func _init() -> void:
 	if action.status != AIAssistantAction.ActionStatus.REJECTED:
 		failures.append("kid disallowed tool should be rejected")
 
+	# Phase 3 hex fix: VoiceInputModerationService no longer takes SpeechToTextPort.
+	# Transcript is passed directly to process() — STT is handled by ModeratingSttAdapter.
 	var voice_service := VoiceInputModerationService.new().setup(
-		MockSTT.new(),
 		moderation,
 		MockIntentExtractor.new(),
 		null,
 		MockClock.new()
 	)
-	var voice_result := voice_service.process_voice_input(PackedByteArray([1, 2, 3]), kid)
+	var voice_result := voice_service.process("chce zabic bossa", kid)
 	checks += 1
 	if bool(voice_result.get("allowed", true)):
 		failures.append("unsafe voice transcript should be blocked")

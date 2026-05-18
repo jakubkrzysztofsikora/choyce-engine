@@ -1,24 +1,31 @@
-## Application service: moderates voice input transcripts before intent execution.
-## Orchestrates: transcribe → moderate → extract intent. Blocks unsafe
-## transcripts with explainable safe alternatives and emits audit events.
+## Application service: moderates voice transcript before intent execution.
+## Hex fix (Phase 3): STT is removed from this service. The adapter layer
+## (ModeratingSttAdapter) handles raw audio and calls process() with a
+## pre-transcribed string. This keeps the application layer framework-free.
+## Pipeline: moderate(transcript) → if BLOCK return blocked result;
+##            else extract_intent(transcript) → return success result.
 class_name VoiceInputModerationService
 extends RefCounted
 
-var _stt: SpeechToTextPort
 var _moderation: ModerationPort
-var _intent_extractor: RefCounted  # expects extract_intent(String) -> String
+var _intent_extractor: IntentExtractorPort
 var _event_bus: DomainEventBus
 var _clock: ClockPort
 
 
+## Setup the service. intent_extractor MUST be non-null — the service requires
+## a typed port implementation for safe intent extraction. Passing null is an
+## error: push_error is emitted and the call returns self so callers can detect
+## the failure via _moderation being null.
 func setup(
-	stt: SpeechToTextPort,
 	moderation: ModerationPort,
-	intent_extractor: RefCounted = null,
+	intent_extractor: IntentExtractorPort,
 	event_bus: DomainEventBus = null,
 	clock: ClockPort = null
 ) -> VoiceInputModerationService:
-	_stt = stt
+	if intent_extractor == null:
+		push_error("VoiceInputModerationService.setup(): intent_extractor must not be null")
+		return self
 	_moderation = moderation
 	_intent_extractor = intent_extractor
 	_event_bus = event_bus
@@ -26,36 +33,31 @@ func setup(
 	return self
 
 
-## Processes voice audio through the full safety pipeline:
-## transcribe → moderate → extract intent.
+## Processes a pre-transcribed string through the safety pipeline.
 ## Returns a result dictionary with keys:
 ##   allowed: bool, transcript: String, intent: String,
 ##   moderation_verdict: String, reason: String,
 ##   category: String, safe_alternative: String
-func process_voice_input(
-	audio: PackedByteArray,
-	actor: PlayerProfile,
-	language: String = "pl-PL"
-) -> Dictionary:
+##
+## Safety default: any error in moderation defaults to BLOCK.
+func process(transcript: String, actor: PlayerProfile) -> Dictionary:
 	if actor == null:
 		return _failed_result("INVALID_ACTOR")
-	if _stt == null or _moderation == null:
+	if _moderation == null or _intent_extractor == null:
 		return _failed_result("SERVICE_NOT_READY")
-
-	# Step 1: Transcribe via STT (local-first chain)
-	var transcript := _stt.transcribe(audio, language)
 	if transcript.strip_edges().is_empty():
-		return _failed_result("TRANSCRIPTION_FAILED")
+		return _failed_result("EMPTY_TRANSCRIPT")
 
-	# Step 2: Moderate transcript BEFORE intent execution
-	var moderation_result := _moderation.check_text(transcript, actor.age_band)
+	# Step 1: Moderate transcript BEFORE intent execution — safety default: BLOCK on error
+	var moderation_result: ModerationResult
+	moderation_result = _moderation.check_text(transcript, actor.age_band)
 
-	if moderation_result.is_blocked():
-		var safe_alternative := _safe_alternative(moderation_result)
+	if moderation_result == null or moderation_result.is_blocked():
+		var safe_alt := _safe_alternative(moderation_result)
 		_emit_safety_intervention(
 			"VOICE_TRANSCRIPT_MODERATION_BLOCK",
 			transcript,
-			safe_alternative,
+			safe_alt,
 			actor.profile_id
 		)
 		return {
@@ -64,14 +66,12 @@ func process_voice_input(
 			"intent": "",
 			"moderation_verdict": "BLOCK",
 			"reason": "VOICE_MODERATION_BLOCK",
-			"category": moderation_result.category,
-			"safe_alternative": safe_alternative,
+			"category": moderation_result.category if moderation_result != null else "",
+			"safe_alternative": safe_alt,
 		}
 
-	# Step 3: Extract intent from safe transcript
-	var intent := ""
-	if _intent_extractor != null and _intent_extractor.has_method("extract_intent"):
-		intent = _intent_extractor.extract_intent(transcript)
+	# Step 2: Extract intent from safe transcript
+	var intent := _intent_extractor.extract_intent(transcript)
 
 	return {
 		"allowed": true,
@@ -97,6 +97,8 @@ func _failed_result(reason: String) -> Dictionary:
 
 
 func _safe_alternative(moderation_result: ModerationResult) -> String:
+	if moderation_result == null:
+		return "Spróbuj powiedzieć coś innego!"
 	if not moderation_result.safe_alternative.strip_edges().is_empty():
 		return moderation_result.safe_alternative
 	return "Spróbuj powiedzieć coś innego!"

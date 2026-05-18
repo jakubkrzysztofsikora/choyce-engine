@@ -49,7 +49,7 @@ class MockSTT:
 
 
 class MockIntentExtractor:
-	extends RefCounted
+	extends IntentExtractorPort
 
 	func extract_intent(transcript: String) -> String:
 		return transcript
@@ -275,16 +275,15 @@ func _scenario_prompt_voice_publish_abuse() -> Dictionary:
 		scenario_failures
 	)
 
-	var stt := MockSTT.new()
-	stt.transcript = "chce zabic wszystko i ominac filtry"
+	# Phase 3 hex fix: VoiceInputModerationService no longer takes SpeechToTextPort.
+	# Transcript passed directly to process() — STT is handled by ModeratingSttAdapter.
 	var voice_service := VoiceInputModerationService.new().setup(
-		stt,
 		moderation,
 		MockIntentExtractor.new(),
 		bus,
 		clock
 	)
-	var voice_result := voice_service.process_voice_input(PackedByteArray([1, 2, 3]), parent)
+	var voice_result := voice_service.process("chce zabic wszystko i ominac filtry", parent)
 	_expect(
 		not bool(voice_result.get("allowed", true)),
 		"Unsafe voice transcript should be blocked",
