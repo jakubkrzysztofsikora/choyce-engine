@@ -27,12 +27,32 @@ const ENV_PROFILE_NAME := "CHOYCE_PROFILE_NAME"
 const ENV_FAMILY_ID := "CHOYCE_FAMILY_ID"
 const ENV_CLASSROOM_ID := "CHOYCE_CLASSROOM_ID"
 
+## Phase 8d: emitted when deferred (heavy I/O) adapters have finished initialising.
+## Inbound shells gate voice/AI input until this signal fires.
+signal ports_ready
+
 var _navigator := ShellNavigator.new()
 var _ports: Dictionary = {}
 var _feature_flags: FeatureFlagService
 var _localization_policy: LocalizationPolicyPort
 var _accessibility_policy: AccessibilityPolicyPort
 var _profile: PlayerProfile
+
+## Phase 8d: set to true once _build_default_ports_phase_2 completes.
+var _ports_phase_2_done: bool = false
+
+# Phase 8d: shared objects produced by Phase 1 and consumed by Phase 2.
+var _phase1_env: OSEnvironmentAdapter
+var _phase1_clock: SystemClock
+var _phase1_event_bus: DomainEventBus
+var _phase1_project_store: FilesystemProjectStore
+var _phase1_moderation: LocalModerationAdapter
+var _phase1_publishing_policy: PublishingPolicy
+var _phase1_telemetry: LocalTelemetry
+var _phase1_ai_performance: AIPerformanceReadModelAdapter
+var _phase1_kid_status: KidStatusReadModelAdapter
+var _phase1_parent_audit: ParentAuditReadModelAdapter
+var _phase1_tool_gateway: DeterministicToolExecutionGateway
 
 @onready var _nav_bar: PanelContainer = $Layout/NavBar
 @onready var _nav_pill: HBoxContainer = $Layout/NavBar/NavPill
@@ -64,7 +84,7 @@ func _ready() -> void:
 	if _accessibility_policy == null:
 		_accessibility_policy = GodotAccessibilityAdapter.new().setup(self)
 	_accessibility_policy.apply_baseline_contrast()
-	
+
 	if _feature_flags == null:
 		var _env_adapter := OSEnvironmentAdapter.new()
 		var config = DeploymentConfig.from_environment(_env_adapter)
@@ -80,6 +100,12 @@ func _ready() -> void:
 	_apply_localized_text()
 	_setup_transitions()
 	_navigator.show_shell(SHELL_CREATE)
+
+	# Phase 8d: schedule heavy-I/O adapter initialisation for the next frame so
+	# the first frame returns quickly. Shells remain in the ports_ready=false gate
+	# until _build_default_ports_phase_2 fires ports_ready.
+	if not _ports_phase_2_done:
+		call_deferred("_build_default_ports_phase_2")
 
 
 func setup(profile: PlayerProfile, ports: Dictionary, localization_policy: LocalizationPolicyPort, accessibility_policy: AccessibilityPolicyPort) -> InboundMain:
@@ -137,6 +163,10 @@ func _build_default_profile() -> PlayerProfile:
 	return profile
 
 
+## Phase 8d: Phase 1 — critical adapters only. Returns immediately with lightweight
+## in-memory stubs for the heavy-I/O slots (audit ledger, publish store, consent
+## store, encrypted policy vault). Deferred phase swaps these out and emits
+## ports_ready so that shells unlock voice/AI input.
 func _build_default_ports() -> Dictionary:
 	# Phase 7b: single OSEnvironmentAdapter instance shared by all consumers in
 	# this composition root. No application or domain code calls OS.get_environment directly.
@@ -145,44 +175,48 @@ func _build_default_ports() -> Dictionary:
 	var clock := SystemClock.new()
 	var event_bus := DomainEventBus.new()
 	var project_store := FilesystemProjectStore.new().setup()
-	# Phase 6 (F-055-03): persistent publish store replaces in-memory variant.
-	var publish_store := FilesystemPublishStore.new().setup("user://choyce_publish")
 	var moderation := LocalModerationAdapter.new().setup()
 	var publishing_policy := PublishingPolicy.new()
-	# Phase 6: encrypted parental policy vault replaces in-memory variant.
-	var signing_key := _resolve_vault_signing_key(env)
-	var encrypted_storage := LocalEncryptedStorage.new().setup()
-	var policy_store := EncryptedParentalPolicyStore.new().setup(
-		encrypted_storage,
-		signing_key,
-		"user://choyce_vault/parental_policies",
-		event_bus
-	)
 	var telemetry := LocalTelemetry.new().setup()
-	var consent_store := FilesystemConsentStore.new().setup("user://choyce_consent")
-	var audit_ledger: AuditLedgerPort
-	if env.get_env("CHOYCE_AUDIT_IN_MEMORY", "") == "1":
-		audit_ledger = InMemoryAuditLedger.new().setup()
-	else:
-		audit_ledger = FilesystemAuditLedger.new().setup("user://choyce_audit")
-	var parent_audit := ParentAuditReadModelAdapter.new().setup(audit_ledger, clock)
 	var ai_performance := AIPerformanceReadModelAdapter.new()
 	var kid_status := KidStatusReadModelAdapter.new()
+
+	# Phase 8d: lightweight stubs used until _build_default_ports_phase_2 completes.
+	# Stubs use in-memory adapters so nothing blocks the first frame.
+	var publish_store_stub: PublishStorePort = InMemoryPublishStore.new().setup()
+	var consent_store_stub: IdentityConsentPort = LocalConsentStore.new().setup()
+	var audit_ledger_stub: AuditLedgerPort = InMemoryAuditLedger.new().setup()
+	var policy_store_stub: ParentalPolicyStorePort = InMemoryParentalPolicyStore.new().setup()
+
+	var parent_audit := ParentAuditReadModelAdapter.new().setup(audit_ledger_stub, clock)
 
 	event_bus.subscribe_all(Callable(parent_audit, "update_from_event"))
 	event_bus.subscribe_all(Callable(ai_performance, "update_from_event"))
 	event_bus.subscribe_all(Callable(kid_status, "update_from_event"))
 
-	var llm := OllamaLLMAdapter.new().setup(consent_store)
+	var llm := OllamaLLMAdapter.new().setup(consent_store_stub)
 	var tool_gateway := DeterministicToolExecutionGateway.new().setup()
 
 	var data_lifecycle := ManageDataLifecycleService.new().setup(
 		null,          # DataLifecyclePort backend — no cloud backend in default build
 		null,          # RoleTokenGuard — optional, omitted in default build
 		clock,
-		audit_ledger,
-		policy_store
+		audit_ledger_stub,
+		policy_store_stub
 	)
+
+	# Store shared objects needed by Phase 2 as instance fields.
+	_phase1_env = env
+	_phase1_clock = clock
+	_phase1_event_bus = event_bus
+	_phase1_project_store = project_store
+	_phase1_moderation = moderation
+	_phase1_publishing_policy = publishing_policy
+	_phase1_telemetry = telemetry
+	_phase1_ai_performance = ai_performance
+	_phase1_kid_status = kid_status
+	_phase1_parent_audit = parent_audit
+	_phase1_tool_gateway = tool_gateway
 
 	return {
 		KEY_CREATE_PORT: CreateProjectService.new().setup(project_store, clock),
@@ -195,29 +229,29 @@ func _build_default_ports() -> Dictionary:
 		),
 		KEY_PUBLISH_PORT: PublishToFamilyLibraryService.new().setup(
 			project_store,
-			publish_store,
+			publish_store_stub,
 			moderation,
 			clock,
 			publishing_policy,
 			event_bus
 		),
 		KEY_REVIEW_PUBLISH_PORT: ReviewPublishRequestService.new().setup(
-			publish_store,
+			publish_store_stub,
 			publishing_policy,
 			clock,
 			event_bus
 		),
 		KEY_UNPUBLISH_PORT: UnpublishWorldService.new().setup(
-			publish_store,
+			publish_store_stub,
 			publishing_policy,
 			clock,
 			event_bus
 		),
 		KEY_PARENTAL_CONTROLS_PORT: SetParentalControlsService.new().setup(
-			consent_store,
+			consent_store_stub,
 			clock,
 			telemetry,
-			policy_store,
+			policy_store_stub,
 			event_bus
 		),
 		KEY_REQUEST_AI_HELP_PORT: RequestAICreationHelpService.new().setup(
@@ -229,7 +263,7 @@ func _build_default_ports() -> Dictionary:
 			tool_gateway,
 			null,
 			null,
-			policy_store,
+			policy_store_stub,
 			null,
 			null
 		),
@@ -239,6 +273,116 @@ func _build_default_ports() -> Dictionary:
 		KEY_AI_PERFORMANCE_READ_MODEL: ai_performance,
 		KEY_DATA_LIFECYCLE_PORT: data_lifecycle,
 	}
+
+
+## Phase 8d: Phase 2 — deferred heavy-I/O initialisation.
+## Runs on the frame after _ready() returns (via call_deferred).
+## Replaces stub adapters with persistent filesystem / encrypted-vault variants,
+## then emits ports_ready so shells unlock voice/AI input.
+func _build_default_ports_phase_2() -> void:
+	if _ports_phase_2_done:
+		return
+
+	var env: OSEnvironmentAdapter = _phase1_env
+	var clock = _phase1_clock
+	var event_bus = _phase1_event_bus
+	var project_store = _phase1_project_store
+	var moderation = _phase1_moderation
+	var publishing_policy = _phase1_publishing_policy
+	var telemetry = _phase1_telemetry
+	var parent_audit = _phase1_parent_audit
+	var tool_gateway = _phase1_tool_gateway
+
+	# Heavy I/O: filesystem publish store.
+	var publish_store := FilesystemPublishStore.new().setup("user://choyce_publish")
+
+	# Heavy I/O: filesystem consent store.
+	var consent_store := FilesystemConsentStore.new().setup("user://choyce_consent")
+
+	# Heavy I/O: encrypted parental policy vault.
+	var signing_key := _resolve_vault_signing_key(env)
+	var encrypted_storage := LocalEncryptedStorage.new().setup()
+	var policy_store := EncryptedParentalPolicyStore.new().setup(
+		encrypted_storage,
+		signing_key,
+		"user://choyce_vault/parental_policies",
+		event_bus
+	)
+
+	# Heavy I/O: filesystem audit ledger (unless test override requests in-memory).
+	var audit_ledger: AuditLedgerPort
+	if env.get_env("CHOYCE_AUDIT_IN_MEMORY", "") == "1":
+		audit_ledger = InMemoryAuditLedger.new().setup()
+	else:
+		audit_ledger = FilesystemAuditLedger.new().setup("user://choyce_audit")
+
+	# Re-wire parent audit to the persistent ledger.
+	if parent_audit != null and parent_audit.has_method("setup"):
+		parent_audit.setup(audit_ledger, clock)
+
+	var llm := OllamaLLMAdapter.new().setup(consent_store)
+
+	var data_lifecycle := ManageDataLifecycleService.new().setup(
+		null,
+		null,
+		clock,
+		audit_ledger,
+		policy_store
+	)
+
+	# Overwrite stub ports with persistent variants.
+	_ports[KEY_PUBLISH_PORT] = PublishToFamilyLibraryService.new().setup(
+		project_store,
+		publish_store,
+		moderation,
+		clock,
+		publishing_policy,
+		event_bus
+	)
+	_ports[KEY_REVIEW_PUBLISH_PORT] = ReviewPublishRequestService.new().setup(
+		publish_store,
+		publishing_policy,
+		clock,
+		event_bus
+	)
+	_ports[KEY_UNPUBLISH_PORT] = UnpublishWorldService.new().setup(
+		publish_store,
+		publishing_policy,
+		clock,
+		event_bus
+	)
+	_ports[KEY_PARENTAL_CONTROLS_PORT] = SetParentalControlsService.new().setup(
+		consent_store,
+		clock,
+		telemetry,
+		policy_store,
+		event_bus
+	)
+	_ports[KEY_REQUEST_AI_HELP_PORT] = RequestAICreationHelpService.new().setup(
+		llm,
+		moderation,
+		clock,
+		_localization_policy,
+		event_bus,
+		tool_gateway,
+		null,
+		null,
+		policy_store,
+		null,
+		null
+	)
+	_ports[KEY_SPEECH_TO_TEXT_PORT] = _build_moderating_stt(moderation, event_bus)
+	_ports[KEY_DATA_LIFECYCLE_PORT] = data_lifecycle
+	_ports[KEY_PARENT_AUDIT_READ_MODEL] = parent_audit
+
+	# Re-wire shells with the persistent adapters.
+	if is_node_ready():
+		_wire_shell_dependencies()
+
+	_ports_phase_2_done = true
+
+	# Notify all listening shells that ports are ready.
+	ports_ready.emit()
 
 
 ## Phase 6: Resolve the 32-byte AES-256 vault signing key.
@@ -412,6 +556,18 @@ func _wire_shell_dependencies() -> void:
 
 	_parent_shell.visible = _is_parent()
 	_nav_parent.visible = _is_parent()
+
+	# Phase 8d: connect ports_ready to any shell that declares on_ports_ready().
+	# CreateShell hosts voice/AI buttons and must receive the signal.
+	# Guard against duplicate connections (wiring may be called more than once).
+	if _create_shell.has_method("on_ports_ready"):
+		if not ports_ready.is_connected(_create_shell.on_ports_ready):
+			ports_ready.connect(_create_shell.on_ports_ready)
+
+	# If Phase 2 already completed before _wire_shell_dependencies was called
+	# (e.g. in tests), fire the callback immediately so the gate is unlocked.
+	if _ports_phase_2_done and _create_shell.has_method("on_ports_ready"):
+		_create_shell.on_ports_ready()
 
 
 func _on_world_context_changed(world_id: String) -> void:

@@ -7,6 +7,10 @@ const ThemeManager = preload("res://src/adapters/inbound/shared/ui/theme_manager
 
 signal world_context_changed(world_id: String)
 signal selection_provenance_changed(provenance: Variant)
+## Phase 8d: shell declares its own ports_ready signal so tests can call
+## shell.emit_signal("ports_ready") without needing InboundMain in the tree.
+## The signal is auto-connected to on_ports_ready() in _ready().
+signal ports_ready
 
 const SHELL_PLAY := "play"
 const SHELL_LIBRARY := "library"
@@ -28,6 +32,10 @@ var _request_ai_help_port: RequestAICreationHelpPort
 var _speech_to_text_port: SpeechToTextPort
 var _event_bus: DomainEventBus = null
 var _active_tool: CanvasTool = CanvasTool.PLACE
+
+## Phase 8d: input gate — false until InboundMain emits ports_ready.
+## While false, voice/AI buttons are blocked by VoiceAssistantOverlay.
+var _ports_ready: bool = false
 var _active_world_id: String = ""
 var _selected_node_id: String = ""
 var _current_world_instance: World
@@ -90,6 +98,20 @@ func _ready() -> void:
 	_build_template_cards()
 	_refresh_workspace_ui()
 	_toast_banner.visible = false
+
+	# Phase 8d: connect own ports_ready signal to the handler so that both:
+	#   a) tests can call shell.emit_signal("ports_ready") directly, and
+	#   b) InboundMain can call shell.on_ports_ready() (or emit its own signal
+	#      which _wire_shell_dependencies connects below).
+	if not ports_ready.is_connected(on_ports_ready):
+		ports_ready.connect(on_ports_ready)
+
+	# Also subscribe to InboundMain's ports_ready if we are already in the tree
+	# under a parent that has the signal.  This covers the live runtime path.
+	var parent := get_parent()
+	if parent != null and parent.has_signal("ports_ready"):
+		if not parent.ports_ready.is_connected(on_ports_ready):
+			parent.ports_ready.connect(on_ports_ready)
 
 
 func setup(
@@ -794,6 +816,13 @@ func _on_onboarding_step_completed_event(event: DomainEvent) -> void:
 func _on_onboarding_finished_event(event: DomainEvent) -> void:
 	if _onboarding_overlay:
 		_onboarding_overlay.dismiss()
+
+
+## Phase 8d: handler for the ports_ready signal from InboundMain or test harness.
+func on_ports_ready() -> void:
+	_ports_ready = true
+	if _assistant_overlay != null and _assistant_overlay.has_method("notify_ports_ready"):
+		_assistant_overlay.call("notify_ports_ready")
 
 
 func _t(key: String) -> String:
