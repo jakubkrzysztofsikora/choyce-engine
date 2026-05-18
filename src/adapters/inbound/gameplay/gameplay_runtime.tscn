@@ -1,8 +1,13 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/gameplay_runtime.gd" id="1_gameplay_runtime"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/world_renderer.gd" id="2_world_renderer"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/player_controller.gd" id="3_player_controller"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/sfx_player.gd" id="4_sfx_player"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/effect_spawner.gd" id="5_effect_spawner"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/screen_feedback.gd" id="6_screen_feedback"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/victory_sequence.gd" id="7_victory_sequence"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/audio_event_bus.gd" id="8_audio_event_bus"]
 
 [sub_resource type="Environment" id="Environment_basic"]
 background_mode = 1
@@ -72,3 +77,26 @@ transform = Transform3D(-0.5, -0.612372, 0.612372, 0, 0.707107, 0.707107, -0.866
 light_energy = 0.4
 light_color = Color(0.75, 0.85, 1, 1)
 shadow_enabled = false
+
+[node name="AudioEventBus" type="Node" parent="."]
+script = ExtResource("8_audio_event_bus")
+
+[node name="SFXPlayer" type="Node3D" parent="."]
+script = ExtResource("4_sfx_player")
+
+[node name="EffectSpawner" type="Node3D" parent="."]
+script = ExtResource("5_effect_spawner")
+
+[node name="ScreenFeedbackLayer" type="CanvasLayer" parent="."]
+
+[node name="ScreenFeedback" type="Control" parent="ScreenFeedbackLayer"]
+layout_mode = 3
+anchors_preset = 15
+mouse_filter = 2
+script = ExtResource("6_screen_feedback")
+
+[node name="VictorySequence" type="Node" parent="."]
+script = ExtResource("7_victory_sequence")
+
+[node name="AmbientPlayer" type="AudioStreamPlayer" parent="."]
+volume_db = -12.0
