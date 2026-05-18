@@ -13,6 +13,9 @@ var _review_publish_port: ReviewPublishRequestPort
 var _unpublish_port: UnpublishWorldPort
 var _provenance_badge: ProvenanceBadge
 
+## Phase 9: ports_ready gate — prevents handler calls before DI wiring completes.
+var _ports_ready: bool = false
+
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
 @onready var _project_id_input: LineEdit = $Layout/MainContent/PublishCard/PublishForm/ProjectIdInput
@@ -61,6 +64,12 @@ func setup(
 		_apply_role_state()
 
 	return self
+
+
+## Phase 9: called by inbound main when the ports_ready signal fires.
+## Until this is called, all port-mutating handlers return silently.
+func notify_ports_ready() -> void:
+	_ports_ready = true
 
 
 func _wire_actions() -> void:
@@ -121,19 +130,39 @@ func _on_publish_pressed() -> void:
 
 
 func _on_approve_pressed() -> void:
+	# Phase 9: server-side RBAC — role check at handler entry, not just button.disabled.
+	if not _is_parent_profile():
+		_show_toast(_t("library.access_denied"))
+		return
+	# Phase 9: ports_ready gate — guard against pre-wiring invocations.
+	if not _ports_ready:
+		_show_toast(_t("library.error.ports_not_ready"))
+		return
 	if _review_publish_port == null or _profile == null:
+		_show_toast(_t("library.error.port_unavailable"))
 		_set_status("failed")
 		return
 	var request_id := _request_id_input.text.strip_edges()
 	var request := _review_publish_port.execute(request_id, true, _profile, "")
 	if request == null:
+		_show_toast(_t("library.error.port_unavailable"))
 		_set_status("failed")
 		return
+	_show_toast(_t("library.approve.toast_ok"))
 	_set_status("approved")
 
 
 func _on_reject_pressed() -> void:
+	# Phase 9: server-side RBAC — role check at handler entry, not just button.disabled.
+	if not _is_parent_profile():
+		_show_toast(_t("library.access_denied"))
+		return
+	# Phase 9: ports_ready gate.
+	if not _ports_ready:
+		_show_toast(_t("library.error.ports_not_ready"))
+		return
 	if _review_publish_port == null or _profile == null:
+		_show_toast(_t("library.error.port_unavailable"))
 		_set_status("failed")
 		return
 	var request_id := _request_id_input.text.strip_edges()
@@ -144,21 +173,47 @@ func _on_reject_pressed() -> void:
 		_t("ui.library.reject_reason")
 	)
 	if request == null:
+		_show_toast(_t("library.error.port_unavailable"))
 		_set_status("failed")
 		return
+	_show_toast(_t("library.reject.toast_ok"))
 	_set_status("rejected")
 
 
 func _on_unpublish_pressed() -> void:
+	# Phase 9: server-side RBAC — role check at handler entry, not just button.disabled.
+	if not _is_parent_profile():
+		_show_toast(_t("library.access_denied"))
+		return
+	# Phase 9: ports_ready gate.
+	if not _ports_ready:
+		_show_toast(_t("library.error.ports_not_ready"))
+		return
 	if _unpublish_port == null or _profile == null:
+		_show_toast(_t("library.error.port_unavailable"))
 		_set_status("failed")
 		return
 	var request_id := _request_id_input.text.strip_edges()
 	var request := _unpublish_port.execute(request_id, _profile, _t("ui.library.unpublish_reason"))
 	if request == null:
+		_show_toast(_t("library.error.port_unavailable"))
 		_set_status("failed")
 		return
+	_show_toast(_t("library.unpublish.toast_ok"))
 	_set_status("unpublished")
+
+
+## Phase 9: returns true only when a real parent profile is active.
+## Used by privileged handlers as server-side RBAC enforcement.
+func _is_parent_profile() -> bool:
+	return _profile != null and _profile.is_parent()
+
+
+## Minimal toast: updates the publish_status label for one-shot feedback.
+## Godot 4 UI adapters without a full toast node use this lightweight approach.
+func _show_toast(message: String) -> void:
+	if _publish_status != null:
+		_publish_status.text = message
 
 
 func _set_status(status_key: String) -> void:
@@ -228,7 +283,14 @@ func _t(key: String) -> String:
 		"ui.common.undo": "Cofnij",
 		"ui.common.safe_restore": "Przywróć bezpieczny zapis",
 		"ui.library.go_create": "Przejdź do tworzenia",
-		"ui.library.go_play": "Przejdź do gry"
+		"ui.library.go_play": "Przejdź do gry",
+		# Phase 9 / Phase 4: RBAC + ports_ready feedback keys
+		"library.access_denied": "Tylko rodzic.",
+		"library.approve.toast_ok": "Zatwierdzone.",
+		"library.reject.toast_ok": "Odrzucone.",
+		"library.unpublish.toast_ok": "Cofnięte.",
+		"library.error.port_unavailable": "Coś nie działa. Spróbuj później.",
+		"library.error.ports_not_ready": "Chwilę...",
 	}
 	return fallback.get(key, key)
 
