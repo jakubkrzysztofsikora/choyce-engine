@@ -4,16 +4,29 @@
 ##
 ## Atomic write: write to a .tmp file then rename (via delete + rename) to avoid
 ## partial writes leaving corrupt state on power loss.
+##
+## Writes debounced with 250ms trailing-edge timer; call flush() on shutdown.
+## In-memory cache is the source of truth for reads; disk is updated lazily.
+##
+## Integration:
+##   - Call flush_if_due(delta_ms) each frame from the main loop to drive the
+##     debounce window (e.g. pass Engine.get_process_frames() delta in ms).
+##   - Call flush() before shutdown / _exit_tree() to ensure durability.
 class_name FilesystemPublishStore
 extends PublishStorePort
 
 const FORMAT_VERSION := 1
 const TMP_SUFFIX := ".tmp"
+const DEBOUNCE_MS := 250
 
 var _root_dir: String = "user://choyce_publish"
 
-## 250 ms debounce is handled by callers; this adapter always fsyncs immediately
-## so data is durable after each successful save.
+## In-memory cache: request_id (String) → PublishRequest
+var _cache: Dictionary = {}
+## True when _cache has unsaved changes.
+var _dirty: bool = false
+## Accumulated milliseconds since the last write call (for debounce tracking).
+var _pending_msec: int = 0
 
 
 func setup(root_dir: String = "user://choyce_publish") -> FilesystemPublishStore:
@@ -21,9 +34,13 @@ func setup(root_dir: String = "user://choyce_publish") -> FilesystemPublishStore
 	if _root_dir.is_empty():
 		_root_dir = "user://choyce_publish"
 	_ensure_dir(_root_dir)
+	_load_all()
 	return self
 
 
+## Write a publish request to the in-memory cache immediately.
+## Marks the store dirty and resets the debounce window.
+## Returns false for invalid input; true otherwise.
 func save_request(request: PublishRequest) -> bool:
 	if request == null:
 		return false
@@ -31,96 +48,124 @@ func save_request(request: PublishRequest) -> bool:
 	if rid.is_empty():
 		return false
 
-	_ensure_dir(_root_dir)
-	var target_path := _request_path(rid)
-	var tmp_path := target_path + TMP_SUFFIX
-	var data := _serialize_request(request)
-
-	if not _write_json(tmp_path, data):
-		return false
-
-	# Atomic rename: remove target if present, then rename tmp → target.
-	if FileAccess.file_exists(target_path):
-		var err := DirAccess.remove_absolute(ProjectSettings.globalize_path(target_path))
-		if err != OK:
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_path))
-			return false
-
-	var dir := DirAccess.open(_root_dir)
-	if dir == null:
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_path))
-		return false
-
-	# DirAccess.rename() accepts full virtual paths (user://).
-	var rename_err := dir.rename(tmp_path, target_path)
-	if rename_err != OK:
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_path))
-		return false
-
+	_cache[rid] = request
+	_mark_dirty()
 	return true
 
 
+## Read a publish request. Returns from in-memory cache; never reads disk.
 func load_request(request_id: String) -> PublishRequest:
 	var rid := request_id.strip_edges()
 	if rid.is_empty():
 		return null
-
-	var path := _request_path(rid)
-	if not FileAccess.file_exists(path):
-		return null
-
-	var data = _read_json(path)
-	if not (data is Dictionary):
-		return null
-
-	return _deserialize_request(data as Dictionary)
+	return _cache.get(rid, null)
 
 
+## Return all requests whose state == PUBLISHED.
+## Reads from in-memory cache only.
+func list_published() -> Array:
+	var results: Array = []
+	for req in _cache.values():
+		if req is PublishRequest and req.state == PublishRequest.PublishState.PUBLISHED:
+			results.append(req)
+	return results
+
+
+## Return all requests matching project_id.
+## Reads from in-memory cache only.
 func list_requests_for_project(project_id: String) -> Array:
 	if project_id.strip_edges().is_empty():
 		return []
-
 	var results: Array = []
-	_ensure_dir(_root_dir)
+	for req in _cache.values():
+		if req is PublishRequest and req.project_id == project_id:
+			results.append(req)
+	return results
 
+
+## Drive the debounce timer. Pass the milliseconds elapsed since the last call
+## (e.g. from _process delta converted to ms, or from a fixed-tick loop).
+## Flushes to disk when accumulated time >= DEBOUNCE_MS and the store is dirty.
+##
+## Example (main.gd _process):
+##   _publish_store.flush_if_due(delta * 1000.0)
+func flush_if_due(elapsed_msec: int) -> void:
+	if not _dirty:
+		_pending_msec = 0
+		return
+	_pending_msec += elapsed_msec
+	if _pending_msec >= DEBOUNCE_MS:
+		_flush_to_disk()
+
+
+## Flush all dirty in-memory state to disk immediately, regardless of timer.
+## Call this before shutdown or whenever durability is required immediately.
+func flush() -> void:
+	if _dirty:
+		_flush_to_disk()
+
+
+# ── Private ─────────────────────────────────────────────────────────────────────
+
+func _mark_dirty() -> void:
+	_dirty = true
+	_pending_msec = 0
+
+
+## Load all existing request files from disk into _cache on startup.
+func _load_all() -> void:
+	_cache = {}
+	_ensure_dir(_root_dir)
 	var dir := DirAccess.open(_root_dir)
 	if dir == null:
-		return results
-
+		return
 	dir.list_dir_begin()
 	var entry := dir.get_next()
 	while not entry.is_empty():
 		if not dir.current_is_dir() and entry.ends_with(".json") and not entry.ends_with(TMP_SUFFIX):
 			var rid := entry.get_basename()
-			var req := load_request(rid)
-			if req != null and req.project_id == project_id:
-				results.append(req)
+			var path := _request_path(rid)
+			var data = _read_json(path)
+			if data is Dictionary:
+				var req := _deserialize_request(data as Dictionary)
+				if req != null:
+					_cache[rid] = req
 		entry = dir.get_next()
 	dir.list_dir_end()
 
-	return results
 
-
-func list_published() -> Array:
-	var results: Array = []
+## Write every cached request to disk atomically.
+func _flush_to_disk() -> void:
 	_ensure_dir(_root_dir)
+	for rid in _cache.keys():
+		var req := _cache[rid] as PublishRequest
+		if req == null:
+			continue
+		var target_path := _request_path(rid)
+		var tmp_path := target_path + TMP_SUFFIX
+		var data := _serialize_request(req)
 
-	var dir := DirAccess.open(_root_dir)
-	if dir == null:
-		return results
+		if not _write_json(tmp_path, data):
+			continue
 
-	dir.list_dir_begin()
-	var entry := dir.get_next()
-	while not entry.is_empty():
-		if not dir.current_is_dir() and entry.ends_with(".json") and not entry.ends_with(TMP_SUFFIX):
-			var rid := entry.get_basename()
-			var req := load_request(rid)
-			if req != null and req.state == PublishRequest.PublishState.PUBLISHED:
-				results.append(req)
-		entry = dir.get_next()
-	dir.list_dir_end()
+		# Atomic rename: remove target if present, then rename tmp → target.
+		if FileAccess.file_exists(target_path):
+			var err := DirAccess.remove_absolute(ProjectSettings.globalize_path(target_path))
+			if err != OK:
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_path))
+				continue
 
-	return results
+		var dir := DirAccess.open(_root_dir)
+		if dir == null:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_path))
+			continue
+
+		var rename_err := dir.rename(tmp_path, target_path)
+		if rename_err != OK:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_path))
+
+	_dirty = false
+	_pending_msec = 0
 
 
 func _serialize_request(request: PublishRequest) -> Dictionary:
