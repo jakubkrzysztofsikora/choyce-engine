@@ -21,10 +21,19 @@ class MockLLM:
 		last_complete_locale = envelope.language
 		on_done.call({"text": "To bedzie bezpieczna zmiana.", "provider": "mock", "model": "mock-m", "stopped": false})
 
-	func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	func complete_with_tools(envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		tool_calls += 1
+		last_tool_locale = envelope.language
+		if on_done.is_valid():
+			on_done.call(planned_tools)
+
+	func complete_with_tools_sync(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		tool_calls += 1
 		last_tool_locale = envelope.language
 		return planned_tools
+
+	func cancel() -> void:
+		pass
 
 
 class MockModeration:

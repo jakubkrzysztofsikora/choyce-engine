@@ -36,8 +36,15 @@ class MockCloudLLM:
 	) -> void:
 		on_done.call({"text": "CLOUD_COMPLETION", "provider": "cloud", "model": "cloud-model", "stopped": false})
 
-	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		if on_done.is_valid():
+			on_done.call([ToolInvocation.new("logic_edit", {"operation": "cloud_apply"}, "cloud_1")])
+
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return [ToolInvocation.new("logic_edit", {"operation": "cloud_apply"}, "cloud_1")]
+
+	func cancel() -> void:
+		pass
 
 
 func run() -> Dictionary:
@@ -59,14 +66,15 @@ func run() -> Dictionary:
 	var envelope := PromptEnvelope.new("Dodaj drzewo obok domu.")
 	envelope.context_tags = ["profile_id:kid-1"]
 
-	var completion_text := ""
+	var completion_out: Dictionary = {}
 	adapter.complete(
 		envelope,
 		{},
 		func(_token: String) -> void: pass,
 		func(result: Dictionary) -> void:
-			completion_text = result.get("text", "")
+			completion_out.merge(result, true)
 	)
+	var completion_text: String = str(completion_out.get("text", ""))
 	_assert_string(completion_text, "OllamaLLMAdapter.complete() — mock on_done text")
 	_assert_true(
 		completion_text.contains("[ollama:"),
@@ -77,11 +85,16 @@ func run() -> Dictionary:
 		"OllamaLLMAdapter should use small tier for simple completion prompts"
 	)
 
-	# --- complete_with_tools ---
+	# --- complete_with_tools (async, Callable) ---
 	var tools_envelope := PromptEnvelope.new("Zmien kolor domku na zółty.")
 	tools_envelope.context_tags = ["profile_id:kid-1"]
 	tools_envelope.permitted_tools = ["paint", "scene_edit"]
-	var tools := adapter.complete_with_tools(tools_envelope)
+	var tools: Array = []
+	adapter.complete_with_tools(
+		tools_envelope,
+		func(result: Array) -> void:
+			tools.assign(result)
+	)
 	_assert_tool_invocation_array(tools, "OllamaLLMAdapter.complete_with_tools(envelope)")
 	_assert_true(
 		tools.size() == 1 and tools[0].tool_name == "paint",
@@ -94,16 +107,15 @@ func run() -> Dictionary:
 
 	# --- simulate_local_failure with no consent: fallback ---
 	adapter.set_simulate_local_failure_for_tests(true)
-	var fallback_text := ""
-	var fallback_provider := ""
+	var fallback_out: Dictionary = {}
 	adapter.complete(
 		envelope,
 		{},
 		func(_token: String) -> void: pass,
 		func(result: Dictionary) -> void:
-			fallback_text = result.get("text", "")
-			fallback_provider = result.get("provider", "")
+			fallback_out.merge(result, true)
 	)
+	var fallback_text: String = str(fallback_out.get("text", ""))
 	_assert_true(
 		fallback_text != "CLOUD_COMPLETION",
 		"OllamaLLMAdapter should not use cloud fallback without consent"
@@ -118,16 +130,15 @@ func run() -> Dictionary:
 		consent.request_consent("kid-1", "cloud_llm"),
 		"MockConsentPort.request_consent should grant cloud_llm consent"
 	)
-	var cloud_text := ""
-	var cloud_provider_from_done := ""
+	var cloud_out: Dictionary = {}
 	adapter.complete(
 		envelope,
 		{},
 		func(_token: String) -> void: pass,
 		func(result: Dictionary) -> void:
-			cloud_text = result.get("text", "")
-			cloud_provider_from_done = result.get("provider", "")
+			cloud_out.merge(result, true)
 	)
+	var cloud_text: String = str(cloud_out.get("text", ""))
 	_assert_true(
 		cloud_text == "CLOUD_COMPLETION",
 		"OllamaLLMAdapter should use cloud fallback when consent is present"
@@ -137,8 +148,13 @@ func run() -> Dictionary:
 		"OllamaLLMAdapter should report cloud provider when cloud fallback is used"
 	)
 
-	# --- cloud complete_with_tools ---
-	var cloud_tools := adapter.complete_with_tools(tools_envelope)
+	# --- cloud complete_with_tools (async, Callable) ---
+	var cloud_tools: Array = []
+	adapter.complete_with_tools(
+		tools_envelope,
+		func(result: Array) -> void:
+			cloud_tools.assign(result)
+	)
 	_assert_true(
 		cloud_tools.size() == 1 and cloud_tools[0].tool_name == "logic_edit",
 		"OllamaLLMAdapter should return cloud tools when local planning fails and consent exists"

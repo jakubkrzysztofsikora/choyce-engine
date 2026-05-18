@@ -20,8 +20,17 @@ class MockLLM:
 		last_locale = envelope.language
 		on_done.call({"text": response, "provider": provider, "model": "mock-m", "stopped": false})
 
-	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
-		return []
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		if on_done.is_valid():
+			var empty: Array[ToolInvocation] = []
+			on_done.call(empty)
+
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+		var empty: Array[ToolInvocation] = []
+		return empty
+
+	func cancel() -> void:
+		pass
 
 	func get_last_provider() -> String:
 		return provider

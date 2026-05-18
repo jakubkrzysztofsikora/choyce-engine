@@ -18,8 +18,17 @@ class MockLLM:
 			text = "unsafe wyjasnienie"
 		on_done.call({"text": text, "provider": "mock", "model": "mock-m", "stopped": false})
 
-	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
-		return []
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		if on_done.is_valid():
+			var empty: Array[ToolInvocation] = []
+			on_done.call(empty)
+
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+		var empty: Array[ToolInvocation] = []
+		return empty
+
+	func cancel() -> void:
+		pass
 
 
 class MockClock:
@@ -85,7 +94,7 @@ func run() -> Dictionary:
 		"scripts/main.gd",
 		parent,
 		func(r: Dictionary) -> void:
-			explanation_async = r
+			explanation_async.merge(r, true)
 	)
 	_assert_true(explanation_async.get("ok", false), "on_complete should be called with ok:true")
 	_assert_true(
@@ -99,7 +108,7 @@ func run() -> Dictionary:
 		"scripts/main.gd",
 		parent,
 		func(r: Dictionary) -> void:
-			refactor_async = r
+			refactor_async.merge(r, true)
 	)
 	_assert_true(refactor_async.get("ok", false), "on_complete should be called with ok:true for refactor")
 	_assert_true(
