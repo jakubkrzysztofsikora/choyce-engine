@@ -10,6 +10,7 @@ var active_quest_id: String = ""
 ## actor_id is stored so published events carry the player identity.
 var _actor_id: String = ""
 var _event_bus: DomainEventBus = null
+var _warned_null_bus: bool = false
 
 
 func setup(event_bus: DomainEventBus, actor_id: String = "") -> QuestLog:
@@ -36,8 +37,7 @@ func set_active_quest(quest_id: String) -> bool:
 	if quest.status == 0:  # LOCKED
 		quest.status = 1  # ACTIVE
 	active_quest_id = quest_id
-	if _event_bus != null:
-		_event_bus.emit(ActiveQuestChangedEvent.new(quest_id, _actor_id))
+	_emit(ActiveQuestChangedEvent.new(quest_id, _actor_id))
 	return true
 
 
@@ -54,12 +54,10 @@ func progress_quest(quest_id: String, amount: int = 1) -> void:
 
 	var was_complete = quest.is_complete()
 	quest.advance(amount)
-	if _event_bus != null:
-		_event_bus.emit(QuestProgressedEvent.new(quest_id, quest.current_count, quest.target_count, _actor_id))
+	_emit(QuestProgressedEvent.new(quest_id, quest.current_count, quest.target_count, _actor_id))
 
 	if not was_complete and quest.is_complete():
-		if _event_bus != null:
-			_event_bus.emit(QuestCompletedEvent.new(quest_id, _actor_id))
+		_emit(QuestCompletedEvent.new(quest_id, _actor_id))
 
 
 func claim_quest(quest_id: String) -> bool:
@@ -68,8 +66,7 @@ func claim_quest(quest_id: String) -> bool:
 		return false
 	if not quest.claim():
 		return false
-	if _event_bus != null:
-		_event_bus.emit(QuestClaimedEvent.new(quest_id, quest.reward_score, quest.reward_unlocks.duplicate(), _actor_id))
+	_emit(QuestClaimedEvent.new(quest_id, quest.reward_score, quest.reward_unlocks.duplicate(), _actor_id))
 	return true
 
 
@@ -104,3 +101,11 @@ func reset_all() -> void:
 		quest.current_count = 0
 		quest.status = 0  # LOCKED
 	active_quest_id = ""
+
+
+func _emit(event: DomainEvent) -> void:
+	if _event_bus != null:
+		_event_bus.emit(event)
+	elif not _warned_null_bus:
+		_warned_null_bus = true
+		push_warning("QuestLog: event_bus not wired; event lost: %s" % event.event_type)
