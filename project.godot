@@ -28,3 +28,4 @@ textures/vram_compression/import_etc2_astc=true
 [autoload]
 InputMapInitializer="*res://src/adapters/inbound/shared/input_map_initializer.gd"
 ButtonFeel="*res://src/adapters/inbound/shared/ui/button_feel.gd"
+AudioBank="*res://src/adapters/inbound/shared/audio/audio_bank.gd"
