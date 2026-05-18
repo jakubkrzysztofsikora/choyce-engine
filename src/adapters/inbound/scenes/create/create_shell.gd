@@ -310,10 +310,12 @@ func _refresh_tool_states() -> void:
 	_style_tool_button(_duplicate_button, _active_tool == CanvasTool.DUPLICATE, Color8(229, 180, 255))
 
 
-## Phase 9: disable/enable tool buttons depending on whether _apply_world_edit_port is wired.
-## Called from _refresh_labels() (initial) and setup() (after port injection).
+## Phase 9 / Wave C: disable/enable tool buttons depending on whether
+## _apply_world_edit_port is wired AND _ports_ready is true.
+## Called from _refresh_labels() (initial), setup() (after port injection),
+## and on_ports_ready() (after ports_ready signal fires).
 func _refresh_tool_port_gate() -> void:
-	var port_available := _apply_world_edit_port != null
+	var port_available := _apply_world_edit_port != null and _ports_ready
 	var unavailable_tip := _t("create.tools.unavailable")
 	var tool_buttons: Array[Button] = [_place_button, _paint_button, _move_button, _duplicate_button]
 	for btn in tool_buttons:
@@ -854,6 +856,10 @@ func on_ports_ready() -> void:
 	_ports_ready = true
 	if _assistant_overlay != null and _assistant_overlay.has_method("notify_ports_ready"):
 		_assistant_overlay.call("notify_ports_ready")
+	# Wave C: re-evaluate tool gate now that ports_ready is true; buttons enabled
+	# only when BOTH _apply_world_edit_port != null AND _ports_ready == true.
+	if is_node_ready():
+		_refresh_tool_port_gate()
 
 
 func _t(key: String) -> String:
@@ -924,6 +930,9 @@ func _t(key: String) -> String:
 		"create.ai.applied": "Zmiana AI zatwierdzona i zastosowana.",
 		# Phase 9
 		"create.tools.unavailable": "Narzędzia niedostępne. Spróbuj ponownie.",
+		# Wave C: CTA voice prompt (kid-register: short imperative)
+		"create.cta.build_world_voice": "Naciśnij narzędzie i coś zbuduj.",
+		"create.cta.build_world": "Stwórz coś!",
 	}
 	return fallback.get(key, key)
 
@@ -950,7 +959,7 @@ func _on_cta_idle_timeout() -> void:
 		return
 	_cta_tts_fired = true
 	if _voice_prompt != null and _voice_prompt.has_method("speak"):
-		_voice_prompt.call("speak", _t("ui.create.go_play"))
+		_voice_prompt.call("speak", _t("create.cta.build_world_voice"))
 
 
 func _on_ai_action_confirmed(action: AIAssistantAction) -> void:

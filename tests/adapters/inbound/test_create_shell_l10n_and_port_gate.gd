@@ -1,5 +1,5 @@
 ## tests/adapters/inbound/test_create_shell_l10n_and_port_gate.gd
-## Phase 4a-1 + Phase 9 create_shell tests.
+## Phase 4a-1 + Phase 9 + Wave C create_shell tests.
 ##
 ## Phase 4a-1: verifies every hardcoded Polish category is now routed via _t().
 ##   - Representative key per category is present in PolishLocalizationPolicy.
@@ -8,12 +8,20 @@
 ## Phase 9: verifies that when _apply_world_edit_port is null:
 ##   - tool buttons are disabled
 ##   - tool buttons have tooltip_text == _t("create.tools.unavailable")
+##
+## Wave C:
+##   MUST-C1: idle CTA timer fires → VoicePromptPort.speak() called with
+##            create.cta.build_world_voice, NOT ui.create.go_play.
+##   MUST-C2: ports_ready fires → _refresh_tool_port_gate() runs; with port
+##            provided, tool buttons become enabled.
+##   MUST-C3: ports_ready fires → with port null, tool buttons stay disabled.
 extends SceneTree
 
 const CreateShell = preload("res://src/adapters/inbound/scenes/create/create_shell.gd")
 const PolishLocalizationPolicy = preload("res://src/adapters/outbound/polish_localization_policy.gd")
 const PlayerProfile = preload("res://src/domain/gameplay/player_profile.gd")
 const ApplyWorldEditCommandPort = preload("res://src/ports/inbound/apply_world_edit_command_port.gd")
+const VoicePromptPort = preload("res://src/ports/outbound/voice_prompt_port.gd")
 
 # ---------------------------------------------------------------------------
 # Mocks
@@ -22,6 +30,15 @@ const ApplyWorldEditCommandPort = preload("res://src/ports/inbound/apply_world_e
 class MockEditPort extends ApplyWorldEditCommandPort:
 	func execute(_world_id: String, _cmd, _actor) -> bool:
 		return true
+
+
+class MockVoicePrompt extends VoicePromptPort:
+	var last_spoken_text: String = ""
+	var speak_call_count: int = 0
+
+	func speak(text: String, _locale: String = "pl-PL") -> void:
+		last_spoken_text = text
+		speak_call_count += 1
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +74,27 @@ func _make_shell(edit_port = null) -> CreateShell:
 		edit_port,   # apply_world_edit_port
 		null,        # request_ai_help_port
 		null         # speech_to_text_port
+	)
+	return shell
+
+
+func _make_shell_with_voice(edit_port, voice_prompt: MockVoicePrompt) -> CreateShell:
+	var scene := load("res://src/adapters/inbound/scenes/create/create_shell.tscn")
+	var shell: CreateShell = scene.instantiate()
+	get_root().add_child(shell)
+	var profile := PlayerProfile.new("kid_1", PlayerProfile.Role.KID)
+	shell.setup(
+		null,        # navigator
+		profile,
+		null,        # localization — use built-in fallback
+		null,        # create_project_port
+		null,        # run_playtest_port
+		edit_port,   # apply_world_edit_port
+		null,        # request_ai_help_port
+		null,        # speech_to_text_port
+		null,        # feature_flags
+		null,        # event_bus
+		voice_prompt # voice_prompt (Phase 9 / Wave C)
 	)
 	return shell
 
@@ -302,11 +340,157 @@ func _test_port_present_enables_tool_buttons() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Wave C: CTA voice key tests
+# ---------------------------------------------------------------------------
+
+## MUST-C1a: policy has create.cta.build_world_voice key.
+func _test_policy_has_create_cta_build_world_voice() -> void:
+	var policy := PolishLocalizationPolicy.new()
+	_assert(
+		policy.translate("create.cta.build_world_voice") != "create.cta.build_world_voice",
+		"PolishLocalizationPolicy has key create.cta.build_world_voice"
+	)
+
+
+## MUST-C1b: policy has create.cta.build_world key.
+func _test_policy_has_create_cta_build_world() -> void:
+	var policy := PolishLocalizationPolicy.new()
+	_assert(
+		policy.translate("create.cta.build_world") != "create.cta.build_world",
+		"PolishLocalizationPolicy has key create.cta.build_world"
+	)
+
+
+## MUST-C1c: shell _t() fallback resolves create.cta.build_world_voice.
+func _test_shell_fallback_has_create_cta_build_world_voice() -> void:
+	var shell := _make_shell()
+	var v: String = shell.call("_t", "create.cta.build_world_voice")
+	_assert(
+		v != "create.cta.build_world_voice",
+		"Shell _t() fallback resolves create.cta.build_world_voice"
+	)
+	shell.queue_free()
+	await process_frame
+
+
+## MUST-C1d: idle CTA timer fires → VoicePromptPort.speak() called with
+##           create.cta.build_world_voice, NOT ui.create.go_play.
+func _test_cta_idle_timeout_speaks_build_world_voice_not_go_play() -> void:
+	var voice := MockVoicePrompt.new()
+	var shell := _make_shell_with_voice(null, voice)
+
+	# Call the timeout handler directly (simulates 3s idle expiry).
+	shell.call("_on_cta_idle_timeout")
+	await process_frame
+
+	var expected_key := "create.cta.build_world_voice"
+	var expected_text: String = shell.call("_t", expected_key)
+	var wrong_text: String = shell.call("_t", "ui.create.go_play")
+
+	_assert(
+		voice.speak_call_count == 1,
+		"MUST-C1: VoicePromptPort.speak() called exactly once on CTA idle timeout"
+	)
+	_assert(
+		voice.last_spoken_text == expected_text,
+		"MUST-C1: speak() called with create.cta.build_world_voice text"
+	)
+	_assert(
+		voice.last_spoken_text != wrong_text,
+		"MUST-C1: speak() NOT called with ui.create.go_play text"
+	)
+	shell.queue_free()
+	await process_frame
+
+
+## MUST-C1e: _cta_tts_fired guard prevents double-speak.
+func _test_cta_idle_timeout_fires_only_once() -> void:
+	var voice := MockVoicePrompt.new()
+	var shell := _make_shell_with_voice(null, voice)
+
+	shell.call("_on_cta_idle_timeout")
+	shell.call("_on_cta_idle_timeout")
+	await process_frame
+
+	_assert(
+		voice.speak_call_count == 1,
+		"MUST-C1e: CTA idle TTS fires only once even if handler called twice"
+	)
+	shell.queue_free()
+	await process_frame
+
+
+# ---------------------------------------------------------------------------
+# Wave C: ports_ready re-evaluates tool gate
+# ---------------------------------------------------------------------------
+
+## MUST-C2: ports_ready fires with port provided → buttons become enabled.
+func _test_ports_ready_with_port_enables_tool_buttons() -> void:
+	var edit_port := MockEditPort.new()
+	# Build shell with port but simulate ports_ready not yet fired.
+	# After setup(), _ports_ready is still false, so gate should keep buttons disabled.
+	var scene := load("res://src/adapters/inbound/scenes/create/create_shell.tscn")
+	var shell: CreateShell = scene.instantiate()
+	get_root().add_child(shell)
+	var profile := PlayerProfile.new("kid_1", PlayerProfile.Role.KID)
+	shell.setup(
+		null, profile, null, null, null,
+		edit_port, null, null
+	)
+
+	# Before ports_ready: gate predicate is port && ports_ready — both needed.
+	# _ports_ready defaults false, so buttons should be disabled even with port.
+	var btn = shell.get("_place_button")
+	if btn == null:
+		print("SKIP: _place_button not found")
+		shell.queue_free()
+		await process_frame
+		return
+
+	_assert(
+		btn.disabled == true,
+		"MUST-C2 pre: place button disabled before ports_ready fires (port present but not ready)"
+	)
+
+	# Fire ports_ready — gate should now enable buttons.
+	shell.emit_signal("ports_ready")
+	await process_frame
+
+	_assert(
+		btn.disabled == false,
+		"MUST-C2: place button enabled after ports_ready fires with port wired"
+	)
+	shell.queue_free()
+	await process_frame
+
+
+## MUST-C3: ports_ready fires with port null → buttons stay disabled.
+func _test_ports_ready_without_port_keeps_buttons_disabled() -> void:
+	var shell := _make_shell(null)  # no port
+	var btn = shell.get("_place_button")
+	if btn == null:
+		print("SKIP: _place_button not found")
+		shell.queue_free()
+		await process_frame
+		return
+
+	shell.emit_signal("ports_ready")
+	await process_frame
+
+	_assert(
+		btn.disabled == true,
+		"MUST-C3: place button stays disabled after ports_ready when port is null"
+	)
+	shell.queue_free()
+	await process_frame
+
+
+# ---------------------------------------------------------------------------
 # Run all tests
 # ---------------------------------------------------------------------------
 
 func _run_tests() -> void:
-	print("=== Phase 4a-1 + Phase 9 create_shell l10n + port-gate tests ===")
+	print("=== Phase 4a-1 + Phase 9 + Wave C create_shell l10n + port-gate tests ===")
 
 	# Policy key presence
 	_test_policy_has_create_steps_intro()
@@ -334,5 +518,16 @@ func _run_tests() -> void:
 	await _test_null_port_disables_duplicate_button()
 	await _test_null_port_sets_tooltip_unavailable_on_place()
 	await _test_port_present_enables_tool_buttons()
+
+	# Wave C: CTA voice key
+	_test_policy_has_create_cta_build_world_voice()
+	_test_policy_has_create_cta_build_world()
+	await _test_shell_fallback_has_create_cta_build_world_voice()
+	await _test_cta_idle_timeout_speaks_build_world_voice_not_go_play()
+	await _test_cta_idle_timeout_fires_only_once()
+
+	# Wave C: ports_ready re-evaluates gate
+	await _test_ports_ready_with_port_enables_tool_buttons()
+	await _test_ports_ready_without_port_keeps_buttons_disabled()
 
 	quit(_exit_code)
