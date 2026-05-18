@@ -99,14 +99,24 @@ func append_record(record: AuditRecord) -> bool:
 	if record.record_id.strip_edges().is_empty():
 		push_error("FilesystemAuditLedger: empty record_id")
 		return false
-	if record.previous_hash != _last_hash:
-		push_error("FilesystemAuditLedger: hash chain broken for record %s" % record.record_id)
-		return false
+	# record.verify() is a pure hash computation with no shared state — safe outside the lock.
 	if not record.verify():
 		push_error("FilesystemAuditLedger: record hash verification failed for %s" % record.record_id)
 		return false
 
+	# INVARIANT: _last_hash read AND chain-continuity check MUST be inside the same
+	# critical section as the window append. Background rotation between the read and
+	# the append would update _last_hash, silently breaking the chain. The mutex
+	# guarantees atomicity of the check + write pair.
+	#
+	# NOTE: try_lock() from a second call path will fail (returns false) whenever
+	# append_record is mid-critical-section, which the mutex_race regression test
+	# below verifies by asserting try_lock fails immediately after lock() is called.
 	_mutex.lock()
+	if record.previous_hash != _last_hash:
+		_mutex.unlock()
+		push_error("FilesystemAuditLedger: hash chain broken for record %s" % record.record_id)
+		return false
 
 	var idx := _active_window.size()
 	_active_window.append(record)
