@@ -4,8 +4,13 @@ extends SceneTree
 class MockLLM:
 	extends LLMPort
 
-	func complete(_envelope: PromptEnvelope) -> String:
-		return "ok"
+	func complete(
+		_envelope: PromptEnvelope,
+		_options: Dictionary,
+		_on_token: Callable,
+		on_done: Callable
+	) -> void:
+		on_done.call({"text": "ok", "provider": "mock", "model": "mock-m", "stopped": false})
 
 	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return [ToolInvocation.new("script_edit", {"code": "print(1)"}, "unsafe-tool-1")]

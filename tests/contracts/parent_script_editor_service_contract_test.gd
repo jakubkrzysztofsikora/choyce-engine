@@ -5,10 +5,18 @@ extends PortContractTest
 class MockLLM:
 	extends LLMPort
 
-	func complete(envelope: PromptEnvelope) -> String:
+	func complete(
+		envelope: PromptEnvelope,
+		_options: Dictionary,
+		_on_token: Callable,
+		on_done: Callable
+	) -> void:
+		var text: String
 		if envelope.prompt_text.to_lower().contains("refaktor"):
-			return "Rozbij funkcje na mniejsze i nazwij zmienne precyzyjniej."
-		return "unsafe wyjasnienie"
+			text = "Rozbij funkcje na mniejsze i nazwij zmienne precyzyjniej."
+		else:
+			text = "unsafe wyjasnienie"
+		on_done.call({"text": text, "provider": "mock", "model": "mock-m", "stopped": false})
 
 	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return []
@@ -68,17 +76,34 @@ func run() -> Dictionary:
 		"Loaded script should include original source"
 	)
 
-	var explanation := service.explain_script("project-1", "scripts/main.gd", parent)
-	_assert_true(explanation.get("ok", false), "Parent should request script explanation")
+	var explanation_sync := service.explain_script("project-1", "scripts/main.gd", parent)
+	_assert_true(explanation_sync.get("ok", false), "explain_script should return ok:true immediately")
+
+	var explanation_async: Dictionary = {}
+	service.explain_script(
+		"project-1",
+		"scripts/main.gd",
+		parent,
+		func(r: Dictionary) -> void:
+			explanation_async = r
+	)
+	_assert_true(explanation_async.get("ok", false), "on_complete should be called with ok:true")
 	_assert_true(
-		str(explanation.get("explanation", "")) == "Wyjasnienie zostalo bezpiecznie uproszczone.",
+		str(explanation_async.get("explanation", "")) == "Wyjasnienie zostalo bezpiecznie uproszczone.",
 		"Explanation output should be moderated before returning"
 	)
 
-	var refactor := service.suggest_refactor("project-1", "scripts/main.gd", parent)
-	_assert_true(refactor.get("ok", false), "Parent should request refactor suggestion")
+	var refactor_async: Dictionary = {}
+	service.suggest_refactor(
+		"project-1",
+		"scripts/main.gd",
+		parent,
+		func(r: Dictionary) -> void:
+			refactor_async = r
+	)
+	_assert_true(refactor_async.get("ok", false), "on_complete should be called with ok:true for refactor")
 	_assert_true(
-		str(refactor.get("suggestion", "")).to_lower().contains("rozbij"),
+		str(refactor_async.get("suggestion", "")).to_lower().contains("rozbij"),
 		"Refactor suggestion should return LLM guidance"
 	)
 

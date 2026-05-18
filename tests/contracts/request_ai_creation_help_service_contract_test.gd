@@ -11,10 +11,15 @@ class MockLLM:
 	var last_complete_locale: String = ""
 	var last_tool_locale: String = ""
 
-	func complete(envelope: PromptEnvelope) -> String:
+	func complete(
+		envelope: PromptEnvelope,
+		_options: Dictionary,
+		_on_token: Callable,
+		on_done: Callable
+	) -> void:
 		complete_calls += 1
 		last_complete_locale = envelope.language
-		return "To bedzie bezpieczna zmiana."
+		on_done.call({"text": "To bedzie bezpieczna zmiana.", "provider": "mock", "model": "mock-m", "stopped": false})
 
 	func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		tool_calls += 1

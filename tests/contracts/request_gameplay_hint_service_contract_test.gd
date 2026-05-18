@@ -10,10 +10,15 @@ class MockLLM:
 	var complete_calls: int = 0
 	var last_locale: String = ""
 
-	func complete(envelope: PromptEnvelope) -> String:
+	func complete(
+		envelope: PromptEnvelope,
+		_options: Dictionary,
+		_on_token: Callable,
+		on_done: Callable
+	) -> void:
 		complete_calls += 1
 		last_locale = envelope.language
-		return response
+		on_done.call({"text": response, "provider": provider, "model": "mock-m", "stopped": false})
 
 	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return []

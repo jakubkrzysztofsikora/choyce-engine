@@ -155,8 +155,13 @@ class MockEventBus extends DomainEventBus:
 		return false
 
 class MockLLM extends LLMPort:
-	func complete(envelope: PromptEnvelope) -> String:
-		return "This action adds a tree."
+	func complete(
+		_envelope: PromptEnvelope,
+		_options: Dictionary,
+		_on_token: Callable,
+		on_done: Callable
+	) -> void:
+		on_done.call({"text": "This action adds a tree.", "provider": "mock", "model": "mock-m", "stopped": false})
 	func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		# Return a valid ToolInvocation for "scene_edit"
 		# Use untyped dictionary or typed if possible.

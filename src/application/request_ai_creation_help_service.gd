@@ -61,7 +61,11 @@ func setup(
 	return self
 
 
-func execute(session_id: String, prompt_text: String, actor: PlayerProfile, preview_only: bool = false) -> AIAssistantAction:
+## Execute AI creation help flow.
+## on_complete (optional): called with the final AIAssistantAction once the async
+## explanation from LLM arrives. If omitted the action is returned synchronously
+## with an empty explanation field (explanation will arrive via on_complete later).
+func execute(session_id: String, prompt_text: String, actor: PlayerProfile, preview_only: bool = false, on_complete: Callable = Callable()) -> AIAssistantAction:
 	var resolved_locale := _resolve_ai_locale(actor)
 
 	# Step 1: Build prompt envelope with safety metadata
@@ -221,31 +225,53 @@ func execute(session_id: String, prompt_text: String, actor: PlayerProfile, prev
 	action.impact_level = _assess_impact(tool_invocations, actor)
 	action.requires_parent_approval = action.impact_level == AIAssistantAction.ImpactLevel.HIGH
 
-	# Step 7: Generate explanation
+	# Step 7: Generate explanation — async via LLMPort streaming contract.
 	var explain_envelope := PromptEnvelope.new(
 		_build_prompt_text("ai_creation_explain", str(tool_invocations), resolved_locale, actor),
 		resolved_locale,
 		actor.age_band
 	)
-	action.explanation = _llm.complete(explain_envelope)
 
-	# Step 8: Output moderation post-check
-	var output_check := _moderation.check_text(action.explanation, actor.age_band)
-	if output_check.is_blocked():
-		_emit_safety_block_event(
-			"%s_output_%s" % [session_id, _clock.now_msec()],
-			actor.profile_id,
-			action.explanation,
-			output_check.safe_alternative
-		)
-		action.explanation = output_check.safe_alternative if output_check.safe_alternative else ""
+	var captured_action := action
+	var captured_actor := actor
+	var captured_session_id := session_id
+	var captured_preview_only := preview_only
+	var captured_on_complete := on_complete
 
-	# Step 9: Transactional execution (only low/medium impact).
-	if action.requires_parent_approval or preview_only:
-		action.status = AIAssistantAction.ActionStatus.PROPOSED
-		return action
+	_llm.complete(
+		explain_envelope,
+		{},
+		func(_token: String) -> void:
+			pass,  # Tokens not streamed to UI from this service; on_done has the full text.
+		func(result: Dictionary) -> void:
+			var explanation := str(result.get("text", "")).strip_edges()
+			# Step 8: Output moderation post-check
+			var output_check := _moderation.check_text(explanation, captured_actor.age_band)
+			if output_check.is_blocked():
+				_emit_safety_block_event(
+					"%s_output_%s" % [captured_session_id, _clock.now_msec()],
+					captured_actor.profile_id,
+					explanation,
+					output_check.safe_alternative
+				)
+				explanation = output_check.safe_alternative if output_check.safe_alternative else ""
+			captured_action.explanation = explanation
 
-	return execute_pending_action(action, actor)
+			# Step 9: Transactional execution (only low/medium impact).
+			var final_action: AIAssistantAction
+			if captured_action.requires_parent_approval or captured_preview_only:
+				captured_action.status = AIAssistantAction.ActionStatus.PROPOSED
+				final_action = captured_action
+			else:
+				final_action = execute_pending_action(captured_action, captured_actor)
+
+			if captured_on_complete.is_valid():
+				captured_on_complete.call(final_action)
+	)
+
+	# Return the partially-built action immediately so callers can display a spinner.
+	# The on_complete Callable receives the fully-populated action when explanation arrives.
+	return action
 
 
 func execute_pending_action(action: AIAssistantAction, actor: PlayerProfile) -> AIAssistantAction:

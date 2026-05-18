@@ -36,8 +36,11 @@ func setup(
 	return self
 
 
-## Returns {"hint_text": String, "hint_level": int, "quest_id": String}.
-func execute(session_id: String, context: Dictionary, actor: PlayerProfile) -> Dictionary:
+## Request a gameplay hint. Async: on_complete (optional) is called with the final
+## {"hint_text", "hint_level", "quest_id", ...} dict once the LLM responds.
+## Returns a partial dict immediately (hint_text empty); caller should show a spinner
+## until on_complete fires.
+func execute(session_id: String, context: Dictionary, actor: PlayerProfile, on_complete: Callable = Callable()) -> Dictionary:
 	var hint_level: int = context.get("hint_level", 1)
 	hint_level = clampi(hint_level, 1, 3)
 	var adaptive := _build_adaptive_guidance(context, actor, hint_level)
@@ -72,41 +75,70 @@ func execute(session_id: String, context: Dictionary, actor: PlayerProfile) -> D
 	envelope.session_id = session_id
 	envelope.max_tokens = 150
 
-	var hint_text := _llm.complete(envelope)
+	var captured_session_id := session_id
+	var captured_context := context
+	var captured_actor := actor
+	var captured_hint_level := hint_level
+	var captured_quest_id := quest_id
+	var captured_adaptive := adaptive
+	var captured_on_complete := on_complete
 
-	if _is_model_unavailable(hint_text):
-		if _failsafe != null:
-			hint_text = _failsafe.rules_based_hint(context, hint_level)
-		else:
-			hint_text = _fallback_hint(hint_level)
-		_emit_safety_event(
-			session_id,
-			actor.profile_id,
-			"LLM unavailable for hint generation",
-			hint_text,
-			"RULES_HINT_FALLBACK"
-		)
-
-	hint_text = _moderate_hint_output(session_id, actor, hint_text, hint_level)
-	if _looks_like_full_solution(hint_text):
-		var guarded_hint := _fallback_hint(hint_level)
-		_emit_safety_event(
-			session_id,
-			actor.profile_id,
-			"Hint scaffold guard triggered for full-solution wording",
-			guarded_hint,
-			"HINT_SCAFFOLD_GUARD"
-		)
-		hint_text = guarded_hint
-
-	return {
-		"hint_text": hint_text,
+	# Shared dict returned to caller AND updated in-place when on_done fires.
+	# When the LLM adapter fires on_done synchronously (mock/test mode), the caller
+	# will see the populated hint_text on the returned dict without needing on_complete.
+	# In real async mode, hint_text starts empty and the caller must use on_complete.
+	var result_dict := {
+		"hint_text": "",
 		"hint_level": hint_level,
 		"quest_id": quest_id,
 		"difficulty_adjustment": adaptive.get("difficulty_adjustment", {}),
 		"quest_suggestion": adaptive.get("quest_suggestion", ""),
 		"reveals_full_solution": false,
 	}
+	var captured_result_dict := result_dict
+
+	_llm.complete(
+		envelope,
+		{},
+		func(_token: String) -> void:
+			pass,  # Tokens not surfaced; on_done has full text.
+		func(llm_result: Dictionary) -> void:
+			var hint_text := str(llm_result.get("text", "")).strip_edges()
+			var stopped: bool = llm_result.get("stopped", false)
+
+			if stopped or _is_model_unavailable_text(hint_text):
+				if _failsafe != null:
+					hint_text = _failsafe.rules_based_hint(captured_context, captured_hint_level)
+				else:
+					hint_text = _fallback_hint(captured_hint_level)
+				_emit_safety_event(
+					captured_session_id,
+					captured_actor.profile_id,
+					"LLM unavailable for hint generation",
+					hint_text,
+					"RULES_HINT_FALLBACK"
+				)
+
+			hint_text = _moderate_hint_output(captured_session_id, captured_actor, hint_text, captured_hint_level)
+			if _looks_like_full_solution(hint_text):
+				var guarded_hint := _fallback_hint(captured_hint_level)
+				_emit_safety_event(
+					captured_session_id,
+					captured_actor.profile_id,
+					"Hint scaffold guard triggered for full-solution wording",
+					guarded_hint,
+					"HINT_SCAFFOLD_GUARD"
+				)
+				hint_text = guarded_hint
+
+			# Update shared dict in-place so synchronous callers see populated values.
+			captured_result_dict["hint_text"] = hint_text
+
+			if captured_on_complete.is_valid():
+				captured_on_complete.call(captured_result_dict.duplicate())
+	)
+
+	return result_dict
 
 
 func _scaffold_prompt(level: int) -> String:
@@ -142,7 +174,7 @@ func _emit_safety_event(
 	_event_bus.emit(event)
 
 
-func _is_model_unavailable(hint_text: String) -> bool:
+func _is_model_unavailable_text(hint_text: String) -> bool:
 	if hint_text.strip_edges().is_empty():
 		return true
 	if _llm != null:

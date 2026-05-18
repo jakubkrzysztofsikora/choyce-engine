@@ -22,8 +22,13 @@ class MockLLM:
 
 	var planned_tools: Array[ToolInvocation] = []
 
-	func complete(_envelope: PromptEnvelope) -> String:
-		return "Bezpieczna odpowiedz."
+	func complete(
+		_envelope: PromptEnvelope,
+		_options: Dictionary,
+		_on_token: Callable,
+		on_done: Callable
+	) -> void:
+		on_done.call({"text": "Bezpieczna odpowiedz.", "provider": "mock", "model": "mock-m", "stopped": false})
 
 	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return planned_tools

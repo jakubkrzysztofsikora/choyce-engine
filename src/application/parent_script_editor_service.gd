@@ -44,7 +44,9 @@ func load_script(project_id: String, script_path: String, actor: PlayerProfile) 
 	}
 
 
-func explain_script(project_id: String, script_path: String, actor: PlayerProfile) -> Dictionary:
+## Explain a script. on_complete (optional) called with {"ok", "explanation"} when
+## LLM responds. Returns partial dict immediately with empty explanation.
+func explain_script(project_id: String, script_path: String, actor: PlayerProfile, on_complete: Callable = Callable()) -> Dictionary:
 	if _llm == null:
 		return {"ok": false, "error": "LLM not available", "explanation": ""}
 
@@ -57,14 +59,31 @@ func explain_script(project_id: String, script_path: String, actor: PlayerProfil
 		_resolve_parent_locale(actor),
 		actor.age_band
 	)
-	var output := _llm.complete(prompt)
-	return {
-		"ok": true,
-		"explanation": _moderate_parent_output(output, actor),
-	}
+
+	var captured_actor := actor
+	var captured_on_complete := on_complete
+
+	_llm.complete(
+		prompt,
+		{},
+		func(_token: String) -> void:
+			pass,
+		func(result: Dictionary) -> void:
+			var output := str(result.get("text", "")).strip_edges()
+			var final_result := {
+				"ok": true,
+				"explanation": _moderate_parent_output(output, captured_actor),
+			}
+			if captured_on_complete.is_valid():
+				captured_on_complete.call(final_result)
+	)
+
+	return {"ok": true, "explanation": ""}
 
 
-func suggest_refactor(project_id: String, script_path: String, actor: PlayerProfile) -> Dictionary:
+## Suggest a refactor. on_complete (optional) called with {"ok", "suggestion"} when
+## LLM responds. Returns partial dict immediately with empty suggestion.
+func suggest_refactor(project_id: String, script_path: String, actor: PlayerProfile, on_complete: Callable = Callable()) -> Dictionary:
 	if _llm == null:
 		return {"ok": false, "error": "LLM not available", "suggestion": ""}
 
@@ -77,11 +96,26 @@ func suggest_refactor(project_id: String, script_path: String, actor: PlayerProf
 		_resolve_parent_locale(actor),
 		actor.age_band
 	)
-	var output := _llm.complete(prompt)
-	return {
-		"ok": true,
-		"suggestion": _moderate_parent_output(output, actor),
-	}
+
+	var captured_actor := actor
+	var captured_on_complete := on_complete
+
+	_llm.complete(
+		prompt,
+		{},
+		func(_token: String) -> void:
+			pass,
+		func(result: Dictionary) -> void:
+			var output := str(result.get("text", "")).strip_edges()
+			var final_result := {
+				"ok": true,
+				"suggestion": _moderate_parent_output(output, captured_actor),
+			}
+			if captured_on_complete.is_valid():
+				captured_on_complete.call(final_result)
+	)
+
+	return {"ok": true, "suggestion": ""}
 
 
 func preview_mutation(

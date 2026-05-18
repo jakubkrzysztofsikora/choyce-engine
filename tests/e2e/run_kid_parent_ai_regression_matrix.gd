@@ -49,9 +49,14 @@ class MockLLM:
 	var tool_calls: int = 0
 	var completion_calls: int = 0
 
-	func complete(_envelope: PromptEnvelope) -> String:
+	func complete(
+		_envelope: PromptEnvelope,
+		_options: Dictionary,
+		_on_token: Callable,
+		on_done: Callable
+	) -> void:
 		completion_calls += 1
-		return "To bezpieczna, krokowa sugestia dla rodziny."
+		on_done.call({"text": "To bezpieczna, krokowa sugestia dla rodziny.", "provider": "mock", "model": "mock-m", "stopped": false})
 
 	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		tool_calls += 1
