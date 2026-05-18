@@ -27,6 +27,8 @@ var _rules_file: String = "res://data/moderation/rules_pl.json"
 
 ## Flat {normalized_term: {category, severity, safe_alt}} dict built at setup().
 ## Enables O(1) per-word lookup instead of nested category×term scan.
+## Terms stored in NORMALIZED form (homoglyph+diacritic+leet applied) so that
+## words produced by _tokenize() (which calls _normalize_text) hit the dict.
 var _term_lookup: Dictionary = {}
 
 ## Maps visually similar Unicode characters to their ASCII equivalents.
@@ -89,15 +91,17 @@ func check_text(text: String, age_band: AgeBand) -> ModerationResult:
 
 	var words := _tokenize(text.strip_edges())
 
-	# Check age-band specific additional blocks first (O(N words) scan)
+	# Check age-band specific additional blocks first (O(N words) scan).
+	# extra_set built with normalized keys to match normalized words.
 	var age_key := _age_band_key(age_band)
 	if _age_overrides.has(age_key):
 		var override: Dictionary = _age_overrides[age_key]
 		var extra_blocked: Array = override.get("additional_blocked", [])
-		# Build a set for O(1) membership test
 		var extra_set: Dictionary = {}
 		for bt in extra_blocked:
-			extra_set[str(bt)] = true
+			var norm := _normalize_text(str(bt).strip_edges())
+			if not norm.is_empty():
+				extra_set[norm] = true
 		for word in words:
 			var word_str := str(word)
 			if extra_set.has(word_str):
@@ -271,11 +275,6 @@ func _load_defaults() -> void:
 			"safe_alternative": "Uzyj milszych slow w swojej grze.",
 			"severity": "block",
 		},
-		# Merged from VisualAssetGenerationService.PHOTOREAL_HUMAN_TERMS (Phase 5b).
-		# Multi-word originals ("realistic human", "human portrait", "portret czlowieka")
-		# are split to their most distinctive single token so that whole-word matching works.
-		# "photo-real" hyphen tokenizes to "photo"+"real"; "photoreal" (no hyphen) is the
-		# canonical form and is kept as-is.
 		"photoreal_human": {
 			"terms": [
 				"photoreal",
@@ -334,6 +333,7 @@ func _load_rules_file() -> void:
 ## Builds the flat {normalized_term → {category, severity, safe_alt}} lookup dict.
 ## Called once at setup() after all categories are loaded. Enforces MAX_MODERATION_TERMS
 ## cap by dropping lowest-priority categories first (Phase 8b).
+## Terms stored in NORMALIZED form so lookup matches _tokenize() output.
 func _build_term_lookup() -> void:
 	_term_lookup = {}
 
@@ -368,7 +368,8 @@ func _build_term_lookup() -> void:
 					[MAX_MODERATION_TERMS, cat_name]
 				)
 				break
-			var term_str := str(term_variant).strip_edges().to_lower()
+			# Store NORMALIZED form so lookup matches what _tokenize() produces.
+			var term_str := _normalize_text(str(term_variant).strip_edges())
 			if term_str.is_empty():
 				continue
 			if not _term_lookup.has(term_str):
