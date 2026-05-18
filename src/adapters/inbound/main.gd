@@ -3,6 +3,7 @@ extends Control
 
 const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const ShellTransition = preload("res://src/adapters/inbound/shared/ui/shell_transition.gd")
+const SHELL_LANDING := "landing"
 const SHELL_CREATE := "create"
 const SHELL_PLAY := "play"
 const SHELL_LIBRARY := "library"
@@ -432,26 +433,69 @@ func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -
 		return
 	var now := clock.now_iso() if clock != null else ""
 	var starters := [
+		# WORLD 1 — Wyspa skarbów (adventure) — 10x10m, 17 nodes
 		{"id": "starter_adventure", "title": "Wyspa skarbów", "template": "adventure",
 		 "nodes": [
-			{"name": "Skała", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(0, 0, 0)},
-			{"name": "Skrzynia", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(3, 0, 1)},
-			{"name": "Palma", "type": SceneNode.NodeType.DECORATION, "pos": Vector3(-2, 0, 2)},
-			{"name": "Start", "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0, -2)},
+			{"name": "Skała",      "type": SceneNode.NodeType.DECORATION,   "pos": Vector3(-3, 0, 0)},
+			{"name": "Skrzynia",   "type": SceneNode.NodeType.OBJECT,        "pos": Vector3(0, 0, 0)},
+			{"name": "Palma",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(-4, 0, 4)},
+			{"name": "Palma",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(-1, 0, 3)},
+			{"name": "Palma",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(3, 0, 3)},
+			{"name": "Most",       "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(-4, 0, -3)},
+			{"name": "Łódka",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(2, 0, -2)},
+			{"name": "Flaga",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(4, 0, 1)},
+			{"name": "Kryształ",   "type": SceneNode.NodeType.OBJECT,        "pos": Vector3(3, 0, 0)},
+			{"name": "Trawa",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(-2, 0, -4)},
+			{"name": "Trawa",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(2, 0, -4)},
+			{"name": "Trawa",      "type": SceneNode.NodeType.DECORATION,    "pos": Vector3(0, 0, -3)},
+			{"name": "Moneta",     "type": SceneNode.NodeType.OBJECT,        "pos": Vector3(1, 0.3, -2)},
+			{"name": "Moneta",     "type": SceneNode.NodeType.OBJECT,        "pos": Vector3(-2, 0.3, 2)},
+			{"name": "Rozgwiazda", "type": SceneNode.NodeType.OBJECT,        "pos": Vector3(4, 0.3, -3)},
+			{"name": "Perła",      "type": SceneNode.NodeType.OBJECT,        "pos": Vector3(0.5, 0.5, 0)},
+			{"name": "Start",      "type": SceneNode.NodeType.SPAWN_POINT,   "pos": Vector3(0, 0.5, -4)},
 		]},
+		# WORLD 2 — Mała farma (farm) — 10x10m, 18 nodes
 		{"id": "starter_farm", "title": "Mała farma", "template": "farm",
 		 "nodes": [
-			{"name": "Krowa", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(1, 0, 0)},
-			{"name": "Stodoła", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(-2, 0, -1)},
-			{"name": "Pole", "type": SceneNode.NodeType.TERRAIN, "pos": Vector3(0, 0, 2)},
-			{"name": "Start", "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0, 0)},
+			{"name": "Stodoła",     "type": SceneNode.NodeType.OBJECT,      "pos": Vector3(-4, 0, 0)},
+			{"name": "Jabłoń",      "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-3, 0, 4)},
+			{"name": "Jabłoń",      "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(2, 0, 4)},
+			{"name": "Beli siana",  "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(0, 0, 1)},
+			{"name": "Beli siana",  "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(2, 0, 1)},
+			{"name": "Wiatrak",     "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(4, 0, 2)},
+			{"name": "Kura",        "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-2, 0, -1)},
+			{"name": "Kura",        "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(1, 0, -1)},
+			{"name": "Kura",        "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(3, 0, -1)},
+			{"name": "Koryto",      "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(0, 0, -2)},
+			{"name": "Płot",        "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-4, 0, -4)},
+			{"name": "Płot",        "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-2, 0, -4)},
+			{"name": "Płot",        "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(2, 0, -4)},
+			{"name": "Płot",        "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(4, 0, -4)},
+			{"name": "Jabłko",      "type": SceneNode.NodeType.OBJECT,      "pos": Vector3(-3, 1.5, 3)},
+			{"name": "Moneta",      "type": SceneNode.NodeType.OBJECT,      "pos": Vector3(1, 0.3, 0)},
+			{"name": "Jajko",       "type": SceneNode.NodeType.OBJECT,      "pos": Vector3(-2, 0.3, -1.5)},
+			{"name": "Start",       "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0.5, -4.5)},
 		]},
-		{"id": "starter_city", "title": "Małe miasto", "template": "city",
+		# WORLD 3 — Las grzybów (forest) — replaces previous city starter, 10x10m, 17 nodes
+		{"id": "starter_forest", "title": "Las grzybów", "template": "forest",
 		 "nodes": [
-			{"name": "Dom", "type": SceneNode.NodeType.OBJECT, "pos": Vector3(0, 0, 0)},
-			{"name": "Drzewo", "type": SceneNode.NodeType.DECORATION, "pos": Vector3(2, 0, 1)},
-			{"name": "Latarnia", "type": SceneNode.NodeType.LIGHT, "pos": Vector3(-1, 0, 1)},
-			{"name": "Start", "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0, -2)},
+			{"name": "Dąb",             "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-4, 0, 4)},
+			{"name": "Dąb",             "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(3, 0, 4)},
+			{"name": "Dąb",             "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-1, 0, 4)},
+			{"name": "Grzyb",           "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-3, 0, 1)},
+			{"name": "Grzyb",           "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(3, 0, 1)},
+			{"name": "Grzyb mały",      "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(0, 0, 2)},
+			{"name": "Grzyb mały",      "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(0.5, 0, 2.3)},
+			{"name": "Grzyb mały",      "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-0.5, 0, 1.8)},
+			{"name": "Kłoda",           "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-2, 0, -1)},
+			{"name": "Kamień z mchem",  "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(2, 0, -1)},
+			{"name": "Kwiaty",          "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(-4, 0, -3)},
+			{"name": "Kwiaty",          "type": SceneNode.NodeType.DECORATION,  "pos": Vector3(1, 0, -3)},
+			{"name": "Świetlik",        "type": SceneNode.NodeType.LIGHT,       "pos": Vector3(0, 1.0, 0)},
+			{"name": "Żołądź",          "type": SceneNode.NodeType.OBJECT,      "pos": Vector3(-3, 0.3, -2)},
+			{"name": "Żołądź",          "type": SceneNode.NodeType.OBJECT,      "pos": Vector3(3, 0.3, 3)},
+			{"name": "Słoik świetlików","type": SceneNode.NodeType.OBJECT,      "pos": Vector3(0, 0.5, 1)},
+			{"name": "Start",           "type": SceneNode.NodeType.SPAWN_POINT, "pos": Vector3(0, 0.5, -4.5)},
 		]},
 	]
 	# Build a set of project IDs already owned by this profile.
@@ -481,7 +525,10 @@ func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -
 		world.is_playable = true
 		world.theme = seed["template"]
 		for n in seed["nodes"]:
-			var node_id: String = "%s_%s" % [world.world_id, str(n["name"]).to_lower()]
+			# Include position in the id to disambiguate repeated names (e.g. "Palma" × 3).
+			var pos: Vector3 = n["pos"]
+			var pos_tag: String = "%d_%d_%d" % [int(pos.x * 10), int(pos.y * 10), int(pos.z * 10)]
+			var node_id: String = "%s_%s_%s" % [world.world_id, str(n["name"]).to_lower(), pos_tag]
 			var scene_node := SceneNode.new(node_id, n["type"])
 			scene_node.display_name = n["name"]
 			scene_node.position = n["pos"]
