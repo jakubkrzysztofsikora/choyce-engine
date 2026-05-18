@@ -33,6 +33,14 @@ var _session_start_time: float = 0.0
 @onready var _session_end_title: Label = $Layout/SessionEndPanel/SessionEndContent/SessionEndTitle
 @onready var _session_end_stats: Label = $Layout/SessionEndPanel/SessionEndContent/SessionEndStats
 @onready var _session_end_close: Button = $Layout/SessionEndPanel/SessionEndContent/SessionEndClose
+@onready var _celebration_layer: CanvasLayer = $CelebrationLayer
+@onready var _celebration_panel: PanelContainer = $CelebrationLayer/CelebrationPanel
+@onready var _confetti: CPUParticles2D = $CelebrationLayer/ConfettiBurst
+@onready var _collectibles_count: Label = $CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Collectibles/Count
+@onready var _achievements_count: Label = $CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Achievements/Count
+@onready var _time_count: Label = $CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Time/Count
+@onready var _celebration_title: Label = $CelebrationLayer/CelebrationPanel/CelebrationContent/TitleLabel
+@onready var _celebration_close: Button = $CelebrationLayer/CelebrationPanel/CelebrationContent/CloseButton
 @onready var _undo_button: Button = $Layout/Actions/UndoButton
 @onready var _safe_restore_button: Button = $Layout/Actions/SafeRestoreButton
 @onready var _go_create_button: Button = $Layout/Actions/GoCreateButton
@@ -45,6 +53,7 @@ func _ready() -> void:
 	_refresh_labels()
 	_apply_theme()
 	_session_end_panel.visible = false
+	_celebration_layer.visible = false
 
 
 func setup(
@@ -146,6 +155,7 @@ func _wire_actions() -> void:
 			_navigator.show_shell(SHELL_LIBRARY)
 	)
 	_session_end_close.pressed.connect(_on_session_end_close)
+	_celebration_close.pressed.connect(hide_celebration)
 
 
 func _refresh_labels() -> void:
@@ -241,27 +251,82 @@ func _show_session_end_screen() -> void:
 			if status.has("elapsed_seconds") and int(status.get("elapsed_seconds", 0)) > 0:
 				elapsed_secs = int(status.get("elapsed_seconds", elapsed_secs))
 
-	var stats_text: String
-	if collectibles == 0 and achievements == 0:
-		# Kid-positive framing: suppress bare zeros, show encouragement regardless of session length
-		stats_text = _t("play.session.try_again_friend")
-	else:
-		var mins: int = elapsed_secs / 60
-		var secs: int = elapsed_secs % 60
-		var time_str: String = "%d:%02d" % [mins, secs]
-		stats_text = "%s: %d\n%s: %d\n%s: %s" % [
-			_t("play.stats.collectibles"), collectibles,
-			_t("play.stats.achievements"), achievements,
-			_t("play.stats.time"), time_str
-		]
+	# Route through celebration overlay; old session_end_panel kept as fallback when nodes absent
+	show_celebration({
+		"collectibles": collectibles,
+		"achievements": achievements,
+		"elapsed_seconds": elapsed_secs,
+	})
 
-	_session_end_stats.text = stats_text
-	_session_end_panel.visible = true
-	_session_end_panel.modulate.a = 0.0
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_CUBIC)
-	tween.set_ease(Tween.EASE_OUT)
-	tween.tween_property(_session_end_panel, "modulate:a", 1.0, 0.3)
+
+func show_celebration(stats: Dictionary) -> void:
+	var collectibles: int = int(stats.get("collectibles", 0))
+	var achievements: int = int(stats.get("achievements", 0))
+	var elapsed_secs: int = int(stats.get("elapsed_seconds", 0))
+
+	# Set initial counter values
+	_collectibles_count.text = "0"
+	_achievements_count.text = "0"
+	_time_count.text = "0s"
+
+	# Update column labels with localized strings
+	var col_node := get_node_or_null("CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Collectibles/CLabel")
+	if col_node != null:
+		col_node.text = _t("play.session.collectibles_label")
+	var ach_node := get_node_or_null("CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Achievements/ALabel")
+	if ach_node != null:
+		ach_node.text = _t("play.session.achievements_label")
+	var time_node := get_node_or_null("CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Time/TLabel")
+	if time_node != null:
+		time_node.text = _t("play.session.time_label")
+	if _celebration_close != null:
+		_celebration_close.text = _t("play.celebration.close")
+
+	# Title: kid-positive frame when no stats earned
+	if collectibles == 0 and achievements == 0:
+		_celebration_title.text = _t("play.session.try_again_friend")
+	else:
+		_celebration_title.text = _t("play.session.celebration_title")
+
+	_celebration_layer.visible = true
+
+	# Position confetti at top-center
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size if get_viewport() != null else Vector2(1600, 900)
+	_confetti.position = Vector2(vp_size.x / 2.0, 80.0)
+	_confetti.emitting = false
+
+	# Title bounce-in tween
+	_celebration_title.scale = Vector2(0.4, 0.4)
+	_celebration_title.modulate.a = 0.0
+	var t_tw := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t_tw.tween_property(_celebration_title, "scale", Vector2(1.0, 1.0), 0.4)
+	t_tw.parallel().tween_property(_celebration_title, "modulate:a", 1.0, 0.3)
+
+	# Confetti burst after brief delay
+	await get_tree().create_timer(0.25).timeout
+	_confetti.restart()
+	_confetti.emitting = true
+
+	# Tween counters from 0 to final values
+	var ctw := create_tween().set_parallel(true)
+	ctw.tween_method(
+		func(v: float) -> void: _collectibles_count.text = str(int(v)),
+		0.0, float(collectibles), 1.2
+	).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	ctw.tween_method(
+		func(v: float) -> void: _achievements_count.text = str(int(v)),
+		0.0, float(achievements), 1.2
+	).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	ctw.tween_method(
+		func(v: float) -> void: _time_count.text = "%ds" % int(v),
+		0.0, float(elapsed_secs), 1.2
+	).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+
+
+func hide_celebration() -> void:
+	_celebration_layer.visible = false
+	if _confetti != null:
+		_confetti.emitting = false
 
 
 func _on_session_end_close() -> void:
@@ -344,6 +409,11 @@ func _t(key: String) -> String:
 		"play.stats.time": "Czas",
 		"play.cta.create_world": "Stwórz świat",
 		"play.cta.create_world_voice": "Stwórz swój świat!",
+		"play.session.celebration_title": "Świetna gra!",
+		"play.session.collectibles_label": "Znajdźki",
+		"play.session.achievements_label": "Osiągnięcia",
+		"play.session.time_label": "Czas",
+		"play.celebration.close": "Zagraj jeszcze",
 	}
 	return fallback.get(key, key)
 

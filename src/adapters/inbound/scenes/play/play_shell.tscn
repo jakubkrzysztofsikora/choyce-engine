@@ -1,6 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/scenes/play/play_shell.gd" id="1_play_script"]
+
+[sub_resource type="Gradient" id="ConfettiGradient"]
+colors = PackedColorArray(1.0, 0.42, 0.21, 1.0, 1.0, 0.90, 0.43, 1.0, 0.42, 0.80, 0.47, 1.0, 0.31, 0.80, 0.77, 1.0, 0.65, 0.45, 0.85, 1.0)
+offsets = PackedFloat32Array(0.0, 0.25, 0.5, 0.75, 1.0)
+
+[sub_resource type="GradientTexture1D" id="ConfettiGradTex"]
+gradient = SubResource("ConfettiGradient")
 
 [node name="PlayShell" type="Control"]
 layout_mode = 3
@@ -152,3 +159,137 @@ custom_minimum_size = Vector2(160, 48)
 layout_mode = 2
 size_flags_horizontal = 4
 text = "✅ Wróć"
+
+[node name="CelebrationLayer" type="CanvasLayer" parent="."]
+visible = false
+layer = 10
+
+[node name="Backdrop" type="ColorRect" parent="CelebrationLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.18, 0.18, 0.24, 0.75)
+mouse_filter = 2
+
+[node name="CelebrationPanel" type="PanelContainer" parent="CelebrationLayer"]
+layout_mode = 3
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -200.0
+offset_right = 280.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+custom_minimum_size = Vector2(560, 400)
+
+[node name="CelebrationContent" type="VBoxContainer" parent="CelebrationLayer/CelebrationPanel"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 40
+horizontal_alignment = 1
+text = "Świetna gra!"
+
+[node name="StatsRow" type="HBoxContainer" parent="CelebrationLayer/CelebrationPanel/CelebrationContent"]
+layout_mode = 2
+theme_override_constants/separation = 32
+alignment = 1
+size_flags_horizontal = 4
+
+[node name="Collectibles" type="VBoxContainer" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Icon" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Collectibles"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 56
+horizontal_alignment = 1
+text = "⭐"
+
+[node name="Count" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Collectibles"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+horizontal_alignment = 1
+text = "0"
+
+[node name="CLabel" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Collectibles"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Znajdźki"
+
+[node name="Achievements" type="VBoxContainer" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Icon" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Achievements"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 56
+horizontal_alignment = 1
+text = "🏆"
+
+[node name="Count" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Achievements"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+horizontal_alignment = 1
+text = "0"
+
+[node name="ALabel" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Achievements"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Osiągnięcia"
+
+[node name="Time" type="VBoxContainer" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Icon" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Time"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 56
+horizontal_alignment = 1
+text = "⏱"
+
+[node name="Count" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Time"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+horizontal_alignment = 1
+text = "0s"
+
+[node name="TLabel" type="Label" parent="CelebrationLayer/CelebrationPanel/CelebrationContent/StatsRow/Time"]
+layout_mode = 2
+horizontal_alignment = 1
+text = "Czas"
+
+[node name="CloseButton" type="Button" parent="CelebrationLayer/CelebrationPanel/CelebrationContent"]
+custom_minimum_size = Vector2(200, 52)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 22
+text = "Zagraj jeszcze"
+
+[node name="ConfettiBurst" type="CPUParticles2D" parent="CelebrationLayer"]
+position = Vector2(800, 100)
+emitting = false
+amount = 80
+lifetime = 1.8
+explosiveness = 0.85
+direction = Vector2(0.0, -1.0)
+spread = 90.0
+gravity = Vector2(0.0, 400.0)
+initial_velocity_min = 250.0
+initial_velocity_max = 450.0
+scale_amount_min = 0.5
+scale_amount_max = 1.2
+color_ramp = SubResource("ConfettiGradTex")
