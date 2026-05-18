@@ -1,10 +1,17 @@
 ## Encrypted at-rest parental policy store adapter.
 ## Persists ParentalControlPolicy records per parent profile using EncryptedStoragePort.
 ##
-## Safety contract: on ANY decryption failure (wrong key, HMAC mismatch, file
-## corruption, empty payload, parse error) load_policy() MUST:
-##   1. Return ParentalControlPolicy.deny_all()  — never null, never throw.
-##   2. Emit ParentalPolicyDecryptionFailedEvent on the event bus when one is set.
+## Safety contract: load_policy NEVER returns null. Failsafe is consent-deny /
+## deny-all on any error path. Callers MUST treat the returned policy as authoritative.
+##
+## Specifically, on ANY of the following conditions load_policy() returns
+## ParentalControlPolicy.deny_all() — never null, never throws:
+##   • Invalid (blank) parent_id                          — push_warning emitted
+##   • Store not ready (setup() not called / bad key)     — push_warning emitted
+##   • New profile (no encrypted file on disk)            — silent deny-all (correct default)
+##   • Decryption failure (wrong key, HMAC mismatch, etc) — push_error + ParentalPolicyDecryptionFailedEvent
+##   • Empty payload after decryption                     — push_error + ParentalPolicyDecryptionFailedEvent
+##   • JSON parse error                                   — push_error + ParentalPolicyDecryptionFailedEvent
 ## This upholds the CLAUDE.md "consent → deny" failsafe rule.
 class_name EncryptedParentalPolicyStore
 extends ParentalPolicyStorePort
@@ -50,13 +57,20 @@ func save_policy(parent_id: String, policy: ParentalControlPolicy) -> bool:
 
 func load_policy(parent_id: String) -> ParentalControlPolicy:
 	if not _is_valid_parent_id(parent_id):
-		return null
+		push_warning(
+			"EncryptedParentalPolicyStore: load_policy called with invalid parent_id '%s' — returning deny-all policy" % parent_id
+		)
+		return ParentalControlPolicy.deny_all()
 	if not _is_ready():
-		return null
+		push_warning(
+			"EncryptedParentalPolicyStore: store not ready (setup() not called or key invalid) — returning deny-all policy"
+		)
+		return ParentalControlPolicy.deny_all()
 
 	var path := _policy_path(parent_id)
 	if not _encrypted_storage.has_encrypted(path):
-		return null
+		# New profile: no file on disk. Correct failsafe — parent must explicitly relax.
+		return ParentalControlPolicy.deny_all()
 
 	var decrypted := _encrypted_storage.read_encrypted(path, _encryption_key)
 	if decrypted.is_empty():

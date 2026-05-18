@@ -6,6 +6,11 @@
 ## MUST-4  Deny-all policy has AI disabled and no sharing (most-restrictive values)
 ## MUST-5  Deny-all factory method: ParentalControlPolicy.deny_all() returns restrictive policy
 ## MUST-6  Correct-key load does NOT emit decryption-failed event
+## MUST-7  Invalid parent_id (empty string): load_policy returns deny-all (never null)
+## MUST-8  Store not ready (setup not called): load_policy returns deny-all (never null)
+## MUST-9  New profile (no file on disk): load_policy returns deny-all (never null)
+## MUST-10 Corrupt/wrong-key file: load_policy returns deny-all AND emits ParentalPolicyDecryptionFailedEvent
+## MUST-11 Valid encrypted file: load_policy returns the stored policy (sanity)
 extends SceneTree
 
 
@@ -109,6 +114,65 @@ func _init() -> void:
 		checks += 1
 		if deny.session_playtime_limit_minutes == 0:
 			failures.append("MUST-5f: deny_all() session_playtime_limit must be > 0 (0 = unlimited)")
+
+	# ── MUST-7: invalid parent_id (empty string) returns deny-all ────────────
+	var result_invalid := store_a.load_policy("")
+	checks += 1
+	if result_invalid == null:
+		failures.append("MUST-7a: load_policy('') must return deny-all, not null")
+	else:
+		checks += 1
+		if result_invalid.ai_access != ParentalControlPolicy.AIAccessLevel.DISABLED:
+			failures.append("MUST-7b: deny-all from invalid parent_id must have ai_access = DISABLED")
+
+	# ── MUST-8: store not ready (no setup) returns deny-all ──────────────────
+	var unready_store := EncryptedParentalPolicyStore.new()
+	var result_unready := unready_store.load_policy("parent-99")
+	checks += 1
+	if result_unready == null:
+		failures.append("MUST-8a: load_policy on unready store must return deny-all, not null")
+	else:
+		checks += 1
+		if result_unready.ai_access != ParentalControlPolicy.AIAccessLevel.DISABLED:
+			failures.append("MUST-8b: deny-all from unready store must have ai_access = DISABLED")
+
+	# ── MUST-9: new profile (no file on disk) returns deny-all ───────────────
+	var result_new_profile := store_a.load_policy("parent-new-never-saved")
+	checks += 1
+	if result_new_profile == null:
+		failures.append("MUST-9a: load_policy for unknown parent must return deny-all, not null")
+	else:
+		checks += 1
+		if result_new_profile.ai_access != ParentalControlPolicy.AIAccessLevel.DISABLED:
+			failures.append("MUST-9b: deny-all for new profile must have ai_access = DISABLED")
+		checks += 1
+		if result_new_profile.sharing_allowed != false:
+			failures.append("MUST-9c: deny-all for new profile must have sharing_allowed = false")
+
+	# ── MUST-10: corrupt/wrong-key file returns deny-all + emits event ───────
+	var event_bus_c := DomainEventBus.new()
+	var store_c := EncryptedParentalPolicyStore.new().setup(storage, key_b, TEST_DIR, event_bus_c)
+	# parent-1 was saved with key_a, store_c uses key_b — decryption will fail.
+	var result_corrupt := store_c.load_policy("parent-1")
+	checks += 1
+	if result_corrupt == null:
+		failures.append("MUST-10a: corrupt/wrong-key load must return deny-all, not null")
+	else:
+		checks += 1
+		if result_corrupt.ai_access != ParentalControlPolicy.AIAccessLevel.DISABLED:
+			failures.append("MUST-10b: deny-all from corrupt file must have ai_access = DISABLED")
+	var history_c := event_bus_c.get_history("ParentalPolicyDecryptionFailed")
+	checks += 1
+	if history_c.size() == 0:
+		failures.append("MUST-10c: corrupt/wrong-key load must emit ParentalPolicyDecryptionFailedEvent")
+
+	# ── MUST-11: valid encrypted file returns stored policy (sanity) ──────────
+	var result_valid := store_a.load_policy("parent-1")
+	checks += 1
+	if result_valid == null:
+		failures.append("MUST-11a: valid encrypted load must not return null")
+	elif not result_valid.equals(policy):
+		failures.append("MUST-11b: valid encrypted load must return the stored policy")
 
 	_cleanup(TEST_DIR)
 
