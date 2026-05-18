@@ -1,6 +1,17 @@
 ## Application service for AI patch action-card workflow.
 ## Exposes Preview -> Apply -> Undo behavior with parent approval gates
 ## for high-impact and script/asset mutations.
+##
+## Cache eviction policy (FIFO-by-last-update / LRU-ish):
+##   _actions_order tracks insertion order. On re-insert of an existing action_id
+##   the entry is moved to the back of the order array so that frequently-updated
+##   actions are the LAST to be evicted, not the first. This prevents an active
+##   action from being evicted ahead of truly stale entries.
+##
+## Performance note:
+##   Array.erase() and remove_at(0) are O(N). At MAX_PENDING=200 this is
+##   acceptable. If MAX_PENDING grows significantly, consider a doubly-linked
+##   map or a ring buffer.
 class_name AIPatchWorkflowService
 extends RefCounted
 
@@ -32,6 +43,8 @@ func track_action(action: AIAssistantAction) -> bool:
 		return false
 	if _actions.has(action.action_id):
 		_actions[action.action_id] = action
+		_actions_order.erase(action.action_id)
+		_actions_order.append(action.action_id)
 		return true
 	if _actions.size() >= MAX_PENDING:
 		var oldest: String = _actions_order[0]

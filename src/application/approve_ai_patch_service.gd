@@ -1,6 +1,17 @@
 ## Application service: approves or rejects a pending AI action.
 ## Enforces that only parent profiles can approve high-impact actions.
 ## Updates the action status and logs the decision.
+##
+## Cache eviction policy (FIFO-by-last-update / LRU-ish):
+##   _pending_order tracks insertion order. On re-insert of an existing action_id
+##   the entry is moved to the back of the order array so that frequently-updated
+##   actions are the LAST to be evicted, not the first. This prevents an active
+##   parent-approval entry from being evicted ahead of truly stale entries.
+##
+## Performance note:
+##   Array.erase() and remove_at(0) are O(N). At MAX_PENDING=200 this is
+##   acceptable. If MAX_PENDING grows significantly, consider a doubly-linked
+##   map or a ring buffer.
 class_name ApproveAIPatchService
 extends ApproveAIPatchPort
 
@@ -29,6 +40,8 @@ func register_pending_action(action: AIAssistantAction) -> void:
 		return
 	if _pending_actions.has(action.action_id):
 		_pending_actions[action.action_id] = action
+		_pending_order.erase(action.action_id)
+		_pending_order.append(action.action_id)
 		return
 	if _pending_actions.size() >= MAX_PENDING:
 		var oldest: String = _pending_order[0]
