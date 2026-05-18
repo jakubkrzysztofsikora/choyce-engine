@@ -66,7 +66,12 @@ var _template_buttons: Array[Button] = []
 @onready var _node_list_title: Label = $Layout/WorkspaceCard/WorkspaceLayout/Workspace/NodeListTitle
 @onready var _node_list: ItemList = $Layout/WorkspaceCard/WorkspaceLayout/Workspace/NodeList
 @onready var _preview_panel: PanelContainer = $Layout/WorkspaceCard/WorkspaceLayout/PreviewPanel
-@onready var _preview_grid: GridContainer = $Layout/WorkspaceCard/WorkspaceLayout/PreviewPanel/PreviewGrid
+## Part B: _preview_grid replaced by SubViewport 3D preview; kept as null so _update_preview_grid() no-ops.
+var _preview_grid: GridContainer = null
+## Part B: SubViewport 3D preview nodes. Fetched via get_node_or_null for forward-compat
+## in case the scene is loaded without the preview nodes (e.g. older snapshots in tests).
+var _preview_viewport: SubViewport = null
+var _preview_root: Node3D = null
 @onready var _place_button: Button = $Layout/Tools/PlaceButton
 @onready var _paint_button: Button = $Layout/Tools/PaintButton
 @onready var _move_button: Button = $Layout/Tools/MoveButton
@@ -80,6 +85,10 @@ var _template_buttons: Array[Button] = []
 
 
 func _ready() -> void:
+	# Part B: resolve SubViewport preview nodes (null-safe if scene lacks them).
+	_preview_viewport = get_node_or_null("Layout/WorkspaceCard/WorkspaceLayout/PreviewPanel/PreviewViewport/SubViewport")
+	_preview_root = get_node_or_null("Layout/WorkspaceCard/WorkspaceLayout/PreviewPanel/PreviewViewport/SubViewport/PreviewRoot")
+
 	var ProvenanceBadgeClass = load("res://src/adapters/inbound/shared/ui/provenance_badge.gd")
 	if ProvenanceBadgeClass:
 		_provenance_badge = ProvenanceBadgeClass.new()
@@ -101,6 +110,7 @@ func _ready() -> void:
 	_refresh_labels()
 	_apply_friendly_theme()
 	_build_template_cards()
+	_setup_preview_environment()
 	_refresh_workspace_ui()
 	_toast_banner.visible = false
 	# Phase 9: start non-reader CTA idle TTS prompt after 3s of no interaction.
@@ -426,6 +436,7 @@ func _apply_active_tool() -> void:
 	_set_status_message(_success_message_for(command), false)
 	_refresh_workspace_ui()
 	_update_preview_grid()
+	_update_3d_preview(_current_world_instance)
 
 
 func _ensure_world_context() -> void:
@@ -455,6 +466,7 @@ func _ensure_world_context() -> void:
 	_set_status_message(_t("create.world_ready"), false)
 	_refresh_workspace_ui()
 	_update_preview_grid()
+	_update_3d_preview(_current_world_instance)
 
 
 func _launch_playtest(local_coop: bool = false) -> Session:
@@ -717,57 +729,87 @@ func _style_secondary_button(button: Button) -> void:
 func _build_template_cards() -> void:
 	if _template_list == null:
 		return
-	var palettes: Dictionary = ThemeManager.get_palettes()
-	var templates: Array = palettes.keys()
-	var display_names: Dictionary = {}
-	for pid in templates:
-		var p: Dictionary = palettes[pid]
-		display_names[pid] = p.get("name_pl", pid)
-	var colors_map: Dictionary = {}
-	for pid in templates:
-		var p: Dictionary = palettes[pid]
-		var cols: Array = p.get("colors", [])
-		if not cols.is_empty():
-			colors_map[pid] = cols[0]
+	# Clear old children.
+	for child in _template_list.get_children():
+		child.queue_free()
+	_template_buttons.clear()
 
-	for i in range(min(templates.size(), 5)):
-		var pid: String = templates[i]
-		var btn := Button.new()
-		btn.text = display_names.get(pid, pid)
-		btn.custom_minimum_size = Vector2(140, 80)
-		btn.toggle_mode = true
-		btn.button_group = ButtonGroup.new()
-		var color_hex: String = colors_map.get(pid, "#5B8DEF")
-		var color := _hex_to_color(color_hex)
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = color
-		sb.corner_radius_top_left = 14
-		sb.corner_radius_top_right = 14
-		sb.corner_radius_bottom_left = 14
-		sb.corner_radius_bottom_right = 14
-		sb.border_width_left = 2
-		sb.border_width_top = 2
-		sb.border_width_right = 2
-		sb.border_width_bottom = 2
-		sb.border_color = color.darkened(0.2)
-		btn.add_theme_stylebox_override("normal", sb)
-		var sb_hover := sb.duplicate()
-		sb_hover.bg_color = color.lightened(0.1)
-		btn.add_theme_stylebox_override("hover", sb_hover)
-		var sb_pressed := sb.duplicate()
-		sb_pressed.bg_color = color.darkened(0.1)
-		btn.add_theme_stylebox_override("pressed", sb_pressed)
-		btn.add_theme_color_override("font_color", Color.WHITE)
-		btn.pressed.connect(func() -> void:
-			_active_palette = pid
-			_apply_friendly_theme()
-			_set_status_message(_t("create.template_selected") % display_names.get(pid, pid), false)
-		)
-		_template_list.add_child(btn)
-		_template_buttons.append(btn)
+	var templates := [
+		{"id": "adventure", "name": _t("create.template.adventure"), "icon": "⛰", "colors": [Color(0.35, 0.75, 0.95), Color(0.95, 0.85, 0.50), Color(0.40, 0.80, 0.45)]},
+		{"id": "farm",      "name": _t("create.template.farm"),      "icon": "🌾", "colors": [Color(0.95, 0.75, 0.35), Color(0.50, 0.80, 0.45), Color(0.95, 0.55, 0.35)]},
+		{"id": "city",      "name": _t("create.template.city"),      "icon": "🏙", "colors": [Color(0.60, 0.65, 0.75), Color(0.95, 0.85, 0.50), Color(0.45, 0.70, 0.85)]},
+		{"id": "obby",      "name": _t("create.template.obby"),      "icon": "🏃", "colors": [Color(1.0, 0.42, 0.21), Color(1.0, 0.90, 0.43), Color(0.42, 0.80, 0.47)]},
+		{"id": "tycoon",    "name": _t("create.template.tycoon"),    "icon": "💰", "colors": [Color(0.95, 0.80, 0.30), Color(0.60, 0.45, 0.35), Color(0.40, 0.80, 0.65)]},
+	]
 
-	if not _template_buttons.is_empty():
-		_template_buttons[0].button_pressed = true
+	for t in templates:
+		var card := _build_template_card(t)
+		_template_list.add_child(card)
+		_template_buttons.append(card)
+
+
+func _build_template_card(t: Dictionary) -> Button:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(160, 160)
+	btn.text = ""
+	btn.set_meta("template_id", t["id"])
+	btn.pressed.connect(_on_template_card_pressed.bind(t["id"]))
+	btn.mouse_entered.connect(func(): _on_card_hover(btn, true))
+	btn.mouse_exited.connect(func(): _on_card_hover(btn, false))
+
+	var v := VBoxContainer.new()
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.anchor_right = 1.0
+	v.anchor_bottom = 1.0
+	v.add_theme_constant_override("separation", 8)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(v)
+
+	var icon := Label.new()
+	icon.text = t["icon"]
+	icon.add_theme_font_size_override("font_size", 64)
+	icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(icon)
+
+	var name_label := Label.new()
+	name_label.text = t["name"]
+	name_label.add_theme_font_size_override("font_size", 22)
+	name_label.add_theme_color_override("font_color", Color(0.18, 0.18, 0.18, 1))
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(name_label)
+
+	var dots := HBoxContainer.new()
+	dots.alignment = BoxContainer.ALIGNMENT_CENTER
+	dots.add_theme_constant_override("separation", 6)
+	dots.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in t["colors"]:
+		var dot := ColorRect.new()
+		dot.color = c
+		dot.custom_minimum_size = Vector2(14, 14)
+		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		dots.add_child(dot)
+	v.add_child(dots)
+
+	return btn
+
+
+func _on_card_hover(btn: Button, hovering: bool) -> void:
+	var target := Vector2(1.06, 1.06) if hovering else Vector2(1.0, 1.0)
+	var tw := btn.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(btn, "scale", target, 0.15)
+
+
+func _on_template_card_pressed(template_id: String) -> void:
+	_set_template(template_id)
+
+
+func _set_template(template_id: String) -> void:
+	_active_palette = template_id
+	_apply_friendly_theme()
+	_set_status_message(_t("create.template_selected") % template_id, false)
+	_update_3d_preview(_current_world_instance)
 
 
 func _update_preview_grid() -> void:
@@ -796,6 +838,83 @@ func _update_preview_grid() -> void:
 		ds.corner_radius_bottom_right = 6
 		dot.add_theme_stylebox_override("panel", ds)
 		_preview_grid.add_child(dot)
+
+
+## Part B: Set up ground plane and sky WorldEnvironment in the SubViewport preview.
+## Called once from _ready(). No-ops if _preview_root is null (scene has no SubViewport).
+func _setup_preview_environment() -> void:
+	if _preview_root == null:
+		return
+	var ground := MeshInstance3D.new()
+	ground.mesh = PlaneMesh.new()
+	ground.mesh.size = Vector2(20, 20)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.60, 0.85, 0.50, 1)  # soft grass green
+	ground.set_surface_override_material(0, mat)
+	ground.position = Vector3(0, 0, 0)
+	_preview_root.add_child(ground)
+	var sky := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.78, 0.91, 1.0, 1)  # soft sky blue
+	sky.environment = env
+	_preview_root.add_child(sky)
+
+
+## Part B: Populate the SubViewport with simple primitive meshes representing world nodes.
+## Clears any previously spawned preview objects (tagged with meta "preview_mesh"),
+## then creates one primitive per scene_node up to 8 max.
+func _update_3d_preview(world) -> void:
+	if _preview_root == null:
+		return
+	# Remove previously spawned preview meshes.
+	for child in _preview_root.get_children():
+		if child.has_meta("preview_mesh"):
+			child.queue_free()
+	if world == null or not world.has_method("get") or not ("scene_nodes" in world):
+		return
+	var nodes: Array = world.scene_nodes
+	var max_nodes := mini(nodes.size(), 8)
+	for i in range(max_nodes):
+		var sn = nodes[i]
+		if not (sn is SceneNode):
+			continue
+		var mi := MeshInstance3D.new()
+		mi.set_meta("preview_mesh", true)
+		# Pick mesh shape by node_type.
+		match sn.node_type:
+			SceneNode.NodeType.TERRAIN:
+				var m := BoxMesh.new()
+				m.size = Vector3(2.0, 0.5, 2.0)
+				mi.mesh = m
+			SceneNode.NodeType.DECORATION:
+				var m := SphereMesh.new()
+				m.radius = 0.6
+				m.height = 1.2
+				mi.mesh = m
+			SceneNode.NodeType.SPAWN_POINT:
+				var m := CylinderMesh.new()
+				m.top_radius = 0.3
+				m.bottom_radius = 0.3
+				m.height = 1.0
+				mi.mesh = m
+			_:  # OBJECT, LIGHT, TRIGGER and anything else
+				var m := BoxMesh.new()
+				m.size = Vector3(1.0, 1.0, 1.0)
+				mi.mesh = m
+		# Position: use stored position when available, else spread in a grid.
+		if sn.position != Vector3.ZERO:
+			mi.position = sn.position + Vector3(0, 0.5, 0)
+		else:
+			var col := i % 4
+			var row := i / 4
+			mi.position = Vector3(col * 2.5 - 3.75, 0.5, row * 2.5)
+		# Tint by palette color from properties if present.
+		var node_color: Color = sn.properties.get("color", Color(0.60, 0.75, 1.0))
+		var node_mat := StandardMaterial3D.new()
+		node_mat.albedo_color = node_color
+		mi.set_surface_override_material(0, node_mat)
+		_preview_root.add_child(mi)
 
 
 func _hex_to_color(hex: String) -> Color:
@@ -933,6 +1052,15 @@ func _t(key: String) -> String:
 		# Wave C: CTA voice prompt (kid-register: short imperative)
 		"create.cta.build_world_voice": "Naciśnij narzędzie i coś zbuduj.",
 		"create.cta.build_world": "Stwórz coś!",
+		# Part A: template card names (kid-register)
+		"create.template.adventure": "Wyspa skarbów",
+		"create.template.farm": "Mała farma",
+		"create.template.city": "Małe miasto",
+		"create.template.obby": "Tor przeszkód",
+		"create.template.tycoon": "Mały sklep",
+		# Part B: preview labels
+		"create.preview.title": "Podgląd Twojego świata",
+		"create.preview.empty": "Naciśnij narzędzie i coś dodaj.",
 	}
 	return fallback.get(key, key)
 
