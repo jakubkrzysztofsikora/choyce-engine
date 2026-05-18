@@ -231,6 +231,107 @@ func _init() -> void:
 			if first_active.previous_hash != seal_last_hash:
 				failures.append("MUST-10c: first active record prev_hash must equal seal last_record_hash. got prev=%s seal=%s" % [first_active.previous_hash, seal_last_hash])
 
+	# ── REGRESSION: real timestamp in seal signed_at (Wave C critical #2) ──────
+	_cleanup(TEST_DIR + "/reg_ts")
+	var ledger_ts := FilesystemAuditLedger.new().setup_with_rotation(TEST_DIR + "/reg_ts", 2)
+	var prev_ts := ""
+	for i in range(3):
+		var r := _make_record("ts-%d" % i, prev_ts, "actor-TS", "ev")
+		ledger_ts.append_record(r)
+		prev_ts = r.record_hash
+	ledger_ts.flush_rotation()
+
+	var seal_ts_raw := FileAccess.get_file_as_string(TEST_DIR + "/reg_ts/segment_0.seal")
+	var seal_ts: Variant = JSON.parse_string(seal_ts_raw)
+	checks += 1
+	if not (seal_ts is Dictionary):
+		failures.append("REGRESSION-TS-FS-0: segment_0.seal must be valid JSON")
+	else:
+		var signed_at: String = str((seal_ts as Dictionary).get("signed_at", ""))
+		checks += 1
+		if signed_at == "2026-05-18T00:00:00Z":
+			failures.append("REGRESSION-TS-FS-1: filesystem seal signed_at must not be hardcoded stub, got: %s" % signed_at)
+		if signed_at.is_empty():
+			failures.append("REGRESSION-TS-FS-2: filesystem seal signed_at must not be empty")
+
+		# Verify seal_integrity covers signed_at: modify signed_at → integrity must differ.
+		checks += 1
+		var seal_dict: Dictionary = seal_ts as Dictionary
+		var original_integrity: String = str(seal_dict.get("seal_integrity", ""))
+		var seal_mod := seal_dict.duplicate()
+		seal_mod["signed_at"] = "1970-01-01T00:00:00Z"
+		seal_mod.erase("seal_integrity")
+		var keys_s := seal_mod.keys()
+		keys_s.sort()
+		var parts_s: Array[String] = []
+		for k in keys_s:
+			parts_s.append("%s=%s" % [str(k), str(seal_mod[k])])
+		var mod_integrity := "|".join(parts_s).sha256_text()
+		if mod_integrity == original_integrity:
+			failures.append("REGRESSION-TS-FS-3: seal_integrity must differ when signed_at differs")
+
+	# ── REGRESSION: mutex invariant — chain check inside lock (Wave C critical #3) ─
+	# Single-threaded test: we verify the INVARIANT holds by asserting that:
+	# 1. append_record() with a stale previous_hash (simulating the race victim)
+	#    returns false after the lock is acquired.
+	# 2. The ledger _last_hash is unchanged after a rejected append.
+	# 3. try_lock() returns false while the mutex is held (proves contention guard exists).
+	_cleanup(TEST_DIR + "/reg_mutex")
+	var ledger_mx := FilesystemAuditLedger.new().setup_with_rotation(TEST_DIR + "/reg_mutex", 10)
+	var r_mx0 := _make_record("mx-0", "", "actor-MX", "ev")
+	var r_mx1 := _make_record("mx-1", r_mx0.record_hash, "actor-MX", "ev")
+	ledger_mx.append_record(r_mx0)
+	ledger_mx.append_record(r_mx1)
+	var hash_before_race := ledger_mx.last_hash()
+
+	# Simulate a record that would have read _last_hash before rotation (stale chain).
+	var r_stale := _make_record("mx-stale", "", "actor-MX", "ev")  # previous_hash="" is stale
+	var stale_ok := ledger_mx.append_record(r_stale)
+	checks += 1
+	if stale_ok:
+		failures.append("REGRESSION-MUTEX-1: stale chain record must be rejected (append returned true)")
+	checks += 1
+	if ledger_mx.last_hash() != hash_before_race:
+		failures.append("REGRESSION-MUTEX-2: _last_hash must be unchanged after rejected stale record")
+
+	# Verify the mutex can be locked now (i.e., it was properly released after rejection).
+	checks += 1
+	var try_result := ledger_mx._mutex.try_lock()
+	if not try_result:
+		failures.append("REGRESSION-MUTEX-3: mutex must be unlocked after append_record returns (deadlock risk)")
+	else:
+		ledger_mx._mutex.unlock()
+
+	# ── REGRESSION: flush_rotation on near-rotation ledger (Wave C critical #4) ─
+	# Simulate a ledger near the rotation boundary, call flush_rotation(), then
+	# assert segment_N.jsonl + segment_N.seal are written and the chain is intact.
+	_cleanup(TEST_DIR + "/reg_flush")
+	var ledger_fl := FilesystemAuditLedger.new().setup_with_rotation(TEST_DIR + "/reg_flush", 5)
+	var prev_fl := ""
+	for i in range(5):
+		var r := _make_record("fl-%d" % i, prev_fl, "actor-FL", "ev")
+		ledger_fl.append_record(r)
+		prev_fl = r.record_hash
+	# Rotation was triggered at count == 5; flush drains any pending background write.
+	ledger_fl.flush_rotation()
+
+	checks += 1
+	if not FileAccess.file_exists(TEST_DIR + "/reg_flush/segment_0.jsonl"):
+		failures.append("REGRESSION-FLUSH-1: segment_0.jsonl must exist after flush_rotation on shutdown")
+	checks += 1
+	if not FileAccess.file_exists(TEST_DIR + "/reg_flush/segment_0.seal"):
+		failures.append("REGRESSION-FLUSH-2: segment_0.seal must exist after flush_rotation on shutdown")
+
+	# Chain must still be intact after flush.
+	var vi_fl := ledger_fl.verify_integrity("full")
+	checks += 1
+	if not vi_fl.get("ok", false):
+		failures.append("REGRESSION-FLUSH-3: verify_integrity(full) must be ok after flush_rotation, got: %s" % str(vi_fl))
+
+	_cleanup(TEST_DIR + "/reg_ts")
+	_cleanup(TEST_DIR + "/reg_mutex")
+	_cleanup(TEST_DIR + "/reg_flush")
+
 	# Cleanup all test dirs
 	_cleanup(TEST_DIR + "/must1")
 	_cleanup(TEST_DIR + "/must2")

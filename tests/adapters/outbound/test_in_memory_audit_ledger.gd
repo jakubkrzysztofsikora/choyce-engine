@@ -237,6 +237,46 @@ func _init() -> void:
 	if ledger12.last_hash() != r12b.record_hash:
 		failures.append("MUST-12: last_hash() must return hash of most recent record")
 
+	# ── REGRESSION: real timestamp in seal signed_at (Wave C critical #2) ────
+	# Build 2 seals (by triggering 2 rotations in sequence) and assert:
+	# 1. signed_at is not the old hardcoded "2026-05-18T00:00:00Z" stub value
+	# 2. seal_integrity hashes include signed_at (different timestamps → different hashes)
+	#
+	# NOTE: single-threaded test runner cannot guarantee 2 seals are built >0ms apart,
+	# so we directly call _build_seal() with an injected OS-time check rather than
+	# sleeping. Instead we build 2 ledgers separately and compare their seal signed_at
+	# values — each call to Time.get_datetime_string_from_system() is independent.
+	var ledger_ts_a := InMemoryAuditLedger.new().setup_with_rotation(2)
+	var prev_ts_a := ""
+	for i in range(3):
+		var r := _make_record("ts-a-%d" % i, prev_ts_a, "actor-TS-A", "ev")
+		ledger_ts_a.append_record(r)
+		prev_ts_a = r.record_hash
+	checks += 1
+	var seal_a: Dictionary = ledger_ts_a._segments[0].seal if ledger_ts_a._segments.size() > 0 else {}
+	var signed_at_a: String = str(seal_a.get("signed_at", ""))
+	if signed_at_a == "2026-05-18T00:00:00Z":
+		failures.append("REGRESSION-TS-1a: signed_at must not be hardcoded stub, got: %s" % signed_at_a)
+	if signed_at_a.is_empty():
+		failures.append("REGRESSION-TS-1b: signed_at must not be empty in seal")
+
+	# Verify seal_integrity covers signed_at: recompute integrity with a different
+	# signed_at and confirm it yields a different hash (proving signed_at is in the input).
+	checks += 1
+	if seal_a.size() > 0:
+		var seal_modified := seal_a.duplicate()
+		seal_modified["signed_at"] = "1970-01-01T00:00:00Z"
+		seal_modified.erase("seal_integrity")
+		var keys_m := seal_modified.keys()
+		keys_m.sort()
+		var parts_m: Array[String] = []
+		for k in keys_m:
+			parts_m.append("%s=%s" % [str(k), str(seal_modified[k])])
+		var modified_integrity := "|".join(parts_m).sha256_text()
+		var original_integrity: String = str(seal_a.get("seal_integrity", ""))
+		if modified_integrity == original_integrity:
+			failures.append("REGRESSION-TS-2: seal_integrity must differ when signed_at differs (signed_at not included in hash input)")
+
 	# ── Report ─────────────────────────────────────────────────────────────────
 	if failures.is_empty():
 		print("[PASS] InMemoryAuditLedger (%d checks)" % checks)

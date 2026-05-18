@@ -391,7 +391,7 @@ func _build_seal(
 		"first_record_hash": first_record_hash,
 		"last_record_hash": last_record_hash,
 		"prev_seal_hash": prev_seal_hash,
-		"signed_at": "2026-05-18T00:00:00Z",  # No ClockPort injected in-memory; use fixed stamp.
+		"signed_at": Time.get_datetime_string_from_system(true),
 		"seal_integrity": ""  # Computed below.
 	}
 	seal["seal_integrity"] = _compute_seal_integrity(seal)
