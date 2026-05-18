@@ -1,5 +1,8 @@
-class_name ButtonFeel
 extends Node
+
+# Autoload-only singleton; do NOT declare class_name — would collide with the
+# autoload of the same name. Access globally via the autoload identifier
+# `ButtonFeel` declared in project.godot.
 
 ## Autoload singleton — adds scale-bounce feel to every Button in the app.
 ##

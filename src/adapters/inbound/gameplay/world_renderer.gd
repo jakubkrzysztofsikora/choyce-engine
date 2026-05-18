@@ -27,28 +27,80 @@ func get_spawn_position(index: int = 0) -> Vector3:
 		return _spawn_points[0]
 	return _spawn_points[index]
 
+# Wave V3: Polish display-name → Blender-authored glTF prop. Looked up
+# before falling back to the primitive-mesh branches below. Lower-cased
+# keys with leading-/trailing-whitespace stripped at lookup time.
+const PROP_GLTF_MAP: Dictionary = {
+	"skała": "res://data/models/props/rock.gltf",
+	"skrzynia": "res://data/models/props/chest.gltf",
+	"palma": "res://data/models/props/palm.gltf",
+	"trawa": "res://data/models/props/grass_tuft.gltf",
+	"znajdźka": "res://data/models/props/coin.gltf",
+	"moneta": "res://data/models/props/coin.gltf",
+	"start": "res://data/models/props/spawn_crystal.gltf",
+	"płot": "res://data/models/props/fence.gltf",
+}
+
+
 func _create_node(node: SceneNode) -> void:
 	var godot_node: Node3D = null
 
-	match node.node_type:
-		SceneNode.NodeType.OBJECT:
-			godot_node = _create_object_node(node)
-		SceneNode.NodeType.TERRAIN:
-			godot_node = _create_terrain_node(node)
-		SceneNode.NodeType.LIGHT:
-			godot_node = _create_light_node(node)
-		SceneNode.NodeType.SPAWN_POINT:
-			godot_node = _create_spawn_point_node(node)
-		SceneNode.NodeType.TRIGGER:
-			godot_node = _create_trigger_node(node)
-		SceneNode.NodeType.DECORATION:
-			godot_node = _create_decoration_node(node)
+	# Wave V3: prefer a hand-authored glTF prop when the display name matches.
+	var prop_path: String = _prop_path_for(node)
+	if not prop_path.is_empty():
+		godot_node = _create_prop_node(prop_path, node)
+
+	if godot_node == null:
+		match node.node_type:
+			SceneNode.NodeType.OBJECT:
+				godot_node = _create_object_node(node)
+			SceneNode.NodeType.TERRAIN:
+				godot_node = _create_terrain_node(node)
+			SceneNode.NodeType.LIGHT:
+				godot_node = _create_light_node(node)
+			SceneNode.NodeType.SPAWN_POINT:
+				godot_node = _create_spawn_point_node(node)
+			SceneNode.NodeType.TRIGGER:
+				godot_node = _create_trigger_node(node)
+			SceneNode.NodeType.DECORATION:
+				godot_node = _create_decoration_node(node)
 
 	if godot_node != null:
 		add_child(godot_node)
 		godot_node.position = node.position
 		godot_node.rotation = node.rotation
 		godot_node.scale = node.scale
+
+
+func _prop_path_for(node: SceneNode) -> String:
+	if node == null:
+		return ""
+	var key: String = String(node.display_name).strip_edges().to_lower()
+	if key.is_empty():
+		return ""
+	return PROP_GLTF_MAP.get(key, "")
+
+
+func _create_prop_node(gltf_path: String, node: SceneNode) -> Node3D:
+	var loaded: Resource = ResourceLoader.load(gltf_path)
+	if loaded == null:
+		push_warning("WorldRenderer: glTF prop not found at %s — falling back to primitive." % gltf_path)
+		return null
+	var instance: Node = loaded.instantiate() if loaded is PackedScene else null
+	if instance == null:
+		push_warning("WorldRenderer: %s is not a PackedScene — using primitive." % gltf_path)
+		return null
+	# Wrap in StaticBody3D so kid characters can stand on / collide with the prop.
+	var body := StaticBody3D.new()
+	body.name = node.display_name if node != null else "Prop"
+	body.add_child(instance)
+	# A loose collider sized to the node's bounding intent — keeps it cheap.
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(1.0, 1.0, 1.0)
+	col.shape = shape
+	body.add_child(col)
+	return body
 
 func _create_object_node(node: SceneNode) -> Node3D:
 	var static_body := StaticBody3D.new()
