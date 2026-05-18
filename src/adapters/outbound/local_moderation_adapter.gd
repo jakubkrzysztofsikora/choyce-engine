@@ -139,10 +139,14 @@ func check_text(text: String, age_band: AgeBand) -> ModerationResult:
 				return warn_result
 			return _blocked_result(cat_name, safe_alt, word_str)
 
-	# Phrase (multi-word) substring pass on the full normalized text.
+	# Phrase (multi-word) substring pass.
+	# Use a token-space-joined string so that hyphens and other non-alpha separators
+	# in the input (e.g. "photo-real") collapse to spaces and match stored phrases
+	# like "photo real" that were built the same way in _build_term_lookup.
+	var token_joined := " ".join(words)
 	for phrase in _phrase_lookup.keys():
 		var phrase_str := str(phrase)
-		if normalized_text.contains(phrase_str):
+		if token_joined.contains(phrase_str):
 			var entry: Dictionary = _phrase_lookup[phrase_str]
 			var severity: String = str(entry.get("severity", "block"))
 			var cat_name: String = str(entry.get("category", ""))
@@ -426,8 +430,24 @@ func _build_term_lookup() -> void:
 					[MAX_MODERATION_TERMS, cat_name]
 				)
 				break
-			# Store NORMALIZED form so lookup matches _normalize_and_tokenize output.
-			var term_str := _normalize_text(str(term_variant).strip_edges())
+			# Store NORMALIZED+TOKENIZED form so lookup matches _normalize_and_tokenize output.
+			# First normalize (homoglyph/diacritic/leet), then apply tokenizer replacement
+			# (non-alpha chars → space) so that hyphens and punctuation in terms like
+			# "photo-real" are treated the same way as in check_text input.
+			var term_normalized := _normalize_text(str(term_variant).strip_edges())
+			if term_normalized.is_empty():
+				continue
+			# Apply the same non-alpha → space substitution used in _normalize_and_tokenize
+			# so that "photo-real" becomes "photo real" (two tokens joined by space).
+			var tok_chars2 := PackedStringArray()
+			tok_chars2.resize(term_normalized.length())
+			for ti in range(term_normalized.length()):
+				var code2 := term_normalized.unicode_at(ti)
+				if (code2 >= 97 and code2 <= 122) or code2 == 32:
+					tok_chars2[ti] = term_normalized[ti]
+				else:
+					tok_chars2[ti] = " "
+			var term_str := " ".join("".join(tok_chars2).split(" ", false))
 			if term_str.is_empty():
 				continue
 			var entry := {
@@ -436,7 +456,7 @@ func _build_term_lookup() -> void:
 				"safe_alt": safe_alt,
 			}
 			if " " in term_str:
-				# Multi-word → phrase lookup (substring match against full normalized text).
+				# Multi-word → phrase lookup (substring match against full tokenized text).
 				if not _phrase_lookup.has(term_str):
 					_phrase_lookup[term_str] = entry
 					total += 1
