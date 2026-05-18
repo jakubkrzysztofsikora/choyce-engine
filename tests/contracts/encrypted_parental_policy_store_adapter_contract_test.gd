@@ -80,10 +80,21 @@ func run() -> Dictionary:
 		store.save_policy("", policy),
 		"save_policy should reject empty parent id"
 	)
-	_assert_null(
-		store.load_policy(""),
-		"load_policy should return null for empty parent id"
+	# Wave B Fix B3: load_policy("") returns deny-all (never null) to prevent null-deref bypasses.
+	var empty_id_result := store.load_policy("")
+	_assert_true(
+		empty_id_result != null,
+		"load_policy should return deny-all for empty parent id (not null)"
 	)
+	if empty_id_result != null:
+		_assert_true(
+			empty_id_result.ai_access == ParentalControlPolicy.AIAccessLevel.DISABLED,
+			"load_policy deny-all for empty parent id must have AI disabled"
+		)
+		_assert_false(
+			empty_id_result.sharing_allowed,
+			"load_policy deny-all for empty parent id must have sharing_allowed false"
+		)
 
 	_cleanup_user_path(TEST_ROOT)
 	return _build_result("EncryptedParentalPolicyStoreAdapter")

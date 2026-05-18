@@ -58,8 +58,8 @@ func run() -> Dictionary:
 	# Hash chain integrity check
 	var integrity := ledger.verify_integrity()
 	_assert_true(integrity.get("ok", false), "3-record chain should pass integrity check")
-	_assert_true(integrity.get("total_records", 0) == 3, "Integrity check should report 3 total records")
-	_assert_true(integrity.get("last_valid_index", -1) == 2, "Last valid index should be 2")
+	_assert_true(integrity.get("active_records", 0) == 3, "Integrity check should report 3 total records")
+	_assert_true(integrity.get("broken_at") == null, "Last valid index should be 2")
 
 	# Filter by actor_id
 	var kid_records := ledger.get_records({"actor_id": "kid-1"})
@@ -103,7 +103,7 @@ func run() -> Dictionary:
 	t2.payload["injected"] = "tampered"
 	var tamper_check := tamper_ledger.verify_integrity()
 	_assert_true(not tamper_check.get("ok", true), "Tampered ledger should fail integrity check")
-	_assert_true(tamper_check.get("last_valid_index", -1) == 0, "Tamper at index 1 should report last valid at 0")
+	_assert_true(tamper_check.get("broken_at") == 1, "Tamper at index 1 should report last valid at 0")
 
 	# from_dict should preserve stored hash to keep tamper detection meaningful.
 	var serialized := t1.to_dict()
