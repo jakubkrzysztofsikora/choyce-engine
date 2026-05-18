@@ -10,10 +10,24 @@
 class_name LocalModerationAdapter
 extends ModerationPort
 
+## Maximum number of terms allowed in the flattened lookup dict (Phase 8b cap).
+## Exceeding this triggers a warning; lowest-priority categories are dropped.
+const MAX_MODERATION_TERMS := 5000
+
+## Priority order for category retention when the term cap is exceeded.
+## Categories listed first are kept; those not listed are dropped last.
+const CATEGORY_PRIORITY := [
+	"violence", "weapons", "drugs", "gambling", "profanity", "photoreal_human"
+]
+
 var _categories: Dictionary = {}
 var _age_overrides: Dictionary = {}
 var _image_rules: Dictionary = {}
 var _rules_file: String = "res://data/moderation/rules_pl.json"
+
+## Flat {normalized_term: {category, severity, safe_alt}} dict built at setup().
+## Enables O(1) per-word lookup instead of nested category×term scan.
+var _term_lookup: Dictionary = {}
 
 ## Maps visually similar Unicode characters to their ASCII equivalents.
 ## Covers Cyrillic homoglyphs and fullwidth Latin letters.
@@ -65,6 +79,7 @@ func setup(
 	_load_defaults()
 	if not _rules_file.is_empty():
 		_load_rules_file()
+	_build_term_lookup()
 	return self
 
 
@@ -72,37 +87,38 @@ func check_text(text: String, age_band: AgeBand) -> ModerationResult:
 	if text.strip_edges().is_empty():
 		return ModerationResult.new(ModerationResult.Verdict.PASS, "")
 
-	var normalized := text.strip_edges().to_lower()
-	var words := _tokenize(normalized)
+	var words := _tokenize(text.strip_edges())
 
-	# Check age-band specific additional blocks first
+	# Check age-band specific additional blocks first (O(N words) scan)
 	var age_key := _age_band_key(age_band)
 	if _age_overrides.has(age_key):
 		var override: Dictionary = _age_overrides[age_key]
 		var extra_blocked: Array = override.get("additional_blocked", [])
-		for blocked_term in extra_blocked:
-			var term_str := str(blocked_term)
-			if _word_match(words, term_str):
+		# Build a set for O(1) membership test
+		var extra_set: Dictionary = {}
+		for bt in extra_blocked:
+			extra_set[str(bt)] = true
+		for word in words:
+			var word_str := str(word)
+			if extra_set.has(word_str):
 				var alt: String = str(override.get("default_alternative", ""))
-				return _blocked_result("age_restricted", alt, term_str)
+				return _blocked_result("age_restricted", alt, word_str)
 
-	# Check each category
-	for cat_name in _categories.keys():
-		var category: Dictionary = _categories[cat_name]
-		var severity: String = str(category.get("severity", "block"))
-		var terms: Array = category.get("terms", [])
-		var safe_alt: String = str(category.get("safe_alternative", ""))
-
-		for term in terms:
-			var term_str := str(term)
-			if _word_match(words, term_str):
-				if severity == "warn_child" and age_band != null and not age_band.is_child():
-					var warn_result := ModerationResult.new(ModerationResult.Verdict.WARN, term_str)
-					warn_result.category = str(cat_name)
-					warn_result.confidence = 0.8
-					warn_result.safe_alternative = safe_alt
-					return warn_result
-				return _blocked_result(str(cat_name), safe_alt, term_str)
+	# O(N words) lookup via flat _term_lookup dict
+	for word in words:
+		var word_str := str(word)
+		if _term_lookup.has(word_str):
+			var entry: Dictionary = _term_lookup[word_str]
+			var severity: String = str(entry.get("severity", "block"))
+			var cat_name: String = str(entry.get("category", ""))
+			var safe_alt: String = str(entry.get("safe_alt", ""))
+			if severity == "warn_child" and age_band != null and not age_band.is_child():
+				var warn_result := ModerationResult.new(ModerationResult.Verdict.WARN, word_str)
+				warn_result.category = cat_name
+				warn_result.confidence = 0.8
+				warn_result.safe_alternative = safe_alt
+				return warn_result
+			return _blocked_result(cat_name, safe_alt, word_str)
 
 	return ModerationResult.new(ModerationResult.Verdict.PASS, "")
 
@@ -158,38 +174,53 @@ func _word_match(words: Array, term: String) -> bool:
 	return false
 
 
-## Normalizes text by mapping homoglyphs and stripping Polish diacritics,
-## then lowercasing. This ensures Unicode evasion tactics (e.g. Cyrillic
-## lookalikes) are caught by the ASCII-based word lists.
+## Normalizes text by mapping homoglyphs, stripping Polish diacritics, and
+## transliterating leetspeak digits. Uses PackedStringArray accumulator to
+## avoid repeated String concatenation (Phase 8b rewrite).
 func _normalize_text(text: String) -> String:
 	var lowered := text.to_lower()
-	var result := ""
+	var chars := PackedStringArray()
+	chars.resize(lowered.length())
 	for i in range(lowered.length()):
 		var ch := lowered[i]
 		if HOMOGLYPH_MAP.has(ch):
-			result += HOMOGLYPH_MAP[ch]
+			chars[i] = HOMOGLYPH_MAP[ch]
 		elif POLISH_DIACRITIC_MAP.has(ch):
-			result += POLISH_DIACRITIC_MAP[ch]
+			chars[i] = POLISH_DIACRITIC_MAP[ch]
 		elif DIGIT_MAP.has(ch):
-			result += DIGIT_MAP[ch]
+			chars[i] = DIGIT_MAP[ch]
 		else:
-			result += ch
-	return result
+			chars[i] = ch
+	return "".join(chars)
 
 
+## Tokenizes text into normalized words using a single-pass split approach
+## (Phase 8b rewrite). Replaces 19+ chained .replace() calls with character
+## classification during normalize, then String.split().
 func _tokenize(text: String) -> Array:
-	var cleaned := _normalize_text(text)
-	for ch in [".", ",", "!", "?", ";", ":", "(", ")", "[", "]", "{", "}", "\"", "'", "-"]:
-		cleaned = cleaned.replace(ch, " ")
-	# Remove any remaining digits (e.g. "2" does not map to a lookalike).
-	for digit in ["2", "6", "9"]:
-		cleaned = cleaned.replace(digit, "")
-	var parts := cleaned.split(" ", false)
+	var normalized := _normalize_text(text)
+	# Replace punctuation with spaces in a single pass using character classification.
+	# Any character that is not a-z, 0-9, or space becomes a space delimiter.
+	var chars := PackedStringArray()
+	chars.resize(normalized.length())
+	for i in range(normalized.length()):
+		var ch := normalized[i]
+		var code := ch.unicode_at(0)
+		# a-z: 97-122, 0-9: 48-57, space: 32
+		if (code >= 97 and code <= 122) or code == 32:
+			chars[i] = ch
+		elif code >= 48 and code <= 57:
+			# Digits 2, 6, 9 are removed (no leet mapping); others already
+			# transliterated to letters by _normalize_text.
+			chars[i] = " "
+		else:
+			chars[i] = " "
+	var joined := "".join(chars)
+	var parts := joined.split(" ", false)
 	var tokens: Array = []
 	for part in parts:
-		var stripped := part.strip_edges()
-		if not stripped.is_empty():
-			tokens.append(stripped)
+		if not part.is_empty():
+			tokens.append(part)
 	return tokens
 
 
@@ -298,3 +329,59 @@ func _load_rules_file() -> void:
 
 	if data.has("image_rules") and data["image_rules"] is Dictionary:
 		_image_rules = data["image_rules"]
+
+
+## Builds the flat {normalized_term → {category, severity, safe_alt}} lookup dict.
+## Called once at setup() after all categories are loaded. Enforces MAX_MODERATION_TERMS
+## cap by dropping lowest-priority categories first (Phase 8b).
+func _build_term_lookup() -> void:
+	_term_lookup = {}
+
+	# Determine category insertion order: priority list first, then remainder.
+	var ordered_cats: Array[String] = []
+	for cat in CATEGORY_PRIORITY:
+		if _categories.has(cat):
+			ordered_cats.append(cat)
+	for cat_name in _categories.keys():
+		if not ordered_cats.has(str(cat_name)):
+			ordered_cats.append(str(cat_name))
+
+	var total := 0
+	var truncated := false
+	for cat_name in ordered_cats:
+		if total >= MAX_MODERATION_TERMS:
+			truncated = true
+			push_warning(
+				"LocalModerationAdapter: term cap %d reached; dropping category '%s'" %
+				[MAX_MODERATION_TERMS, cat_name]
+			)
+			continue
+		var category: Dictionary = _categories[cat_name]
+		var severity: String = str(category.get("severity", "block"))
+		var safe_alt: String = str(category.get("safe_alternative", ""))
+		var terms: Array = category.get("terms", [])
+		for term_variant in terms:
+			if total >= MAX_MODERATION_TERMS:
+				truncated = true
+				push_warning(
+					"LocalModerationAdapter: term cap %d reached at category '%s'; remaining terms skipped" %
+					[MAX_MODERATION_TERMS, cat_name]
+				)
+				break
+			var term_str := str(term_variant).strip_edges().to_lower()
+			if term_str.is_empty():
+				continue
+			if not _term_lookup.has(term_str):
+				_term_lookup[term_str] = {
+					"category": cat_name,
+					"severity": severity,
+					"safe_alt": safe_alt,
+				}
+				total += 1
+
+	if truncated:
+		push_warning(
+			"LocalModerationAdapter: term dict capped at %d (was over limit). " +
+			"Add terms to a higher-priority category or raise MAX_MODERATION_TERMS." %
+			MAX_MODERATION_TERMS
+		)
