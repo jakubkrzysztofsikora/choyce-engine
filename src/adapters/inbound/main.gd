@@ -140,10 +140,19 @@ func _build_default_ports() -> Dictionary:
 	var clock := SystemClock.new()
 	var event_bus := DomainEventBus.new()
 	var project_store := FilesystemProjectStore.new().setup()
-	var publish_store := InMemoryPublishStore.new().setup()
+	# Phase 6 (F-055-03): persistent publish store replaces in-memory variant.
+	var publish_store := FilesystemPublishStore.new().setup("user://choyce_publish")
 	var moderation := LocalModerationAdapter.new().setup()
 	var publishing_policy := PublishingPolicy.new()
-	var policy_store := InMemoryParentalPolicyStore.new().setup()
+	# Phase 6: encrypted parental policy vault replaces in-memory variant.
+	var signing_key := _resolve_vault_signing_key()
+	var encrypted_storage := LocalEncryptedStorage.new().setup()
+	var policy_store := EncryptedParentalPolicyStore.new().setup(
+		encrypted_storage,
+		signing_key,
+		"user://choyce_vault/parental_policies",
+		event_bus
+	)
 	var telemetry := LocalTelemetry.new().setup()
 	var consent_store := FilesystemConsentStore.new().setup("user://choyce_consent")
 	var audit_ledger: AuditLedgerPort
@@ -225,6 +234,65 @@ func _build_default_ports() -> Dictionary:
 		KEY_AI_PERFORMANCE_READ_MODEL: ai_performance,
 		KEY_DATA_LIFECYCLE_PORT: data_lifecycle,
 	}
+
+
+## Phase 6: Resolve the 32-byte AES-256 vault signing key.
+## Priority:
+##   1. CHOYCE_VAULT_KEY env var (hex-encoded, 64 chars → 32 bytes).
+##   2. Dev mode: auto-generate per-install key, persist in user://choyce_vault/key.
+##   3. Prod mode (FAMILY_CLOUD, CLASSROOM): hard-fail — no key means no vault.
+func _resolve_vault_signing_key() -> PackedByteArray:
+	const VAULT_KEY_ENV := "CHOYCE_VAULT_KEY"
+	const KEY_FILE := "user://choyce_vault/key"
+	const KEY_SIZE := 32
+
+	# 1. Environment variable (highest priority).
+	var env_key := OS.get_environment(VAULT_KEY_ENV).strip_edges()
+	if not env_key.is_empty():
+		var bytes := env_key.hex_decode()
+		if bytes.size() == KEY_SIZE:
+			return bytes
+		push_error(
+			"_resolve_vault_signing_key: CHOYCE_VAULT_KEY must be 64 hex chars (32 bytes). Got %d bytes." % bytes.size()
+		)
+		# Fall through to per-install path — safer than crashing on a mis-formatted env var in dev.
+
+	# 2. Per-install key in user:// directory.
+	var config := DeploymentConfig.from_environment()
+	var is_dev := config.mode == DeploymentConfig.Mode.LOCAL_ONLY
+
+	if not is_dev:
+		# Prod / classroom: must have an explicit key — hard fail.
+		push_error(
+			"_resolve_vault_signing_key: CHOYCE_VAULT_KEY not set in production build. Vault cannot start."
+		)
+		OS.crash("CHOYCE_VAULT_KEY required in production. Set the environment variable.")
+		return PackedByteArray()  # unreachable
+
+	# Dev path: load or generate a per-install key.
+	var key_dir := KEY_FILE.get_base_dir()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(key_dir))
+
+	if FileAccess.file_exists(KEY_FILE):
+		var file := FileAccess.open(KEY_FILE, FileAccess.READ)
+		if file != null:
+			var stored := file.get_buffer(KEY_SIZE)
+			if stored.size() == KEY_SIZE:
+				return stored
+
+	# Generate a fresh random key and persist it.
+	push_warning(
+		"_resolve_vault_signing_key: no vault key found — generating per-install key at '%s'. "
+		+ "This is only acceptable in LOCAL_ONLY / dev mode." % KEY_FILE
+	)
+	var crypto := Crypto.new()
+	var new_key := crypto.generate_random_bytes(KEY_SIZE)
+	var out := FileAccess.open(KEY_FILE, FileAccess.WRITE)
+	if out != null:
+		out.store_buffer(new_key)
+	else:
+		push_error("_resolve_vault_signing_key: cannot persist generated key to '%s'" % KEY_FILE)
+	return new_key
 
 
 ## Build the moderating STT adapter (Phase 3, FR-022).
