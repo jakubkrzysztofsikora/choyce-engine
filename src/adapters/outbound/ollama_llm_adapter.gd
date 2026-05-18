@@ -149,13 +149,57 @@ func cancel() -> void:
 	_finish_request(true)
 
 
-func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
+## Async tool-call planning — runs HTTP work on a WorkerThreadPool task to avoid blocking
+## the main thread. on_done is called (via call_deferred) with Array[ToolInvocation] result.
+##
+## NOTE: This overrides the sync LLMPort.complete_with_tools() signature. The call site in
+## RequestAICreationHelpService:193 uses the old sync signature and must be updated by the
+## WC4 fix agent to pass an on_done Callable instead of capturing the return value.
+func complete_with_tools(envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
 	var invocations: Array[ToolInvocation] = []
 	if envelope == null:
-		return invocations
+		if on_done.is_valid():
+			on_done.call(invocations)
+		return
 
 	var tier := _select_tool_tier(envelope)
 	_record_model_selection(tier)
+
+	# Heuristic path (mock or empty permitted_tools) is fast — no I/O, run inline.
+	if _mock_mode or _simulate_local_failure:
+		var local_tools := _plan_tools_locally(envelope)
+		if not local_tools.is_empty():
+			_last_provider = "ollama-local"
+			if on_done.is_valid():
+				on_done.call(local_tools)
+			return
+		var profile_id := _extract_profile_id(envelope)
+		if _can_escalate_to_cloud(profile_id) and _cloud_adapter != null:
+			_last_provider = "cloud"
+			var cloud_raw: Array = []
+			if _cloud_adapter.has_method("complete_with_tools_sync"):
+				cloud_raw = _cloud_adapter.complete_with_tools_sync(envelope)
+			var cloud_invocations := _normalize_tool_invocations(cloud_raw)
+			if on_done.is_valid():
+				on_done.call(cloud_invocations)
+			return
+		_last_provider = "fallback"
+		if on_done.is_valid():
+			on_done.call(invocations)
+		return
+
+	# Real HTTP path — delegate to WorkerThreadPool to keep main thread free.
+	var adapter_ref := self
+	WorkerThreadPool.add_task(func() -> void:
+		var result := adapter_ref._complete_with_tools_sync_internal(envelope)
+		if on_done.is_valid():
+			on_done.call.call_deferred(result)
+	)
+
+
+## Synchronous helper called from WorkerThreadPool thread. Must not touch Node/scene APIs.
+func _complete_with_tools_sync_internal(envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	var invocations: Array[ToolInvocation] = []
 
 	var local_tools := _plan_tools_locally(envelope)
 	if not local_tools.is_empty():
@@ -165,8 +209,29 @@ func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
 	var profile_id := _extract_profile_id(envelope)
 	if _can_escalate_to_cloud(profile_id) and _cloud_adapter != null:
 		_last_provider = "cloud"
-		return _normalize_tool_invocations(_cloud_adapter.complete_with_tools(envelope))
+		if _cloud_adapter.has_method("complete_with_tools_sync"):
+			return _normalize_tool_invocations(_cloud_adapter.complete_with_tools_sync(envelope))
 
+	_last_provider = "fallback"
+	return invocations
+
+
+## Sync shim for cloud adapter calls from worker thread. Cloud adapters may still be sync.
+func complete_with_tools_sync(envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	var invocations: Array[ToolInvocation] = []
+	if envelope == null:
+		return invocations
+	var tier := _select_tool_tier(envelope)
+	_record_model_selection(tier)
+	var local_tools := _plan_tools_locally(envelope)
+	if not local_tools.is_empty():
+		_last_provider = "ollama-local"
+		return local_tools
+	var profile_id := _extract_profile_id(envelope)
+	if _can_escalate_to_cloud(profile_id) and _cloud_adapter != null:
+		_last_provider = "cloud"
+		if _cloud_adapter.has_method("complete_with_tools_sync"):
+			return _normalize_tool_invocations(_cloud_adapter.complete_with_tools_sync(envelope))
 	_last_provider = "fallback"
 	return invocations
 
