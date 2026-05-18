@@ -49,10 +49,22 @@ func run() -> Dictionary:
 		"FEDCBA9876543210FEDCBA9876543210".to_utf8_buffer(),
 		TEST_ROOT
 	)
-	_assert_null(
-		wrong_key_store.load_policy("parent-1"),
-		"Wrong key should not decrypt parent policy"
+	# Phase 6 safety contract: wrong key returns deny-all (not null) to prevent
+	# a null-dereference from silently bypassing parental controls.
+	var wrong_key_result := wrong_key_store.load_policy("parent-1")
+	_assert_true(
+		wrong_key_result != null,
+		"Wrong key must return deny-all policy (not null) — consent-deny failsafe"
 	)
+	if wrong_key_result != null:
+		_assert_true(
+			wrong_key_result.ai_access == ParentalControlPolicy.AIAccessLevel.DISABLED,
+			"Wrong-key deny-all policy must have AI disabled"
+		)
+		_assert_false(
+			wrong_key_result.sharing_allowed,
+			"Wrong-key deny-all policy must have sharing_allowed"
+		)
 
 	var short_key_store := EncryptedParentalPolicyStore.new().setup(
 		encrypted_storage,

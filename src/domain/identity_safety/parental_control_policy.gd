@@ -68,6 +68,20 @@ func to_dict() -> Dictionary:
 	}
 
 
+## Returns the most restrictive policy possible.
+## Used as a safety fallback when stored policy cannot be decrypted or is
+## absent. Follows the CLAUDE.md "consent → deny" rule.
+static func deny_all() -> ParentalControlPolicy:
+	return ParentalControlPolicy.new(
+		1,                         # 1-minute daily limit (non-zero = enforced)
+		1,                         # 1-minute session limit
+		AIAccessLevel.DISABLED,    # AI fully off
+		false,                     # sharing blocked
+		false,                     # language override blocked
+		false                      # cloud sync off
+	)
+
+
 static func from_dict(data: Dictionary) -> ParentalControlPolicy:
 	return ParentalControlPolicy.new(
 		int(data.get("daily_playtime_limit_minutes", DEFAULT_DAILY_LIMIT_MINUTES)),
