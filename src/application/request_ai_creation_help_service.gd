@@ -191,8 +191,21 @@ func execute(session_id: String, prompt_text: String, actor: PlayerProfile, prev
 		rate_action.created_at = _clock.now_iso()
 		return rate_action
 
-	# Step 3: Ask LLM to propose tool calls
-	var tool_invocations := _llm.complete_with_tools(envelope)
+	# Step 3: Ask LLM to propose tool calls.
+	# Wave C Phase 8a split complete_with_tools into an async (Callable) form and a
+	# complete_with_tools_sync shim. This service runs an end-to-end synchronous
+	# pipeline (validation, audit, action assembly), so it keeps the sync shim.
+	# Future refactor: lift the whole pipeline behind an on_done Callable.
+	var tool_invocations: Array[ToolInvocation] = []
+	if _llm.has_method("complete_with_tools_sync"):
+		tool_invocations = _llm.complete_with_tools_sync(envelope)
+	else:
+		# Fallback for adapters that still implement the legacy sync signature
+		# (e.g. test mocks). Cast through Variant to avoid the void-return
+		# warning when called against the new contract.
+		var raw: Variant = _llm.call("complete_with_tools", envelope)
+		if raw is Array:
+			tool_invocations = raw
 
 	# Step 4: Validate tool calls against scope and deterministic args
 	var validation_result := _validate_tool_invocations(envelope, tool_invocations)
