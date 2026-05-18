@@ -65,7 +65,9 @@ func setup(
 ## on_complete (optional): called with the final AIAssistantAction once the async
 ## explanation from LLM arrives. If omitted the action is returned synchronously
 ## with an empty explanation field (explanation will arrive via on_complete later).
-func execute(session_id: String, prompt_text: String, actor: PlayerProfile, preview_only: bool = false, on_complete: Callable = Callable()) -> AIAssistantAction:
+## on_progress (optional): called with each incremental token String emitted by the LLM
+## during the explanation phase. If omitted (default Callable()), tokens are discarded.
+func execute(session_id: String, prompt_text: String, actor: PlayerProfile, preview_only: bool = false, on_complete: Callable = Callable(), on_progress: Callable = Callable()) -> AIAssistantAction:
 	var resolved_locale := _resolve_ai_locale(actor)
 
 	# Step 1: Build prompt envelope with safety metadata
@@ -237,12 +239,14 @@ func execute(session_id: String, prompt_text: String, actor: PlayerProfile, prev
 	var captured_session_id := session_id
 	var captured_preview_only := preview_only
 	var captured_on_complete := on_complete
+	var captured_on_progress := on_progress
 
 	_llm.complete(
 		explain_envelope,
 		{},
-		func(_token: String) -> void:
-			pass,  # Tokens not streamed to UI from this service; on_done has the full text.
+		func(token: String) -> void:
+			if captured_on_progress.is_valid():
+				captured_on_progress.call(token),
 		func(result: Dictionary) -> void:
 			var explanation := str(result.get("text", "")).strip_edges()
 			# Step 8: Output moderation post-check
