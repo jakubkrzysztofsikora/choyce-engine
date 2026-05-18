@@ -105,10 +105,10 @@ func _load_defaults() -> void:
 		"onboarding.skip": "Pomiń",
 		# Phase 4a-5: captions_overlay keys (no hardcoded Polish in captions at runtime;
 		# keys reserved for future caption-label UI if added)
-		"captions.position.bottom": "Napisy na dole",
-		"captions.position.top": "Napisy na górze",
-		"captions.font_size.label": "Rozmiar tekstu",
-		"captions.high_contrast.label": "Wysoki kontrast",
+		"captions.position.bottom": "Napisy: na dole",
+		"captions.position.top": "Napisy: na górze",
+		"captions.font_size.label": "Powiększ tekst",
+		"captions.high_contrast.label": "Mocne kolory",
 		"captions.tts_narration.label": "Czytaj napisy głosem",
 	}
 
