@@ -229,6 +229,21 @@ func _load_defaults() -> void:
 		"create.cta.build_world": "Stwórz coś!",
 		# Wave C: library RBAC kid follow-up message
 		"library.rbac.ask_parent": "Tylko rodzic. Poproś rodzica.",
+		# Part A: template card names (kid-register: short, friendly)
+		"create.template.adventure": "Wyspa skarbów",
+		"create.template.farm": "Mała farma",
+		"create.template.city": "Małe miasto",
+		"create.template.obby": "Tor przeszkód",
+		"create.template.tycoon": "Mały sklep",
+		# Part B: 3D preview labels
+		"create.preview.title": "Podgląd Twojego świata",
+		"create.preview.empty": "Naciśnij narzędzie i coś dodaj.",
+		# Celebration overlay: session-end confetti screen (kid-register, ≤4 words each)
+		"play.session.celebration_title": "Świetna gra!",
+		"play.session.collectibles_label": "Znajdźki",
+		"play.session.achievements_label": "Osiągnięcia",
+		"play.session.time_label": "Czas",
+		"play.celebration.close": "Zagraj jeszcze",
 	}
 
 	_unsafe_terms = {}
