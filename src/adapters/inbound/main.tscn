@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/create/create_shell.tscn" id="2_create_scene"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/library/library_shell.tscn" id="4_library_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/parent/parent_zone_shell.tscn" id="5_parent_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/shared/ui/mascot.tscn" id="6_mascot_scene"]
+[ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/landing/landing_screen.tscn" id="7_landing_scene"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -70,6 +71,15 @@ offset_bottom = 4.0
 [node name="Body" type="Control" parent="Layout"]
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="LandingShell" parent="Layout/Body" instance=ExtResource("7_landing_scene")]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
 
 [node name="CreateShell" parent="Layout/Body" instance=ExtResource("2_create_scene")]
 layout_mode = 1

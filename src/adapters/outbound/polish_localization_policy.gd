@@ -244,6 +244,16 @@ func _load_defaults() -> void:
 		"play.session.achievements_label": "Osiągnięcia",
 		"play.session.time_label": "Czas",
 		"play.celebration.close": "Zagraj jeszcze",
+		# LandingScreen — boot shell (kid-register: short, punchy, ≤2 words)
+		"landing.play": "ZAGRAJ",
+		"landing.create": "ZRÓB",
+		"landing.parent": "RODZIC",
+		"landing.title": "Choyce",
+		"landing.picker.title": "Wybierz świat",
+		"landing.picker.close": "Zamknij",
+		"landing.world.adventure": "Wyspa skarbów",
+		"landing.world.farm": "Mała farma",
+		"landing.world.forest": "Las grzybów",
 	}
 
 	_unsafe_terms = {}

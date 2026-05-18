@@ -65,6 +65,7 @@ var _phase1_tool_gateway: DeterministicToolExecutionGateway
 @onready var _title_label: Label = $Layout/NavBar/NavPill/TitleLabel
 
 @onready var _mascot: Mascot = $MascotOverlay
+@onready var _landing_shell: LandingScreen = $Layout/Body/LandingShell
 @onready var _create_shell: CreateShell = $Layout/Body/CreateShell
 @onready var _play_shell: PlayShell = $Layout/Body/PlayShell
 @onready var _library_shell: LibraryShell = $Layout/Body/LibraryShell
@@ -127,7 +128,7 @@ func _ready() -> void:
 		_mascot.setup(_phase1_event_bus, null)
 	_apply_localized_text()
 	_setup_transitions()
-	_navigator.show_shell(SHELL_CREATE)
+	_navigator.show_shell(SHELL_LANDING)
 
 	# Phase 8d: schedule heavy-I/O adapter initialisation for the next frame so
 	# the first frame returns quickly. Shells remain in the ports_ready=false gate
@@ -641,6 +642,7 @@ func _build_moderating_stt(
 
 
 func _register_shells() -> void:
+	_navigator.register_shell(SHELL_LANDING, _landing_shell)
 	_navigator.register_shell(SHELL_CREATE, _create_shell)
 	_navigator.register_shell(SHELL_PLAY, _play_shell)
 	_navigator.register_shell(SHELL_LIBRARY, _library_shell)
@@ -652,7 +654,13 @@ func _connect_navigation() -> void:
 	_nav_play.pressed.connect(func() -> void: _navigator.show_shell(SHELL_PLAY))
 	_nav_library.pressed.connect(func() -> void: _navigator.show_shell(SHELL_LIBRARY))
 	_nav_parent.pressed.connect(func() -> void: _navigator.show_shell(SHELL_PARENT))
-	
+
+	# LandingScreen signals → shell navigation.
+	_landing_shell.play_pressed.connect(func() -> void: _navigator.show_shell(SHELL_PLAY))
+	_landing_shell.create_pressed.connect(func() -> void: _navigator.show_shell(SHELL_CREATE))
+	_landing_shell.parent_pressed.connect(func() -> void: _navigator.show_shell(SHELL_PARENT))
+	_landing_shell.world_card_pressed.connect(_on_world_card_pressed)
+
 	_navigator.shell_changed.connect(_on_shell_changed)
 
 
@@ -687,7 +695,19 @@ func _on_shell_changed(shell_id: String) -> void:
 	_update_active_indicator(shell_id)
 
 
+func _on_world_card_pressed(project_id: String, world_id: String) -> void:
+	# Resolve the world from the project store and launch play.
+	if not world_id.is_empty():
+		_play_shell.set_world_context(world_id)
+	_navigator.show_shell(SHELL_PLAY)
+	if _play_shell.has_method("_launch_playtest"):
+		_play_shell._launch_playtest(false)
+
+
 func _wire_shell_dependencies() -> void:
+	# Wire landing screen with profile + project store + localization.
+	_landing_shell.setup(_profile, _phase1_project_store, _localization_policy)
+
 	_create_shell.setup(
 		_navigator, 
 		_profile, 
