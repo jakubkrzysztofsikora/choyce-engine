@@ -23,10 +23,10 @@ func _ready() -> void:
 	_victory_sequence = $VictorySequence
 	_ambient_player = $AmbientPlayer
 
-	if _ambient_player != null:
-		_ambient_player.stream = _create_ambient_noise()
-		_ambient_player.play()
-		_fill_ambient_buffer()
+	# Ambient music is now driven by AudioBank (play_music called from PlayShell
+	# when the world is chosen). The _ambient_player node is kept so the scene
+	# tree is unchanged, but we no longer generate procedural noise here.
+	# _ambient_player remains silent until AudioBank drives the music bus.
 
 	if _player_controller != null:
 		_player_controller.visible = false
@@ -117,25 +117,6 @@ func _trigger_collectible(area: Area3D) -> void:
 func _trigger_victory() -> void:
 	if _victory_sequence != null:
 		_victory_sequence.play()
-
-func _create_ambient_noise() -> AudioStreamGenerator:
-	# Soft wind/drone placeholder — actual frames are pushed in _ready after play() starts
-	var gen := AudioStreamGenerator.new()
-	gen.buffer_length = 2.0
-	return gen
-
-func _fill_ambient_buffer() -> void:
-	if _ambient_player == null:
-		return
-	var playback: AudioStreamGeneratorPlayback = _ambient_player.get_stream_playback()
-	var sample_rate := (_ambient_player.stream as AudioStreamGenerator).mix_rate
-	var frames := int(sample_rate * 1.5)
-	for i in range(frames):
-		var t := float(i) / sample_rate
-		# Low-frequency drone with gentle amplitude modulation
-		var amp := 0.03 * (1.0 + sin(t * 0.5 * TAU)) * 0.5
-		var sample := sin(t * 110.0 * TAU) * amp + sin(t * 112.0 * TAU) * amp * 0.5
-		playback.push_frame(Vector2.ONE * sample)
 
 func _on_victory_completed() -> void:
 	end_session()
