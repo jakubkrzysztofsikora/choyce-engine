@@ -23,11 +23,16 @@ const UP_TIME := 0.18
 const _WIRED_META := "button_feel_wired"
 const _SKIP_META := "skip_button_feel"
 
+## Emitted on button_up so SFX listeners can play a click sound.
+## AudioBank is also wired directly below to avoid requiring external listeners.
+
 func _ready() -> void:
 	# Wire buttons already present before autoload finished loading
 	for node in get_tree().get_nodes_in_group("buttons"):
 		_try_attach(node)
 	get_tree().node_added.connect(_on_node_added)
+	# Play a click SFX on every button press via the global AudioBank autoload.
+	press.connect(_on_press_sfx)
 
 func _on_node_added(node: Node) -> void:
 	_try_attach(node)
@@ -57,6 +62,7 @@ func attach(btn: Button) -> void:
 	btn.button_down.connect(func() -> void: _on_down(btn))
 	btn.button_up.connect(func() -> void: _on_up(btn))
 	btn.focus_exited.connect(func() -> void: _on_up(btn))
+	btn.mouse_entered.connect(func() -> void: _on_hover_sfx())
 
 func _on_down(btn: Button) -> void:
 	var tw := btn.create_tween()
@@ -72,3 +78,17 @@ func _on_up(btn: Button) -> void:
 ## Fire the global press signal. SFXPlayer listeners can hook here.
 func emit_press(btn: Button) -> void:
 	press.emit(btn)
+
+
+func _on_press_sfx(_btn: Button) -> void:
+	if Engine.has_singleton("AudioBank"):
+		Engine.get_singleton("AudioBank").play_sfx("ui_click")
+	elif has_node("/root/AudioBank"):
+		get_node("/root/AudioBank").play_sfx("ui_click")
+
+
+func _on_hover_sfx() -> void:
+	if Engine.has_singleton("AudioBank"):
+		Engine.get_singleton("AudioBank").play_hover_sfx()
+	elif has_node("/root/AudioBank"):
+		get_node("/root/AudioBank").play_hover_sfx()

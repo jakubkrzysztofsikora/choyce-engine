@@ -112,6 +112,9 @@ func launch_world_by_id(project_id: String, world_id: String) -> void:
 	if world == null:
 		push_warning("PlayShell.launch_world_by_id: no world in project %s" % project_id)
 		return
+	# Pick music track based on template
+	_play_world_music(project.template_id)
+
 	# Set context and start a session directly via _run_playtest_port
 	_active_world_id = world.world_id
 	if _run_playtest_port == null:
@@ -331,6 +334,12 @@ func show_celebration(stats: Dictionary) -> void:
 
 	_celebration_layer.visible = true
 
+	# Audio feedback on celebration
+	var _bank := _audio_bank()
+	if _bank != null:
+		_bank.play_sfx("victory_fanfare")
+		_bank.play_voice("celebrate_win")
+
 	# Position confetti at top-center
 	var vp_size: Vector2 = get_viewport().get_visible_rect().size if get_viewport() != null else Vector2(1600, 900)
 	_confetti.position = Vector2(vp_size.x / 2.0, 80.0)
@@ -485,6 +494,23 @@ func _refresh_kid_status_summary() -> void:
 		int(status.get("collectibles_found", 0)),
 		int(status.get("achievements_earned", 0)),
 	]
+
+
+func _audio_bank() -> Node:
+	return get_node_or_null("/root/AudioBank")
+
+
+func _play_world_music(template_id: String) -> void:
+	var bank := _audio_bank()
+	if bank == null:
+		return
+	var track_name: String
+	match template_id:
+		"adventure": track_name = "adventure_island"
+		"farm":      track_name = "little_farm"
+		"forest":    track_name = "mushroom_forest"
+		_:           track_name = "landing_ambient"
+	bank.play_music(track_name, true)
 
 
 func _apply_theme() -> void:

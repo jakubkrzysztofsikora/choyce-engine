@@ -32,6 +32,7 @@ func _ready() -> void:
 	_start_cloud_drift()
 	_wire_buttons()
 	_wire_picker_close()
+	_start_landing_audio.call_deferred()
 
 
 ## DI entry point — call after adding to tree.
@@ -227,19 +228,43 @@ func _wire_picker_close() -> void:
 		close_btn.pressed.connect(func(): _picker_layer.visible = false)
 
 
+# ---------- audio ----------
+
+func _start_landing_audio() -> void:
+	if not has_node("/root/AudioBank"):
+		return
+	var bank: Node = get_node("/root/AudioBank")
+	bank.play_music("landing_ambient", true)
+	await get_tree().create_timer(0.8).timeout
+	bank.play_voice("greet_landing")
+
+
+func _audio_bank() -> Node:
+	return get_node_or_null("/root/AudioBank")
+
+
 # ---------- button handlers ----------
 
 func _on_play_pressed() -> void:
 	play_pressed.emit()
+	var bank := _audio_bank()
+	if bank != null:
+		bank.play_voice("world_picker")
 	_show_world_picker()
 
 
 func _on_create_pressed() -> void:
 	create_pressed.emit()
+	var bank := _audio_bank()
+	if bank != null:
+		bank.play_voice("encourage_create")
 
 
 func _on_parent_pressed() -> void:
 	parent_pressed.emit()
+	var bank := _audio_bank()
+	if bank != null:
+		bank.play_voice("parent_zone")
 
 
 # ---------- world picker ----------
@@ -290,7 +315,13 @@ func _build_world_card(project) -> Control:
 	if "worlds" in project and not project.worlds.is_empty():
 		world_id = project.worlds[0].world_id
 
-	card.pressed.connect(func(): world_card_pressed.emit(project.project_id, world_id))
+	card.pressed.connect(func():
+		var bank := _audio_bank()
+		if bank != null:
+			bank.play_sfx("ui_confirm")
+			bank.stop_music(true)
+		world_card_pressed.emit(project.project_id, world_id)
+	)
 	return card
 
 
