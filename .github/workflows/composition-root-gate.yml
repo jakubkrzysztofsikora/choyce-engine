@@ -1,0 +1,46 @@
+name: Composition Root Gate
+
+on:
+  pull_request:
+    paths:
+      - '.ai/tasks/backlog.yaml'
+      - 'src/adapters/inbound/main.gd'
+
+jobs:
+  enforce-wiring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail when a task flips to done without touching the composition root
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+
+          # Tasks whose status moved to "done" in this PR
+          new_done=$(git diff "$base" "$head" -- .ai/tasks/backlog.yaml \
+            | grep -E '^\+\s+status:\s+done' || true)
+
+          if [[ -z "$new_done" ]]; then
+            echo "No new 'status: done' entries — gate not triggered."
+            exit 0
+          fi
+
+          touched_main=$(git diff --name-only "$base" "$head" \
+            | grep -x 'src/adapters/inbound/main.gd' || true)
+
+          if [[ -z "$touched_main" ]]; then
+            echo "::error::A backlog task was marked 'status: done' but"
+            echo "::error::src/adapters/inbound/main.gd was not touched."
+            echo "::error::Wire the new service into _build_default_ports()"
+            echo "::error::or revert the status flip."
+            echo "::error::Newly-done lines:"
+            echo "$new_done"
+            exit 1
+          fi
+
+          echo "main.gd touched alongside new done entries — gate passes."
