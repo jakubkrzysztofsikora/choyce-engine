@@ -281,13 +281,14 @@ func _on_chunk_received(chunk_text: String) -> void:
 			continue
 
 		# Ring buffer overflow policy: drop oldest if buffer exceeds 4 KB.
-		var token_bytes := token.length()
+		# Use UTF-8 byte size — Polish/emoji chars are multi-byte.
+		var token_bytes := token.to_utf8_buffer().size()
 		if _token_buffer_bytes + token_bytes > TOKEN_BUFFER_MAX_BYTES:
 			if _token_buffer.size() > 0:
 				var dropped := _token_buffer[0]
 				_token_buffer.remove_at(0)
-				_token_buffer_bytes -= dropped.length()
-				push_warning("OllamaLLMAdapter: token buffer overflow — oldest token dropped (%d bytes)" % dropped.length())
+				_token_buffer_bytes -= dropped.to_utf8_buffer().size()
+				push_warning("OllamaLLMAdapter: token buffer overflow — oldest token dropped (%d bytes)" % dropped.to_utf8_buffer().size())
 
 		_token_buffer.append(token)
 		_token_buffer_bytes += token_bytes
@@ -379,6 +380,7 @@ func _ensure_helper() -> void:
 	if _parent_node != null:
 		_parent_node.add_child(_helper)
 	else:
+		push_warning("OllamaLLMAdapter: parent_node not provided; helper attached to scene root — pass parent_node in setup() to avoid leak")
 		# Defer add to root so this works even before _ready().
 		var main_loop := Engine.get_main_loop()
 		if main_loop != null and main_loop.root != null:
