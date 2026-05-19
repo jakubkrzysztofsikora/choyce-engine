@@ -383,7 +383,12 @@ func _resolve_policy_for_session() -> ParentalControlPolicy:
 
 
 func _is_autoplay_session() -> bool:
-	# Cheap check — only true when smoke probe sets CHOYCE_AUTOPLAY.
+	# Diagnostic bypass — CHOYCE_AUTOPLAY env opens a permissive
+	# combat policy. Adv B A1 fix: also require debug build feature
+	# so a release build can't be bypassed by setting the env var.
+	# Production builds (no "debug"/"editor" feature) always reject.
+	if not (OS.has_feature("debug") or OS.has_feature("editor")):
+		return false
 	return OS.get_environment("CHOYCE_AUTOPLAY") != ""
 
 
@@ -395,7 +400,6 @@ func _permissive_autoplay_policy() -> ParentalControlPolicy:
 		true,    # combat_enabled
 		5        # wave cap
 	)
-	$Layout.visible = false
 
 
 func _on_session_ended() -> void:

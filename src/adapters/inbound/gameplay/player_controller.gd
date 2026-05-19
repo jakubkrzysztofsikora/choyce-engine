@@ -247,17 +247,19 @@ func _input(event: InputEvent) -> void:
 	# FPS-style mouselook: mouse motion alone rotates the camera (no
 	# hold-to-look needed). The cursor is captured for the 3D session
 	# so motion deltas are raw. ESC releases capture so the kid can
-	# click HUD (back button, hotbar). LMB always = attack.
-	#
-	# Replaced the right-mouse-drag-to-look scheme — kid found it
-	# unwieldy alongside LMB-attack + crosshair aim.
+	# click HUD (back button, hotbar). LMB swings only when captured;
+	# LMB while cursor is visible falls through to HUD click handlers
+	# (Adv C B2 fix — was capturing cursor on every LMB regardless of
+	# mode, breaking back-button + hotbar clicks).
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
+			# Only treat LMB as a sword/break swing when the cursor
+			# is captured (kid is "in" the 3D view). When the cursor
+			# is visible, LMB belongs to whatever HUD control it
+			# lands on.
+			if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+				return
 			if event.pressed:
-				# Re-capture cursor if released (kid clicked back into
-				# the 3D view after using HUD).
-				if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
-					Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 				Input.action_press("attack")
 			else:
 				Input.action_release("attack")
@@ -463,7 +465,7 @@ func setup_build_grid(grid: BuildGrid) -> void:
 	for i in mini(default.size(), 4):
 		_hotbar.append((default[i] as BlockKind).block_id)
 	_active_slot = 0
-	hotbar_changed.emit(_active_slot, _hotbar[0])
+	hotbar_changed.emit(_active_slot, _hotbar[_active_slot])
 
 
 func _process_build_input() -> void:

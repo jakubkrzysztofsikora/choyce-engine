@@ -172,30 +172,30 @@ func start_session(world: World, session: Session) -> void:
 	# HUD overlay added below. Gameplay is full-screen 3D + HUD only.
 	# gameplay_runtime is rooted at scene-tree root so it stays visible.
 	_set_main_layout_visible(false)
-	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
 
-
-## Hide / restore the InboundMain Layout (NavBar + Body) for fullscreen
-## gameplay. Looks up the node by absolute path so we don't take a hard
-## dependency on InboundMain from this Node3D.
-func _set_main_layout_visible(value: bool) -> void:
-	var layout := get_node_or_null("/root/Main/Layout")
-	if layout != null:
-		layout.visible = value
-
-	# Spawn sparkle at player spawn
+	# Session-init effects + HUD + spawns moved OUT of _set_main_layout_visible
+	# (Adv D bug #4 — they were running on every layout toggle including
+	# session-end, double-spawning enemies + HUD). Now run once here.
 	if _effect_spawner != null:
 		_effect_spawner.spawn_sparkle_burst(_player_controller.global_position)
-
-	# Connect trigger areas
 	for child in _world_renderer.get_children():
 		if child is Area3D:
 			if not child.body_entered.is_connected(_on_trigger_area_entered):
 				child.body_entered.connect(_on_trigger_area_entered.bind(child))
-
 	_build_hud()
 	_spawn_starter_enemies()
 	_setup_build_grid()
+
+	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
+
+
+## Hide / restore the InboundMain Layout (NavBar + Body) for fullscreen
+## gameplay. Pure visibility toggle — session-init side effects moved
+## back into start_session per Adv D code-quality review.
+func _set_main_layout_visible(value: bool) -> void:
+	var layout := get_node_or_null("/root/Main/Layout")
+	if layout != null:
+		layout.visible = value
 
 
 ## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
@@ -804,7 +804,7 @@ func _build_hud() -> void:
 
 	var hint := Label.new()
 	hint.name = "ControlsHint"
-	hint.text = "WSAD ruch  •  SPACJA skok  •  LPM atak  •  K stawiaj  •  L niszcz  •  1-5 wybór  •  PPM obrót  •  ESC"
+	hint.text = "WSAD ruch  •  SPACJA skok  •  Myszka patrz  •  LPM atak/kop  •  1-5 wybór  •  ESC pokaż myszkę"
 	hint.add_theme_font_size_override("font_size", 22)
 	hint.add_theme_color_override("font_color", Color.WHITE)
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))

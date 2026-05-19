@@ -56,7 +56,26 @@ func _ready() -> void:
 	_setup_provenance_badge()
 	_setup_coppa_panel()
 	_ensure_back_button()
+	_make_layout_responsive()
 	_wire_actions()
+
+
+## Center content with max-width so ultra-wide monitors don't
+## stretch panels edge-to-edge. Mirrors CreateShell helper.
+func _make_layout_responsive() -> void:
+	var layout: VBoxContainer = $Layout
+	if layout == null:
+		return
+	const MAX_CONTENT_WIDTH := 1280.0
+	layout.anchor_left = 0.5
+	layout.anchor_right = 0.5
+	layout.anchor_top = 0.0
+	layout.anchor_bottom = 1.0
+	layout.offset_left = -MAX_CONTENT_WIDTH * 0.5
+	layout.offset_right = MAX_CONTENT_WIDTH * 0.5
+	layout.offset_top = 16.0
+	layout.offset_bottom = -16.0
+	layout.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	# Role guard intentionally NOT called here — _profile may be null at _ready().
 	# It is called unconditionally from setup() after profile is bound.
 	_refresh_labels()

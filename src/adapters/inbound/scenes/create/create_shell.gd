@@ -108,6 +108,7 @@ func _ready() -> void:
 		add_child(_onboarding_overlay)
 
 	_ensure_back_button()
+	_make_layout_responsive()
 	_wire_actions()
 	_refresh_labels()
 	_apply_friendly_theme()
@@ -157,12 +158,41 @@ func _ensure_back_button() -> void:
 	layout.move_child(row, 0)
 
 
-## "▶ Graj teraz" — same effect as the existing GoPlayButton in the
-## actions row, hoisted to the top so the kid can leave editing
-## mode without scrolling/scanning.
+## "▶ Graj teraz" — launches a playtest on the CURRENT world the
+## kid is editing (matches the existing GoPlayButton flow). Was
+## previously just navigating to SHELL_PLAY which made the kid pick
+## a world again — regression flagged by adv UX review B3.
 func _on_play_now_pressed() -> void:
+	# Fire the same launch path the Actions row's "Przejdź do gry"
+	# button uses. _launch_playtest reads _active_world_id + builds
+	# a session via RunPlaytestPort.
+	if has_method("_launch_playtest"):
+		_launch_playtest(false)
+		return
 	if _navigator != null:
 		_navigator.show_shell(SHELL_PLAY)
+
+
+## Center the shell's content with a max width so ultra-wide
+## monitors don't stretch buttons edge-to-edge. Applied to
+## the existing Layout VBoxContainer by switching its anchors
+## from FULL_RECT to a centered band. Existing @onready paths
+## ($Layout/...) are preserved — we mutate anchors only.
+func _make_layout_responsive() -> void:
+	var layout: VBoxContainer = $Layout
+	if layout == null:
+		return
+	const MAX_CONTENT_WIDTH := 1280.0
+	# Center horizontally with a max band; keep vertical full-rect.
+	layout.anchor_left = 0.5
+	layout.anchor_right = 0.5
+	layout.anchor_top = 0.0
+	layout.anchor_bottom = 1.0
+	layout.offset_left = -MAX_CONTENT_WIDTH * 0.5
+	layout.offset_right = MAX_CONTENT_WIDTH * 0.5
+	layout.offset_top = 16.0
+	layout.offset_bottom = -16.0
+	layout.grow_horizontal = Control.GROW_DIRECTION_BOTH
 
 
 func _on_back_to_landing_pressed() -> void:
