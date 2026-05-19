@@ -44,6 +44,16 @@ var _weapon_label: Label
 var _wave_number: int = 0
 var _wave_respawn_timer: float = 0.0
 var _rng: RandomNumberGenerator = null
+
+# Application services extracted from this adapter per Adv 1 H1/H2.
+# Lazy-init so legacy callers (autoplay, tests) keep working.
+var _gear_service: GearProgressionService = null
+var _wave_service: WaveDirectorService = null
+var _combat_service: CombatService = null
+# Authored data lists (loaded from res://data/*.tres at session start
+# if files exist; otherwise the procedural fallback kicks in).
+var _gear_tiers: Array = []       ## Array[GearTierResource]
+var _wave_configs: Array = []     ## Array[WaveConfig]
 const WAVE_RESPAWN_DELAY := 6.0
 ## Kid falls below this y → soft-respawn. Fixes spring-launch
 ## softlock (Adv 2 H-5). Default world floor is y=0; -50 leaves a
@@ -108,6 +118,25 @@ func setup_combat_governance(
 	_combat_policy = policy
 	_audit_ledger = ledger
 	_profile_id = profile_id
+
+
+## Wave NEXT+1 — Resource-driven combat data. Caller passes typed
+## arrays loaded from res://data/{gear,waves}/*.tres. Optional —
+## if empty, GameplayRuntime falls back to the legacy inline
+## ladder + procedural wave curve. Services are owned here so the
+## adapter knows when to apply them; they stay pure RefCounted.
+func setup_combat_data(
+	gear_tiers: Array,        ## Array[GearTierResource]
+	wave_configs: Array       ## Array[WaveConfig]
+) -> void:
+	_gear_tiers = gear_tiers
+	_wave_configs = wave_configs
+	if _gear_service == null:
+		_gear_service = GearProgressionService.new()
+	if _wave_service == null:
+		_wave_service = WaveDirectorService.new()
+	if _combat_service == null:
+		_combat_service = CombatService.new()
 
 
 func start_session(world: World, session: Session) -> void:
@@ -415,9 +444,27 @@ func _pretty_item_name(item_id: String) -> String:
 
 
 ## Gear grinding loop: when kid has the materials, auto-upgrade weapon
-## to the next tier and consume the inputs. Kid-friendly automation —
-## no crafting menu UI for MVP, just a popup notification.
+## to the next tier and consume the inputs. Now routed through
+## GearProgressionService (Adv 1 H1 — pure RefCounted, no Godot leak).
+## Falls back to the legacy inline `_weapon_tiers` Array when no
+## GearTierResource files are loaded so existing kid runs don't break.
 func _try_auto_upgrade_weapon(inv: Dictionary) -> void:
+	# Service-driven path — Resource-backed tier ladder.
+	if not _gear_tiers.is_empty() and _gear_service != null:
+		var next_idx := _gear_service.next_eligible_tier(
+			_gear_tiers, inv, _player_xp_level(), _current_weapon_index
+		)
+		if next_idx < 0:
+			return
+		var tier_res: GearTierResource = _gear_tiers[next_idx]
+		if not _gear_service.consume_materials(inv, tier_res.recipe):
+			return
+		_apply_tier(next_idx, tier_res.display_name, tier_res.weapon_damage, inv)
+		return
+
+	# Legacy inline ladder — kept until res://data/gear/*.tres exists
+	# and parents have authored their preferred curve. Slated for
+	# deletion once data files ship.
 	if _current_weapon_index >= _weapon_tiers.size() - 1:
 		return
 	var next_tier: Dictionary = _weapon_tiers[_current_weapon_index + 1]
@@ -425,23 +472,32 @@ func _try_auto_upgrade_weapon(inv: Dictionary) -> void:
 	for k in needs.keys():
 		if int(inv.get(k, 0)) < int(needs[k]):
 			return
-	# Consume materials.
 	for k in needs.keys():
 		inv[k] = int(inv.get(k, 0)) - int(needs[k])
+	_apply_tier(_current_weapon_index + 1, String(next_tier.get("label", "")),
+		int(next_tier.get("damage", 4)), inv)
+
+
+func _apply_tier(index: int, label: String, damage: int, inv: Dictionary) -> void:
 	if _rules_runtime != null:
 		_rules_runtime.set_context_value("inventory", inv)
-	_current_weapon_index += 1
-	var tier: Dictionary = _weapon_tiers[_current_weapon_index]
+	_current_weapon_index = index
 	if _player_controller != null and _player_controller.has_method("equip_weapon_damage"):
-		_player_controller.equip_weapon_damage(int(tier.get("damage", 4)))
+		_player_controller.equip_weapon_damage(damage)
 	if _weapon_label != null:
-		_weapon_label.text = "🗡 %s (%d dmg)" % [tier.get("label", ""), int(tier.get("damage", 4))]
+		_weapon_label.text = "🗡 %s (%d dmg)" % [label, damage]
 	if _screen_feedback != null:
 		_screen_feedback.flash(Color(1.0, 0.95, 0.4), 0.3)
 	if _effect_spawner != null and _player_controller != null:
 		_effect_spawner.spawn_sparkle_burst(_player_controller.global_position)
-	print("[gear] upgraded to %s (%d dmg)" % [tier.get("label", ""), int(tier.get("damage", 4))])
+	print("[gear] upgraded to %s (%d dmg)" % [label, damage])
 	_refresh_inventory_panel(inv)
+
+
+func _player_xp_level() -> int:
+	# Wave NEXT+2 wires this to XpProgressionService. For now,
+	# stay at level 0 so unlock_level gates only fire post-XP wave.
+	return 0
 
 
 func _rebuild_hotbar_panel(active_slot: int) -> void:
@@ -702,12 +758,28 @@ func _spawn_next_wave() -> void:
 		print("[combat] wave cap %d reached — no further spawn" % cap)
 		return
 	_wave_number += 1
-	print("[combat] wave %d spawning" % _wave_number)
+	# Resource-driven plan via WaveDirectorService when wired; else
+	# the procedural fallback inside the service handles it.
+	var plan: Dictionary
+	if _wave_service != null:
+		plan = _wave_service.plan_wave(_wave_configs, _wave_number)
+	else:
+		plan = {
+			"wave_number": _wave_number,
+			"pack_size": mini(3 + _wave_number, 7),
+			"hp_mult": 1.0,
+			"speed_mult": 1.0,
+			"is_boss_wave": false,
+			"archetype_weights": {},
+		}
+	print("[combat] wave %d spawning (%s)" %
+		[_wave_number, "boss" if plan.get("is_boss_wave", false) else "normal"])
 	_audit_combat("combat_wave_started", {
 		"wave_number": _wave_number,
+		"is_boss": plan.get("is_boss_wave", false),
 		"profile_id": _profile_id,
 	})
-	var pack_size := mini(3 + _wave_number, 7)
+	var pack_size: int = int(plan.get("pack_size", 3))
 	var spawn := _player_controller.global_position
 	var rng := _ensure_rng()
 	for i in pack_size:
