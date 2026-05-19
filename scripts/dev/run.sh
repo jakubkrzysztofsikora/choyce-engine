@@ -121,8 +121,13 @@ fi
 
 if [[ ! -f "$CLASS_CACHE_FILE" || $CHECK -eq 1 || $ASSET_NEWER -eq 1 ]]; then
   if [[ $ASSET_NEWER -eq 1 ]]; then
-    step "asset files newer than cache — wiping .godot/imported + rescanning"
+    step "asset files newer than cache — wiping .godot/imported + reimporting"
     rm -rf "$GODOT_CACHE_DIR/imported"
+    # Editor-scan alone doesn't reimport assets. Run a full import pass first
+    # so all .glb/.gltf/etc. .scn caches regenerate before the game tries to
+    # load them. Suppress the noisy blender-path warning.
+    timeout 120 godot --headless --import 2>&1 | grep -E "SCRIPT ERROR|Parse Error|ERROR" | head -5 || true
+    ok "asset import pass complete"
   fi
   step "running editor scan (~30 s, builds class cache + parse-clean check)"
   PARSE_OUTPUT="$(timeout 90 godot --editor --headless --quit 2>&1)"
