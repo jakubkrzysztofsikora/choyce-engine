@@ -5,6 +5,11 @@ on:
     paths:
       - '.ai/tasks/backlog.yaml'
       - 'src/adapters/inbound/main.gd'
+      - 'src/**'
+      - 'data/**'
+      - 'tests/**'
+      - 'project.godot'
+      - '.github/workflows/composition-root-gate.yml'
 
 jobs:
   enforce-wiring:
@@ -44,3 +49,134 @@ jobs:
           fi
 
           echo "main.gd touched alongside new done entries — gate passes."
+
+  boot-warning-gate:
+    name: Boot Warning Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Godot
+        uses: firebelley/setup-godot@v1
+        with:
+          godot-version: 4.6.1
+          use-dotnet: false
+
+      - name: Headless boot scan
+        id: boot
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          log="boot.log"
+
+          # --quit-after's unit shifted across Godot 4.x (frames vs seconds),
+          # so we rely on POSIX `timeout` as a portable hard cap. SIGTERM
+          # after 45s (giving Godot time to autoload + seed + idle), then
+          # SIGKILL 15s later if it refuses to exit. --preserve-status so
+          # the boot is not auto-failed just because timeout fired.
+          set +e
+          timeout --preserve-status -k 15 45 \
+            godot --headless --path . \
+            >"$log" 2>&1
+          rc=$?
+          set -e
+
+          echo "godot exit code: $rc"
+          echo "---- boot.log (first 200 lines) ----"
+          head -n 200 "$log" || true
+          echo "---- boot.log (tail 200 lines) ----"
+          tail -n 200 "$log" || true
+
+          # Persist for the summary step.
+          cp "$log" boot.log.kept
+
+      - name: Scan boot output for blocking signals
+        id: scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          log="boot.log.kept"
+          if [[ ! -s "$log" ]]; then
+            echo "::error::boot.log is empty — Godot did not produce any output."
+            exit 1
+          fi
+
+          fail=0
+
+          # ---- Negative signals (must be absent) ----------------------------------
+          if grep -nE 'SCRIPT ERROR' "$log"; then
+            echo "::error::SCRIPT ERROR detected during headless boot."
+            fail=1
+          fi
+
+          if grep -nE 'Parse Error' "$log"; then
+            echo "::error::Parse Error detected during headless boot."
+            fail=1
+          fi
+
+          # 'not wired' — allowlist the known W2.4 deferred warning.
+          # Strip allowlisted lines, then grep the remainder.
+          remaining_not_wired=$(grep -nE 'not wired' "$log" \
+            | grep -v 'OnboardingService: event_bus not wired' \
+            || true)
+          if [[ -n "$remaining_not_wired" ]]; then
+            echo "::error::Unallowlisted 'not wired' warning(s) detected:"
+            echo "$remaining_not_wired"
+            fail=1
+          fi
+
+          if grep -nE 'port not ready' "$log"; then
+            echo "::error::'port not ready' warning detected during boot."
+            fail=1
+          fi
+
+          # ---- Positive signals (must be present) ---------------------------------
+          if ! grep -qE 'Seeded [0-9]+ starter worlds' "$log"; then
+            echo "::error::Missing positive signal: 'Seeded N starter worlds'."
+            echo "::error::Phase 2 starter-world seeding did not run."
+            fail=1
+          fi
+
+          if ! grep -qE 'InputMap initialized' "$log"; then
+            echo "::error::Missing positive signal: 'InputMap initialized'."
+            echo "::error::Project did not boot past minimal init."
+            fail=1
+          fi
+
+          if [[ "$fail" -ne 0 ]]; then
+            echo "Boot-warning gate FAILED. See annotations above and the"
+            echo "step summary for the full boot transcript."
+            exit 1
+          fi
+
+          echo "Boot-warning gate passed."
+
+      - name: Publish boot transcript to step summary on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Boot transcript (boot.log)"
+            echo ""
+            echo '```'
+            if [[ -s boot.log.kept ]]; then
+              cat boot.log.kept
+            else
+              echo "(boot.log.kept missing or empty)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload boot log artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-log
+          path: boot.log.kept
+          if-no-files-found: ignore
+          retention-days: 7
