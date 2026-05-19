@@ -765,6 +765,12 @@ func _wire_shell_dependencies() -> void:
 	# this _on_world_card_pressed silently no-ops.
 	if _play_shell.has_method("setup_for_direct_launch"):
 		_play_shell.setup_for_direct_launch(_phase1_project_store)
+	# Wire rules engine — without this, compiled_logic strings stay dead.
+	if _play_shell.has_method("setup_rules"):
+		_play_shell.setup_rules(
+			_ports.get(KEY_RULES_RUNTIME, null),
+			_ports.get(KEY_RULE_COMPILER, null)
+		)
 	_library_shell.setup(
 		_navigator,
 		_profile,

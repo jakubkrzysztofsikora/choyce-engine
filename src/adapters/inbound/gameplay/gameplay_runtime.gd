@@ -2,6 +2,10 @@ class_name GameplayRuntime
 extends Node3D
 
 signal session_ended
+## Emitted when a rule's action fires.
+##   action_kind: int — CompiledRule.ActionKind value
+##   params:      Dict — action params
+signal rule_fired(rule_id: String, action_kind: int, params: Dictionary)
 
 var _world_renderer: WorldRenderer
 var _player_controller: PlayerController
@@ -12,6 +16,13 @@ var _effect_spawner: EffectSpawner
 var _screen_feedback: ScreenFeedback
 var _victory_sequence: VictorySequence
 var _ambient_player: AudioStreamPlayer
+
+# Rules engine — injected by main.gd via setup_rules() before start_session.
+# Optional: GameplayRuntime keeps working with null rules (legacy worlds).
+var _rules_runtime: RulesRuntimePort
+var _rule_compiler: RuleCompilerService
+var _score: int = 0
+var _rules_active: bool = false
 
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
@@ -41,12 +52,26 @@ func _ready() -> void:
 		_victory_sequence.setup(_effect_spawner, _audio_bus, _screen_feedback, _player_controller)
 		_victory_sequence.completed.connect(_on_victory_completed)
 
+## Inject the rules engine. Optional — if not called, rules are inactive
+## and the runtime behaves like the legacy collect-or-touch-win path.
+## Called by main.gd composition root before start_session.
+func setup_rules(runtime: RulesRuntimePort, compiler: RuleCompilerService) -> void:
+	_rules_runtime = runtime
+	_rule_compiler = compiler
+	if _rules_runtime != null and _rules_runtime.has_signal("rules_action"):
+		if not _rules_runtime.is_connected("rules_action", _on_rules_action):
+			_rules_runtime.connect("rules_action", _on_rules_action)
+
+
 func start_session(world: World, session: Session) -> void:
 	_session = session
+	_score = 0
 	var t0 := Time.get_ticks_msec()
-	print("[gameplay] start_session: world=%s nodes=%d" % [world.world_id, world.scene_nodes.size()])
+	print("[gameplay] start_session: world=%s nodes=%d rules=%d" %
+		[world.world_id, world.scene_nodes.size(), world.game_rules.size()])
 	_world_renderer.render_world(world)
 	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
+	_register_world_rules(world)
 	var spawn_pos := _world_renderer.get_spawn_position(0)
 	_player_controller.spawn_at(spawn_pos + Vector3(0, 1, 0))
 	_player_controller.visible = true
@@ -123,7 +148,68 @@ func _build_hud() -> void:
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hud.add_child(hint)
 
+func _physics_process(delta: float) -> void:
+	if _rules_active and _rules_runtime != null:
+		_rules_runtime.tick(delta)
+
+
+func _register_world_rules(world: World) -> void:
+	_rules_active = false
+	if _rules_runtime == null or _rule_compiler == null:
+		return
+	if world == null or world.game_rules.is_empty():
+		_rules_runtime.reset()
+		return
+	var compiled := _rule_compiler.compile_all(world.game_rules)
+	if compiled.is_empty():
+		_rules_runtime.reset()
+		return
+	_rules_runtime.reset()
+	_rules_runtime.register_rules(compiled)
+	_rules_runtime.set_context_value("score", 0)
+	_rules_runtime.set_context_value("inventory", {})
+	_rules_active = true
+	print("[gameplay] rules engine active — %d compiled rules" % compiled.size())
+
+
+## Dispatch table for fired rule actions. Mirrors CompiledRule.ActionKind.
+func _on_rules_action(rule_id: String, action_kind: int, params: Dictionary) -> void:
+	# Mirror in the rule_fired signal so external listeners (HUD, telemetry)
+	# can react without coupling to the runtime port directly.
+	emit_signal("rule_fired", rule_id, action_kind, params)
+	match action_kind:
+		0:  # ADD_SCORE
+			var amount := int(params.get("amount", 0))
+			_score += amount
+			if _rules_runtime != null:
+				_rules_runtime.set_context_value("score", _score)
+			print("[gameplay] add_score(%d) -> %d (rule=%s)" % [amount, _score, rule_id])
+		1:  # SPAWN_ITEM — deferred; logs only for MVP
+			print("[gameplay] spawn_item(%s, %d) — not yet implemented" %
+				[String(params.get("item", "")), int(params.get("count", 0))])
+		2:  # WIN_LEVEL
+			print("[gameplay] win_level fired (rule=%s)" % rule_id)
+			_trigger_victory()
+		3:  # UNLOCK_AREA
+			print("[gameplay] unlock_area(%s) — deferred to BUILDER wave" %
+				String(params.get("zone_id", "")))
+		4:  # OPEN_GATE
+			print("[gameplay] open_gate — deferred")
+		5:  # SET_RESPAWN_POINT
+			if _player_controller != null:
+				_player_controller.set_meta("respawn_point",
+					_player_controller.global_position)
+		6:  # CUSTOM_CALLBACK
+			print("[gameplay] custom_callback(%s) — deferred" %
+				String(params.get("callback_name", "")))
+		_:
+			push_warning("Unknown action_kind: %d" % action_kind)
+
+
 func end_session() -> void:
+	_rules_active = false
+	if _rules_runtime != null:
+		_rules_runtime.reset()
 	_world_renderer.clear_world()
 	if _player_controller != null:
 		_player_controller.visible = false
@@ -161,6 +247,10 @@ func _on_trigger_area_entered(body: Node3D, area: Area3D) -> void:
 	if body != _player_controller:
 		return
 	var trigger_type: String = area.get_meta("trigger_type", "collectible")
+	# Forward zone-enter to rules runtime so on_<event> triggers can fire.
+	if _rules_active and _rules_runtime != null:
+		_rules_runtime.on_event("zone_%s" % trigger_type, {"zone_id": area.name})
+		_rules_runtime.on_event("reach_%s" % trigger_type, {"zone_id": area.name})
 	match trigger_type:
 		"win":
 			_trigger_victory()
@@ -177,6 +267,16 @@ func _trigger_collectible(area: Area3D) -> void:
 	# Disable the trigger so it can only be collected once
 	area.set_deferred("monitoring", false)
 	area.visible = false
+	# Forward to rules runtime — increment inventory + fire ON_COLLECT_COUNT.
+	if _rules_active and _rules_runtime != null:
+		var item_name: String = area.get_meta("item_name", area.name)
+		var inv: Dictionary = _rules_runtime.get_context_value("inventory")
+		if inv == null:
+			inv = {}
+		inv[item_name] = int(inv.get(item_name, 0)) + 1
+		_rules_runtime.set_context_value("inventory", inv)
+		_rules_runtime.on_event("inventory_changed", {"item": item_name})
+		_rules_runtime.on_event("collect_%s" % item_name, {})
 
 func _trigger_victory() -> void:
 	if _victory_sequence != null:

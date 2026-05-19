@@ -12,32 +12,32 @@ extends RefCounted
 
 ## Register the active rule set for a world. Replaces any previously
 ## registered rules. Empty array clears the runtime.
-func register_rules(rules: Array) -> void:
+func register_rules(_rules: Array) -> void:
 	_unimplemented("register_rules")
 
 
 ## Advance time by `delta` seconds. Periodic triggers may fire here.
 ## Called by the adapter's _process / _physics_process.
-func tick(delta: float) -> void:
+func tick(_delta: float) -> void:
 	_unimplemented("tick")
 
 
 ## Notify the runtime of a discrete world event. event_name is the
 ## DSL event identifier (e.g. "collect_carrot", "reach_flag",
 ## "happiness_tick"). payload may carry counts / zone ids / etc.
-func on_event(event_name: String, payload: Dictionary = {}) -> void:
+func on_event(_event_name: String, _payload: Dictionary = {}) -> void:
 	_unimplemented("on_event")
 
 
 ## Update a mutable scalar in the rule-eval context. Used for
 ## inventory counts, score, happiness, blocks_placed. Adapter
 ## inspects these when evaluating ON_*_THRESHOLD triggers.
-func set_context_value(key: String, value: Variant) -> void:
+func set_context_value(_key: String, _value: Variant) -> void:
 	_unimplemented("set_context_value")
 
 
 ## Read a context value (mostly for tests). Returns null if unset.
-func get_context_value(key: String) -> Variant:
+func get_context_value(_key: String) -> Variant:
 	_unimplemented("get_context_value")
 	return null
 

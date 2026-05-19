@@ -19,6 +19,8 @@ var _voice_prompt_port: VoicePromptPort = null
 var _cta_voice_timer: Timer = null
 var _session_start_time: float = 0.0
 var _project_store: ProjectStorePort = null  # injected for direct-launch path
+var _rules_runtime: RulesRuntimePort = null
+var _rule_compiler: RuleCompilerService = null
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -87,6 +89,18 @@ func setup_voice_prompt(port: VoicePromptPort) -> void:
 
 func setup_for_direct_launch(project_store: ProjectStorePort) -> void:
 	_project_store = project_store
+
+
+## Inject the rules engine. Optional — when present, GameplayRuntime
+## compiles each world's GameRule.compiled_logic strings and executes
+## them at runtime (timers, collect-thresholds, win conditions).
+## Without this call, the legacy collect-and-touch-win path remains.
+func setup_rules(
+	rules_runtime: RulesRuntimePort,
+	rule_compiler: RuleCompilerService
+) -> void:
+	_rules_runtime = rules_runtime
+	_rule_compiler = rule_compiler
 
 
 func set_profile(profile: PlayerProfile) -> void:
@@ -270,6 +284,9 @@ func _start_gameplay(world: World, session: Session) -> void:
 	# saw a blank screen with HUD only. Root attach uses the project's
 	# default World3D + Camera3D from the gameplay_runtime scene.
 	get_tree().root.add_child(_gameplay_runtime)
+	if _rules_runtime != null and _rule_compiler != null \
+			and _gameplay_runtime.has_method("setup_rules"):
+		_gameplay_runtime.setup_rules(_rules_runtime, _rule_compiler)
 	_gameplay_runtime.start_session(world, session)
 	$Layout.visible = false
 
