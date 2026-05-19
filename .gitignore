@@ -2,6 +2,9 @@
 .godot/
 export_presets.cfg
 
+# Smoke probe logs (scripts/dev/run.sh --smoke)
+.smoke/
+
 # Godot import sidecars: ignore by default but allow-list the bundled data/
 # tree so fonts + audio + textures resolve as typed resources on a clean
 # clone. Without these committed, theme/audio loads silently fall back to
