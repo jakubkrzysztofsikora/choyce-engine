@@ -109,7 +109,7 @@ func _build_hud() -> void:
 
 	var hint := Label.new()
 	hint.name = "ControlsHint"
-	hint.text = "← → ↑ ↓ ruch  •  Q E obrót  •  SPACJA skok  •  ESC wyjście"
+	hint.text = "← → ↑ ↓ ruch  •  PPM (prawy) + ruch myszą lub Q E obrót  •  SPACJA skok  •  ESC wyjście"
 	hint.add_theme_font_size_override("font_size", 22)
 	hint.add_theme_color_override("font_color", Color.WHITE)
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))

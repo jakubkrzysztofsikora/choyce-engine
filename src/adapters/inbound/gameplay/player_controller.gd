@@ -120,23 +120,41 @@ func _physics_process(delta: float) -> void:
 	elif _camera != null:
 		_camera.position.y = lerp(_camera.position.y, _camera_base_y, 10.0 * delta)
 
-const KEY_ROTATE_SPEED := 2.5  # rad/s for Q/E rotation
+const KEY_ROTATE_SPEED := 2.5  # rad/s for Q/E fallback rotation
+const STICK_ROTATE_SPEED := 3.0  # rad/s at full joypad deflection
+const STICK_DEADZONE := 0.2
+const MOUSE_DRAG_SENSITIVITY := 0.005  # rad per pixel while dragging
+
+var _mouse_dragging: bool = false
 
 func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
 
-	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
-		_vertical_look -= event.relative.y * MOUSE_SENSITIVITY
-		_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
-		_camera.rotation.x = _vertical_look
+	# Right-mouse drag rotates camera. Cursor stays visible the rest of the
+	# time so the kid can click HUD / Wróć normally.
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		_mouse_dragging = event.pressed
+		return
+
+	if event is InputEventMouseMotion:
+		if _mouse_dragging:
+			rotate_y(-event.relative.x * MOUSE_DRAG_SENSITIVITY)
+			_vertical_look -= event.relative.y * MOUSE_DRAG_SENSITIVITY
+			_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
+			if _camera != null:
+				_camera.rotation.x = _vertical_look
+		elif Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+			rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
+			_vertical_look -= event.relative.y * MOUSE_SENSITIVITY
+			_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
+			_camera.rotation.x = _vertical_look
 
 func _process(delta: float) -> void:
 	if not is_processing():
 		return
-	# Kid-friendly camera rotation via Q (left) / E (right) — no cursor capture.
-	# Arrow keys / WASD stay reserved for movement (see _physics_process).
+	# Camera rotation: Q/E keys (fallback) + controller right-stick.
+	# Right-mouse drag is handled in _input.
 	var rot := 0.0
 	if Input.is_key_pressed(KEY_Q):
 		rot += 1.0
@@ -144,6 +162,15 @@ func _process(delta: float) -> void:
 		rot -= 1.0
 	if rot != 0.0:
 		rotate_y(rot * KEY_ROTATE_SPEED * delta)
+	# Controller right-stick: axis 2 = X (yaw), axis 3 = Y (pitch).
+	var stick_x := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
+	var stick_y := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	if absf(stick_x) > STICK_DEADZONE:
+		rotate_y(-stick_x * STICK_ROTATE_SPEED * delta)
+	if absf(stick_y) > STICK_DEADZONE and _camera != null:
+		_vertical_look -= stick_y * STICK_ROTATE_SPEED * delta
+		_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
+		_camera.rotation.x = _vertical_look
 
 func spawn_at(pos: Vector3) -> void:
 	global_position = pos
