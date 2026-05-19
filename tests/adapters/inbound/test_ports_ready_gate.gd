@@ -275,7 +275,7 @@ func _test_click_after_ports_ready_reaches_handler() -> void:
 		overlay.call("_on_record_pressed")
 
 	# Wait for the async timer inside _on_record_pressed
-	await get_tree().create_timer(1.2).timeout
+	await create_timer(1.2).timeout
 
 	_assert(
 		ai.execute_call_count > 0,

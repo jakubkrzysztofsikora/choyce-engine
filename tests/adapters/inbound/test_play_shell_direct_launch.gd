@@ -93,7 +93,7 @@ func _test_valid_launch_sets_active_world_id() -> void:
 	shell.setup(null, profile, mock_loc, mock_port)
 
 	var world := World.new("world_abc", "Test World")
-	world.scene_nodes.append(SceneNode.new("sn_1", "Skała", SceneNode.NodeType.OBJECT))
+	world.scene_nodes.append(SceneNode.new("sn_1", SceneNode.NodeType.OBJECT))
 
 	var project := Project.new("proj_1", "My Project")
 	project.add_world(world)
@@ -135,7 +135,7 @@ func _test_fallback_to_first_world() -> void:
 	shell.setup(null, profile, mock_loc, mock_port)
 
 	var world := World.new("world_first", "First World")
-	world.scene_nodes.append(SceneNode.new("sn_1", "Palma", SceneNode.NodeType.OBJECT))
+	world.scene_nodes.append(SceneNode.new("sn_1", SceneNode.NodeType.OBJECT))
 
 	var project := Project.new("proj_1", "My Project")
 	project.add_world(world)
@@ -197,7 +197,7 @@ func _test_null_run_playtest_port_returns_early() -> void:
 	shell.setup(null, profile, mock_loc, null)
 
 	var world := World.new("world_1", "Test")
-	world.scene_nodes.append(SceneNode.new("sn_1", "Skała", SceneNode.NodeType.OBJECT))
+	world.scene_nodes.append(SceneNode.new("sn_1", SceneNode.NodeType.OBJECT))
 	var project := Project.new("proj_1", "My Project")
 	project.add_world(world)
 

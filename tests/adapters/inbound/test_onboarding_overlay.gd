@@ -65,17 +65,18 @@ func _test_skip_button_emits_advance() -> void:
 	var overlay := OnboardingOverlay.new()
 	get_root().add_child(overlay)
 	await process_frame
-	var fired := false
-	overlay.advance_requested.connect(func(): fired = true)
+	var fired := [false]
+	overlay.advance_requested.connect(func(): fired[0] = true)
 	var btn := overlay.get_skip_button()
 	if btn == null:
 		print("FAIL M5: no skip button")
 		overlay.queue_free()
 		quit(1)
 		return
-	btn.pressed.emit()
+	btn.emit_signal("pressed")
 	await process_frame
-	if not fired:
+	await process_frame
+	if not fired[0]:
 		print("FAIL M5: advance_requested not emitted on skip press")
 		overlay.queue_free()
 		quit(1)

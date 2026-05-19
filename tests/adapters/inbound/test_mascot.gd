@@ -162,9 +162,6 @@ class MockVoicePrompt extends RefCounted:
 	func speak(text: String, _locale: String = "pl-PL") -> void:
 		speak_calls.append(text)
 
-	func has_method(method: String) -> bool:
-		return method == "speak"
-
 
 class MockEventBus extends RefCounted:
 	var subscribe_all_called: bool = false
@@ -172,6 +169,3 @@ class MockEventBus extends RefCounted:
 	func subscribe_all(_handler: Callable) -> bool:
 		subscribe_all_called = true
 		return true
-
-	func has_method(method: String) -> bool:
-		return method == "subscribe_all"

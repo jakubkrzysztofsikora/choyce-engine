@@ -40,7 +40,7 @@ class MockCloudLLM:
 	) -> void:
 		on_done.call({"text": "CLOUD_TEXT", "provider": "cloud", "model": "cloud-m", "stopped": false})
 
-	func complete_with_tools(_e: PromptEnvelope) -> Array[ToolInvocation]:
+	func complete_with_tools_sync(_e: PromptEnvelope) -> Array[ToolInvocation]:
 		var r: Array[ToolInvocation] = []
 		return r
 
@@ -59,7 +59,7 @@ class StubLLM:
 	) -> void:
 		on_done.call({"text": inject_text, "provider": inject_provider, "model": "stub-m", "stopped": inject_stopped})
 
-	func complete_with_tools(_e: PromptEnvelope) -> Array[ToolInvocation]:
+	func complete_with_tools_sync(_e: PromptEnvelope) -> Array[ToolInvocation]:
 		var r: Array[ToolInvocation] = []
 		r.append(ToolInvocation.new("scene_edit", {"operation": "add_object", "type": "tree"}, "stub_1"))
 		return r
@@ -218,7 +218,7 @@ func _init() -> void:
 	# Now push a chunk that exceeds capacity.
 	var overflow_chunk := '{"response": "%s"}' % "B".repeat(20)
 	var warned := false
-	var original_push_warning := null  # can't intercept, but we can check buffer state.
+	var _original_push_warning: Variant = null  # can't intercept, but we can check buffer state.
 	adapter_buf._on_chunk_received(overflow_chunk)
 
 	checks += 1

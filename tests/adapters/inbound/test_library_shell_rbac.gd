@@ -25,15 +25,18 @@ const PublishToFamilyLibraryPort = preload("res://src/ports/inbound/publish_to_f
 # Mocks
 # ---------------------------------------------------------------------------
 
+const PublishRequest = preload("res://src/domain/publishing/publish_request.gd")
+
+
 class MockReviewPort extends ReviewPublishRequestPort:
 	var execute_call_count := 0
 
 	func execute(
 		_request_id: String,
-		_approve: bool,
-		_actor: PlayerProfile,
+		_approved: bool,
+		_reviewer: PlayerProfile,
 		_reason: String
-	) -> Variant:
+	) -> PublishRequest:
 		execute_call_count += 1
 		return null
 
@@ -41,13 +44,13 @@ class MockReviewPort extends ReviewPublishRequestPort:
 class MockUnpublishPort extends UnpublishWorldPort:
 	var execute_call_count := 0
 
-	func execute(_request_id: String, _actor: PlayerProfile, _reason: String) -> Variant:
+	func execute(_request_id: String, _actor: PlayerProfile, _reason: String) -> PublishRequest:
 		execute_call_count += 1
 		return null
 
 
 class MockPublishPort extends PublishToFamilyLibraryPort:
-	func execute(_project_id: String, _world_id: String, _actor: PlayerProfile) -> Variant:
+	func execute(_project_id: String, _world_id: String, _requester: PlayerProfile) -> PublishRequest:
 		return null
 
 
