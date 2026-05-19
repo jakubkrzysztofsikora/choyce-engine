@@ -8,6 +8,15 @@ func _ready() -> void:
     _ensure_action("jump", [KEY_SPACE])
     _ensure_action("sprint", [KEY_SHIFT])
     _ensure_action("interact", [KEY_E])
+    # Roblox-style combat + build inputs for 7yo player.
+    _ensure_action("attack", [KEY_J, KEY_F])         # left-click also wired in player_controller
+    _ensure_action("place_block", [KEY_K])           # voxel build / drop block from hotbar
+    _ensure_action("break_block", [KEY_L])           # mine / destroy block
+    _ensure_action("hotbar_1", [KEY_1])
+    _ensure_action("hotbar_2", [KEY_2])
+    _ensure_action("hotbar_3", [KEY_3])
+    _ensure_action("hotbar_4", [KEY_4])
+    _ensure_action("hotbar_5", [KEY_5])
     print("InputMap initialized")
 
 func _ensure_action(action_name: String, keycodes: Array) -> void:

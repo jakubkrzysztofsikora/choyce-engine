@@ -18,6 +18,23 @@ signal footstep
 signal landed
 signal hard_landed
 signal jumped
+signal attacked(damage: int, hit_position: Vector3)
+signal hp_changed(current: int, max_hp: int)
+signal player_defeated
+
+## Combat state. Player HP regenerates 2/sec when not recently hit.
+## Equipped weapon damage drives _on_attack hit value; defaults to a
+## starter "fist" 4-damage weapon until inventory injects something.
+const ATTACK_COOLDOWN := 0.4
+const ATTACK_RANGE := 1.8
+const ATTACK_ARC_RADIANS := 1.4   ## ~80° front cone
+const STARTER_WEAPON_DAMAGE := 4
+const PLAYER_MAX_HP := 100
+const PLAYER_REGEN_PER_SEC := 2.0
+
+var _health: HealthState
+var _attack_cooldown: float = 0.0
+var _equipped_weapon_damage: int = STARTER_WEAPON_DAMAGE
 
 var _camera: Camera3D
 var _vertical_look: float = 0.0
@@ -34,6 +51,8 @@ var _current_anim: String = ""
 const WALK_VELOCITY_THRESHOLD := 0.5
 
 func _ready() -> void:
+	_health = HealthState.new(PLAYER_MAX_HP)
+	hp_changed.emit(_health.current_hp, _health.max_hp)
 	_camera = $Camera3D
 	if _camera == null:
 		push_error("PlayerController: Camera3D child not found")
@@ -102,6 +121,14 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0, speed)
 
 	move_and_slide()
+
+	# Combat tick — regen + cooldowns + attack input.
+	if _health != null:
+		_health.tick(delta, PLAYER_REGEN_PER_SEC)
+		hp_changed.emit(_health.current_hp, _health.max_hp)
+	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
+	if Input.is_action_pressed("attack") and _attack_cooldown <= 0.0:
+		_perform_attack()
 
 	# Landing detection and squash
 	if is_on_floor() and not _was_on_floor:
@@ -188,15 +215,19 @@ func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
 
-	# Left- or right-mouse drag rotates camera. Cursor stays visible. macOS
-	# trackpad's right-click is inconsistent (two-finger tap, system gesture
-	# bindings), so we accept both buttons. Cursor remains free for HUD/Wróć.
-	if event is InputEventMouseButton and (
-		event.button_index == MOUSE_BUTTON_LEFT
-		or event.button_index == MOUSE_BUTTON_RIGHT
-	):
-		_mouse_dragging = event.pressed
-		return
+	# Roblox-style mouse layout for 7yo combat player:
+	#   left mouse  = attack (passes through to Input.is_action_pressed via _physics_process)
+	#   right mouse = hold-drag camera look (cursor visible, no capture)
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				Input.action_press("attack")
+			else:
+				Input.action_release("attack")
+			return
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			_mouse_dragging = event.pressed
+			return
 
 	if event is InputEventMouseMotion:
 		if _mouse_dragging:
@@ -247,6 +278,65 @@ func spawn_at(pos: Vector3) -> void:
 		_camera.make_current()
 		print("[player_controller] spawn_at: player=%s camera=%s current=%s" %
 			[global_position, _camera.global_position, _camera.current])
+
+## Sweep the front cone for enemies. Hit each EnemyController within
+## ATTACK_RANGE + ATTACK_ARC. Emit `attacked` signal so gameplay
+## runtime can spawn swing VFX / SFX.
+func _perform_attack() -> void:
+	_attack_cooldown = ATTACK_COOLDOWN
+	# Squash a tiny attack scale tween for game feel.
+	var attack_tween := create_tween()
+	attack_tween.tween_property(self, "scale", _base_scale * Vector3(1.05, 0.95, 1.05), 0.08)
+	attack_tween.tween_property(self, "scale", _base_scale, 0.12)
+
+	var hit_origin := global_position + Vector3(0, 0.8, 0)
+	var forward := -transform.basis.z.normalized()
+	var hit_point := hit_origin + forward * (ATTACK_RANGE * 0.5)
+	attacked.emit(_equipped_weapon_damage, hit_point)
+
+	# Hit-detect: scan scene tree for EnemyControllers in arc.
+	# (Cheap O(N) — kid maps will rarely hold > 20 enemies.)
+	var tree := get_tree()
+	if tree == null:
+		return
+	for body in tree.get_nodes_in_group("enemies"):
+		if not (body is EnemyController):
+			continue
+		var to_enemy: Vector3 = body.global_position - global_position
+		to_enemy.y = 0.0
+		var distance := to_enemy.length()
+		if distance > ATTACK_RANGE:
+			continue
+		var angle := forward.angle_to(to_enemy.normalized())
+		if angle > ATTACK_ARC_RADIANS * 0.5:
+			continue
+		(body as EnemyController).apply_damage(_equipped_weapon_damage, global_position)
+
+
+## Called by EnemyController on touch contact. Routes through
+## HealthState which enforces invuln + per-hit damage cap.
+func apply_damage_from_enemy(amount: int, source_position: Vector3) -> void:
+	if _health == null:
+		return
+	if not _health.apply_damage(amount):
+		return
+	hp_changed.emit(_health.current_hp, _health.max_hp)
+	# Knockback away from source.
+	var away := (global_position - source_position).normalized()
+	away.y = 0.0
+	velocity = away * 5.0
+	velocity.y = 4.0
+	if not _health.is_alive:
+		player_defeated.emit()
+
+
+func get_health() -> HealthState:
+	return _health
+
+
+func equip_weapon_damage(damage: int) -> void:
+	_equipped_weapon_damage = maxi(damage, 1)
+
 
 func _landing_squash() -> void:
 	var tween := create_tween()

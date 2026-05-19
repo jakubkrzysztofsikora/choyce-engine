@@ -24,6 +24,11 @@ var _rule_compiler: RuleCompilerService
 var _score: int = 0
 var _rules_active: bool = false
 
+# Combat HUD references — built lazily in _build_hud.
+var _hp_bar: ProgressBar
+var _score_label: Label
+var _enemy_root: Node3D
+
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
 	_player_controller = $PlayerController
@@ -106,6 +111,92 @@ func _set_main_layout_visible(value: bool) -> void:
 				child.body_entered.connect(_on_trigger_area_entered.bind(child))
 
 	_build_hud()
+	_spawn_starter_enemies()
+
+
+## MVP: spawn a small kid-safe enemy pack around the player so the
+## 7yo Roblox-fluent kid has someone to fight from the moment the
+## world loads. Procedural — no Kenney character meshes needed.
+## Three enemies: 2 green slimes + 1 pink bouncer at 8m / 12m / 14m
+## from spawn.
+func _spawn_starter_enemies() -> void:
+	if _player_controller == null:
+		return
+	if _enemy_root != null and is_instance_valid(_enemy_root):
+		_enemy_root.queue_free()
+	_enemy_root = Node3D.new()
+	_enemy_root.name = "Enemies"
+	add_child(_enemy_root)
+
+	var spawn := _player_controller.global_position
+	var def_a := EnemyDefinition.slime_green()
+	var def_b := EnemyDefinition.slime_green()
+	var def_c := EnemyDefinition.bouncer()
+
+	_spawn_one(def_a, spawn + Vector3(8, 1, 0))
+	_spawn_one(def_b, spawn + Vector3(-7, 1, 6))
+	_spawn_one(def_c, spawn + Vector3(0, 1, 14))
+
+
+func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
+	var enemy := EnemyController.new()
+	enemy.add_to_group("enemies")
+	# setup() before add_child so definition is non-null when _ready fires.
+	enemy.setup(def, _player_controller)
+	enemy.defeated.connect(_on_enemy_defeated)
+	_enemy_root.add_child(enemy)
+	enemy.global_position = pos
+
+
+func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> void:
+	print("[combat] defeated %s at %s loot=%s" % [enemy_id, position, loot])
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("collect", position)
+	if _effect_spawner != null:
+		_effect_spawner.spawn_sparkle_burst(position)
+	# Forward to rules engine — on_defeat_<enemy> events + inventory items.
+	if _rules_runtime != null:
+		_rules_runtime.on_event("defeat_%s" % enemy_id, {"enemy_id": enemy_id})
+		var inv: Variant = _rules_runtime.get_context_value("inventory")
+		var inv_dict: Dictionary = inv if inv is Dictionary else {}
+		for drop in loot:
+			if not (drop is Dictionary):
+				continue
+			var item := String((drop as Dictionary).get("item_id", ""))
+			var qty := int((drop as Dictionary).get("quantity", 0))
+			if item == "":
+				continue
+			inv_dict[item] = int(inv_dict.get(item, 0)) + qty
+			_rules_runtime.on_event("inventory_changed", {"item": item})
+			_rules_runtime.on_event("collect_%s" % item, {})
+		_rules_runtime.set_context_value("inventory", inv_dict)
+	# Default scoring fallback (works even without compiled rules).
+	_score += 5
+	if _score_label != null:
+		_score_label.text = "★ %d" % _score
+
+
+func _on_player_hp_changed(current: int, max_hp: int) -> void:
+	if _hp_bar == null:
+		return
+	_hp_bar.max_value = max_hp
+	_hp_bar.value = current
+
+
+func _on_player_defeated() -> void:
+	# Kid-safe defeat — soft fade + respawn at spawn point, no game-over.
+	print("[combat] player defeated — soft respawn")
+	if _screen_feedback != null:
+		_screen_feedback.flash(Color(1.0, 0.85, 0.85), 0.5)
+	if _world_renderer != null and _player_controller != null:
+		var spawn_pos := _world_renderer.get_spawn_position(0)
+		_player_controller.spawn_at(spawn_pos + Vector3(0, 1, 0))
+		if _player_controller.has_method("get_health"):
+			var h: HealthState = _player_controller.get_health()
+			if h != null:
+				h.current_hp = h.max_hp
+				h.is_alive = true
+				_player_controller.hp_changed.emit(h.current_hp, h.max_hp)
 
 
 ## Kid-facing HUD: a Wróć button + control hint so a 5-7 year-old sees what to
@@ -132,9 +223,47 @@ func _build_hud() -> void:
 	back.pressed.connect(end_session)
 	hud.add_child(back)
 
+	# HP bar + score panel (top-right). 7yo combat HUD.
+	var stats_panel := PanelContainer.new()
+	stats_panel.name = "StatsPanel"
+	stats_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	stats_panel.offset_left = -240
+	stats_panel.offset_top = 32
+	stats_panel.offset_right = -32
+	stats_panel.offset_bottom = 132
+	hud.add_child(stats_panel)
+
+	var stats_vbox := VBoxContainer.new()
+	stats_vbox.add_theme_constant_override("separation", 6)
+	stats_panel.add_child(stats_vbox)
+
+	_hp_bar = ProgressBar.new()
+	_hp_bar.name = "HpBar"
+	_hp_bar.min_value = 0
+	_hp_bar.max_value = 100
+	_hp_bar.value = 100
+	_hp_bar.custom_minimum_size = Vector2(180, 24)
+	_hp_bar.add_theme_color_override("font_color", Color.WHITE)
+	stats_vbox.add_child(_hp_bar)
+
+	_score_label = Label.new()
+	_score_label.name = "ScoreLabel"
+	_score_label.text = "★ 0"
+	_score_label.add_theme_font_size_override("font_size", 22)
+	_score_label.add_theme_color_override("font_color", Color(1, 0.92, 0.4))
+	_score_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_score_label.add_theme_constant_override("shadow_offset_x", 2)
+	_score_label.add_theme_constant_override("shadow_offset_y", 2)
+	stats_vbox.add_child(_score_label)
+
+	# Wire HP signal from player.
+	if _player_controller != null and _player_controller.has_signal("hp_changed"):
+		_player_controller.hp_changed.connect(_on_player_hp_changed)
+		_player_controller.player_defeated.connect(_on_player_defeated)
+
 	var hint := Label.new()
 	hint.name = "ControlsHint"
-	hint.text = "← → ↑ ↓ ruch  •  przeciągnij myszą = obrót  •  SPACJA skok  •  ESC wyjście"
+	hint.text = "WSAD ruch  •  SPACJA skok  •  LPM atak  •  J/F atak  •  PPM obrót kamery  •  ESC wyjście"
 	hint.add_theme_font_size_override("font_size", 22)
 	hint.add_theme_color_override("font_color", Color.WHITE)
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
