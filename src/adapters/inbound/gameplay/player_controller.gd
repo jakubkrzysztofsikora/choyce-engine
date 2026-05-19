@@ -36,6 +36,24 @@ var _health: HealthState
 var _attack_cooldown: float = 0.0
 var _equipped_weapon_damage: int = STARTER_WEAPON_DAMAGE
 
+# Procedural Muay Thai fight animation state. No skeletal-bone work
+# required — animates the existing _character_mesh wrapper via tween
+# and lerp. Cheap, keeps the Kenney character's own idle/walk anims
+# running underneath. Kid sees: forward-leaned stance when idle in
+# combat mode, alternating jab/cross thrust on each LMB swing.
+const PUNCH_LEAN_RAD := 0.32        ## ~18° side-lean per punch
+const PUNCH_FORWARD_PUSH := 0.22     ## meters forward at peak
+const PUNCH_DURATION := 0.22         ## one full strike cycle in s
+const MUAY_THAI_FORWARD_LEAN := 0.10 ## ~6° permanent forward stance
+const MUAY_THAI_BOUNCE_AMP := 0.04
+const MUAY_THAI_BOUNCE_FREQ := 1.6   ## Hz
+const MUAY_THAI_POSE_LERP := 6.0
+
+var _punch_phase: int = 0           ## 0=jab(R), 1=cross(L), 2=elbow(R)…
+var _is_punching: bool = false
+var _muay_thai_t: float = 0.0
+var _punch_tween: Tween = null
+
 ## Voxel build hookup. GameplayRuntime injects via setup_build_grid().
 ## Hotbar tracks which BlockKind id maps to slots 1..5; default first
 ## 5 from BlockKind.default_catalog().
@@ -157,6 +175,7 @@ func _physics_process(delta: float) -> void:
 	# build mode. _process_build_input handles K + 1-5.
 	_process_build_input()
 	_update_ghost_preview()
+	_update_muay_thai_idle(delta)
 
 	# Landing detection and squash
 	if is_on_floor() and not _was_on_floor:
@@ -322,6 +341,11 @@ func _perform_attack() -> void:
 	attack_tween.tween_property(self, "scale", _base_scale * Vector3(1.05, 0.95, 1.05), 0.08)
 	attack_tween.tween_property(self, "scale", _base_scale, 0.12)
 
+	# Procedural Muay Thai strike. Alternates jab/cross/elbow/knee
+	# pattern so kid sees variety. Kept short (0.22s) to match
+	# combat cooldown — strike resolves before next swing.
+	_trigger_punch_animation()
+
 	var hit_origin := global_position + Vector3(0, 0.8, 0)
 	var forward := -transform.basis.z.normalized()
 	var hit_point := hit_origin + forward * (ATTACK_RANGE * 0.5)
@@ -344,6 +368,100 @@ func _perform_attack() -> void:
 		if angle > ATTACK_ARC_RADIANS * 0.5:
 			continue
 		(body as EnemyController).apply_damage(_equipped_weapon_damage, global_position)
+
+
+## Procedural Muay Thai strike animation. Alternates four moves so
+## a run of swings reads as fight choreography, not a single repeat:
+##   phase 0  jab — right-arm-out forward thrust, +lean
+##   phase 1  cross — left-arm-out forward thrust, opposite lean
+##   phase 2  elbow — short range, sharp Z-rotation
+##   phase 3  knee — slight crouch (Y dip) + forward push
+## Animates the _character_mesh wrapper via tween. The Kenney
+## character's underlying AnimationPlayer keeps running (walk/idle
+## clips) so this overlay reads as fighter motion, not robotic.
+func _trigger_punch_animation() -> void:
+	if _character_mesh == null:
+		return
+	# Kill the previous punch tween so back-to-back swings don't
+	# stack overlapping property targets.
+	if _punch_tween != null and _punch_tween.is_valid():
+		_punch_tween.kill()
+	_is_punching = true
+	var phase := _punch_phase % 4
+	_punch_phase += 1
+
+	# Per-phase: (lean_z_rad, forward_push, y_dip, rotation_y_rad)
+	var lean := PUNCH_LEAN_RAD
+	var push := PUNCH_FORWARD_PUSH
+	var dip := 0.0
+	var twist := 0.0
+	match phase:
+		0:  # jab — right hand straight
+			lean = -PUNCH_LEAN_RAD * 0.6
+			push = PUNCH_FORWARD_PUSH * 0.8
+			twist = -0.12
+		1:  # cross — left hand straight, more weight transfer
+			lean = PUNCH_LEAN_RAD * 0.7
+			push = PUNCH_FORWARD_PUSH
+			twist = 0.18
+		2:  # elbow — short + sharp
+			lean = PUNCH_LEAN_RAD
+			push = PUNCH_FORWARD_PUSH * 0.5
+			twist = -0.20
+		3:  # knee — drop hips + push forward
+			lean = -PUNCH_LEAN_RAD * 0.3
+			push = PUNCH_FORWARD_PUSH * 1.1
+			dip = -0.15
+
+	# Tween toward strike pose, then back to neutral. Parallel block
+	# fires all property tweens at once; chain() switches to sequential
+	# for the return.
+	var t := create_tween()
+	t.set_parallel(true)
+	t.tween_property(_character_mesh, "rotation:z", lean, PUNCH_DURATION * 0.4)
+	t.tween_property(_character_mesh, "rotation:y", PI + twist, PUNCH_DURATION * 0.4)
+	t.tween_property(_character_mesh, "position:z", -push, PUNCH_DURATION * 0.4)
+	t.tween_property(_character_mesh, "position:y", dip, PUNCH_DURATION * 0.4)
+	t.chain()
+	t.tween_property(_character_mesh, "rotation:z", 0.0, PUNCH_DURATION * 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(_character_mesh, "rotation:y", PI, PUNCH_DURATION * 0.6)
+	t.tween_property(_character_mesh, "position:z", 0.0, PUNCH_DURATION * 0.6)
+	t.tween_property(_character_mesh, "position:y", 0.0, PUNCH_DURATION * 0.6)
+	t.tween_callback(_on_punch_finished)
+	_punch_tween = t
+
+
+func _on_punch_finished() -> void:
+	_is_punching = false
+
+
+## Subtle Muay Thai stance: forward lean + side-to-side bounce when
+## the kid is in COMBAT mode (weapon/fist held). Reads as "ready to
+## fight" idle vs the default straight-arms-down Kenney idle. Only
+## runs when not actively punching so the strike tween isn't fought.
+func _update_muay_thai_idle(delta: float) -> void:
+	if _character_mesh == null or _is_punching:
+		return
+	# Only apply the stance when fist/weapon is the active hotbar
+	# slot. Holding a block (BUILD mode) keeps neutral posture so
+	# kid doesn't look like they're fighting their toolbox.
+	var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
+	var svc := _ensure_game_mode_service()
+	var combat := svc.current_mode(active_kind) == GameModeService.Mode.COMBAT
+	if not combat:
+		# Drift toward neutral so leaving combat mode releases the
+		# stance smoothly. _character_mesh.rotation.y stays at PI
+		# (the +180° base orientation for Kenney character).
+		_character_mesh.rotation.x = lerp(_character_mesh.rotation.x, 0.0, MUAY_THAI_POSE_LERP * delta)
+		_character_mesh.rotation.z = lerp(_character_mesh.rotation.z, 0.0, MUAY_THAI_POSE_LERP * delta)
+		return
+	_muay_thai_t += delta * MUAY_THAI_BOUNCE_FREQ * TAU
+	var sway := sin(_muay_thai_t) * MUAY_THAI_BOUNCE_AMP
+	# Forward lean (pitch) + alternating side bounce (roll).
+	var target_pitch := MUAY_THAI_FORWARD_LEAN
+	var target_roll := sway * 0.6
+	_character_mesh.rotation.x = lerp(_character_mesh.rotation.x, target_pitch, MUAY_THAI_POSE_LERP * delta)
+	_character_mesh.rotation.z = lerp(_character_mesh.rotation.z, target_roll, MUAY_THAI_POSE_LERP * delta)
 
 
 ## Called by EnemyController on touch contact. Routes through
