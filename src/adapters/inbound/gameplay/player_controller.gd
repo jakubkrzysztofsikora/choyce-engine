@@ -131,9 +131,13 @@ func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
 
-	# Right-mouse drag rotates camera. Cursor stays visible the rest of the
-	# time so the kid can click HUD / Wróć normally.
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+	# Left- or right-mouse drag rotates camera. Cursor stays visible. macOS
+	# trackpad's right-click is inconsistent (two-finger tap, system gesture
+	# bindings), so we accept both buttons. Cursor remains free for HUD/Wróć.
+	if event is InputEventMouseButton and (
+		event.button_index == MOUSE_BUTTON_LEFT
+		or event.button_index == MOUSE_BUTTON_RIGHT
+	):
 		_mouse_dragging = event.pressed
 		return
 
