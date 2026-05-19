@@ -28,6 +28,10 @@ var _footstep_timer: float = 0.0
 var _head_bob_time: float = 0.0
 var _base_scale: Vector3 = Vector3.ONE
 var _camera_base_y: float = 1.6
+var _character_mesh: Node3D
+var _anim_player: AnimationPlayer
+var _current_anim: String = ""
+const WALK_VELOCITY_THRESHOLD := 0.5
 
 func _ready() -> void:
 	_camera = $Camera3D
@@ -44,6 +48,15 @@ func _ready() -> void:
 		_camera.make_current()
 		print("[player_controller] _ready: camera current=%s pos=%s viewport=%s" %
 			[_camera.current, _camera.global_position, _camera.get_viewport()])
+	# Kenney character authored facing +Z (toward camera). Rotate 180° so it
+	# faces forward (-Z, away from camera) matching movement direction.
+	_character_mesh = get_node_or_null("CharacterMesh")
+	if _character_mesh != null:
+		_character_mesh.rotation.y = PI
+		# Kenney GLB embeds an AnimationPlayer with idle/walk/sprint/jump/fall.
+		_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
+		if _anim_player != null:
+			_play_anim("idle")
 
 func _physics_process(delta: float) -> void:
 	if not is_processing():
@@ -112,13 +125,40 @@ func _physics_process(delta: float) -> void:
 	if _camera != null and not is_equal_approx(_camera.fov, target_fov):
 		_camera.fov = lerp(_camera.fov, target_fov, 8.0 * delta)
 
-	# Head bob
+	# Head bob (was at the tail of _physics_process — kept here)
 	if is_on_floor() and direction.length() > 0 and _camera != null:
 		_head_bob_time += delta * speed * 0.8
 		var bob_offset := sin(_head_bob_time * TAU) * 0.04
 		_camera.position.y = _camera_base_y + bob_offset
 	elif _camera != null:
 		_camera.position.y = lerp(_camera.position.y, _camera_base_y, 10.0 * delta)
+
+	# Drive character animation from horizontal velocity.
+	if _anim_player != null:
+		var horiz := Vector2(velocity.x, velocity.z).length()
+		var want := "idle"
+		if not is_on_floor():
+			want = "fall"
+		elif horiz > WALK_VELOCITY_THRESHOLD:
+			want = "sprint" if is_sprinting else "walk"
+		_play_anim(want)
+
+
+## Switch to the named animation if not already playing. Falls back to whatever
+## is in the GLB if the name isn't found (some Kenney packs name them differently).
+func _play_anim(name: String) -> void:
+	if _anim_player == null or _current_anim == name:
+		return
+	if not _anim_player.has_animation(name):
+		# Try a fuzzy fallback to anything starting with the name.
+		for a in _anim_player.get_animation_list():
+			if String(a).to_lower().begins_with(name.to_lower()):
+				name = a
+				break
+		if not _anim_player.has_animation(name):
+			return
+	_anim_player.play(name)
+	_current_anim = name
 
 const KEY_ROTATE_SPEED := 2.5  # rad/s for Q/E fallback rotation
 const STICK_ROTATE_SPEED := 3.0  # rad/s at full joypad deflection
