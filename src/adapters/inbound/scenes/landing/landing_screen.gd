@@ -72,6 +72,9 @@ func _build_scene_tree() -> void:
 		bg_layer.add_child(sky)
 
 	# Sun element (above sky, below clouds)
+	# W1.10: anchor top-right so the sun stays in the corner across viewport
+	# widths (1280-2560+). Previously hardcoded Vector2(1540, 60) clipped off
+	# the right edge on the 1600px project default.
 	var sun_tex: Texture2D = load("res://data/textures/landing/sun.png") if ResourceLoader.exists("res://data/textures/landing/sun.png") else null
 	if sun_tex != null:
 		var sun := TextureRect.new()
@@ -79,7 +82,11 @@ func _build_scene_tree() -> void:
 		sun.texture = sun_tex
 		sun.custom_minimum_size = Vector2(192, 192)
 		sun.size = Vector2(192, 192)
-		sun.position = Vector2(1540, 60)
+		sun.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		sun.offset_left = -252
+		sun.offset_top = 60
+		sun.offset_right = -60
+		sun.offset_bottom = 252
 		sun.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		bg_layer.add_child(sun)
 
@@ -108,9 +115,10 @@ func _build_scene_tree() -> void:
 			bg_layer.add_child(cloud)
 
 	# Sparkles
+	# W1.10: anchor centre so the emitter stays mid-screen on any viewport.
 	var sparkles := CPUParticles2D.new()
 	sparkles.name = "Sparkles"
-	sparkles.position = Vector2(960, 540)
+	sparkles.set_anchors_preset(Control.PRESET_CENTER)
 	sparkles.amount = 40
 	sparkles.lifetime = 4.0
 	sparkles.direction = Vector2(0.3, -1)
@@ -131,15 +139,21 @@ func _build_scene_tree() -> void:
 		grass.texture = grass_tex
 		grass.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		grass.stretch_mode = TextureRect.STRETCH_TILE
-		grass.size = Vector2(1920, 180)
-		grass.position = Vector2(0, 900)
+		# W1.10: anchor bottom-full-width so grass stays at the bottom across
+		# viewport widths/heights instead of clipping out the bottom of the
+		# 1600x960 default.
+		grass.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+		grass.offset_left = 0
+		grass.offset_top = -180
+		grass.offset_right = 0
+		grass.offset_bottom = 0
 		grass.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		bg_layer.add_child(grass)
 
-	# Title label
+	# Title label (W1.9: route via _t() so brand stays in single source of truth)
 	var title := Label.new()
 	title.name = "TitleLabel"
-	title.text = "Choyce"
+	title.text = _t("landing.title")
 	title.position = Vector2(60, 32)
 	title.size = Vector2(440, 110)
 	add_child(title)
@@ -152,15 +166,18 @@ func _build_scene_tree() -> void:
 	stack.add_theme_constant_override("separation", 24)
 	add_child(stack)
 
+	# W1.9: route landing CTAs through _t() so F-056-01 stays closed on the
+	# literal first screen kid sees. Previously hardcoded Polish — regressed
+	# the Wave-A/C l10n discipline.
 	_btn_play = Button.new()
 	_btn_play.name = "BtnPlay"
-	_btn_play.text = "ZAGRAJ"
+	_btn_play.text = _t("landing.play")
 	_btn_play.custom_minimum_size = Vector2(360, 110)
 	stack.add_child(_btn_play)
 
 	_btn_create = Button.new()
 	_btn_create.name = "BtnCreate"
-	_btn_create.text = "ZRÓB"
+	_btn_create.text = _t("landing.create")
 	_btn_create.custom_minimum_size = Vector2(360, 110)
 	stack.add_child(_btn_create)
 
@@ -171,7 +188,7 @@ func _build_scene_tree() -> void:
 
 	_btn_parent = Button.new()
 	_btn_parent.name = "BtnParent"
-	_btn_parent.text = "RODZIC"
+	_btn_parent.text = _t("landing.parent")
 	_btn_parent.custom_minimum_size = Vector2(240, 68)
 	_btn_parent.modulate.a = 0.72
 	parent_row.add_child(_btn_parent)
@@ -189,10 +206,15 @@ func _build_scene_tree() -> void:
 	backdrop.color = Color(0, 0, 0, 0.7)
 	_picker_layer.add_child(backdrop)
 
+	# W1.10: picker scroll anchored full-rect with margins so the card row
+	# survives 1280-2560px viewports without horizontal clipping.
 	var scroll := ScrollContainer.new()
 	scroll.name = "PickerScroll"
-	scroll.position = Vector2(60, 120)
-	scroll.size = Vector2(1800, 580)
+	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scroll.offset_left = 60
+	scroll.offset_top = 120
+	scroll.offset_right = -60
+	scroll.offset_bottom = -180
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_picker_layer.add_child(scroll)
@@ -203,11 +225,15 @@ func _build_scene_tree() -> void:
 	_card_row.add_theme_constant_override("separation", 20)
 	scroll.add_child(_card_row)
 
+	# W1.10: anchor top-right so close button is always reachable.
 	var close_btn := Button.new()
 	close_btn.name = "CloseBtn"
 	close_btn.text = "✕"
-	close_btn.position = Vector2(1840, 20)
-	close_btn.size = Vector2(60, 60)
+	close_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	close_btn.offset_left = -80
+	close_btn.offset_top = 20
+	close_btn.offset_right = -20
+	close_btn.offset_bottom = 80
 	_picker_layer.add_child(close_btn)
 
 
@@ -343,7 +369,10 @@ func _start_cloud_drift() -> void:
 			continue
 		var cloud: Control = get_node(cloud_path)
 		var start_x := -200.0
-		var end_x := 1800.0
+		# W1.10: drift to viewport width so clouds reach the right edge on any
+		# resolution (was hardcoded 1800 — vanished early on ultrawide, ran
+		# past edge on narrow). +200 padding so cloud fully exits before reset.
+		var end_x := float(get_viewport_rect().size.x) + 200.0
 		# Slow / medium / fast: 48 / 36 / 24 seconds
 		var duration := 60.0 - float(i) * 12.0
 		var tw := create_tween().set_loops()
@@ -364,6 +393,14 @@ func _apply_theme() -> void:
 	if title_node is Label:
 		title_node.add_theme_color_override("font_color", Color(1.0, 0.42, 0.21))
 		title_node.add_theme_font_size_override("font_size", 96)
+
+
+## W1.9: localization helper. Falls back to the key when no port is injected
+## so the screen still boots in test harnesses without a LocalizationPolicyPort.
+func _t(key: String) -> String:
+	if _localization != null and _localization.has_method("translate"):
+		return _localization.translate(key)
+	return key
 
 
 func _style_main_button(btn: Button, color: Color) -> void:
