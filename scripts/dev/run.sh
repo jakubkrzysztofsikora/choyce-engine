@@ -106,7 +106,24 @@ fi
 # 5. Ensure class-name cache exists + optional parse-clean check.
 # Skip the editor scan when the cache is already present unless --check is set.
 # Editor scan takes ~30 s; redundant work bothers the user every boot.
-if [[ ! -f "$CLASS_CACHE_FILE" || $CHECK -eq 1 ]]; then
+#
+# Re-scan if any data/models or data/themes asset is newer than the cache —
+# Godot's .godot/imported .scn caches don't auto-refresh on git pull, so
+# glTF material edits would otherwise stay invisible.
+ASSET_NEWER=0
+if [[ -f "$CLASS_CACHE_FILE" ]]; then
+  if find data/models data/themes -newer "$CLASS_CACHE_FILE" -type f \
+       \( -name '*.gltf' -o -name '*.glb' -o -name '*.tres' -o -name '*.bin' \) \
+       2>/dev/null | grep -q .; then
+    ASSET_NEWER=1
+  fi
+fi
+
+if [[ ! -f "$CLASS_CACHE_FILE" || $CHECK -eq 1 || $ASSET_NEWER -eq 1 ]]; then
+  if [[ $ASSET_NEWER -eq 1 ]]; then
+    step "asset files newer than cache — wiping .godot/imported + rescanning"
+    rm -rf "$GODOT_CACHE_DIR/imported"
+  fi
   step "running editor scan (~30 s, builds class cache + parse-clean check)"
   PARSE_OUTPUT="$(timeout 90 godot --editor --headless --quit 2>&1)"
   PARSE_ERRORS="$(echo "$PARSE_OUTPUT" | grep -E "SCRIPT ERROR|Parse Error" | head -10)"
