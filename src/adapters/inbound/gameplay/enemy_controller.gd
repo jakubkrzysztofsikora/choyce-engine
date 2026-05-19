@@ -138,15 +138,23 @@ func _on_defeat() -> void:
 	_state = State.DEFEAT
 	var loot := _roll_loot()
 	emit_signal("defeated", definition.enemy_id, global_position, loot)
-	# Disable collision so player can walk over the poof spot.
-	_collision.set_deferred("disabled", true)
-	# Shrink-out anim (kid-safe — no rag doll).
+	# Disable collision so player can walk over the poof spot. Guard
+	# against _build_visuals having been skipped (Adv 6 #3).
+	if _collision != null and is_instance_valid(_collision):
+		_collision.set_deferred("disabled", true)
+	# Shrink-out anim (kid-safe — no rag doll). If end_session frees
+	# the node mid-tween, the post-await check prevents calling
+	# queue_free on an already-freed instance (Adv 6 #1).
+	if _mesh == null or not is_instance_valid(_mesh):
+		queue_free()
+		return
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(_mesh, "scale", Vector3.ZERO, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "global_position",
 		global_position + Vector3(0, 0.5, 0), 0.3)
 	await tween.finished
-	queue_free()
+	if is_inside_tree():
+		queue_free()
 
 
 # ---- state behaviours ----

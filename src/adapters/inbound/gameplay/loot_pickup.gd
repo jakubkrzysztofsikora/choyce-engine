@@ -91,11 +91,16 @@ func _process(delta: float) -> void:
 func _on_body_entered(body: Node3D) -> void:
 	if not (body is PlayerController):
 		return
+	# Disable monitoring immediately so a second body_entered in the
+	# same physics frame can't double-credit (Adv 6 #7 bug fix).
+	set_deferred("monitoring", false)
 	picked_up.emit(item_id, quantity)
-	# Brief shrink + fade then despawn.
+	# Brief shrink + fade then despawn. Guard against the node being
+	# freed mid-tween if the runtime tears down (Adv 6 crash class).
 	var tween := create_tween().set_parallel(true)
 	tween.tween_property(_mesh, "scale", Vector3.ZERO, 0.18)
 	tween.tween_property(self, "global_position",
 		body.global_position + Vector3(0, 1.4, 0), 0.18)
 	await tween.finished
-	queue_free()
+	if is_inside_tree():
+		queue_free()

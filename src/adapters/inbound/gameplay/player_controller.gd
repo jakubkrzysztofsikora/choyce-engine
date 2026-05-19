@@ -332,11 +332,14 @@ func apply_damage_from_enemy(amount: int, source_position: Vector3) -> void:
 	if not _health.apply_damage(amount):
 		return
 	hp_changed.emit(_health.current_hp, _health.max_hp)
-	# Knockback away from source.
+	# Knockback away from source. Add to existing horizontal velocity
+	# (not overwrite) and only boost Y if the kid isn't already
+	# rising faster — prevents mid-jump stall (Adv 6 #5).
 	var away := (global_position - source_position).normalized()
 	away.y = 0.0
-	velocity = away * 5.0
-	velocity.y = 4.0
+	velocity.x += away.x * 5.0
+	velocity.z += away.z * 5.0
+	velocity.y = maxf(velocity.y, 4.0)
 	if not _health.is_alive:
 		player_defeated.emit()
 

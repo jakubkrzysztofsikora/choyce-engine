@@ -43,7 +43,12 @@ var _current_weapon_index: int = 0
 var _weapon_label: Label
 var _wave_number: int = 0
 var _wave_respawn_timer: float = 0.0
+var _rng: RandomNumberGenerator = null
 const WAVE_RESPAWN_DELAY := 6.0
+## Kid falls below this y → soft-respawn. Fixes spring-launch
+## softlock (Adv 2 H-5). Default world floor is y=0; -50 leaves a
+## comfortable buffer for tall builds.
+const FALL_KILL_PLANE_Y := -50.0
 
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
@@ -134,6 +139,8 @@ func _set_main_layout_visible(value: bool) -> void:
 ## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
 ## the gameplay runtime so blocks are siblings to enemies + world
 ## scenery. Player gets the grid reference for input handling.
+## Seeds a handful of tree + ore_node blocks so the gear loop has
+## producers (closes Adv 4 "wood_oak has no producer" finding).
 func _setup_build_grid() -> void:
 	if _build_grid != null and is_instance_valid(_build_grid):
 		_build_grid.clear_all()
@@ -145,6 +152,56 @@ func _setup_build_grid() -> void:
 		_player_controller.setup_build_grid(_build_grid)
 	_build_grid.block_placed.connect(_on_block_placed)
 	_build_grid.block_removed.connect(_on_block_removed)
+	_build_grid.block_dropped_item.connect(_on_block_dropped_item)
+	_build_grid.block_place_failed.connect(_on_block_place_failed)
+	_seed_resource_nodes()
+
+
+## Spawn 6 tree_oak + 3 ore_node blocks around the player so mining
+## actually produces wood_oak and ore_iron — without these the gear
+## ladder is dead code. Positions randomized in 12-18m ring.
+func _seed_resource_nodes() -> void:
+	if _player_controller == null or _build_grid == null:
+		return
+	var spawn := _player_controller.global_position
+	var rng := _ensure_rng()
+	# Trees: cluster of 6 in two rings.
+	for i in 6:
+		var angle := rng.randf_range(0.0, TAU)
+		var radius := rng.randf_range(10.0, 18.0)
+		var pos := spawn + Vector3(cos(angle) * radius, 0.5, sin(angle) * radius)
+		_build_grid.place_block(_build_grid.world_to_cell(pos), "tree_oak")
+	# Iron ore: 3 nodes farther out so kid earns them.
+	for i in 3:
+		var angle := rng.randf_range(0.0, TAU)
+		var radius := rng.randf_range(14.0, 22.0)
+		var pos := spawn + Vector3(cos(angle) * radius, 0.5, sin(angle) * radius)
+		_build_grid.place_block(_build_grid.world_to_cell(pos), "ore_node")
+
+
+func _ensure_rng() -> RandomNumberGenerator:
+	if _rng == null:
+		_rng = RandomNumberGenerator.new()
+		_rng.randomize()
+	return _rng
+
+
+## Mined block dropped an item. Add to inventory + show in HUD.
+## Reuses _on_loot_picked_up path so gear auto-upgrade triggers.
+func _on_block_dropped_item(drop_item_id: String, position: Vector3) -> void:
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("collect", position)
+	# Spawn a brief sparkle then add to inventory directly (mining is
+	# tactile — no separate orb-grab step). Saves a tween + makes
+	# break_block feel instant.
+	if _effect_spawner != null:
+		_effect_spawner.spawn_sparkle_burst(position)
+	_on_loot_picked_up(drop_item_id, 1)
+
+
+func _on_block_place_failed(reason: String) -> void:
+	if _screen_feedback != null and reason == "capacity":
+		_screen_feedback.flash(Color(1.0, 0.4, 0.4), 0.15)
 
 
 func _on_block_placed(cell: Vector3i, kind_id: String) -> void:
@@ -491,6 +548,18 @@ func _physics_process(delta: float) -> void:
 	if _rules_active and _rules_runtime != null:
 		_rules_runtime.tick(delta)
 	_check_enemy_wave_respawn(delta)
+	_check_fall_kill_plane()
+
+
+## Spring block can launch kid past the world edge (Adv 2 H-5). If
+## player y drops below FALL_KILL_PLANE_Y, trigger soft-respawn —
+## same flow as HP=0. No game-over screen, no death — just a soft
+## fade-flash + teleport back to spawn point.
+func _check_fall_kill_plane() -> void:
+	if _player_controller == null or not is_instance_valid(_player_controller):
+		return
+	if _player_controller.global_position.y < FALL_KILL_PLANE_Y:
+		_on_player_defeated()
 
 
 ## Endless engagement: once kid clears all enemies in a wave, after
@@ -513,12 +582,13 @@ func _check_enemy_wave_respawn(delta: float) -> void:
 
 
 func _spawn_next_wave() -> void:
+	if _player_controller == null or not is_instance_valid(_player_controller):
+		return
 	_wave_number += 1
 	print("[combat] wave %d spawning" % _wave_number)
 	var pack_size := mini(3 + _wave_number, 7)
 	var spawn := _player_controller.global_position
-	var rng := RandomNumberGenerator.new()
-	rng.randomize()
+	var rng := _ensure_rng()
 	for i in pack_size:
 		var roll := rng.randf()
 		var def: EnemyDefinition
@@ -560,29 +630,31 @@ func _on_rules_action(rule_id: String, action_kind: int, params: Dictionary) -> 
 	# Mirror in the rule_fired signal so external listeners (HUD, telemetry)
 	# can react without coupling to the runtime port directly.
 	emit_signal("rule_fired", rule_id, action_kind, params)
+	# Match on named enum values (not int literals) — survives enum
+	# reordering. Adv 6 #4 fix.
 	match action_kind:
-		0:  # ADD_SCORE
+		CompiledRule.ActionKind.ADD_SCORE:
 			var amount := int(params.get("amount", 0))
 			_score += amount
 			if _rules_runtime != null:
 				_rules_runtime.set_context_value("score", _score)
 			print("[gameplay] add_score(%d) -> %d (rule=%s)" % [amount, _score, rule_id])
-		1:  # SPAWN_ITEM — deferred; logs only for MVP
+		CompiledRule.ActionKind.SPAWN_ITEM:
 			print("[gameplay] spawn_item(%s, %d) — not yet implemented" %
 				[String(params.get("item", "")), int(params.get("count", 0))])
-		2:  # WIN_LEVEL
+		CompiledRule.ActionKind.WIN_LEVEL:
 			print("[gameplay] win_level fired (rule=%s)" % rule_id)
 			_trigger_victory()
-		3:  # UNLOCK_AREA
+		CompiledRule.ActionKind.UNLOCK_AREA:
 			print("[gameplay] unlock_area(%s) — deferred to BUILDER wave" %
 				String(params.get("zone_id", "")))
-		4:  # OPEN_GATE
+		CompiledRule.ActionKind.OPEN_GATE:
 			print("[gameplay] open_gate — deferred")
-		5:  # SET_RESPAWN_POINT
-			if _player_controller != null:
+		CompiledRule.ActionKind.SET_RESPAWN_POINT:
+			if _player_controller != null and is_instance_valid(_player_controller):
 				_player_controller.set_meta("respawn_point",
 					_player_controller.global_position)
-		6:  # CUSTOM_CALLBACK
+		CompiledRule.ActionKind.CUSTOM_CALLBACK:
 			print("[gameplay] custom_callback(%s) — deferred" %
 				String(params.get("callback_name", "")))
 		_:

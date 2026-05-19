@@ -17,6 +17,12 @@ extends Node3D
 
 signal block_placed(cell: Vector3i, kind_id: String)
 signal block_removed(cell: Vector3i, kind_id: String)
+## Emitted when place_block fails. reason: "occupied" | "capacity" | "unknown_kind"
+signal block_place_failed(reason: String)
+## Mined block dropped an item the player can pick up.
+## drop_item_id is BlockKind.drop_id (or block_id if drop_id empty); position
+## is the world-space cell center the kid stood next to.
+signal block_dropped_item(drop_item_id: String, position: Vector3)
 
 
 const CELL_SIZE := 1.0
@@ -73,11 +79,14 @@ func kind_at(cell: Vector3i) -> String:
 ## Fails if: cell occupied, capacity reached, or block_id unknown.
 func place_block(cell: Vector3i, block_id: String) -> bool:
 	if _cells.has(cell):
+		block_place_failed.emit("occupied")
 		return false
 	if at_capacity():
+		block_place_failed.emit("capacity")
 		return false
 	if not _kind_lookup.has(block_id):
 		push_warning("BuildGrid: unknown block_id '%s'" % block_id)
+		block_place_failed.emit("unknown_kind")
 		return false
 
 	var kind: BlockKind = _kind_lookup[block_id]
@@ -112,7 +121,10 @@ func place_block(cell: Vector3i, block_id: String) -> bool:
 
 
 ## Remove a block at cell. Returns the block_id that was removed, or
-## empty string if no block present.
+## empty string if no block present. Also emits block_dropped_item so
+## the gameplay runtime can credit the kid's inventory with the
+## block's drop_id (or block_id if drop_id is empty). Closes the
+## "wood_oak has no producer" loop-broken finding (Adv 4).
 func break_block(cell: Vector3i) -> String:
 	if not _cells.has(cell):
 		return ""
@@ -123,6 +135,11 @@ func break_block(cell: Vector3i) -> String:
 	if body != null and is_instance_valid(body):
 		body.queue_free()
 	block_removed.emit(cell, id)
+	# Drop a material item so mining feeds the gear loop.
+	var kind: BlockKind = _kind_lookup.get(id, null)
+	if kind != null:
+		var drop_item := kind.drop_id if kind.drop_id != "" else id
+		block_dropped_item.emit(drop_item, cell_to_world(cell))
 	return id
 
 
