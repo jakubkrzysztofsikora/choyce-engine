@@ -35,6 +35,7 @@ var _ports_ready: bool = false
 
 
 func _ready() -> void:
+	ResponsiveLayout.apply_max_width($Layout)
 	_setup_provenance_badge()
 	_wire_actions()
 	_refresh_labels()

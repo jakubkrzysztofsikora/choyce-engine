@@ -53,6 +53,7 @@ var _audit_ledger: AuditLedgerPort = null
 
 
 func _ready() -> void:
+	ResponsiveLayout.apply_max_width($Layout)
 	_setup_provenance_badge()
 	_wire_actions()
 	_refresh_labels()

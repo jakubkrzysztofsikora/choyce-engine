@@ -383,9 +383,13 @@ func _trigger_punch_animation() -> void:
 	if _character_mesh == null:
 		return
 	# Kill the previous punch tween so back-to-back swings don't
-	# stack overlapping property targets.
+	# stack overlapping property targets. Adv G F1+F2: also snap the
+	# mesh back to neutral so a leaked twist or unfinished chain
+	# doesn't strand the kid mid-strike on rapid LMB spam.
 	if _punch_tween != null and _punch_tween.is_valid():
 		_punch_tween.kill()
+		_character_mesh.rotation = Vector3(0, PI, 0)
+		_character_mesh.position = Vector3.ZERO
 	_is_punching = true
 	var phase := _punch_phase % 4
 	_punch_phase += 1
@@ -517,14 +521,18 @@ func _build_ghost_preview() -> void:
 ## Show the ghost-preview cube at the cell the next K / RMB press
 ## will place a block into. Called every physics tick. Only visible
 ## when build mode is active.
+## Adv I #1 perf fix: bail BEFORE the raycast + catalog walk when
+## we're not in BUILD mode. Was running a full ray query through
+## PhysicsDirectSpaceState3D every tick even during combat.
 func _update_ghost_preview() -> void:
 	if _ghost_preview == null or _build_grid == null:
 		return
-	var svc := _ensure_game_mode_service()
+	# Cheap early-out — skip the raycast entirely outside BUILD mode.
 	var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
-	var mode := svc.current_mode(active_kind)
-	if mode != GameModeService.Mode.BUILD:
-		_ghost_preview.visible = false
+	var svc := _ensure_game_mode_service()
+	if svc.current_mode(active_kind) != GameModeService.Mode.BUILD:
+		if _ghost_preview.visible:
+			_ghost_preview.visible = false
 		return
 	var hit := _build_raycast()
 	if hit.is_empty():

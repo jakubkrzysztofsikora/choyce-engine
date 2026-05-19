@@ -88,6 +88,28 @@ static func slime_blue() -> EnemyDefinition:
 	return d
 
 
+## Mini-boss for the every-5th-wave Adv F/H #1 fix. 80 HP, 12 dmg,
+## slow but tanky. Drops 3 iron + 5 gel — kid hits the gear ladder
+## faster after a boss kill so the wave structure feels rewarding.
+static func big_slime() -> EnemyDefinition:
+	var d := EnemyDefinition.new("big_slime")
+	d.display_name = "Wielki glutek"
+	d.archetype = Archetype.BIG_SLIME
+	d.disposition = Disposition.CHASE
+	d.max_hp = 80
+	d.contact_damage = 12
+	d.move_speed = 1.6
+	d.aggro_radius = 9.0
+	d.mesh_asset_id = ""
+	d.tint = Color(0.6, 0.35, 0.85)   ## purple — visually distinct
+	d.loot_table = [
+		{"item_id": "slime_gel", "min": 3, "max": 5, "chance": 1.0},
+		{"item_id": "ore_iron", "min": 2, "max": 4, "chance": 1.0},
+		{"item_id": "coin", "min": 5, "max": 10, "chance": 1.0},
+	]
+	return d
+
+
 static func bouncer() -> EnemyDefinition:
 	var d := EnemyDefinition.new("bouncer_pink")
 	d.display_name = "Skoczek"

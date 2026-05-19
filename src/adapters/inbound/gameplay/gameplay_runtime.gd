@@ -278,6 +278,44 @@ func _audit_combat(event_type: String, payload: Dictionary) -> void:
 	_audit_ledger.append_record(record)
 
 
+## Weighted-random pick from the wave director's archetype_weights
+## dict. Falls back to procedural mix when weights are empty
+## (legacy code path). Adv F/H #2 fix.
+func _sample_enemy_archetype(weights: Dictionary, rng: RandomNumberGenerator) -> EnemyDefinition:
+	if weights.is_empty():
+		# Procedural fallback — early-wave default mix.
+		var roll := rng.randf()
+		if _wave_number >= 3 and roll < 0.3:
+			return EnemyDefinition.slime_blue()
+		elif roll < 0.7:
+			return EnemyDefinition.slime_green()
+		return EnemyDefinition.bouncer()
+	var total := 0.0
+	for w in weights.values():
+		total += float(w)
+	if total <= 0.0:
+		return EnemyDefinition.slime_green()
+	var pick := rng.randf_range(0.0, total)
+	var accum := 0.0
+	for enemy_id in weights.keys():
+		accum += float(weights[enemy_id])
+		if pick <= accum:
+			return _enemy_factory_for(String(enemy_id))
+	return EnemyDefinition.slime_green()
+
+
+func _enemy_factory_for(enemy_id: String) -> EnemyDefinition:
+	match enemy_id:
+		"slime_blue":
+			return EnemyDefinition.slime_blue()
+		"bouncer_pink":
+			return EnemyDefinition.bouncer()
+		"big_slime":
+			return EnemyDefinition.big_slime()
+		"slime_green", _:
+			return EnemyDefinition.slime_green()
+
+
 func _ensure_rng() -> RandomNumberGenerator:
 	if _rng == null:
 		_rng = RandomNumberGenerator.new()
@@ -539,9 +577,11 @@ func _refresh_xp_hud() -> void:
 		_xp_label.text = "Lv %d  •  %d/%d XP" % [_xp_level, _xp_current, needed]
 
 
-## Kid-friendly level-up: flash + sparkle + audio cue. No level-up
-## choice popup yet (deferred to wave NEXT+2.5 — needs UpgradeCard
-## design before it's worth the popup-flow code).
+## Kid-friendly level-up: flash + sparkle + audio cue + STAT BOOST
+## (Adv F/H #5 fix — was purely cosmetic, kid saw "Lv 3" but felt
+## nothing). Now: +5 max_hp per level (cap +50) and +1 weapon
+## damage every 3rd level. Lets gear progression compound through
+## play even when the kid hasn't crafted up the gear ladder yet.
 func _on_level_up(before: int, after: int) -> void:
 	print("[xp] level up: %d → %d" % [before, after])
 	_audit_combat("combat_level_up", {
@@ -549,12 +589,45 @@ func _on_level_up(before: int, after: int) -> void:
 		"to_level": after,
 		"profile_id": _profile_id,
 	})
+	# Apply stat boost per level gained (multi-level skip-safe).
+	if _player_controller != null and is_instance_valid(_player_controller):
+		for lvl in range(before + 1, after + 1):
+			# +5 HP each level, capped so kid doesn't snowball
+			if _player_controller.has_method("get_health"):
+				var h: HealthState = _player_controller.get_health()
+				if h != null and h.max_hp < PlayerController.PLAYER_MAX_HP + 50:
+					h.max_hp += 5
+					h.current_hp = mini(h.current_hp + 5, h.max_hp)
+					_player_controller.hp_changed.emit(h.current_hp, h.max_hp)
+			# +1 weapon dmg every 3rd level
+			if (lvl % 3) == 0 and _player_controller.has_method("equip_weapon_damage"):
+				var current_dmg := _current_weapon_damage()
+				_player_controller.equip_weapon_damage(current_dmg + 1)
+				print("[xp] +1 base damage at level %d → %d" % [lvl, current_dmg + 1])
 	if _screen_feedback != null:
 		_screen_feedback.flash(Color(0.5, 1.0, 0.6), 0.35)
 	if _effect_spawner != null and _player_controller != null:
 		_effect_spawner.spawn_sparkle_burst(_player_controller.global_position)
 	if _audio_bus != null and _player_controller != null:
 		_audio_bus.emit_sfx("collect", _player_controller.global_position)
+
+
+## Pretty PL label for the kid's current weapon. Used by the hotbar
+## slot-0 rebuild + the stats-panel weapon label, so they stay in
+## sync as the kid upgrades.
+func _current_weapon_label() -> String:
+	if _current_weapon_index >= 0 and _current_weapon_index < _weapon_tiers.size():
+		var tier: Dictionary = _weapon_tiers[_current_weapon_index]
+		return "🗡 %s" % String(tier.get("label", "Pięść"))
+	return "🗡 Pięść"
+
+
+func _current_weapon_damage() -> int:
+	if _player_controller == null:
+		return 4
+	if "_equipped_weapon_damage" in _player_controller:
+		return int(_player_controller._equipped_weapon_damage)
+	return 4
 
 
 func _rebuild_hotbar_panel(active_slot: int) -> void:
@@ -568,8 +641,12 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 	# (user-reported bug).
 	var catalog := BlockKind.default_catalog()
 	var slots: Array = []
-	# Weapon tile (slot 0)
-	slots.append({"id": "fist", "name": "🗡 Pięść", "color": Color(0.7, 0.7, 0.8)})
+	# Weapon tile (slot 0) — label reflects current tier so kid sees
+	# "🗡 Patyk" → "🗡 Żelazny miecz" etc. as they upgrade. Color
+	# shifts toward gold for upgraded gear (Adv H #7 fix).
+	var weapon_label := _current_weapon_label()
+	var weapon_color := Color(0.7, 0.7, 0.8) if _current_weapon_index <= 0 else Color(0.95, 0.78, 0.32)
+	slots.append({"id": "weapon", "name": weapon_label, "color": weapon_color})
 	for i in mini(catalog.size(), 4):
 		var kind: BlockKind = catalog[i]
 		slots.append({"id": kind.block_id, "name": kind.display_name, "color": kind.color})
@@ -891,15 +968,17 @@ func _spawn_next_wave() -> void:
 	var pack_size: int = int(plan.get("pack_size", 3))
 	var spawn := _player_controller.global_position
 	var rng := _ensure_rng()
+	# Adv F/H #1: spawn a BIG_SLIME on boss waves. Counts against
+	# pack_size so the kid faces 1 boss + (pack_size-1) regular mobs.
+	if bool(plan.get("is_boss_wave", false)):
+		_spawn_one(EnemyDefinition.big_slime(), spawn + Vector3(0, 1, -12))
+		pack_size = maxi(pack_size - 1, 1)
+	# Adv F/H #2: honor archetype_weights from the service plan
+	# (was previously thrown away — hardcoded 0.4 blue / 0.7 green
+	# floor ignored the director's recommendation entirely).
+	var weights: Dictionary = plan.get("archetype_weights", {})
 	for i in pack_size:
-		var roll := rng.randf()
-		var def: EnemyDefinition
-		if _wave_number >= 3 and roll < 0.4:
-			def = EnemyDefinition.slime_blue()
-		elif roll < 0.7:
-			def = EnemyDefinition.slime_green()
-		else:
-			def = EnemyDefinition.bouncer()
+		var def: EnemyDefinition = _sample_enemy_archetype(weights, rng)
 		var angle := rng.randf_range(0.0, TAU)
 		var radius := rng.randf_range(8.0, 14.0)
 		var pos := spawn + Vector3(cos(angle) * radius, 1.0, sin(angle) * radius)

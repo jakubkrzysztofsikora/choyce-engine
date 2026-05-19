@@ -113,6 +113,12 @@ func _notification(what: int) -> void:
 
 
 func _ready() -> void:
+	# Apply ultra-wide responsive constraint to the root Layout so
+	# NavBar + shells don't stretch edge-to-edge on 3440×1440 screens.
+	# Helper preserves the $Layout node identity → @onready paths
+	# inside child shells remain valid.
+	if has_node("Layout"):
+		ResponsiveLayout.apply_max_width($Layout)
 	if _accessibility_policy == null:
 		_accessibility_policy = GodotAccessibilityAdapter.new().setup(self)
 	_accessibility_policy.apply_baseline_contrast()
