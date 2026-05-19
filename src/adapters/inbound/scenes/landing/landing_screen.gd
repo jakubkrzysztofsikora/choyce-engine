@@ -211,6 +211,11 @@ func _build_scene_tree() -> void:
 	backdrop.name = "Backdrop"
 	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
 	backdrop.color = Color(0, 0, 0, 0.7)
+	# CRITICAL: ColorRect defaults to MOUSE_FILTER_STOP and would swallow every
+	# click before the world cards (above it) see them. Without this the kid's
+	# click on a world card hits the backdrop instead and the picker appears
+	# unresponsive. Pass clicks through so cards receive button_pressed.
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_picker_layer.add_child(backdrop)
 
 	# W1.10: picker scroll anchored full-rect with margins so the card row
