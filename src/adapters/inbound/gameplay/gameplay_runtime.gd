@@ -50,6 +50,13 @@ const WAVE_RESPAWN_DELAY := 6.0
 ## comfortable buffer for tall builds.
 const FALL_KILL_PLANE_Y := -50.0
 
+# Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
+# until parent toggles on. Without a policy injection, _spawn_starter_enemies
+# + _spawn_next_wave become no-ops.
+var _combat_policy: ParentalControlPolicy = null
+var _audit_ledger: AuditLedgerPort = null
+var _profile_id: String = ""
+
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
 	_player_controller = $PlayerController
@@ -87,6 +94,20 @@ func setup_rules(runtime: RulesRuntimePort, compiler: RuleCompilerService) -> vo
 	if _rules_runtime != null and _rules_runtime.has_signal("rules_action"):
 		if not _rules_runtime.is_connected("rules_action", _on_rules_action):
 			_rules_runtime.connect("rules_action", _on_rules_action)
+
+
+## Inject parental policy + audit ledger for combat. Adv 2 TB-1 + TB-2
+## trust-fixes: combat now opt-in via ParentalControlPolicy.combat_enabled
+## and every defeat / wave-spawn is forwarded to AuditLedger for the
+## parent dashboard.
+func setup_combat_governance(
+	policy: ParentalControlPolicy,
+	ledger: AuditLedgerPort,
+	profile_id: String
+) -> void:
+	_combat_policy = policy
+	_audit_ledger = ledger
+	_profile_id = profile_id
 
 
 func start_session(world: World, session: Session) -> void:
@@ -179,6 +200,43 @@ func _seed_resource_nodes() -> void:
 		_build_grid.place_block(_build_grid.world_to_cell(pos), "ore_node")
 
 
+## True only when a non-null ParentalControlPolicy has combat_enabled.
+## Defaults to false (no policy = no combat) per CLAUDE.md
+## "consent → deny" rule.
+func _is_combat_allowed() -> bool:
+	if _combat_policy == null:
+		return false
+	return _combat_policy.combat_enabled
+
+
+## 0 = waves disabled past the starter pack. Non-zero = hard cap on
+## wave count. Driven by ParentalControlPolicy.combat_wave_cap.
+func _wave_cap() -> int:
+	if _combat_policy == null:
+		return 0
+	return _combat_policy.combat_wave_cap
+
+
+## Append a combat-related audit record. Best-effort: silently
+## drops if ledger is not wired (e.g. tests / autoplay before
+## composition root finishes). Each record carries event_type
+## prefixed with "combat_" so the parent dashboard can filter.
+func _audit_combat(event_type: String, payload: Dictionary) -> void:
+	if _audit_ledger == null:
+		return
+	var record_id := "%s_%d" % [event_type, Time.get_ticks_msec()]
+	var record := AuditRecord.new(
+		record_id,
+		event_type,
+		record_id,
+		_profile_id,
+		Time.get_datetime_string_from_system(true),
+		payload,
+		_audit_ledger.last_hash()
+	)
+	_audit_ledger.append_record(record)
+
+
 func _ensure_rng() -> RandomNumberGenerator:
 	if _rng == null:
 		_rng = RandomNumberGenerator.new()
@@ -221,9 +279,20 @@ func _on_block_removed(cell: Vector3i, kind_id: String) -> void:
 ## world loads. Procedural — no Kenney character meshes needed.
 ## Three enemies: 2 green slimes + 1 pink bouncer at 8m / 12m / 14m
 ## from spawn.
+##
+## Gated by ParentalControlPolicy.combat_enabled (Adv 2 TB-1 fix).
+## When combat is off, the runtime stays in the legacy
+## collect-and-touch-win mode — no enemies, no waves.
 func _spawn_starter_enemies() -> void:
 	if _player_controller == null:
 		return
+	if not _is_combat_allowed():
+		print("[combat] disabled by parental policy — no enemies spawned")
+		return
+	_audit_combat("combat_session_started", {
+		"wave_cap": _wave_cap(),
+		"profile_id": _profile_id,
+	})
 	if _enemy_root != null and is_instance_valid(_enemy_root):
 		_enemy_root.queue_free()
 	_enemy_root = Node3D.new()
@@ -252,6 +321,12 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 
 func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> void:
 	print("[combat] defeated %s at %s loot=%s" % [enemy_id, position, loot])
+	_audit_combat("combat_enemy_defeated", {
+		"enemy_id": enemy_id,
+		"wave_number": _wave_number,
+		"loot_items": loot.size(),
+		"profile_id": _profile_id,
+	})
 	if _audio_bus != null:
 		_audio_bus.emit_sfx("collect", position)
 	if _effect_spawner != null:
@@ -410,6 +485,10 @@ func _on_player_hp_changed(current: int, max_hp: int) -> void:
 func _on_player_defeated() -> void:
 	# Kid-safe defeat — soft fade + respawn at spawn point, no game-over.
 	print("[combat] player defeated — soft respawn")
+	_audit_combat("combat_player_defeated", {
+		"wave_number": _wave_number,
+		"profile_id": _profile_id,
+	})
 	if _screen_feedback != null:
 		_screen_feedback.flash(Color(1.0, 0.85, 0.85), 0.5)
 	if _world_renderer != null and _player_controller != null:
@@ -584,8 +663,20 @@ func _check_enemy_wave_respawn(delta: float) -> void:
 func _spawn_next_wave() -> void:
 	if _player_controller == null or not is_instance_valid(_player_controller):
 		return
+	if not _is_combat_allowed():
+		return
+	# Honor parental wave cap (Adv 2 H-3 difficulty-cliff fix). 0 = no
+	# extra waves past the starter pack. Non-zero caps wave count.
+	var cap := _wave_cap()
+	if cap > 0 and _wave_number >= cap:
+		print("[combat] wave cap %d reached — no further spawn" % cap)
+		return
 	_wave_number += 1
 	print("[combat] wave %d spawning" % _wave_number)
+	_audit_combat("combat_wave_started", {
+		"wave_number": _wave_number,
+		"profile_id": _profile_id,
+	})
 	var pack_size := mini(3 + _wave_number, 7)
 	var spawn := _player_controller.global_position
 	var rng := _ensure_rng()

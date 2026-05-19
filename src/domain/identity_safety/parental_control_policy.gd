@@ -77,6 +77,8 @@ func to_dict() -> Dictionary:
 		"sharing_allowed": sharing_allowed,
 		"language_override_allowed": language_override_allowed,
 		"cloud_sync_consent": cloud_sync_consent,
+		"combat_enabled": combat_enabled,
+		"combat_wave_cap": combat_wave_cap,
 	}
 
 
@@ -90,7 +92,9 @@ static func deny_all() -> ParentalControlPolicy:
 		AIAccessLevel.DISABLED,    # AI fully off
 		false,                     # sharing blocked
 		false,                     # language override blocked
-		false                      # cloud sync off
+		false,                     # cloud sync off
+		false,                     # combat off (Adv 2 TB-1 fix)
+		0                          # waves disabled past starter pack
 	)
 
 
@@ -102,6 +106,8 @@ static func from_dict(data: Dictionary) -> ParentalControlPolicy:
 		bool(data.get("sharing_allowed", false)),
 		bool(data.get("language_override_allowed", false)),
 		bool(data.get("cloud_sync_consent", false)),
+		bool(data.get("combat_enabled", false)),
+		int(data.get("combat_wave_cap", 0)),
 	)
 
 
@@ -115,6 +121,8 @@ func equals(other: ParentalControlPolicy) -> bool:
 		and sharing_allowed == other.sharing_allowed
 		and language_override_allowed == other.language_override_allowed
 		and cloud_sync_consent == other.cloud_sync_consent
+		and combat_enabled == other.combat_enabled
+		and combat_wave_cap == other.combat_wave_cap
 	)
 
 

@@ -21,6 +21,8 @@ var _session_start_time: float = 0.0
 var _project_store: ProjectStorePort = null  # injected for direct-launch path
 var _rules_runtime: RulesRuntimePort = null
 var _rule_compiler: RuleCompilerService = null
+var _policy_store: ParentalPolicyStorePort = null
+var _audit_ledger: AuditLedgerPort = null
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -101,6 +103,18 @@ func setup_rules(
 ) -> void:
 	_rules_runtime = rules_runtime
 	_rule_compiler = rule_compiler
+
+
+## Inject parental policy lookup + audit ledger for combat
+## governance. When set, every session_start fetches the current
+## policy and forwards combat_enabled + wave_cap to the runtime.
+## Without this, combat defaults to OFF (CLAUDE.md kid-safety).
+func setup_combat_governance(
+	policy_store: ParentalPolicyStorePort,
+	audit_ledger: AuditLedgerPort
+) -> void:
+	_policy_store = policy_store
+	_audit_ledger = audit_ledger
 
 
 func set_profile(profile: PlayerProfile) -> void:
@@ -287,7 +301,46 @@ func _start_gameplay(world: World, session: Session) -> void:
 	if _rules_runtime != null and _rule_compiler != null \
 			and _gameplay_runtime.has_method("setup_rules"):
 		_gameplay_runtime.setup_rules(_rules_runtime, _rule_compiler)
+	# Fetch latest parental policy + forward combat governance to
+	# the runtime. Falls back to a permissive policy ONLY for autoplay
+	# smoke (no profile) so the smoke probe can still exercise the
+	# combat path; real kid sessions always read from the store.
+	if _gameplay_runtime.has_method("setup_combat_governance"):
+		var policy: ParentalControlPolicy = _resolve_policy_for_session()
+		var profile_id := _profile.profile_id if _profile != null else "autoplay"
+		_gameplay_runtime.setup_combat_governance(policy, _audit_ledger, profile_id)
 	_gameplay_runtime.start_session(world, session)
+
+
+## Resolve the policy to apply for this session. CLAUDE.md
+## "consent → deny" rule: missing profile + missing stored policy
+## both fall back to deny_all (combat off). Autoplay diagnostic
+## bypass is detected via the CHOYCE_AUTOPLAY env so the smoke
+## probe can still exercise the gear loop.
+func _resolve_policy_for_session() -> ParentalControlPolicy:
+	if _is_autoplay_session():
+		return _permissive_autoplay_policy()
+	if _policy_store == null or _profile == null:
+		return ParentalControlPolicy.deny_all()
+	var stored: ParentalControlPolicy = _policy_store.load_policy(_profile.profile_id)
+	if stored == null:
+		return ParentalControlPolicy.deny_all()
+	return stored
+
+
+func _is_autoplay_session() -> bool:
+	# Cheap check — only true when smoke probe sets CHOYCE_AUTOPLAY.
+	return OS.get_environment("CHOYCE_AUTOPLAY") != ""
+
+
+func _permissive_autoplay_policy() -> ParentalControlPolicy:
+	return ParentalControlPolicy.new(
+		60, 30,
+		ParentalControlPolicy.AIAccessLevel.CREATIVE_ONLY,
+		false, false, false,
+		true,    # combat_enabled
+		5        # wave cap
+	)
 	$Layout.visible = false
 
 

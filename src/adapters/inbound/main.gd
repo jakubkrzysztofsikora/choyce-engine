@@ -56,6 +56,10 @@ var _phase1_ai_performance: AIPerformanceReadModelAdapter
 var _phase1_kid_status: KidStatusReadModelAdapter
 var _phase1_parent_audit: ParentAuditReadModelAdapter
 var _phase1_tool_gateway: DeterministicToolExecutionGateway
+## Phase 1 stubs reused for combat governance until Phase 2 swaps to
+## filesystem-backed implementations.
+var _phase1_audit_ledger: AuditLedgerPort
+var _phase1_policy_store: ParentalPolicyStorePort
 
 @onready var _nav_bar: PanelContainer = $Layout/NavBar
 @onready var _nav_pill: HBoxContainer = $Layout/NavBar/NavPill
@@ -258,6 +262,8 @@ func _build_default_ports() -> Dictionary:
 	_phase1_kid_status = kid_status
 	_phase1_parent_audit = parent_audit
 	_phase1_tool_gateway = tool_gateway
+	_phase1_audit_ledger = audit_ledger_stub
+	_phase1_policy_store = policy_store_stub
 
 	return {
 		KEY_CREATE_PORT: CreateProjectService.new().setup(project_store, clock),
@@ -424,6 +430,11 @@ func _build_default_ports_phase_2() -> void:
 	_ports[KEY_SPEECH_TO_TEXT_PORT] = _build_moderating_stt(moderation, event_bus)
 	_ports[KEY_DATA_LIFECYCLE_PORT] = data_lifecycle
 	_ports[KEY_PARENT_AUDIT_READ_MODEL] = parent_audit
+	# Phase 2: swap PlayShell's combat-governance references so audit
+	# events land in the filesystem hash-chained ledger + read the
+	# encrypted policy vault (not the InMemory stubs).
+	_phase1_audit_ledger = audit_ledger
+	_phase1_policy_store = policy_store
 
 	# Seed starter content on first launch so the kid sees ready-to-play
 	# worlds instead of an empty library + create shell.
@@ -798,6 +809,15 @@ func _wire_shell_dependencies() -> void:
 		_play_shell.setup_rules(
 			_ports.get(KEY_RULES_RUNTIME, null),
 			_ports.get(KEY_RULE_COMPILER, null)
+		)
+	# Wire combat governance (Adv 2 TB-1 / TB-2 trust-fixes):
+	# parental policy + audit ledger. Uses the stub from Phase 1;
+	# Phase 2 swaps the field reference to filesystem-backed versions
+	# so combat events persist across restarts.
+	if _play_shell.has_method("setup_combat_governance"):
+		_play_shell.setup_combat_governance(
+			_phase1_policy_store,
+			_phase1_audit_ledger
 		)
 	_library_shell.setup(
 		_navigator,
