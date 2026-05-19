@@ -120,6 +120,8 @@ func _physics_process(delta: float) -> void:
 	elif _camera != null:
 		_camera.position.y = lerp(_camera.position.y, _camera_base_y, 10.0 * delta)
 
+const KEY_ROTATE_SPEED := 2.5  # rad/s for Q/E rotation
+
 func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
@@ -129,6 +131,19 @@ func _input(event: InputEvent) -> void:
 		_vertical_look -= event.relative.y * MOUSE_SENSITIVITY
 		_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
 		_camera.rotation.x = _vertical_look
+
+func _process(delta: float) -> void:
+	if not is_processing():
+		return
+	# Kid-friendly camera rotation via Q (left) / E (right) — no cursor capture.
+	# Arrow keys / WASD stay reserved for movement (see _physics_process).
+	var rot := 0.0
+	if Input.is_key_pressed(KEY_Q):
+		rot += 1.0
+	if Input.is_key_pressed(KEY_E):
+		rot -= 1.0
+	if rot != 0.0:
+		rotate_y(rot * KEY_ROTATE_SPEED * delta)
 
 func spawn_at(pos: Vector3) -> void:
 	global_position = pos
