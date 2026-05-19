@@ -177,6 +177,41 @@ func get_no_world_cta_button() -> Button:
 	return _no_world_cta_button
 
 
+## Build kid-facing world cards for the PlayShell empty state.
+## Mirrors LandingScreen._build_world_card but lives here so kids
+## who navigate via NavBar's Play tab (instead of landing → Graj)
+## still see their seeded worlds. Returns Array[Button].
+func _build_world_picker_cards() -> Array:
+	var out: Array = []
+	if _project_store == null or _profile == null:
+		return out
+	for project in _project_store.list_projects():
+		if project.owner_profile_id != _profile.profile_id:
+			continue
+		if not String(project.project_id).contains("_starter_"):
+			continue
+		var card := Button.new()
+		card.custom_minimum_size = Vector2(280, 180)
+		card.add_theme_font_size_override("font_size", 22)
+		var icon := _icon_for_template(project.template_id)
+		card.text = "%s\n%s" % [icon, String(project.title)]
+		card.pressed.connect(func() -> void:
+			launch_world_by_id(project.project_id, "")
+		)
+		out.append(card)
+	return out
+
+
+func _icon_for_template(tid: String) -> String:
+	match String(tid).to_lower():
+		"adventure": return "🏝"
+		"farm": return "🌾"
+		"forest": return "🍄"
+		"city": return "🏙"
+		"obby", "tycoon": return "▶"
+		_: return "🎮"
+
+
 func _show_no_world_cta() -> void:
 	if _no_world_cta_button != null:
 		_no_world_cta_button.queue_free()
@@ -184,6 +219,29 @@ func _show_no_world_cta() -> void:
 	if _cta_voice_timer != null:
 		_cta_voice_timer.queue_free()
 		_cta_voice_timer = null
+
+	# Build a list of kid-owned seeded starter projects so the user
+	# entering PlayShell directly (NavBar "Play") sees the same world
+	# choices as the landing picker. Empty list → fall back to the
+	# original "create world" CTA. (Fixes empty-world-list bug.)
+	var content_parent: Node = get_node_or_null("Layout/MainContent")
+	if content_parent == null:
+		content_parent = self
+
+	var cards := _build_world_picker_cards()
+	if not cards.is_empty():
+		var label := Label.new()
+		label.name = "PickAWorldLabel"
+		label.text = "▶ Wybierz świat aby grać:"
+		label.add_theme_font_size_override("font_size", 26)
+		content_parent.add_child(label)
+		var row := HBoxContainer.new()
+		row.name = "WorldCardRow"
+		row.add_theme_constant_override("separation", 16)
+		content_parent.add_child(row)
+		for card in cards:
+			row.add_child(card)
+		return
 
 	_no_world_cta_button = Button.new()
 	_no_world_cta_button.text = "%s %s" % [
@@ -194,11 +252,7 @@ func _show_no_world_cta() -> void:
 		if _navigator != null:
 			_navigator.show_shell(SHELL_CREATE)
 	)
-	var content_parent: Node = get_node_or_null("Layout/MainContent")
-	if content_parent != null:
-		content_parent.add_child(_no_world_cta_button)
-	else:
-		add_child(_no_world_cta_button)
+	content_parent.add_child(_no_world_cta_button)
 
 	# Voice prompt after 3s for non-readers (optional port)
 	if _voice_prompt_port != null:

@@ -690,7 +690,13 @@ func _connect_navigation() -> void:
 	_nav_parent.pressed.connect(func() -> void: _navigate_to(SHELL_PARENT))
 
 	# LandingScreen signals → shell navigation.
-	_landing_shell.play_pressed.connect(func() -> void: _navigate_to(SHELL_PLAY))
+	# play_pressed deliberately NOT wired to _navigate_to(SHELL_PLAY):
+	# LandingScreen._on_play_pressed already opens its internal world
+	# picker (overlay on landing) when the kid taps Graj. If we
+	# navigated to SHELL_PLAY here, the picker would be hidden one
+	# frame after appearing — the empty-world-list bug the user
+	# reported. The world card press → world_card_pressed signal
+	# handles the actual nav into a live gameplay session.
 	_landing_shell.create_pressed.connect(func() -> void: _navigate_to(SHELL_CREATE))
 	_landing_shell.parent_pressed.connect(func() -> void: _navigate_to(SHELL_PARENT))
 	_landing_shell.world_card_pressed.connect(_on_world_card_pressed)

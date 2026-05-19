@@ -164,7 +164,10 @@ func start_session(world: World, session: Session) -> void:
 	_player_controller.set_process(true)
 	# Don't capture mouse — kid needs to click ESC button / nav back if anything stalls.
 	# Mouse capture made the apparent "hang" feel total since user couldn't escape.
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	# FPS-style mouselook — capture cursor so motion is raw delta.
+	# Kid presses ESC to release the cursor when they want to click
+	# the back button / hotbar. Re-pressing LMB into 3D recaptures.
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	# Hide Main/Layout so the NavBar (top tabs) and other UI don't overlap the
 	# HUD overlay added below. Gameplay is full-screen 3D + HUD only.
 	# gameplay_runtime is rooted at scene-tree root so it stays visible.
@@ -964,6 +967,8 @@ func end_session() -> void:
 	_rules_active = false
 	if _rules_runtime != null:
 		_rules_runtime.reset()
+	# Always release the cursor so post-session menus are clickable.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	if _build_grid != null and is_instance_valid(_build_grid):
 		_build_grid.clear_all()
 	if _enemy_root != null and is_instance_valid(_enemy_root):
@@ -992,6 +997,13 @@ func end_session() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		# ESC: if cursor is captured (FPS look mode), release it so
+		# kid can click HUD (back button, hotbar). Press ESC again
+		# from HUD to actually exit the session. Two-press exit
+		# prevents accidental quits during combat.
+		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+			return
 		end_session()
 
 func _on_footstep() -> void:

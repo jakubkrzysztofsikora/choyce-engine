@@ -113,23 +113,56 @@ func _ready() -> void:
 	_apply_friendly_theme()
 
 
-## Inject a "← Menu" back button so the kid always has a way to
-## return to landing (mirrors ParentZoneShell fix). Always enabled.
+## Inject a top button row: "← Menu" (return to landing) +
+## "▶ Graj teraz" (jump straight into the active world). The
+## existing GoPlayButton in the Actions row is far down + small;
+## kids couldn't find it. Both buttons always enabled regardless
+## of role guard — escape hatch first.
 func _ensure_back_button() -> void:
 	var layout: VBoxContainer = $Layout
 	if layout == null:
 		return
-	if layout.has_node("BackToLandingButton"):
+	if layout.has_node("KidNavRow"):
 		return
-	var btn := Button.new()
-	btn.name = "BackToLandingButton"
-	btn.text = "← Menu"
-	btn.custom_minimum_size = Vector2(160, 48)
-	btn.add_theme_font_size_override("font_size", 22)
-	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	btn.pressed.connect(_on_back_to_landing_pressed)
-	layout.add_child(btn)
-	layout.move_child(btn, 0)
+	var row := HBoxContainer.new()
+	row.name = "KidNavRow"
+	row.add_theme_constant_override("separation", 12)
+	row.alignment = BoxContainer.ALIGNMENT_BEGIN
+
+	var back := Button.new()
+	back.name = "BackToLandingButton"
+	back.text = "← Menu"
+	back.custom_minimum_size = Vector2(140, 56)
+	back.add_theme_font_size_override("font_size", 22)
+	back.pressed.connect(_on_back_to_landing_pressed)
+	row.add_child(back)
+
+	var play_now := Button.new()
+	play_now.name = "PlayNowButton"
+	play_now.text = "▶ Graj teraz"
+	play_now.custom_minimum_size = Vector2(220, 56)
+	play_now.add_theme_font_size_override("font_size", 22)
+	play_now.pressed.connect(_on_play_now_pressed)
+	row.add_child(play_now)
+
+	# Helper hint label so 7yo knows what this screen is for.
+	var hint := Label.new()
+	hint.name = "ScreenHint"
+	hint.text = "  Wybierz narzędzie poniżej i kliknij scenę aby tworzyć"
+	hint.add_theme_font_size_override("font_size", 18)
+	hint.add_theme_color_override("font_color", Color(0.4, 0.4, 0.5))
+	row.add_child(hint)
+
+	layout.add_child(row)
+	layout.move_child(row, 0)
+
+
+## "▶ Graj teraz" — same effect as the existing GoPlayButton in the
+## actions row, hoisted to the top so the kid can leave editing
+## mode without scrolling/scanning.
+func _on_play_now_pressed() -> void:
+	if _navigator != null:
+		_navigator.show_shell(SHELL_PLAY)
 
 
 func _on_back_to_landing_pressed() -> void:

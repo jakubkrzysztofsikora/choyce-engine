@@ -244,34 +244,33 @@ func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
 
-	# Roblox-style mouse layout — RMB-place was confusing kid +
-	# blocked camera. Reverted to single-purpose buttons:
-	#   left mouse   = "attack" action (routed by GameModeService:
-	#                  break_block if BUILD slot held, else swing)
-	#   right mouse  = camera drag, ALWAYS (rotate look)
-	# Place stays on K key only. Predictable beats clever for 7yo.
+	# FPS-style mouselook: mouse motion alone rotates the camera (no
+	# hold-to-look needed). The cursor is captured for the 3D session
+	# so motion deltas are raw. ESC releases capture so the kid can
+	# click HUD (back button, hotbar). LMB always = attack.
+	#
+	# Replaced the right-mouse-drag-to-look scheme — kid found it
+	# unwieldy alongside LMB-attack + crosshair aim.
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
+				# Re-capture cursor if released (kid clicked back into
+				# the 3D view after using HUD).
+				if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+					Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 				Input.action_press("attack")
 			else:
 				Input.action_release("attack")
 			return
-		if event.button_index == MOUSE_BUTTON_RIGHT:
-			_mouse_dragging = event.pressed
-			return
 
 	if event is InputEventMouseMotion:
-		if _mouse_dragging:
-			rotate_y(-event.relative.x * MOUSE_DRAG_SENSITIVITY)
-			_vertical_look -= event.relative.y * MOUSE_DRAG_SENSITIVITY
-			_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
-			if _camera != null:
-				_camera.rotation.x = _vertical_look
-		elif Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-			rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
-			_vertical_look -= event.relative.y * MOUSE_SENSITIVITY
-			_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
+		var captured := Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
+		if not captured:
+			return  # cursor visible → kid is on HUD; don't move camera
+		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
+		_vertical_look -= event.relative.y * MOUSE_SENSITIVITY
+		_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
+		if _camera != null:
 			_camera.rotation.x = _vertical_look
 
 func _process(delta: float) -> void:
