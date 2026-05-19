@@ -14,6 +14,7 @@ signal ports_ready
 
 const SHELL_PLAY := "play"
 const SHELL_LIBRARY := "library"
+const SHELL_LANDING := "landing"
 
 enum CanvasTool {
 	PLACE,
@@ -106,9 +107,34 @@ func _ready() -> void:
 		_onboarding_overlay = OnboardingOverlayClass.new()
 		add_child(_onboarding_overlay)
 
+	_ensure_back_button()
 	_wire_actions()
 	_refresh_labels()
 	_apply_friendly_theme()
+
+
+## Inject a "← Menu" back button so the kid always has a way to
+## return to landing (mirrors ParentZoneShell fix). Always enabled.
+func _ensure_back_button() -> void:
+	var layout: VBoxContainer = $Layout
+	if layout == null:
+		return
+	if layout.has_node("BackToLandingButton"):
+		return
+	var btn := Button.new()
+	btn.name = "BackToLandingButton"
+	btn.text = "← Menu"
+	btn.custom_minimum_size = Vector2(160, 48)
+	btn.add_theme_font_size_override("font_size", 22)
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	btn.pressed.connect(_on_back_to_landing_pressed)
+	layout.add_child(btn)
+	layout.move_child(btn, 0)
+
+
+func _on_back_to_landing_pressed() -> void:
+	if _navigator != null:
+		_navigator.show_shell(SHELL_LANDING)
 	_build_template_cards()
 	_setup_preview_environment()
 	_refresh_workspace_ui()

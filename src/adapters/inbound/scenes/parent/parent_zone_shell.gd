@@ -4,6 +4,7 @@ extends Control
 const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const SHELL_CREATE := "create"
 const SHELL_PLAY := "play"
+const SHELL_LANDING := "landing"
 
 var _navigator: ShellNavigator
 var _profile: PlayerProfile
@@ -54,11 +55,38 @@ const AI_FULL := 2
 func _ready() -> void:
 	_setup_provenance_badge()
 	_setup_coppa_panel()
+	_ensure_back_button()
 	_wire_actions()
 	# Role guard intentionally NOT called here — _profile may be null at _ready().
 	# It is called unconditionally from setup() after profile is bound.
 	_refresh_labels()
 	_apply_theme()
+
+
+## Inject a "← Menu" back button at the top of the layout so the kid
+## always has a way to return to landing — separate from the top
+## NavBar (which may be hidden or unreachable in some flows).
+## Always enabled regardless of role guard — escape hatch first.
+func _ensure_back_button() -> void:
+	var layout: VBoxContainer = $Layout
+	if layout == null:
+		return
+	if layout.has_node("BackToLandingButton"):
+		return
+	var btn := Button.new()
+	btn.name = "BackToLandingButton"
+	btn.text = "← Menu"
+	btn.custom_minimum_size = Vector2(160, 48)
+	btn.add_theme_font_size_override("font_size", 22)
+	btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	btn.pressed.connect(_on_back_pressed)
+	layout.add_child(btn)
+	layout.move_child(btn, 0)
+
+
+func _on_back_pressed() -> void:
+	if _navigator != null:
+		_navigator.show_shell(SHELL_LANDING)
 
 
 func setup(

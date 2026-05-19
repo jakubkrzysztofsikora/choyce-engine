@@ -19,6 +19,14 @@ var ai_access: AIAccessLevel
 var sharing_allowed: bool
 var language_override_allowed: bool
 var cloud_sync_consent: bool
+## Combat / wave-respawn enabled? Default false (kid-safe per
+## CLAUDE.md "Prioritize child safety and parental controls"). Parent
+## opts in for older kids who play Roblox-style obby/combat.
+var combat_enabled: bool
+## Maximum wave number the WaveDirector will spawn. 0 = no waves
+## past the starter pack. Caps frustration spiral for younger kids
+## (Adv 2 H-3 fix).
+var combat_wave_cap: int
 
 
 func _init(
@@ -27,7 +35,9 @@ func _init(
 	p_ai_access: AIAccessLevel = AIAccessLevel.CREATIVE_ONLY,
 	p_sharing: bool = false,
 	p_language_override: bool = false,
-	p_cloud_sync: bool = false
+	p_cloud_sync: bool = false,
+	p_combat_enabled: bool = false,
+	p_combat_wave_cap: int = 0
 ) -> void:
 	daily_playtime_limit_minutes = maxi(0, p_daily_limit)
 	session_playtime_limit_minutes = maxi(0, p_session_limit)
@@ -35,6 +45,8 @@ func _init(
 	sharing_allowed = p_sharing
 	language_override_allowed = p_language_override
 	cloud_sync_consent = p_cloud_sync
+	combat_enabled = p_combat_enabled
+	combat_wave_cap = maxi(0, p_combat_wave_cap)
 
 
 func is_ai_disabled() -> bool:

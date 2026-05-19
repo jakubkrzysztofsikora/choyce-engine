@@ -673,16 +673,44 @@ func _register_shells() -> void:
 
 
 func _connect_navigation() -> void:
-	_nav_create.pressed.connect(func() -> void: _navigator.show_shell(SHELL_CREATE))
-	_nav_play.pressed.connect(func() -> void: _navigator.show_shell(SHELL_PLAY))
-	_nav_library.pressed.connect(func() -> void: _navigator.show_shell(SHELL_LIBRARY))
-	_nav_parent.pressed.connect(func() -> void: _navigator.show_shell(SHELL_PARENT))
+	_nav_create.pressed.connect(func() -> void: _navigate_to(SHELL_CREATE))
+	_nav_play.pressed.connect(func() -> void: _navigate_to(SHELL_PLAY))
+	_nav_library.pressed.connect(func() -> void: _navigate_to(SHELL_LIBRARY))
+	_nav_parent.pressed.connect(func() -> void: _navigate_to(SHELL_PARENT))
 
 	# LandingScreen signals → shell navigation.
-	_landing_shell.play_pressed.connect(func() -> void: _navigator.show_shell(SHELL_PLAY))
-	_landing_shell.create_pressed.connect(func() -> void: _navigator.show_shell(SHELL_CREATE))
-	_landing_shell.parent_pressed.connect(func() -> void: _navigator.show_shell(SHELL_PARENT))
+	_landing_shell.play_pressed.connect(func() -> void: _navigate_to(SHELL_PLAY))
+	_landing_shell.create_pressed.connect(func() -> void: _navigate_to(SHELL_CREATE))
+	_landing_shell.parent_pressed.connect(func() -> void: _navigate_to(SHELL_PARENT))
 	_landing_shell.world_card_pressed.connect(_on_world_card_pressed)
+
+
+## Single entry point for all shell navigation. Kills any leftover
+## gameplay_runtime (its HUD CanvasLayer at layer=5 would otherwise
+## intercept clicks + visually cover the destination shell, which is
+## exactly the "unclickable + goes outside window" bug a kid hit
+## when navigating away from an active session).
+func _navigate_to(shell_id: String) -> void:
+	_ensure_no_active_gameplay()
+	_set_main_layout_visible(true)
+	_navigator.show_shell(shell_id)
+
+
+func _ensure_no_active_gameplay() -> void:
+	# GameplayRuntime is attached at /root by PlayShell._start_gameplay;
+	# if PlayShell never received a session_ended event (kid Cmd+Tab
+	# away, parent navigated mid-play, etc.) the runtime + its HUD
+	# CanvasLayer stays alive and overlays the next shell.
+	for child in get_tree().root.get_children():
+		if child is GameplayRuntime:
+			if child.has_method("end_session"):
+				child.end_session()
+			child.queue_free()
+
+
+func _set_main_layout_visible(value: bool) -> void:
+	if has_node("Layout"):
+		$Layout.visible = value
 
 	_navigator.shell_changed.connect(_on_shell_changed)
 
