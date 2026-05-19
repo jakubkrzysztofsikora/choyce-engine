@@ -55,7 +55,20 @@ func start_session(world: World, session: Session) -> void:
 	# Don't capture mouse — kid needs to click ESC button / nav back if anything stalls.
 	# Mouse capture made the apparent "hang" feel total since user couldn't escape.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	# Hide Main/Layout so the NavBar (top tabs) and other UI don't overlap the
+	# HUD overlay added below. Gameplay is full-screen 3D + HUD only.
+	# gameplay_runtime is rooted at scene-tree root so it stays visible.
+	_set_main_layout_visible(false)
 	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
+
+
+## Hide / restore the InboundMain Layout (NavBar + Body) for fullscreen
+## gameplay. Looks up the node by absolute path so we don't take a hard
+## dependency on InboundMain from this Node3D.
+func _set_main_layout_visible(value: bool) -> void:
+	var layout := get_node_or_null("/root/Main/Layout")
+	if layout != null:
+		layout.visible = value
 
 	# Spawn sparkle at player spawn
 	if _effect_spawner != null:
@@ -117,6 +130,8 @@ func end_session() -> void:
 		_player_controller.set_process_input(false)
 		_player_controller.set_process(false)
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	# Restore Main/Layout (NavBar + Body) so the kid sees Landing on return.
+	_set_main_layout_visible(true)
 	session_ended.emit()
 
 func _input(event: InputEvent) -> void:

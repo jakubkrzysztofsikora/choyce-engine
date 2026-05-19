@@ -37,6 +37,11 @@ func _ready() -> void:
 	if _camera != null:
 		_camera_base_y = _camera.position.y
 		_camera.fov = BASE_FOV
+		# Without make_current(), the root viewport has no active camera and
+		# only the Environment sky_blue clears the frame. Kid saw a blue
+		# screen instead of the 3D world. set_process(false) at construction
+		# does not stop the camera from rendering — only its update loop.
+		_camera.make_current()
 
 func _physics_process(delta: float) -> void:
 	if not is_processing():
