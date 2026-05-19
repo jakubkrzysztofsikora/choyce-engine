@@ -41,6 +41,9 @@ var _weapon_tiers := [
 ]
 var _current_weapon_index: int = 0
 var _weapon_label: Label
+var _wave_number: int = 0
+var _wave_respawn_timer: float = 0.0
+const WAVE_RESPAWN_DELAY := 6.0
 
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
@@ -487,6 +490,50 @@ func _build_hud() -> void:
 func _physics_process(delta: float) -> void:
 	if _rules_active and _rules_runtime != null:
 		_rules_runtime.tick(delta)
+	_check_enemy_wave_respawn(delta)
+
+
+## Endless engagement: once kid clears all enemies in a wave, after
+## WAVE_RESPAWN_DELAY seconds spawn the next wave with +1 enemy and
+## a stronger archetype mix. Drives the gear-grinding loop.
+func _check_enemy_wave_respawn(delta: float) -> void:
+	if _enemy_root == null or not is_instance_valid(_enemy_root):
+		return
+	if _player_controller == null or not is_instance_valid(_player_controller):
+		return
+	# Are there any live enemies?
+	for child in _enemy_root.get_children():
+		if child is EnemyController and (child as EnemyController).health.is_alive:
+			_wave_respawn_timer = 0.0
+			return
+	_wave_respawn_timer += delta
+	if _wave_respawn_timer >= WAVE_RESPAWN_DELAY:
+		_wave_respawn_timer = 0.0
+		_spawn_next_wave()
+
+
+func _spawn_next_wave() -> void:
+	_wave_number += 1
+	print("[combat] wave %d spawning" % _wave_number)
+	var pack_size := mini(3 + _wave_number, 7)
+	var spawn := _player_controller.global_position
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for i in pack_size:
+		var roll := rng.randf()
+		var def: EnemyDefinition
+		if _wave_number >= 3 and roll < 0.4:
+			def = EnemyDefinition.slime_blue()
+		elif roll < 0.7:
+			def = EnemyDefinition.slime_green()
+		else:
+			def = EnemyDefinition.bouncer()
+		var angle := rng.randf_range(0.0, TAU)
+		var radius := rng.randf_range(8.0, 14.0)
+		var pos := spawn + Vector3(cos(angle) * radius, 1.0, sin(angle) * radius)
+		_spawn_one(def, pos)
+	if _screen_feedback != null:
+		_screen_feedback.flash(Color(1.0, 0.4, 0.4), 0.25)
 
 
 func _register_world_rules(world: World) -> void:
@@ -558,6 +605,8 @@ func end_session() -> void:
 				l.queue_free()
 	_inventory_labels.clear()
 	_current_weapon_index = 0
+	_wave_number = 0
+	_wave_respawn_timer = 0.0
 	_world_renderer.clear_world()
 	if _player_controller != null:
 		_player_controller.visible = false

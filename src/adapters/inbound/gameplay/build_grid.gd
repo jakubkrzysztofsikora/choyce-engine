@@ -63,6 +63,12 @@ func has_block_at(cell: Vector3i) -> bool:
 	return _cells.has(cell)
 
 
+## Return the block_id at cell, or "" if empty. Used by spring-block
+## launch detection in PlayerController.
+func kind_at(cell: Vector3i) -> String:
+	return String(_kind_for_cell.get(cell, ""))
+
+
 ## Place a block of the given kind at cell. Returns true on success.
 ## Fails if: cell occupied, capacity reached, or block_id unknown.
 func place_block(cell: Vector3i, block_id: String) -> bool:

@@ -146,6 +146,7 @@ func _physics_process(delta: float) -> void:
 		_landing_squash()
 		if velocity.y < -5.0:
 			_hard_landing_feedback()
+		_check_spring_block_launch()
 	_was_on_floor = is_on_floor()
 
 	# Footstep rhythm
@@ -403,6 +404,19 @@ func _try_place_block() -> void:
 		var normal: Vector3 = hit.get("normal", Vector3.UP)
 		cell = _build_grid.world_to_cell(hit_pos + normal * 0.5)
 	_build_grid.place_block(cell, _hotbar[_active_slot])
+
+
+## On landing, check whether the cell directly below the player is a
+## spring block. If so, launch upward with a big arc (obby-style
+## trampoline). Cheap — single dictionary lookup.
+func _check_spring_block_launch() -> void:
+	if _build_grid == null:
+		return
+	var below_pos := global_position + Vector3(0, -0.6, 0)
+	var cell := _build_grid.world_to_cell(below_pos)
+	if _build_grid.kind_at(cell) == "spring":
+		velocity.y = 14.0
+		jumped.emit()
 
 
 func _try_break_block() -> void:
