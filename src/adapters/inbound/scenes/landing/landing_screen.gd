@@ -313,12 +313,17 @@ func _show_world_picker() -> void:
 	# Clear stale cards from a previous open.
 	for child in _card_row.get_children():
 		child.queue_free()
-	# Populate from project_store for the current profile.
+	# Populate from project_store for the current profile. Filter to seeded
+	# starter projects only (project_id contains "_starter_") so stale projects
+	# from earlier development versions (e.g. "starter_canvas") don't appear.
 	if _project_store != null and _profile != null:
 		for project in _project_store.list_projects():
-			if project.owner_profile_id == _profile.profile_id:
-				var card := _build_world_card(project)
-				_card_row.add_child(card)
+			if project.owner_profile_id != _profile.profile_id:
+				continue
+			if not String(project.project_id).contains("_starter_"):
+				continue
+			var card := _build_world_card(project)
+			_card_row.add_child(card)
 	_picker_layer.visible = true
 
 
@@ -358,6 +363,12 @@ func _build_world_card(project) -> Control:
 		if bank != null:
 			bank.play_sfx("ui_confirm")
 			bank.stop_music(true)
+		# Hide picker CanvasLayer explicitly. Control.visible=false on
+		# LandingShell does NOT hide CanvasLayer children (they render
+		# independently), so without this the picker stayed on top of
+		# PlayShell after navigating away.
+		if _picker_layer != null:
+			_picker_layer.visible = false
 		world_card_pressed.emit(project.project_id, world_id)
 	)
 	return card

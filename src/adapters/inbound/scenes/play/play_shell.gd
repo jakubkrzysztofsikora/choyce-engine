@@ -265,7 +265,11 @@ func _start_gameplay(world: World, session: Session) -> void:
 	var runtime_scene := preload("res://src/adapters/inbound/gameplay/gameplay_runtime.tscn")
 	_gameplay_runtime = runtime_scene.instantiate()
 	_gameplay_runtime.session_ended.connect(_on_session_ended)
-	add_child(_gameplay_runtime)
+	# Add Node3D to scene-tree root, not PlayShell (a Control). Node3D inside
+	# a Control does NOT render the 3D world to the main viewport — the kid
+	# saw a blank screen with HUD only. Root attach uses the project's
+	# default World3D + Camera3D from the gameplay_runtime scene.
+	get_tree().root.add_child(_gameplay_runtime)
 	_gameplay_runtime.start_session(world, session)
 	$Layout.visible = false
 
