@@ -373,6 +373,14 @@ func _animate_button_press(button: Button) -> void:
 
 
 func _apply_active_tool() -> void:
+	# W1.11: Wave-B Phase 8d gate posture is BLOCK. The tool buttons disable
+	# themselves until _ports_ready, but a direct call (keyboard nav, test
+	# harness, future REST adapter) could still reach this function with
+	# uninitialised ports. Reject explicitly with the same kid-friendly
+	# message the disabled-button path uses.
+	if not _ports_ready:
+		_set_status_message(_t("create.tools.unavailable"), false)
+		return
 	if _apply_world_edit_port == null or _profile == null:
 		_set_status_message(_t("create.error.port_not_ready"), true)
 		return
@@ -734,13 +742,23 @@ func _build_template_cards() -> void:
 		child.queue_free()
 	_template_buttons.clear()
 
-	var templates := [
-		{"id": "adventure", "name": _t("create.template.adventure"), "icon": "⛰", "colors": [Color(0.35, 0.75, 0.95), Color(0.95, 0.85, 0.50), Color(0.40, 0.80, 0.45)]},
-		{"id": "farm",      "name": _t("create.template.farm"),      "icon": "🌾", "colors": [Color(0.95, 0.75, 0.35), Color(0.50, 0.80, 0.45), Color(0.95, 0.55, 0.35)]},
-		{"id": "city",      "name": _t("create.template.city"),      "icon": "🏙", "colors": [Color(0.60, 0.65, 0.75), Color(0.95, 0.85, 0.50), Color(0.45, 0.70, 0.85)]},
-		{"id": "obby",      "name": _t("create.template.obby"),      "icon": "🏃", "colors": [Color(1.0, 0.42, 0.21), Color(1.0, 0.90, 0.43), Color(0.42, 0.80, 0.47)]},
-		{"id": "tycoon",    "name": _t("create.template.tycoon"),    "icon": "💰", "colors": [Color(0.95, 0.80, 0.30), Color(0.60, 0.45, 0.35), Color(0.40, 0.80, 0.65)]},
-	]
+	# W1.8: card swatch colours come from palettes.json single source of truth
+	# (template_defaults → palette → colors[0..2]) so the dots a kid sees match
+	# what apply_palette_to_theme will actually paint when they pick the card.
+	var template_ids := ["adventure", "farm", "city", "obby", "tycoon"]
+	var template_icons := {"adventure": "⛰", "farm": "🌾", "city": "🏙", "obby": "🏃", "tycoon": "💰"}
+	var templates: Array = []
+	for tid in template_ids:
+		var palette_colors := ThemeManager.get_palette_colors_for_template(tid)
+		var swatch: Array = []
+		for i in range(min(3, palette_colors.size())):
+			swatch.append(ThemeManager.hex_to_color(str(palette_colors[i])))
+		templates.append({
+			"id": tid,
+			"name": _t("create.template." + tid),
+			"icon": template_icons.get(tid, "✨"),
+			"colors": swatch,
+		})
 
 	for t in templates:
 		var card := _build_template_card(t)
@@ -806,7 +824,11 @@ func _on_template_card_pressed(template_id: String) -> void:
 
 
 func _set_template(template_id: String) -> void:
-	_active_palette = template_id
+	# W1.8: template ids ("city", "obby", ...) are NOT palette ids; resolve via
+	# template_defaults so apply_palette_to_theme receives a real palette id
+	# ("city_sunrise", "arcade_pop", ...). Previously the raw template id was
+	# stored, ThemeManager push_warning'd, and the palette never switched.
+	_active_palette = ThemeManager.get_palette_id_for_template(template_id)
 	_apply_friendly_theme()
 	_set_status_message(_t("create.template_selected") % template_id, false)
 	_update_3d_preview(_current_world_instance)

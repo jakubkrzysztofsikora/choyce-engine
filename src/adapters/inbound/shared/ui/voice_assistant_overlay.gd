@@ -108,9 +108,13 @@ func _on_record_pressed() -> void:
 		if _stt != null and "last_result" in _stt:
 			last_result = _stt.last_result
 
-		if last_result.get("blocked", false) == true:
-			# Moderation BLOCK — show toast and bail; never call AI.
+		# ModeratingSttAdapter writes the "allowed" key (never "blocked"); treat
+		# explicit allowed=false as BLOCK. Absence of the key means non-moderating
+		# adapter — allow through to the prompt-empty check below.
+		if last_result.has("allowed") and not last_result.get("allowed", true):
+			# Moderation BLOCK — show toast, play block cue, bail; never call AI.
 			_show_status(_t("voice.blocked_try_again"))
+			_play_block_cue()
 			return
 
 		if prompt.is_empty():
@@ -178,6 +182,22 @@ func _show_status(message: String) -> void:
 		await get_tree().create_timer(3.0).timeout
 		if _status_label != null:
 			_status_label.visible = false
+
+
+## W1.4: audible feedback on moderation BLOCK so non-readers (4-7) get a cue
+## beyond the text toast. Hits AudioBank autoload if present; silent otherwise.
+func _play_block_cue() -> void:
+	var bank: Node = null
+	if Engine.has_singleton("AudioBank"):
+		bank = Engine.get_singleton("AudioBank")
+	elif has_node("/root/AudioBank"):
+		bank = get_node("/root/AudioBank")
+	if bank == null:
+		return
+	if bank.has_method("play_sfx"):
+		bank.play_sfx("block_buzz")
+	if bank.has_method("play_voice"):
+		bank.play_voice("block_oops")
 
 
 ## Internal localization helper. Falls back to key when no port injected.

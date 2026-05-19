@@ -1,7 +1,17 @@
 # Godot
 .godot/
-*.import
 export_presets.cfg
+
+# Godot import sidecars: ignore by default but allow-list the bundled data/
+# tree so fonts + audio + textures resolve as typed resources on a clean
+# clone. Without these committed, theme/audio loads silently fall back to
+# raw bytes (W1.6 reviewer finding).
+*.import
+!data/fonts/*.import
+!data/audio/**/*.import
+!data/textures/**/*.import
+!data/models/**/*.import
+!data/themes/*.import
 
 # OS
 .DS_Store
@@ -36,3 +46,5 @@ projects/
 # Python venv (if used for tooling)
 venv/
 __pycache__/
+
+.claude/

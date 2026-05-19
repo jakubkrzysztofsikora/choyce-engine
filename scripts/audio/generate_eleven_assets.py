@@ -53,7 +53,7 @@ SFX_PROMPTS = {
     "collect_coin":     "bright cartoon coin pickup, sparkle ding, 300ms",
     "collect_star":     "magical sparkle pickup, warm twinkle, 500ms",
     "victory_fanfare":  "joyful cartoon fanfare, 4 ascending notes, celebratory, 1.2s",
-    "block_buzz":       "very soft polite buzz, friendly not scary, 200ms",
+    "block_buzz":       "clear gentle rejection chime for child app, descending two-tone, friendly but unmistakable, target peak -3 dBFS, 250ms",
     "spawn_pop":        "magical poof appearing, soft whoosh and twinkle, 400ms",
     "footstep_grass":   "soft footstep on grass, single tap, kid character, 80ms",
     "footstep_sand":    "soft footstep on sand, soft scrape, 100ms",

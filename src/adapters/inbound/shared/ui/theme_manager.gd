@@ -2,17 +2,51 @@ class_name ThemeManager
 extends RefCounted
 
 static var _cached_palettes: Dictionary = {}
+static var _cached_template_defaults: Dictionary = {}
 
 static func get_palettes() -> Dictionary:
-	if _cached_palettes.is_empty():
-		var file := FileAccess.open("res://data/themes/palettes.json", FileAccess.READ)
-		if file:
-			var json := JSON.new()
-			var err := json.parse(file.get_as_text())
-			if err == OK:
-				var data: Dictionary = json.data
-				_cached_palettes = data.get("palettes", {})
+	_load_palettes_file()
 	return _cached_palettes.duplicate(true)
+
+
+## W1.8: resolve a template id ("city", "obby", "farm", ...) to its default
+## palette id ("city_sunrise", "arcade_pop", "farm_meadow", ...) via the
+## template_defaults section of palettes.json. Returns the template id itself
+## when no mapping exists so callers can pass a palette id directly without
+## breaking. Centralises the lookup so create_shell + landing_screen can stop
+## hard-coding color triplets.
+static func get_palette_id_for_template(template_id: String) -> String:
+	_load_palettes_file()
+	if _cached_template_defaults.has(template_id):
+		return str(_cached_template_defaults[template_id])
+	return template_id
+
+
+## W1.8: return the color list for whichever palette `template_id` maps to.
+## Used by create_shell card dots so the visual swatch matches what
+## apply_palette_to_theme would actually paint.
+static func get_palette_colors_for_template(template_id: String) -> Array:
+	var palette_id := get_palette_id_for_template(template_id)
+	var palettes := get_palettes()
+	if not palettes.has(palette_id):
+		return []
+	var palette: Dictionary = palettes[palette_id]
+	return palette.get("colors", []).duplicate()
+
+
+static func _load_palettes_file() -> void:
+	if not _cached_palettes.is_empty():
+		return
+	var file := FileAccess.open("res://data/themes/palettes.json", FileAccess.READ)
+	if file == null:
+		return
+	var json := JSON.new()
+	var err := json.parse(file.get_as_text())
+	if err != OK:
+		return
+	var data: Dictionary = json.data
+	_cached_palettes = data.get("palettes", {})
+	_cached_template_defaults = data.get("template_defaults", {})
 
 
 static func apply_palette_to_theme(theme: Theme, palette_id: String) -> void:
@@ -76,6 +110,12 @@ static func apply_palette_to_theme(theme: Theme, palette_id: String) -> void:
 		var grabber_hl := theme.get_stylebox("grabber_highlight", bar)
 		if grabber_hl is StyleBoxFlat:
 			grabber_hl.bg_color = secondary.darkened(0.2)
+
+
+## Public hex→Color converter for callers that read palette colors as raw
+## "#RRGGBB" strings (e.g. create_shell card swatches).
+static func hex_to_color(hex: String) -> Color:
+	return _hex_to_color(hex)
 
 
 static func _hex_to_color(hex: String) -> Color:

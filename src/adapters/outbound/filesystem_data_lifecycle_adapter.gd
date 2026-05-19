@@ -158,20 +158,15 @@ func get_job(_job_id: String) -> Dictionary:
 # ── Private ────────────────────────────────────────────────────────────────────
 
 func _clear_profile_consent(profile_id: String) -> void:
-	# FilesystemConsentStore does not expose a delete_profile() method.
-	# Overwrite all known consent keys for this profile with false.
-	# This is idempotent — calling it on a profile that has no consent entries is harmless.
-	var known_types := ["cloud_sync", "ai_generation", "voice_input", "telemetry"]
-	# We cannot directly write false through the public API (request_consent only grants).
-	# Access the internal _profiles dict to clear entries for this profile.
+	# COPPA §312.5(c): consent must be erasable on parental request.
+	# Uses the public delete_profile() API which marks dirty and forces a
+	# durable disk flush. Prior implementation reached into the private
+	# _profiles dict and duck-typed a non-existent _save() method, so the
+	# deletion never reached disk and reloaded stale on next boot.
 	if _consent_store == null:
 		return
-	if _consent_store._profiles.has(profile_id):
-		_consent_store._profiles.erase(profile_id)
-		# Trigger a re-save by calling the private _save method via duck-typing.
-		if _consent_store.has_method("_save"):
-			_consent_store._save()
-	# If the profile never had entries, this is a no-op (idempotent).
+	if _consent_store.has_method("delete_profile"):
+		_consent_store.delete_profile(profile_id)
 
 
 func _append_tombstone(profile_id: String) -> void:
