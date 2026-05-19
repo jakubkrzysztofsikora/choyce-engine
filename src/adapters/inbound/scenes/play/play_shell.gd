@@ -120,7 +120,9 @@ func launch_world_by_id(project_id: String, world_id: String) -> void:
 	if _run_playtest_port == null:
 		push_warning("PlayShell.launch_world_by_id: run_playtest_port not ready")
 		return
-	var players := PackedStringArray([_profile.profile_id]) if _profile != null else PackedStringArray()
+	# RunPlaytestPort contract: players is Array[PlayerProfile], not strings.
+	# RunPlaytestService reads players[i].profile_id during session.add_player.
+	var players: Array = [_profile] if _profile != null else []
 	var session: Session = _run_playtest_port.execute(world.world_id, players)
 	if session == null:
 		push_warning("PlayShell.launch_world_by_id: session creation failed")

@@ -88,34 +88,27 @@ if [[ $REBUILD -eq 1 ]]; then
   fi
 fi
 
-# 5. Ensure class-name cache exists (otherwise GDScript parse fails on boot)
-if [[ ! -f "$CLASS_CACHE_FILE" ]]; then
-  step "no class-name cache — running editor scan (one-time, ~30 s)"
-  # --editor --headless --quit scans every script and writes the cache.
-  # stderr is noisy with Kenney .ogg.import warnings; filter to real errors.
-  if timeout 90 godot --editor --headless --quit 2>&1 \
-       | grep -E "SCRIPT ERROR|Parse Error" | head -20; then
-    warn "parse errors above — class cache may be incomplete"
+# 5. Ensure class-name cache exists + optional parse-clean check.
+# Skip the editor scan when the cache is already present unless --check is set.
+# Editor scan takes ~30 s; redundant work bothers the user every boot.
+if [[ ! -f "$CLASS_CACHE_FILE" || $CHECK -eq 1 ]]; then
+  step "running editor scan (~30 s, builds class cache + parse-clean check)"
+  PARSE_OUTPUT="$(timeout 90 godot --editor --headless --quit 2>&1)"
+  PARSE_ERRORS="$(echo "$PARSE_OUTPUT" | grep -E "SCRIPT ERROR|Parse Error" | head -10)"
+  if [[ -n "$PARSE_ERRORS" ]]; then
+    echo "$PARSE_ERRORS"
+    warn "parse errors detected"
+    [[ $CHECK -eq 1 ]] && exit 1
+  else
+    ok "no parse errors"
   fi
   if [[ -f "$CLASS_CACHE_FILE" ]]; then
     ok "class cache built"
   else
-    warn "class cache still missing — try: godot -e --path . (then quit)"
+    warn "class cache still missing — open editor manually once: godot -e --path ."
   fi
 else
-  ok "class cache present"
-fi
-
-# 6. Parse-clean check (always runs — cheap)
-step "parse-clean check"
-PARSE_ERRORS="$(timeout 30 godot --editor --headless --quit 2>&1 \
-  | grep -E "SCRIPT ERROR|Parse Error" | head -10)"
-if [[ -n "$PARSE_ERRORS" ]]; then
-  echo "$PARSE_ERRORS"
-  warn "parse errors detected — fix before boot"
-  [[ $CHECK -eq 1 ]] && exit 1
-else
-  ok "no parse errors"
+  ok "class cache present (skipped scan — re-run with --check to force)"
 fi
 
 if [[ $CHECK -eq 1 ]]; then
