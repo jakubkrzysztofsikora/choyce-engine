@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/gameplay_runtime.gd" id="1_gameplay_runtime"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/world_renderer.gd" id="2_world_renderer"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/screen_feedback.gd" id="6_screen_feedback"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/victory_sequence.gd" id="7_victory_sequence"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/audio_event_bus.gd" id="8_audio_event_bus"]
+[ext_resource type="PackedScene" path="res://data/models/kenney/toon_characters/Models/GLB format/character-male-a.glb" id="9_character_mesh"]
 
 [sub_resource type="Environment" id="Environment_basic"]
 background_mode = 1
@@ -78,6 +79,9 @@ script = ExtResource("3_player_controller")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerController"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
 shape = SubResource("CapsuleShape3D_player")
+
+[node name="CharacterMesh" parent="PlayerController" instance=ExtResource("9_character_mesh")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="PlayerController"]
 transform = Transform3D(1, 0, 0, 0, 0.866025, -0.5, 0, 0.5, 0.866025, 0, 6, 8)

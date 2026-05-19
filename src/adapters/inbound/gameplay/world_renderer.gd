@@ -41,46 +41,50 @@ func get_spawn_position(index: int = 0) -> Vector3:
 		return _spawn_points[0]
 	return _spawn_points[index]
 
-# Wave V3: Polish display-name → Blender-authored glTF prop. Looked up
-# before falling back to the primitive-mesh branches below. Lower-cased
-# keys with leading-/trailing-whitespace stripped at lookup time.
+# Polish display-name → glTF prop. Kenney CC0 textured GLBs are used where
+# available (data/models/kenney/survival_kit/Models/GLB format/). The Blender-
+# authored fallbacks under data/models/props/ are placeholder-white per
+# Blender review C3 — kept for props with no Kenney equivalent on disk
+# (palms, mushrooms, eggs, etc. — would need Kenney Nature Kit). Per-name
+# colour tints in PROP_TINT_BY_NAME compensate for white placeholders.
+const KENNEY_SK := "res://data/models/kenney/survival_kit/Models/GLB format/"
+
 const PROP_GLTF_MAP: Dictionary = {
-	# --- original entries ---
-	"skała": "res://data/models/props/rock.gltf",
-	"znajdźka": "res://data/models/props/coin.gltf",
-	# --- beach / island world ---
-	"skrzynia": "res://data/models/props/chest.gltf",
-	"palma": "res://data/models/props/palm.gltf",
-	"łódka": "res://data/models/props/boat.gltf",
-	"flaga": "res://data/models/props/flag_pole.gltf",
-	"most": "res://data/models/props/rope_bridge.gltf",
-	"moneta": "res://data/models/props/coin.gltf",
-	"rozgwiazda": "res://data/models/props/starfish.gltf",
-	"perła": "res://data/models/props/pearl.gltf",
 	# --- universal / shared ---
-	"trawa": "res://data/models/props/grass_tuft.gltf",
-	"start": "res://data/models/props/spawn_crystal.gltf",
-	"płot": "res://data/models/props/fence_segment.gltf",
+	"skała":           KENNEY_SK + "rock-a.glb",
+	"trawa":           KENNEY_SK + "grass.glb",
+	"start":           KENNEY_SK + "campfire-pit.glb",  # spawn-point landmark
+	"płot":            KENNEY_SK + "fence.glb",
+	"znajdźka":        "res://data/models/props/coin.gltf",
+	# --- adventure / island world ---
+	"skrzynia":        KENNEY_SK + "chest.glb",
+	"palma":           "res://data/models/props/palm.gltf",  # no kenney palm on disk
+	"łódka":           "res://data/models/props/boat.gltf",
+	"flaga":           "res://data/models/props/flag_pole.gltf",
+	"most":            "res://data/models/props/rope_bridge.gltf",
+	"moneta":          "res://data/models/props/coin.gltf",
+	"rozgwiazda":      "res://data/models/props/starfish.gltf",
+	"perła":           "res://data/models/props/pearl.gltf",
 	# --- farm world ---
-	"stodoła": "res://data/models/props/barn.gltf",
-	"jabłoń": "res://data/models/props/apple_tree.gltf",
-	"beli siana": "res://data/models/props/hay_bale.gltf",
-	"wiatrak": "res://data/models/props/windmill.gltf",
-	"kura": "res://data/models/props/chicken.gltf",
-	"koryto": "res://data/models/props/water_trough.gltf",
-	"jabłko": "res://data/models/props/apple.gltf",
-	"jajko": "res://data/models/props/egg.gltf",
+	"stodoła":         "res://data/models/props/barn.gltf",
+	"jabłoń":          KENNEY_SK + "tree-autumn.glb",  # textured fallback
+	"beli siana":      KENNEY_SK + "barrel.glb",       # hay-bale silhouette substitute
+	"wiatrak":         "res://data/models/props/windmill.gltf",
+	"kura":            "res://data/models/props/chicken.gltf",
+	"koryto":          KENNEY_SK + "bucket.glb",
+	"jabłko":          "res://data/models/props/apple.gltf",
+	"jajko":           "res://data/models/props/egg.gltf",
 	# --- forest world ---
-	"dąb": "res://data/models/props/oak_tree.gltf",
-	"grzyb": "res://data/models/props/mushroom_large.gltf",
-	"grzyb mały": "res://data/models/props/mushroom_small.gltf",
-	"kłoda": "res://data/models/props/hollow_log.gltf",
-	"kamień z mchem": "res://data/models/props/mossy_rock.gltf",
-	"kwiaty": "res://data/models/props/flower_patch.gltf",
-	"świetlik": "res://data/models/props/firefly_jar.gltf",
+	"dąb":             KENNEY_SK + "tree-autumn-tall.glb",
+	"grzyb":           "res://data/models/props/mushroom_large.gltf",
+	"grzyb mały":      "res://data/models/props/mushroom_small.gltf",
+	"kłoda":           KENNEY_SK + "tree-log.glb",
+	"kamień z mchem":  KENNEY_SK + "rock-b.glb",
+	"kwiaty":          KENNEY_SK + "patch-grass.glb",
+	"świetlik":        "res://data/models/props/firefly_jar.gltf",
 	"słoik świetlików": "res://data/models/props/firefly_jar.gltf",
-	"żołądź": "res://data/models/props/glowing_acorn.gltf",
-	"skała z mchem": "res://data/models/props/rock_pile.gltf",
+	"żołądź":          "res://data/models/props/glowing_acorn.gltf",
+	"skała z mchem":   KENNEY_SK + "rock-c.glb",
 }
 
 
