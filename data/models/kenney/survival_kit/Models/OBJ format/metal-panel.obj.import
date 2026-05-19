@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://d0xvnjky2fy8v"
+path="res://.godot/imported/metal-panel.obj-3d4245ba3d4c142b58d810cdc7c9234f.mesh"
+
+[deps]
+
+files=["res://.godot/imported/metal-panel.obj-3d4245ba3d4c142b58d810cdc7c9234f.mesh"]
+
+source_file="res://data/models/kenney/survival_kit/Models/OBJ format/metal-panel.obj"
+dest_files=["res://.godot/imported/metal-panel.obj-3d4245ba3d4c142b58d810cdc7c9234f.mesh", "res://.godot/imported/metal-panel.obj-3d4245ba3d4c142b58d810cdc7c9234f.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
