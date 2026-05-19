@@ -1,0 +1,232 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v5.1.19",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0,
+        1
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "AcornTop",
+      "scale": [
+        1,
+        0.6000000238418579,
+        1
+      ],
+      "translation": [
+        0,
+        0.10000000149011612,
+        0
+      ]
+    },
+    {
+      "mesh": 1,
+      "name": "AcornNut",
+      "scale": [
+        1,
+        1.2000000476837158,
+        1
+      ],
+      "translation": [
+        0,
+        0.05999999865889549,
+        0
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "AcornTop",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.45,
+          0.3,
+          0.18,
+          1.0
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      }
+    },
+    {
+      "doubleSided": true,
+      "name": "AcornBody",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.85,
+          0.65,
+          0.3,
+          1.0
+        ],
+        "metallicFactor": 0,
+        "roughnessFactor": 0.5
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Sphere.026",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "Sphere.027",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4,
+            "NORMAL": 5,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 1
+        }
+      ]
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 163,
+      "max": [
+        0.06824494898319244,
+        0.07000000029802322,
+        0.06999998539686203
+      ],
+      "min": [
+        -0.06824493408203125,
+        -0.07000000029802322,
+        -0.07000000029802322
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 163,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 163,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 756,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 163,
+      "max": [
+        0.08286887407302856,
+        0.08500000089406967,
+        0.08500000834465027
+      ],
+      "min": [
+        -0.08286888897418976,
+        -0.08500000089406967,
+        -0.08500000089406967
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 163,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 163,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5123,
+      "count": 756,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 1956,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1956,
+      "byteOffset": 1956,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1304,
+      "byteOffset": 3912,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1512,
+      "byteOffset": 5216,
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1956,
+      "byteOffset": 6728,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1956,
+      "byteOffset": 8684,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1304,
+      "byteOffset": 10640,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 1512,
+      "byteOffset": 11944,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 13456,
+      "uri": "glowing_acorn.bin"
+    }
+  ]
+}
