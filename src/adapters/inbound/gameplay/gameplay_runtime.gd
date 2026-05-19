@@ -28,8 +28,19 @@ var _rules_active: bool = false
 var _hp_bar: ProgressBar
 var _score_label: Label
 var _enemy_root: Node3D
+var _loot_root: Node3D
 var _build_grid: BuildGrid
 var _hotbar_panel: HBoxContainer
+var _inventory_panel: VBoxContainer
+var _inventory_labels: Dictionary = {}  ## item_id -> Label
+var _weapon_tiers := [
+	{"id": "fist",      "damage": 4,  "label": "Pięść",          "needs": {}},
+	{"id": "stick",     "damage": 7,  "label": "Patyk",          "needs": {"wood_oak": 3}},
+	{"id": "sword_iron","damage": 12, "label": "Żelazny miecz",  "needs": {"ore_iron": 3, "wood_oak": 2}},
+	{"id": "sword_epic","damage": 20, "label": "Epicki miecz",   "needs": {"ore_iron": 8, "slime_gel": 5}},
+]
+var _current_weapon_index: int = 0
+var _weapon_label: Label
 
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
@@ -185,26 +196,117 @@ func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> voi
 		_audio_bus.emit_sfx("collect", position)
 	if _effect_spawner != null:
 		_effect_spawner.spawn_sparkle_burst(position)
-	# Forward to rules engine — on_defeat_<enemy> events + inventory items.
 	if _rules_runtime != null:
 		_rules_runtime.on_event("defeat_%s" % enemy_id, {"enemy_id": enemy_id})
-		var inv: Variant = _rules_runtime.get_context_value("inventory")
-		var inv_dict: Dictionary = inv if inv is Dictionary else {}
-		for drop in loot:
-			if not (drop is Dictionary):
-				continue
-			var item := String((drop as Dictionary).get("item_id", ""))
-			var qty := int((drop as Dictionary).get("quantity", 0))
-			if item == "":
-				continue
-			inv_dict[item] = int(inv_dict.get(item, 0)) + qty
-			_rules_runtime.on_event("inventory_changed", {"item": item})
-			_rules_runtime.on_event("collect_%s" % item, {})
-		_rules_runtime.set_context_value("inventory", inv_dict)
+
+	# Physical loot drops — spawn LootPickup orbs that the kid walks
+	# into. Loot table entries may stack; we drop one pickup per
+	# stack so the kid sees multiple orbs poof out.
+	if _loot_root == null or not is_instance_valid(_loot_root):
+		_loot_root = Node3D.new()
+		_loot_root.name = "Loot"
+		add_child(_loot_root)
+	var index := 0
+	for drop in loot:
+		if not (drop is Dictionary):
+			continue
+		var item := String((drop as Dictionary).get("item_id", ""))
+		var qty := int((drop as Dictionary).get("quantity", 0))
+		if item == "" or qty <= 0:
+			continue
+		var angle := index * (TAU / 4.0)
+		var offset := Vector3(cos(angle) * 0.8, 0.5, sin(angle) * 0.8)
+		var pickup := LootPickup.new()
+		pickup.setup(item, qty, _player_controller)
+		pickup.picked_up.connect(_on_loot_picked_up)
+		_loot_root.add_child(pickup)
+		pickup.global_position = position + offset
+		index += 1
+
 	# Default scoring fallback (works even without compiled rules).
 	_score += 5
 	if _score_label != null:
 		_score_label.text = "★ %d" % _score
+
+
+func _on_loot_picked_up(item_id: String, quantity: int) -> void:
+	if _audio_bus != null and _player_controller != null:
+		_audio_bus.emit_sfx("collect", _player_controller.global_position)
+	# Update inventory via rules-runtime context (single source of truth).
+	if _rules_runtime != null:
+		var inv: Variant = _rules_runtime.get_context_value("inventory")
+		var inv_dict: Dictionary = inv if inv is Dictionary else {}
+		inv_dict[item_id] = int(inv_dict.get(item_id, 0)) + quantity
+		_rules_runtime.set_context_value("inventory", inv_dict)
+		_rules_runtime.on_event("inventory_changed", {"item": item_id})
+		_rules_runtime.on_event("collect_%s" % item_id, {})
+		_refresh_inventory_panel(inv_dict)
+		_try_auto_upgrade_weapon(inv_dict)
+	else:
+		# Fallback when rules runtime not wired — local inventory map.
+		var inv_dict: Dictionary = {}
+		inv_dict[item_id] = quantity
+		_refresh_inventory_panel(inv_dict)
+
+
+func _refresh_inventory_panel(inv: Dictionary) -> void:
+	if _inventory_panel == null:
+		return
+	for item_id in inv.keys():
+		var count := int(inv[item_id])
+		var label: Label = _inventory_labels.get(item_id, null)
+		if label == null:
+			label = Label.new()
+			label.add_theme_font_size_override("font_size", 18)
+			label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95))
+			label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+			label.add_theme_constant_override("shadow_offset_x", 2)
+			label.add_theme_constant_override("shadow_offset_y", 2)
+			_inventory_panel.add_child(label)
+			_inventory_labels[item_id] = label
+		label.text = "%s × %d" % [_pretty_item_name(item_id), count]
+
+
+func _pretty_item_name(item_id: String) -> String:
+	match item_id:
+		"slime_gel": return "Galaretka"
+		"coin": return "Moneta"
+		"spring_coil": return "Sprężynka"
+		"ore_iron": return "Żelazo"
+		"wood_oak": return "Drewno"
+		"star": return "Gwiazdka"
+		_:
+			return item_id.capitalize()
+
+
+## Gear grinding loop: when kid has the materials, auto-upgrade weapon
+## to the next tier and consume the inputs. Kid-friendly automation —
+## no crafting menu UI for MVP, just a popup notification.
+func _try_auto_upgrade_weapon(inv: Dictionary) -> void:
+	if _current_weapon_index >= _weapon_tiers.size() - 1:
+		return
+	var next_tier: Dictionary = _weapon_tiers[_current_weapon_index + 1]
+	var needs: Dictionary = next_tier.get("needs", {})
+	for k in needs.keys():
+		if int(inv.get(k, 0)) < int(needs[k]):
+			return
+	# Consume materials.
+	for k in needs.keys():
+		inv[k] = int(inv.get(k, 0)) - int(needs[k])
+	if _rules_runtime != null:
+		_rules_runtime.set_context_value("inventory", inv)
+	_current_weapon_index += 1
+	var tier: Dictionary = _weapon_tiers[_current_weapon_index]
+	if _player_controller != null and _player_controller.has_method("equip_weapon_damage"):
+		_player_controller.equip_weapon_damage(int(tier.get("damage", 4)))
+	if _weapon_label != null:
+		_weapon_label.text = "🗡 %s (%d dmg)" % [tier.get("label", ""), int(tier.get("damage", 4))]
+	if _screen_feedback != null:
+		_screen_feedback.flash(Color(1.0, 0.95, 0.4), 0.3)
+	if _effect_spawner != null and _player_controller != null:
+		_effect_spawner.spawn_sparkle_burst(_player_controller.global_position)
+	print("[gear] upgraded to %s (%d dmg)" % [tier.get("label", ""), int(tier.get("damage", 4))])
+	_refresh_inventory_panel(inv)
 
 
 func _rebuild_hotbar_panel(active_slot: int) -> void:
@@ -318,6 +420,35 @@ func _build_hud() -> void:
 	_score_label.add_theme_constant_override("shadow_offset_y", 2)
 	stats_vbox.add_child(_score_label)
 
+	_weapon_label = Label.new()
+	_weapon_label.name = "WeaponLabel"
+	_weapon_label.text = "🗡 Pięść (4 dmg)"
+	_weapon_label.add_theme_font_size_override("font_size", 18)
+	_weapon_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	_weapon_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_weapon_label.add_theme_constant_override("shadow_offset_x", 2)
+	_weapon_label.add_theme_constant_override("shadow_offset_y", 2)
+	stats_vbox.add_child(_weapon_label)
+
+	# Inventory panel — bottom-left, lists collected items + counts.
+	_inventory_panel = VBoxContainer.new()
+	_inventory_panel.name = "Inventory"
+	_inventory_panel.add_theme_constant_override("separation", 4)
+	_inventory_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_inventory_panel.offset_left = 32
+	_inventory_panel.offset_top = -260
+	_inventory_panel.offset_right = 240
+	_inventory_panel.offset_bottom = -110
+	hud.add_child(_inventory_panel)
+	var inv_title := Label.new()
+	inv_title.text = "🎒 Plecak"
+	inv_title.add_theme_font_size_override("font_size", 20)
+	inv_title.add_theme_color_override("font_color", Color.WHITE)
+	inv_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	inv_title.add_theme_constant_override("shadow_offset_x", 2)
+	inv_title.add_theme_constant_override("shadow_offset_y", 2)
+	_inventory_panel.add_child(inv_title)
+
 	# Wire HP signal from player.
 	if _player_controller != null and _player_controller.has_signal("hp_changed"):
 		_player_controller.hp_changed.connect(_on_player_hp_changed)
@@ -421,6 +552,12 @@ func end_session() -> void:
 		for e in _enemy_root.get_children():
 			if e is EnemyController:
 				e.queue_free()
+	if _loot_root != null and is_instance_valid(_loot_root):
+		for l in _loot_root.get_children():
+			if l is LootPickup:
+				l.queue_free()
+	_inventory_labels.clear()
+	_current_weapon_index = 0
 	_world_renderer.clear_world()
 	if _player_controller != null:
 		_player_controller.visible = false
