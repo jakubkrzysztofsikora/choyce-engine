@@ -706,12 +706,19 @@ func _on_shell_changed(shell_id: String) -> void:
 
 
 func _on_world_card_pressed(project_id: String, world_id: String) -> void:
-	# Resolve the world from the project store and launch play.
-	if not world_id.is_empty():
-		_play_shell.set_world_context(world_id)
+	# Direct-launch path from LandingScreen. PlayShell.launch_world_by_id loads
+	# the project, picks the right world, plays template-matched music, and
+	# starts a session through RunPlaytestPort — all of which set_world_context
+	# + _launch_playtest do NOT do (set_world_context only refreshes the
+	# kid-status summary). Previous handler silently no-op'd because PlayShell
+	# had no project context to resolve world_id against.
 	_navigator.show_shell(SHELL_PLAY)
-	if _play_shell.has_method("_launch_playtest"):
-		_play_shell._launch_playtest(false)
+	if _play_shell.has_method("launch_world_by_id"):
+		_play_shell.launch_world_by_id(project_id, world_id)
+	else:
+		push_warning("PlayShell missing launch_world_by_id — falling back to context-only")
+		if not world_id.is_empty():
+			_play_shell.set_world_context(world_id)
 
 
 func _wire_shell_dependencies() -> void:
@@ -740,6 +747,11 @@ func _wire_shell_dependencies() -> void:
 				return _create_shell.get_active_world()
 			return null
 	)
+	# Wire project_store so LandingScreen world-card clicks can resolve the
+	# project + launch directly via PlayShell.launch_world_by_id. Without
+	# this _on_world_card_pressed silently no-ops.
+	if _play_shell.has_method("setup_for_direct_launch"):
+		_play_shell.setup_for_direct_launch(_phase1_project_store)
 	_library_shell.setup(
 		_navigator,
 		_profile,
