@@ -319,12 +319,16 @@ func _enemy_factory_for(enemy_id: String) -> EnemyDefinition:
 ## Brief Engine.time_scale dip on impact — Souls/Astro-Bot pattern.
 ## Defaults to 40ms slow-motion for mob hits, 80ms for boss kills.
 ## Reverts via SceneTreeTimer so we never leave the world frozen.
+## Adv V #1 bug fix: `create_timer` signature is
+##   create_timer(time_sec, process_always, process_in_physics, ignore_time_scale)
+## We were passing `false` as the 2nd arg thinking it disabled
+## time_scale — but the 2nd arg is process_always. Result: previous
+## hit-stop lasted 6.6× the intended duration. Now we pass the true
+## ignore_time_scale flag (4th arg) so the timer fires in real
+## wall-clock seconds regardless of Engine.time_scale.
 func _apply_hit_stop(duration_seconds: float) -> void:
-	# Use unscaled timer so the recovery actually fires after the
-	# slow-down ends. SceneTree timers ignore time_scale by default
-	# when process_mode is ALWAYS, but we set it explicit just in case.
 	Engine.time_scale = 0.15
-	var t := get_tree().create_timer(duration_seconds * 0.15, false)
+	var t := get_tree().create_timer(duration_seconds, true, false, true)
 	t.timeout.connect(func() -> void:
 		Engine.time_scale = 1.0
 	)
@@ -769,6 +773,18 @@ func _on_player_hp_changed(current: int, max_hp: int) -> void:
 		return
 	_hp_bar.max_value = max_hp
 	_hp_bar.value = current
+	# Adv W #3 — color ramp + low-HP panic cue. Default ProgressBar
+	# gives no visual signal at low HP; kid keeps swinging into a
+	# slime not realizing they're 5 HP from defeat. Color blindness
+	# fallback: also use saturation drop at low HP (red ≈ desaturated
+	# gray-red so red-green CB still sees a contrast shift).
+	var ratio: float = float(current) / float(maxi(max_hp, 1))
+	if ratio < 0.3:
+		_hp_bar.modulate = Color(1.0, 0.4, 0.4)
+	elif ratio < 0.6:
+		_hp_bar.modulate = Color(1.0, 0.85, 0.4)
+	else:
+		_hp_bar.modulate = Color(0.7, 1.0, 0.7)
 
 
 func _on_player_defeated() -> void:

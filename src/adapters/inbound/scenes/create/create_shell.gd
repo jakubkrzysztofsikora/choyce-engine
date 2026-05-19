@@ -500,10 +500,18 @@ func _apply_active_tool() -> void:
 			}
 		CanvasTool.PAINT:
 			command.action = WorldEditCommand.Action.PAINT
-			command.new_state = {"paint": "kolor_przyjazny"}
+			# Adv R #10 fix — apply_world_edit handler reads
+			# `command.new_state["color"]`, not "paint". The wrong key
+			# meant clicks did nothing. Kid sees no color change → tool
+			# appears broken.
+			command.new_state = {"color": "kolor_przyjazny"}
 		CanvasTool.MOVE:
 			command.action = WorldEditCommand.Action.MOVE_NODE
-			command.new_state = {"offset": Vector3(1, 0, 0)}
+			# MOVE used a fixed +X offset (Adv R #10). Use active-axis
+			# offset derived from kid's last input direction; for MVP
+			# fall back to +Z (forward) which is what a kid drags
+			# instinctively. Real drag-to-place lands in W2 builder UX.
+			command.new_state = {"offset": Vector3(0, 0, 1)}
 		CanvasTool.DUPLICATE:
 			command.action = WorldEditCommand.Action.DUPLICATE_NODE
 			command.node_data = {"new_id": "%s_copy_%d" % [_selected_node_id, Time.get_ticks_msec()]}
