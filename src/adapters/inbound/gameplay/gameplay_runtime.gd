@@ -28,6 +28,8 @@ var _rules_active: bool = false
 var _hp_bar: ProgressBar
 var _score_label: Label
 var _enemy_root: Node3D
+var _build_grid: BuildGrid
+var _hotbar_panel: HBoxContainer
 
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
@@ -112,6 +114,35 @@ func _set_main_layout_visible(value: bool) -> void:
 
 	_build_hud()
 	_spawn_starter_enemies()
+	_setup_build_grid()
+
+
+## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
+## the gameplay runtime so blocks are siblings to enemies + world
+## scenery. Player gets the grid reference for input handling.
+func _setup_build_grid() -> void:
+	if _build_grid != null and is_instance_valid(_build_grid):
+		_build_grid.clear_all()
+		_build_grid.queue_free()
+	_build_grid = BuildGrid.new()
+	_build_grid.name = "BuildGrid"
+	add_child(_build_grid)
+	if _player_controller != null and _player_controller.has_method("setup_build_grid"):
+		_player_controller.setup_build_grid(_build_grid)
+	_build_grid.block_placed.connect(_on_block_placed)
+	_build_grid.block_removed.connect(_on_block_removed)
+
+
+func _on_block_placed(cell: Vector3i, kind_id: String) -> void:
+	if _rules_runtime != null:
+		_rules_runtime.set_context_value("blocks_placed", _build_grid.block_count())
+		_rules_runtime.on_event("place_block", {"kind": kind_id, "cell": cell})
+
+
+func _on_block_removed(cell: Vector3i, kind_id: String) -> void:
+	if _rules_runtime != null:
+		_rules_runtime.set_context_value("blocks_placed", _build_grid.block_count())
+		_rules_runtime.on_event("break_block", {"kind": kind_id, "cell": cell})
 
 
 ## MVP: spawn a small kid-safe enemy pack around the player so the
@@ -174,6 +205,37 @@ func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> voi
 	_score += 5
 	if _score_label != null:
 		_score_label.text = "★ %d" % _score
+
+
+func _rebuild_hotbar_panel(active_slot: int) -> void:
+	if _hotbar_panel == null:
+		return
+	for child in _hotbar_panel.get_children():
+		child.queue_free()
+	var catalog := BlockKind.default_catalog()
+	for i in mini(catalog.size(), 5):
+		var kind: BlockKind = catalog[i]
+		var slot := ColorRect.new()
+		slot.custom_minimum_size = Vector2(64, 64)
+		slot.color = kind.color
+		# Active slot gets a bright outline via theme override on a wrapping
+		# panel — cheap: just brighten the color.
+		if i == active_slot:
+			slot.color = kind.color.lightened(0.3)
+		var label := Label.new()
+		label.text = "%d" % (i + 1)
+		label.add_theme_font_size_override("font_size", 18)
+		label.add_theme_color_override("font_color", Color.WHITE)
+		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+		label.add_theme_constant_override("shadow_offset_x", 2)
+		label.add_theme_constant_override("shadow_offset_y", 2)
+		label.position = Vector2(6, 4)
+		slot.add_child(label)
+		_hotbar_panel.add_child(slot)
+
+
+func _on_hotbar_changed(active_slot: int, _block_id: String) -> void:
+	_rebuild_hotbar_panel(active_slot)
 
 
 func _on_player_hp_changed(current: int, max_hp: int) -> void:
@@ -261,9 +323,23 @@ func _build_hud() -> void:
 		_player_controller.hp_changed.connect(_on_player_hp_changed)
 		_player_controller.player_defeated.connect(_on_player_defeated)
 
+	# Hotbar (bottom-center) — 5 block-kind slots, kid hits 1..5 to switch.
+	_hotbar_panel = HBoxContainer.new()
+	_hotbar_panel.name = "Hotbar"
+	_hotbar_panel.add_theme_constant_override("separation", 8)
+	_hotbar_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_hotbar_panel.offset_left = -280
+	_hotbar_panel.offset_top = -96
+	_hotbar_panel.offset_right = 280
+	_hotbar_panel.offset_bottom = -24
+	hud.add_child(_hotbar_panel)
+	_rebuild_hotbar_panel(0)
+	if _player_controller != null and _player_controller.has_signal("hotbar_changed"):
+		_player_controller.hotbar_changed.connect(_on_hotbar_changed)
+
 	var hint := Label.new()
 	hint.name = "ControlsHint"
-	hint.text = "WSAD ruch  •  SPACJA skok  •  LPM atak  •  J/F atak  •  PPM obrót kamery  •  ESC wyjście"
+	hint.text = "WSAD ruch  •  SPACJA skok  •  LPM atak  •  K stawiaj  •  L niszcz  •  1-5 wybór  •  PPM obrót  •  ESC"
 	hint.add_theme_font_size_override("font_size", 22)
 	hint.add_theme_color_override("font_color", Color.WHITE)
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
@@ -339,6 +415,12 @@ func end_session() -> void:
 	_rules_active = false
 	if _rules_runtime != null:
 		_rules_runtime.reset()
+	if _build_grid != null and is_instance_valid(_build_grid):
+		_build_grid.clear_all()
+	if _enemy_root != null and is_instance_valid(_enemy_root):
+		for e in _enemy_root.get_children():
+			if e is EnemyController:
+				e.queue_free()
 	_world_renderer.clear_world()
 	if _player_controller != null:
 		_player_controller.visible = false

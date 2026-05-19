@@ -36,6 +36,15 @@ var _health: HealthState
 var _attack_cooldown: float = 0.0
 var _equipped_weapon_damage: int = STARTER_WEAPON_DAMAGE
 
+## Voxel build hookup. GameplayRuntime injects via setup_build_grid().
+## Hotbar tracks which BlockKind id maps to slots 1..5; default first
+## 5 from BlockKind.default_catalog().
+var _build_grid: BuildGrid = null
+var _hotbar: Array = []        ## Array[String] block_ids
+var _active_slot: int = 0      ## 0-based index into _hotbar
+
+signal hotbar_changed(active_slot: int, block_id: String)
+
 var _camera: Camera3D
 var _vertical_look: float = 0.0
 var _coyote_time: float = 0.0
@@ -129,6 +138,7 @@ func _physics_process(delta: float) -> void:
 	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
 	if Input.is_action_pressed("attack") and _attack_cooldown <= 0.0:
 		_perform_attack()
+	_process_build_input()
 
 	# Landing detection and squash
 	if is_on_floor() and not _was_on_floor:
@@ -336,6 +346,74 @@ func get_health() -> HealthState:
 
 func equip_weapon_damage(damage: int) -> void:
 	_equipped_weapon_damage = maxi(damage, 1)
+
+
+## Injection point for Minecraft-lite block placement. Called by
+## GameplayRuntime once per session, after the BuildGrid node is
+## added to the scene tree. Sets a default 5-block hotbar.
+func setup_build_grid(grid: BuildGrid) -> void:
+	_build_grid = grid
+	var default := BlockKind.default_catalog()
+	_hotbar.clear()
+	for i in mini(default.size(), 5):
+		_hotbar.append((default[i] as BlockKind).block_id)
+	_active_slot = 0
+	if not _hotbar.is_empty():
+		hotbar_changed.emit(_active_slot, _hotbar[0])
+
+
+func _process_build_input() -> void:
+	if _build_grid == null or _hotbar.is_empty():
+		return
+	# Hotbar slot selection.
+	for i in range(_hotbar.size()):
+		if Input.is_action_just_pressed("hotbar_%d" % (i + 1)):
+			_active_slot = i
+			hotbar_changed.emit(_active_slot, _hotbar[i])
+	# Place or break — raycast 6m ahead.
+	if Input.is_action_just_pressed("place_block"):
+		_try_place_block()
+	if Input.is_action_just_pressed("break_block"):
+		_try_break_block()
+
+
+func _build_raycast() -> Dictionary:
+	if _build_grid == null:
+		return {}
+	var origin := global_position + Vector3(0, 0.8, 0)
+	var forward := -transform.basis.z.normalized()
+	var end := origin + forward * 6.0
+	var space := get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.create(origin, end, 1, [self])
+	return space.intersect_ray(params)
+
+
+func _try_place_block() -> void:
+	var hit := _build_raycast()
+	var cell: Vector3i
+	if hit.is_empty():
+		# No hit — place at point 3m ahead, snapped to ground level.
+		var forward := -transform.basis.z.normalized()
+		var pos := global_position + forward * 3.0
+		pos.y = global_position.y - 0.5  ## one cell below player feet
+		cell = _build_grid.world_to_cell(pos)
+	else:
+		# Place adjacent to hit face — use normal to offset.
+		var hit_pos: Vector3 = hit.get("position", global_position)
+		var normal: Vector3 = hit.get("normal", Vector3.UP)
+		cell = _build_grid.world_to_cell(hit_pos + normal * 0.5)
+	_build_grid.place_block(cell, _hotbar[_active_slot])
+
+
+func _try_break_block() -> void:
+	var hit := _build_raycast()
+	if hit.is_empty():
+		return
+	var hit_pos: Vector3 = hit.get("position", global_position)
+	var normal: Vector3 = hit.get("normal", Vector3.UP)
+	# Step into the block by half a cell in the negative-normal direction.
+	var cell := _build_grid.world_to_cell(hit_pos - normal * 0.5)
+	_build_grid.break_block(cell)
 
 
 func _landing_squash() -> void:
