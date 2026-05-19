@@ -144,6 +144,13 @@ func _physics_process(delta: float) -> void:
 		_play_anim(want)
 
 
+## Animation names that should loop continuously. Kenney glTFs default to
+## loop_mode = NONE on import; without overriding, walk/idle play once
+## (~1 s) and stop while the kid is still moving. (Bug reported via
+## /dev:debug 'walking animation works for a moment then stops'.)
+const LOOPING_ANIMS := ["idle", "walk", "sprint", "static"]
+
+
 ## Switch to the named animation if not already playing. Falls back to whatever
 ## is in the GLB if the name isn't found (some Kenney packs name them differently).
 func _play_anim(name: String) -> void:
@@ -157,6 +164,16 @@ func _play_anim(name: String) -> void:
 				break
 		if not _anim_player.has_animation(name):
 			return
+	# Force loop on continuous-state anims (idle/walk/sprint). Glb import
+	# defaults to LOOP_NONE; the play() call stalls on the last frame
+	# otherwise and we don't restart because _current_anim == name guards
+	# above.
+	for loop_name in LOOPING_ANIMS:
+		if name.to_lower().begins_with(loop_name):
+			var anim := _anim_player.get_animation(name)
+			if anim != null:
+				anim.loop_mode = Animation.LOOP_LINEAR
+			break
 	_anim_player.play(name)
 	_current_anim = name
 
