@@ -162,13 +162,17 @@ class MockLLM extends LLMPort:
 		on_done: Callable
 	) -> void:
 		on_done.call({"text": "This action adds a tree.", "provider": "mock", "model": "mock-m", "stopped": false})
-	func complete_with_tools(envelope: PromptEnvelope) -> Array[ToolInvocation]:
-		# Return a valid ToolInvocation for "scene_edit"
-		# Use untyped dictionary or typed if possible.
-		# ToolInvocation is a class_name, we can instantiate it.
-		var inv = ToolInvocation.new("scene_edit", {"operation": "add", "type": "tree"}, "inv_123")
-		var arr: Array[ToolInvocation] = []
-		arr.append(inv)
+	## Phase 8a async tool-call planning — callers pass on_done.
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		var inv := ToolInvocation.new("scene_edit", {"operation": "add", "type": "tree"}, "inv_123")
+		var arr: Array[ToolInvocation] = [inv]
+		if on_done.is_valid():
+			on_done.call(arr)
+
+	## Sync escape hatch used by RequestAICreationHelpService end-to-end pipeline.
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+		var inv := ToolInvocation.new("scene_edit", {"operation": "add", "type": "tree"}, "inv_123")
+		var arr: Array[ToolInvocation] = [inv]
 		return arr
 
 class MockModeration extends ModerationPort:
