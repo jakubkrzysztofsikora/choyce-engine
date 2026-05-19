@@ -42,6 +42,8 @@ func _ready() -> void:
 		# screen instead of the 3D world. set_process(false) at construction
 		# does not stop the camera from rendering — only its update loop.
 		_camera.make_current()
+		print("[player_controller] _ready: camera current=%s pos=%s viewport=%s" %
+			[_camera.current, _camera.global_position, _camera.get_viewport()])
 
 func _physics_process(delta: float) -> void:
 	if not is_processing():
@@ -137,6 +139,11 @@ func spawn_at(pos: Vector3) -> void:
 	_head_bob_time = 0.0
 	if _camera != null:
 		_camera.position.y = _camera_base_y
+		# Re-assert current — if a previous GameplayRuntime was queue_freed,
+		# its Camera3D may still be holding the viewport until cleanup runs.
+		_camera.make_current()
+		print("[player_controller] spawn_at: player=%s camera=%s current=%s" %
+			[global_position, _camera.global_position, _camera.current])
 
 func _landing_squash() -> void:
 	var tween := create_tween()
