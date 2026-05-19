@@ -134,11 +134,14 @@ func _test_show_world_picker_populates_cards() -> void:
 	await process_frame
 	var profile := PlayerProfile.new("kid_1", PlayerProfile.Role.KID)
 	var store := MockProjectStore.new()
-	# 2 projects for kid_1, 1 for another user — expect 2 cards
+	# 2 starter projects for kid_1, 1 for another user — expect 2 cards.
+	# Project IDs must contain "_starter_" to pass the picker filter that hides
+	# legacy/stale projects (e.g. starter_canvas). See landing_screen.gd
+	# _show_world_picker.
 	store.projects = [
-		_make_project("p1", "kid_1", "Wyspa"),
-		_make_project("p2", "kid_1", "Farma"),
-		_make_project("p3", "other_kid", "Inne"),
+		_make_project("kid_1_starter_p1", "kid_1", "Wyspa"),
+		_make_project("kid_1_starter_p2", "kid_1", "Farma"),
+		_make_project("other_kid_starter_p3", "other_kid", "Inne"),
 	]
 	screen.setup(profile, store, null)
 	screen._show_world_picker()
@@ -161,7 +164,7 @@ func _test_world_card_pressed_signal() -> void:
 	await process_frame
 	var profile := PlayerProfile.new("kid_1", PlayerProfile.Role.KID)
 	var store := MockProjectStore.new()
-	var proj := _make_project("project_abc", "kid_1", "Test")
+	var proj := _make_project("kid_1_starter_project_abc", "kid_1", "Test")
 	var world := World.new("world_xyz", "Test World")
 	proj.add_world(world)
 	store.projects = [proj]
@@ -176,7 +179,7 @@ func _test_world_card_pressed_signal() -> void:
 	var card_row := screen.get_node("PickerLayer/PickerScroll/CardRow")
 	var card := card_row.get_child(0) as Button
 	card.pressed.emit()
-	if captured[0] != "project_abc":
+	if captured[0] != "kid_1_starter_project_abc":
 		print("FAIL M7: wrong project_id '%s'" % captured[0])
 		screen.queue_free()
 		quit(1)

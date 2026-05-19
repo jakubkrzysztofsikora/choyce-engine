@@ -136,13 +136,10 @@ func _run() -> void:
 	print("PASS L3.5: picker hidden after card press")
 
 	# L3.6 — Navigator switched to SHELL_PLAY (the source-of-truth for active shell).
-	# Visibility of the PlayShell Control may be flipped by ShellTransition tweens
-	# AND by _start_gameplay (which hides $Layout while keeping the shell itself
-	# visible). We therefore assert against the navigator's active id, which is
-	# the canonical signal that the play flow is engaged. Strict visibility is
-	# tween-timed and would make this test flaky.
-	for _i in range(4):
-		await process_frame
+	# ShellTransition runs a 0.2 s tween before `_instant_switch` flips the
+	# active id. Sleep long enough for that to settle (0.5 s buffer); avoids
+	# the N-process-frame race that previously made L3.6 flaky.
+	await create_timer(0.5).timeout
 	var nav_id := main._navigator.get_active_shell_id()
 	assert(nav_id == "play",
 		"L3.6: navigator active_shell_id should be 'play'; got '%s'" % nav_id)
