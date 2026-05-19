@@ -42,14 +42,42 @@ emission_enabled = true
 emission = Color(1, 1, 0.8, 1)
 emission_energy_multiplier = 0.5
 
+[sub_resource type="BoxMesh" id="BoxMesh_ground"]
+size = Vector3(80, 0.5, 80)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.55, 0.78, 0.45, 1)
+roughness = 0.95
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(80, 0.5, 80)
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+radius = 0.35
+height = 1.6
+
 [node name="GameplayRuntime" type="Node3D"]
 script = ExtResource("1_gameplay_runtime")
 
 [node name="WorldRenderer" type="Node3D" parent="."]
 script = ExtResource("2_world_renderer")
 
+[node name="GroundPlane" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
+
+[node name="GroundMesh" type="MeshInstance3D" parent="GroundPlane"]
+mesh = SubResource("BoxMesh_ground")
+surface_material_override/0 = SubResource("StandardMaterial3D_ground")
+
+[node name="GroundCollider" type="CollisionShape3D" parent="GroundPlane"]
+shape = SubResource("BoxShape3D_ground")
+
 [node name="PlayerController" type="CharacterBody3D" parent="."]
 script = ExtResource("3_player_controller")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PlayerController"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+shape = SubResource("CapsuleShape3D_player")
 
 [node name="Camera3D" type="Camera3D" parent="PlayerController"]
 transform = Transform3D(1, 0, 0, 0, 0.866025, -0.5, 0, 0.5, 0.866025, 0, 6, 8)

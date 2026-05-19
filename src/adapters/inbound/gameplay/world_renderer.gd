@@ -95,10 +95,52 @@ func _make_toon_material(base_color: Color) -> ShaderMaterial:
 	return mat
 
 
+## Polish display-name → fallback tint. Used when the glTF's authored material
+## is a placeholder near-white (Blender review C3: all 26 props share
+## baseColorFactor [0.8, 0.8, 0.8, 1]). W2.2 will fix Blender materials at
+## source; until then kids see colored props instead of monochrome blobs.
+const PROP_TINT_BY_NAME: Dictionary = {
+	"palma": Color(0.32, 0.62, 0.25),       # palm leaves green
+	"skała": Color(0.55, 0.55, 0.58),       # rock gray
+	"skała z mchem": Color(0.40, 0.55, 0.30),
+	"kamień z mchem": Color(0.42, 0.55, 0.30),
+	"skrzynia": Color(0.55, 0.35, 0.18),    # chest wood brown
+	"moneta": Color(0.95, 0.75, 0.20),      # coin gold
+	"znajdźka": Color(0.95, 0.75, 0.20),
+	"perła": Color(0.92, 0.92, 0.96),       # pearl white-blue
+	"rozgwiazda": Color(0.95, 0.55, 0.30),  # starfish orange
+	"łódka": Color(0.45, 0.30, 0.18),       # boat wood
+	"flaga": Color(0.85, 0.20, 0.20),       # flag red
+	"most": Color(0.55, 0.40, 0.25),        # bridge wood
+	"trawa": Color(0.45, 0.75, 0.30),       # grass green
+	"płot": Color(0.65, 0.50, 0.30),        # fence wood
+	"stodoła": Color(0.75, 0.25, 0.20),     # barn red
+	"jabłoń": Color(0.30, 0.55, 0.25),      # apple tree green
+	"jabłko": Color(0.85, 0.20, 0.20),      # apple red
+	"jajko": Color(0.95, 0.92, 0.80),       # egg cream
+	"kura": Color(0.95, 0.92, 0.85),        # chicken white
+	"beli siana": Color(0.85, 0.70, 0.30),  # hay gold
+	"wiatrak": Color(0.85, 0.85, 0.85),     # windmill white
+	"koryto": Color(0.55, 0.42, 0.28),      # trough wood
+	"dąb": Color(0.30, 0.50, 0.22),         # oak green
+	"grzyb": Color(0.80, 0.20, 0.20),       # mushroom red cap
+	"grzyb mały": Color(0.85, 0.45, 0.20),
+	"kłoda": Color(0.50, 0.35, 0.22),       # log brown
+	"kwiaty": Color(0.95, 0.55, 0.85),      # flowers pink
+	"świetlik": Color(0.95, 0.95, 0.55),    # firefly yellow
+	"słoik świetlików": Color(0.95, 0.95, 0.55),
+	"żołądź": Color(0.85, 0.65, 0.30),      # acorn brown-gold
+	"start": Color(0.40, 0.85, 0.95),       # spawn crystal cyan
+}
+
+
 ## Walk all MeshInstance3D descendants of a glTF prop instance and apply the
-## toon material, preserving the original StandardMaterial3D albedo_color where
-## available so the prop keeps its authored colour palette.
-func _apply_toon_to_prop(root: Node) -> void:
+## toon material, preserving the original StandardMaterial3D albedo_color
+## unless the glTF's authored material is a placeholder near-white — in that
+## case override with a kid-friendly tint keyed on the SceneNode display_name.
+func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
+	var name_key := String(display_name).strip_edges().to_lower()
+	var fallback_tint: Variant = PROP_TINT_BY_NAME.get(name_key, null)
 	# owned=false so programmatically-instanced glTF nodes (no SceneTree owner) are found.
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = node
@@ -108,6 +150,10 @@ func _apply_toon_to_prop(root: Node) -> void:
 			existing_mat = mi.get_active_material(0)
 		if existing_mat is StandardMaterial3D:
 			color = existing_mat.albedo_color
+		# Override placeholder near-white (all rgb >= 0.7) with the name-keyed
+		# tint so kids see something colored. Real authored colors pass through.
+		if fallback_tint != null and color.r >= 0.7 and color.g >= 0.7 and color.b >= 0.7:
+			color = fallback_tint
 		mi.material_override = _make_toon_material(color)
 
 
@@ -164,7 +210,9 @@ func _create_prop_node(gltf_path: String, node: SceneNode) -> Node3D:
 	body.name = node.display_name if node != null else "Prop"
 	body.add_child(instance)
 	# Apply toon cel shader to every MeshInstance3D inside the glTF scene.
-	_apply_toon_to_prop(instance)
+	# Pass display_name so placeholder near-white materials get a kid-friendly
+	# tint until W2.2 fixes the Blender source materials.
+	_apply_toon_to_prop(instance, node.display_name if node != null else "")
 	# A loose collider sized to the node's bounding intent — keeps it cheap.
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
