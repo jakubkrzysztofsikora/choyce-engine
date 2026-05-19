@@ -39,7 +39,7 @@ class MockConsent:
 
 
 class MockCloudSync:
-	extends RefCounted
+	extends CloudProjectSyncPort
 
 	var synced_project_ids: Array[String] = []
 	var available: bool = true

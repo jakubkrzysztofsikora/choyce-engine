@@ -124,7 +124,13 @@ class MockLLMCapturingTokens extends LLMPort:
 				on_token.call(token)
 		on_done.call({"text": "Zmiana zatwierdzona.", "provider": "mock", "model": "mock", "stopped": false})
 
-	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	## Phase 8a async signature; sync escape hatch via _sync variant.
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		var tools := [ToolInvocation.new("paint", {"color": "niebieski"}, "t1")]
+		if on_done.is_valid():
+			on_done.call(tools)
+
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return [ToolInvocation.new("paint", {"color": "niebieski"}, "t1")]
 
 

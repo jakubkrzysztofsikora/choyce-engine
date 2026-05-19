@@ -30,7 +30,13 @@ class MockLLM:
 	) -> void:
 		on_done.call({"text": "Bezpieczna odpowiedz.", "provider": "mock", "model": "mock-m", "stopped": false})
 
-	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	## Phase 8a async signature. Tests that need sync results use the
+	## _sync variant added below.
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		if on_done.is_valid():
+			on_done.call(planned_tools)
+
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return planned_tools
 
 

@@ -58,7 +58,13 @@ class MockLLM:
 		completion_calls += 1
 		on_done.call({"text": "To bezpieczna, krokowa sugestia dla rodziny.", "provider": "mock", "model": "mock-m", "stopped": false})
 
-	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	## Phase 8a async signature; sync escape hatch via _sync variant.
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		tool_calls += 1
+		if on_done.is_valid():
+			on_done.call(planned_tools)
+
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		tool_calls += 1
 		return planned_tools
 

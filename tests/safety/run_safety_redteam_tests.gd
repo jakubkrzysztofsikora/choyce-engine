@@ -12,7 +12,14 @@ class MockLLM:
 	) -> void:
 		on_done.call({"text": "ok", "provider": "mock", "model": "mock-m", "stopped": false})
 
-	func complete_with_tools(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
+	## Phase 8a async signature — port is now async. Sync callers use
+	## complete_with_tools_sync() below.
+	func complete_with_tools(_envelope: PromptEnvelope, on_done: Callable = Callable()) -> void:
+		var tools := [ToolInvocation.new("script_edit", {"code": "print(1)"}, "unsafe-tool-1")]
+		if on_done.is_valid():
+			on_done.call(tools)
+
+	func complete_with_tools_sync(_envelope: PromptEnvelope) -> Array[ToolInvocation]:
 		return [ToolInvocation.new("script_edit", {"code": "print(1)"}, "unsafe-tool-1")]
 
 
