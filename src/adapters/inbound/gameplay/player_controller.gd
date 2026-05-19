@@ -244,12 +244,12 @@ func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
 
-	# Mouse layout matches Minecraft Bedrock / Roblox conventions
-	# routed through GameModeService:
-	#   left mouse   = "attack" action — GameModeService resolves to
-	#                  break_block in build mode, swing in combat
-	#   right mouse  = place_block in build mode (just-press), or
-	#                  hold-drag camera look in combat mode
+	# Roblox-style mouse layout — RMB-place was confusing kid +
+	# blocked camera. Reverted to single-purpose buttons:
+	#   left mouse   = "attack" action (routed by GameModeService:
+	#                  break_block if BUILD slot held, else swing)
+	#   right mouse  = camera drag, ALWAYS (rotate look)
+	# Place stays on K key only. Predictable beats clever for 7yo.
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -258,13 +258,6 @@ func _input(event: InputEvent) -> void:
 				Input.action_release("attack")
 			return
 		if event.button_index == MOUSE_BUTTON_RIGHT:
-			var svc := _ensure_game_mode_service()
-			var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
-			var mode := svc.current_mode(active_kind)
-			if mode == GameModeService.Mode.BUILD and event.pressed:
-				_try_place_block()
-				return
-			# Combat / neutral mode: right-mouse-drag rotates camera.
 			_mouse_dragging = event.pressed
 			return
 
@@ -460,16 +453,18 @@ func _ensure_game_mode_service() -> GameModeService:
 
 ## Injection point for Minecraft-lite block placement. Called by
 ## GameplayRuntime once per session, after the BuildGrid node is
-## added to the scene tree. Sets a default 5-block hotbar.
+## added to the scene tree. Hotbar layout: slot 1 = current weapon
+## (kid is in COMBAT mode by default — LMB attacks). Slots 2-5 = first
+## 4 blocks from the catalog. Number keys 1..5 cycle.
 func setup_build_grid(grid: BuildGrid) -> void:
 	_build_grid = grid
 	var default := BlockKind.default_catalog()
 	_hotbar.clear()
-	for i in mini(default.size(), 5):
+	_hotbar.append("fist")   ## slot 0 = weapon → COMBAT mode default
+	for i in mini(default.size(), 4):
 		_hotbar.append((default[i] as BlockKind).block_id)
 	_active_slot = 0
-	if not _hotbar.is_empty():
-		hotbar_changed.emit(_active_slot, _hotbar[0])
+	hotbar_changed.emit(_active_slot, _hotbar[0])
 
 
 func _process_build_input() -> void:

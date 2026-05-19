@@ -559,26 +559,58 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 		return
 	for child in _hotbar_panel.get_children():
 		child.queue_free()
+	# Slot 0 is the weapon (fist by default), slots 1-4 are first 4
+	# blocks from the catalog. Matches PlayerController.setup_build_grid.
+	# Show the PL display name on each tile so it's not "empty squares"
+	# (user-reported bug).
 	var catalog := BlockKind.default_catalog()
-	for i in mini(catalog.size(), 5):
+	var slots: Array = []
+	# Weapon tile (slot 0)
+	slots.append({"id": "fist", "name": "🗡 Pięść", "color": Color(0.7, 0.7, 0.8)})
+	for i in mini(catalog.size(), 4):
 		var kind: BlockKind = catalog[i]
-		var slot := ColorRect.new()
-		slot.custom_minimum_size = Vector2(64, 64)
-		slot.color = kind.color
-		# Active slot gets a bright outline via theme override on a wrapping
-		# panel — cheap: just brighten the color.
+		slots.append({"id": kind.block_id, "name": kind.display_name, "color": kind.color})
+	for i in slots.size():
+		var entry: Dictionary = slots[i]
+		var slot_panel := PanelContainer.new()
+		slot_panel.custom_minimum_size = Vector2(80, 80)
+		var slot_bg := ColorRect.new()
+		slot_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		slot_bg.color = entry["color"]
 		if i == active_slot:
-			slot.color = kind.color.lightened(0.3)
-		var label := Label.new()
-		label.text = "%d" % (i + 1)
-		label.add_theme_font_size_override("font_size", 18)
-		label.add_theme_color_override("font_color", Color.WHITE)
-		label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-		label.add_theme_constant_override("shadow_offset_x", 2)
-		label.add_theme_constant_override("shadow_offset_y", 2)
-		label.position = Vector2(6, 4)
-		slot.add_child(label)
-		_hotbar_panel.add_child(slot)
+			slot_bg.color = (entry["color"] as Color).lightened(0.3)
+		slot_panel.add_child(slot_bg)
+		# Number key hint top-left.
+		var num_label := Label.new()
+		num_label.text = "%d" % (i + 1)
+		num_label.add_theme_font_size_override("font_size", 16)
+		num_label.add_theme_color_override("font_color", Color.WHITE)
+		num_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+		num_label.add_theme_constant_override("shadow_offset_x", 2)
+		num_label.add_theme_constant_override("shadow_offset_y", 2)
+		num_label.position = Vector2(6, 4)
+		num_label.size = Vector2(16, 18)
+		num_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot_panel.add_child(num_label)
+		# Item name bottom — kid sees "Trawa" not "empty square".
+		var name_label := Label.new()
+		name_label.text = String(entry["name"])
+		name_label.add_theme_font_size_override("font_size", 12)
+		name_label.add_theme_color_override("font_color", Color.WHITE)
+		name_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+		name_label.add_theme_constant_override("shadow_offset_x", 1)
+		name_label.add_theme_constant_override("shadow_offset_y", 1)
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_label.anchor_left = 0
+		name_label.anchor_right = 1
+		name_label.anchor_top = 1
+		name_label.anchor_bottom = 1
+		name_label.offset_top = -22
+		name_label.offset_left = 2
+		name_label.offset_right = -2
+		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot_panel.add_child(name_label)
+		_hotbar_panel.add_child(slot_panel)
 
 
 func _on_hotbar_changed(active_slot: int, _block_id: String) -> void:
