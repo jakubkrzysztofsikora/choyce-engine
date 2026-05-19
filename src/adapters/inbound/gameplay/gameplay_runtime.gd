@@ -50,10 +50,17 @@ var _rng: RandomNumberGenerator = null
 var _gear_service: GearProgressionService = null
 var _wave_service: WaveDirectorService = null
 var _combat_service: CombatService = null
+var _xp_service: XpProgressionService = null
 # Authored data lists (loaded from res://data/*.tres at session start
 # if files exist; otherwise the procedural fallback kicks in).
 var _gear_tiers: Array = []       ## Array[GearTierResource]
 var _wave_configs: Array = []     ## Array[WaveConfig]
+# XP/level state — survives within a session; reset on end_session
+# per CLAUDE.md greenfield-wipe policy.
+var _xp_level: int = 0
+var _xp_current: int = 0
+var _xp_bar: ProgressBar = null
+var _xp_label: Label = null
 const WAVE_RESPAWN_DELAY := 6.0
 ## Kid falls below this y → soft-respawn. Fixes spring-launch
 ## softlock (Adv 2 H-5). Default world floor is y=0; -50 leaves a
@@ -137,6 +144,8 @@ func setup_combat_data(
 		_wave_service = WaveDirectorService.new()
 	if _combat_service == null:
 		_combat_service = CombatService.new()
+	if _xp_service == null:
+		_xp_service = XpProgressionService.new()
 
 
 func start_session(world: World, session: Session) -> void:
@@ -350,10 +359,14 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 
 func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> void:
 	print("[combat] defeated %s at %s loot=%s" % [enemy_id, position, loot])
+	# Grant XP first so audit + HUD reflect the new level if a level-up fires.
+	if _xp_service != null:
+		_grant_xp(_xp_service.xp_for_kill(enemy_id))
 	_audit_combat("combat_enemy_defeated", {
 		"enemy_id": enemy_id,
 		"wave_number": _wave_number,
 		"loot_items": loot.size(),
+		"xp_level": _xp_level,
 		"profile_id": _profile_id,
 	})
 	if _audio_bus != null:
@@ -495,9 +508,50 @@ func _apply_tier(index: int, label: String, damage: int, inv: Dictionary) -> voi
 
 
 func _player_xp_level() -> int:
-	# Wave NEXT+2 wires this to XpProgressionService. For now,
-	# stay at level 0 so unlock_level gates only fire post-XP wave.
-	return 0
+	return _xp_level
+
+
+## Award XP and re-render the XP bar. Multi-level skips handled by
+## XpProgressionService. Level-up triggers a brief flash + sparkle
+## burst — the dopamine feedback Adv 4 ROI 2 flagged as missing.
+func _grant_xp(amount: int) -> void:
+	if _xp_service == null:
+		_xp_service = XpProgressionService.new()
+	var before := _xp_level
+	var result := _xp_service.apply_gain(_xp_level, _xp_current, amount)
+	_xp_level = int(result.get("level", _xp_level))
+	_xp_current = int(result.get("xp", _xp_current))
+	_refresh_xp_hud()
+	if _xp_level > before:
+		_on_level_up(before, _xp_level)
+
+
+func _refresh_xp_hud() -> void:
+	if _xp_bar == null or _xp_service == null:
+		return
+	var needed := _xp_service.xp_required(_xp_level)
+	_xp_bar.max_value = maxi(needed, 1)
+	_xp_bar.value = _xp_current
+	if _xp_label != null:
+		_xp_label.text = "Lv %d  •  %d/%d XP" % [_xp_level, _xp_current, needed]
+
+
+## Kid-friendly level-up: flash + sparkle + audio cue. No level-up
+## choice popup yet (deferred to wave NEXT+2.5 — needs UpgradeCard
+## design before it's worth the popup-flow code).
+func _on_level_up(before: int, after: int) -> void:
+	print("[xp] level up: %d → %d" % [before, after])
+	_audit_combat("combat_level_up", {
+		"from_level": before,
+		"to_level": after,
+		"profile_id": _profile_id,
+	})
+	if _screen_feedback != null:
+		_screen_feedback.flash(Color(0.5, 1.0, 0.6), 0.35)
+	if _effect_spawner != null and _player_controller != null:
+		_effect_spawner.spawn_sparkle_burst(_player_controller.global_position)
+	if _audio_bus != null and _player_controller != null:
+		_audio_bus.emit_sfx("collect", _player_controller.global_position)
 
 
 func _rebuild_hotbar_panel(active_slot: int) -> void:
@@ -624,6 +678,26 @@ func _build_hud() -> void:
 	_weapon_label.add_theme_constant_override("shadow_offset_x", 2)
 	_weapon_label.add_theme_constant_override("shadow_offset_y", 2)
 	stats_vbox.add_child(_weapon_label)
+
+	# XP bar — Adv 4 ROI 2 dopamine fix. Sits below weapon label.
+	_xp_bar = ProgressBar.new()
+	_xp_bar.name = "XpBar"
+	_xp_bar.min_value = 0
+	_xp_bar.max_value = 4
+	_xp_bar.value = 0
+	_xp_bar.custom_minimum_size = Vector2(180, 18)
+	_xp_bar.modulate = Color(0.6, 1.0, 0.7)
+	stats_vbox.add_child(_xp_bar)
+	_xp_label = Label.new()
+	_xp_label.name = "XpLabel"
+	_xp_label.text = "Lv 0  •  0/4 XP"
+	_xp_label.add_theme_font_size_override("font_size", 16)
+	_xp_label.add_theme_color_override("font_color", Color(0.85, 1.0, 0.85))
+	_xp_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_xp_label.add_theme_constant_override("shadow_offset_x", 2)
+	_xp_label.add_theme_constant_override("shadow_offset_y", 2)
+	stats_vbox.add_child(_xp_label)
+	_refresh_xp_hud()
 
 	# Inventory panel — bottom-left, lists collected items + counts.
 	_inventory_panel = VBoxContainer.new()
@@ -872,6 +946,8 @@ func end_session() -> void:
 	_current_weapon_index = 0
 	_wave_number = 0
 	_wave_respawn_timer = 0.0
+	_xp_level = 0
+	_xp_current = 0
 	_world_renderer.clear_world()
 	if _player_controller != null:
 		_player_controller.visible = false
