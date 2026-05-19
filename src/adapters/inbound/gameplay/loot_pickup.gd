@@ -36,6 +36,12 @@ var _bob_time: float = 0.0
 var _base_y: float = 0.0
 var _mesh: MeshInstance3D
 var _player_ref: Node3D
+## Boolean guard — set_deferred("monitoring", false) does NOT
+## prevent same-frame re-entry on Godot 4.6.2 (race documented in
+## combat-patterns research 2026-05-19, see Dre Dyson writeup).
+## This flag is checked first thing in _on_body_entered, so a
+## second contact in the same physics tick is a no-op.
+var _already_collected: bool = false
 
 
 func setup(p_item_id: String, p_quantity: int, p_player: Node3D = null) -> LootPickup:
@@ -89,10 +95,14 @@ func _process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node3D) -> void:
+	# Boolean flag is the real race-safe guard; set_deferred is kept
+	# only to stop new contacts from queueing up. See Godot 4.6.2
+	# documented race in combat-patterns research.
+	if _already_collected:
+		return
 	if not (body is PlayerController):
 		return
-	# Disable monitoring immediately so a second body_entered in the
-	# same physics frame can't double-credit (Adv 6 #7 bug fix).
+	_already_collected = true
 	set_deferred("monitoring", false)
 	picked_up.emit(item_id, quantity)
 	# Brief shrink + fade then despawn. Guard against the node being

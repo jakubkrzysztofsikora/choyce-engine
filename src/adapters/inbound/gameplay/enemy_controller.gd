@@ -33,6 +33,11 @@ var _wander_remaining: float = 0.0
 var _spawn_origin: Vector3 = Vector3.ZERO
 var _mesh: MeshInstance3D
 var _collision: CollisionShape3D
+## Boolean guard — `_collision.set_deferred("disabled", true)` alone
+## is racy on Godot 4.6.2: a second damage source in the same tick
+## can re-enter _on_defeat before the deferred call lands and
+## double-emit the defeated signal (which would double-drop loot).
+var _already_defeated: bool = false
 
 
 func setup(p_def: EnemyDefinition, p_player: Node3D) -> EnemyController:
@@ -135,6 +140,9 @@ func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO) -> bool:
 
 
 func _on_defeat() -> void:
+	if _already_defeated:
+		return
+	_already_defeated = true
 	_state = State.DEFEAT
 	var loot := _roll_loot()
 	emit_signal("defeated", definition.enemy_id, global_position, loot)

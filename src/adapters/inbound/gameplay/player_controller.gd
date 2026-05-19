@@ -43,6 +43,17 @@ var _build_grid: BuildGrid = null
 var _hotbar: Array = []        ## Array[String] block_ids
 var _active_slot: int = 0      ## 0-based index into _hotbar
 
+## Game-mode resolver — equipped-slot kind drives whether LMB
+## breaks blocks (build mode) or attacks (combat mode). Lazy-init
+## so older callers without setup_game_mode keep working.
+var _game_mode_service: GameModeService = null
+
+## Ghost preview Node3D attached to the player. Shown in build mode
+## at the cell adjacent to the current raycast hit. Updated every
+## physics tick.
+var _ghost_preview: MeshInstance3D = null
+var _ghost_material: StandardMaterial3D = null
+
 signal hotbar_changed(active_slot: int, block_id: String)
 
 var _camera: Camera3D
@@ -62,6 +73,7 @@ const WALK_VELOCITY_THRESHOLD := 0.5
 func _ready() -> void:
 	_health = HealthState.new(PLAYER_MAX_HP)
 	hp_changed.emit(_health.current_hp, _health.max_hp)
+	_build_ghost_preview()
 	_camera = $Camera3D
 	if _camera == null:
 		push_error("PlayerController: Camera3D child not found")
@@ -136,9 +148,15 @@ func _physics_process(delta: float) -> void:
 		_health.tick(delta, PLAYER_REGEN_PER_SEC)
 		hp_changed.emit(_health.current_hp, _health.max_hp)
 	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
-	if Input.is_action_pressed("attack") and _attack_cooldown <= 0.0:
-		_perform_attack()
+	# Route LMB / "attack" action through GameModeService — block in
+	# active slot → break; weapon in slot → attack. Matches
+	# Minecraft Bedrock; dissolves Adv 5 #1 mouse-rebind concern.
+	if Input.is_action_just_pressed("attack") and _attack_cooldown <= 0.0:
+		_dispatch_lmb()
+	# Place still bound to dedicated action (K) AND right mouse in
+	# build mode. _process_build_input handles K + 1-5.
 	_process_build_input()
+	_update_ghost_preview()
 
 	# Landing detection and squash
 	if is_on_floor() and not _was_on_floor:
@@ -226,9 +244,12 @@ func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
 
-	# Roblox-style mouse layout for 7yo combat player:
-	#   left mouse  = attack (passes through to Input.is_action_pressed via _physics_process)
-	#   right mouse = hold-drag camera look (cursor visible, no capture)
+	# Mouse layout matches Minecraft Bedrock / Roblox conventions
+	# routed through GameModeService:
+	#   left mouse   = "attack" action — GameModeService resolves to
+	#                  break_block in build mode, swing in combat
+	#   right mouse  = place_block in build mode (just-press), or
+	#                  hold-drag camera look in combat mode
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
@@ -237,6 +258,13 @@ func _input(event: InputEvent) -> void:
 				Input.action_release("attack")
 			return
 		if event.button_index == MOUSE_BUTTON_RIGHT:
+			var svc := _ensure_game_mode_service()
+			var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
+			var mode := svc.current_mode(active_kind)
+			if mode == GameModeService.Mode.BUILD and event.pressed:
+				_try_place_block()
+				return
+			# Combat / neutral mode: right-mouse-drag rotates camera.
 			_mouse_dragging = event.pressed
 			return
 
@@ -350,6 +378,84 @@ func get_health() -> HealthState:
 
 func equip_weapon_damage(damage: int) -> void:
 	_equipped_weapon_damage = maxi(damage, 1)
+
+
+## Build a translucent BoxMesh that shows where the next block will
+## land. Top-level Node3D (not parented to player rotation) so the
+## preview stays axis-aligned in world space regardless of where the
+## kid is looking.
+func _build_ghost_preview() -> void:
+	_ghost_preview = MeshInstance3D.new()
+	_ghost_preview.name = "GhostPreview"
+	_ghost_preview.top_level = true   ## ignore parent transform — world-space placement
+	var box := BoxMesh.new()
+	box.size = Vector3(1.0, 1.0, 1.0)
+	_ghost_preview.mesh = box
+	_ghost_material = StandardMaterial3D.new()
+	_ghost_material.albedo_color = Color(1, 1, 1, 0.4)
+	_ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ghost_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_ghost_material.no_depth_test = false
+	_ghost_preview.material_override = _ghost_material
+	_ghost_preview.visible = false
+	add_child(_ghost_preview)
+
+
+## Show the ghost-preview cube at the cell the next K / RMB press
+## will place a block into. Called every physics tick. Only visible
+## when build mode is active.
+func _update_ghost_preview() -> void:
+	if _ghost_preview == null or _build_grid == null:
+		return
+	var svc := _ensure_game_mode_service()
+	var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
+	var mode := svc.current_mode(active_kind)
+	if mode != GameModeService.Mode.BUILD:
+		_ghost_preview.visible = false
+		return
+	var hit := _build_raycast()
+	if hit.is_empty():
+		_ghost_preview.visible = false
+		return
+	var hit_pos: Vector3 = hit.get("position", global_position)
+	var normal: Vector3 = hit.get("normal", Vector3.UP)
+	var cell := _build_grid.world_to_cell(hit_pos + normal * 0.5)
+	if _build_grid.has_block_at(cell):
+		_ghost_preview.visible = false
+		return
+	_ghost_preview.global_position = _build_grid.cell_to_world(cell)
+	# Tint the ghost with the active block's color so kid sees what's
+	# coming, not a generic white outline.
+	var catalog := BlockKind.default_catalog()
+	for k in catalog:
+		if (k as BlockKind).block_id == active_kind:
+			_ghost_material.albedo_color = (k as BlockKind).color
+			_ghost_material.albedo_color.a = 0.45
+			break
+	_ghost_preview.visible = true
+
+
+## Dispatch the LMB / "attack" action based on the active hotbar
+## slot. Block held → break adjacent block; weapon (or empty) →
+## swing sword. The cooldown is shared: kid can't spam-place
+## buildings while attacking either.
+func _dispatch_lmb() -> void:
+	var svc := _ensure_game_mode_service()
+	var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
+	var mode := svc.current_mode(active_kind)
+	match mode:
+		GameModeService.Mode.BUILD:
+			_try_break_block()
+			_attack_cooldown = ATTACK_COOLDOWN * 0.5  ## faster mining than swinging
+		_:
+			_perform_attack()
+
+
+func _ensure_game_mode_service() -> GameModeService:
+	if _game_mode_service == null:
+		_game_mode_service = GameModeService.new()
+	return _game_mode_service
 
 
 ## Injection point for Minecraft-lite block placement. Called by

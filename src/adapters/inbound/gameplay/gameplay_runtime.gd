@@ -593,6 +593,36 @@ func _build_hud() -> void:
 		_player_controller.hp_changed.connect(_on_player_hp_changed)
 		_player_controller.player_defeated.connect(_on_player_defeated)
 
+	# Crosshair (center) — 16×16 reticle so kid sees where their
+	# raycast lands. Tiny + low-contrast so it doesn't overwhelm the
+	# 3D scene. CenterContainer keeps it locked to viewport center
+	# regardless of resize. (Adv 5 #2 fix.)
+	var crosshair_layer := CenterContainer.new()
+	crosshair_layer.name = "CrosshairContainer"
+	crosshair_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	crosshair_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(crosshair_layer)
+	var crosshair := ColorRect.new()
+	crosshair.name = "Crosshair"
+	crosshair.custom_minimum_size = Vector2(16, 16)
+	# White cross drawn via two thin ColorRects (cheap; no PNG asset
+	# needed for MVP). 2px thick, 16px wide.
+	crosshair.color = Color(1, 1, 1, 0.0)  ## transparent root
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var crosshair_h := ColorRect.new()
+	crosshair_h.color = Color(1, 1, 1, 0.8)
+	crosshair_h.position = Vector2(0, 7)
+	crosshair_h.size = Vector2(16, 2)
+	crosshair_h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.add_child(crosshair_h)
+	var crosshair_v := ColorRect.new()
+	crosshair_v.color = Color(1, 1, 1, 0.8)
+	crosshair_v.position = Vector2(7, 0)
+	crosshair_v.size = Vector2(2, 16)
+	crosshair_v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	crosshair.add_child(crosshair_v)
+	crosshair_layer.add_child(crosshair)
+
 	# Hotbar (bottom-center) — 5 block-kind slots, kid hits 1..5 to switch.
 	_hotbar_panel = HBoxContainer.new()
 	_hotbar_panel.name = "Hotbar"
