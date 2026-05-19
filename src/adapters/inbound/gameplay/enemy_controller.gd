@@ -9,6 +9,10 @@ extends CharacterBody3D
 
 
 signal damaged(remaining_hp: int)
+## Adv N #11 fix — floating damage numbers. Carries the amount that
+## actually landed (after iframes + cap) + impact position so the
+## runtime can spawn a "-N" Label3D billboard.
+signal damaged_with_amount(amount: int, position: Vector3)
 signal defeated(enemy_id: String, position: Vector3, loot: Array)
 
 
@@ -59,10 +63,16 @@ func _ready() -> void:
 
 
 func _build_visuals() -> void:
+	# Big-slime boss reads as a boss — 2.2× the regular sphere radius
+	# + matching collision. Without this, BIG_SLIME falls into the
+	# same SphereMesh radius 0.4 as regular slime and kid can't tell
+	# them apart by silhouette (Adv M P0).
+	var is_boss := definition.archetype == EnemyDefinition.Archetype.BIG_SLIME
+	var radius := 0.88 if is_boss else 0.4
 	# Collision shape
 	_collision = CollisionShape3D.new()
 	var shape := SphereShape3D.new()
-	shape.radius = 0.4
+	shape.radius = radius
 	_collision.shape = shape
 	add_child(_collision)
 
@@ -76,8 +86,8 @@ func _build_visuals() -> void:
 		mesh_res = cap
 	else:
 		var sph := SphereMesh.new()
-		sph.radius = 0.4
-		sph.height = 0.8
+		sph.radius = radius
+		sph.height = radius * 2.0
 		mesh_res = sph
 	_mesh.mesh = mesh_res
 	var mat := StandardMaterial3D.new()
@@ -119,6 +129,7 @@ func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO) -> bool:
 	if not health.apply_damage(amount):
 		return false
 	emit_signal("damaged", health.current_hp)
+	emit_signal("damaged_with_amount", amount, global_position + Vector3(0, 0.4, 0))
 	_state = State.HURT
 	_hurt_remaining = 0.2
 	# Knockback away from attacker

@@ -388,6 +388,8 @@ func _trigger_punch_animation() -> void:
 	# doesn't strand the kid mid-strike on rapid LMB spam.
 	if _punch_tween != null and _punch_tween.is_valid():
 		_punch_tween.kill()
+		_is_punching = false   ## Adv M P0 — flag was leaking on edge-case
+		                        ## where kill() cancelled the tween_callback
 		_character_mesh.rotation = Vector3(0, PI, 0)
 		_character_mesh.position = Vector3.ZERO
 	_is_punching = true

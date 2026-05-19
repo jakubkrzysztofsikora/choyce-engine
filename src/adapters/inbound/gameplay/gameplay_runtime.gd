@@ -316,6 +316,43 @@ func _enemy_factory_for(enemy_id: String) -> EnemyDefinition:
 			return EnemyDefinition.slime_green()
 
 
+## Brief Engine.time_scale dip on impact — Souls/Astro-Bot pattern.
+## Defaults to 40ms slow-motion for mob hits, 80ms for boss kills.
+## Reverts via SceneTreeTimer so we never leave the world frozen.
+func _apply_hit_stop(duration_seconds: float) -> void:
+	# Use unscaled timer so the recovery actually fires after the
+	# slow-down ends. SceneTree timers ignore time_scale by default
+	# when process_mode is ALWAYS, but we set it explicit just in case.
+	Engine.time_scale = 0.15
+	var t := get_tree().create_timer(duration_seconds * 0.15, false)
+	t.timeout.connect(func() -> void:
+		Engine.time_scale = 1.0
+	)
+
+
+## Spawn a floating "-7" damage number above the hit position.
+## Cheap Label3D billboard + Tween up-and-fade. Skipped silently
+## when scene-tree access isn't available (early frames, tear-down).
+func _spawn_damage_number(amount: int, position: Vector3, is_boss: bool = false) -> void:
+	if get_tree() == null:
+		return
+	var lbl := Label3D.new()
+	lbl.text = "-%d" % amount
+	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lbl.no_depth_test = true
+	lbl.font_size = 64 if is_boss else 48
+	lbl.outline_size = 4
+	lbl.modulate = Color(1.0, 0.6, 0.3) if is_boss else Color(1.0, 0.9, 0.5)
+	lbl.outline_modulate = Color(0.1, 0.05, 0.0, 1.0)
+	add_child(lbl)
+	lbl.global_position = position + Vector3(0, 1.4, 0)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(lbl, "global_position", lbl.global_position + Vector3(0, 1.2, 0), 0.9)
+	tw.tween_property(lbl, "modulate:a", 0.0, 0.9).set_delay(0.2)
+	tw.chain()
+	tw.tween_callback(lbl.queue_free)
+
+
 func _ensure_rng() -> RandomNumberGenerator:
 	if _rng == null:
 		_rng = RandomNumberGenerator.new()
@@ -394,12 +431,38 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 	# setup() before add_child so definition is non-null when _ready fires.
 	enemy.setup(def, _player_controller)
 	enemy.defeated.connect(_on_enemy_defeated)
+	# Hook hit feedback: floating "-N" damage label + short shake +
+	# percussive SFX on every landed swing. (Adv N/M feel overhaul.)
+	enemy.damaged_with_amount.connect(_on_enemy_damaged)
 	_enemy_root.add_child(enemy)
 	enemy.global_position = pos
 
 
+func _on_enemy_damaged(amount: int, position: Vector3) -> void:
+	var is_boss := false
+	# Cheap heuristic: amount ≥ 8 → likely against a boss (bigger HP
+	# bar). Better signal would be enemy.is_boss but the signal
+	# payload is intentionally tight. Visual is the same scale for
+	# now. Future: pass enemy_id through.
+	_spawn_damage_number(amount, position, is_boss)
+	if _screen_feedback != null and _screen_feedback.has_method("shake"):
+		_screen_feedback.shake(3.0, 0.06)
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("collect", position)
+
+
 func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> void:
 	print("[combat] defeated %s at %s loot=%s" % [enemy_id, position, loot])
+	# Feel overhaul (Adv M+N #11/#12): per-defeat SFX + screen shake
+	# + hit-stop. Hit-stop is a brief Engine.time_scale dip so the
+	# kid sees the moment of impact. Boss-defeat uses a longer dip
+	# + bigger shake than mob-defeat.
+	var is_boss := enemy_id == "big_slime"
+	if _screen_feedback != null and _screen_feedback.has_method("shake"):
+		_screen_feedback.shake(8.0 if is_boss else 5.0, 0.25 if is_boss else 0.12)
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("collect", position)
+	_apply_hit_stop(0.08 if is_boss else 0.04)
 	# Grant XP first so audit + HUD reflect the new level if a level-up fires.
 	if _xp_service != null:
 		_grant_xp(_xp_service.xp_for_kill(enemy_id))
@@ -546,6 +609,10 @@ func _apply_tier(index: int, label: String, damage: int, inv: Dictionary) -> voi
 		_effect_spawner.spawn_sparkle_burst(_player_controller.global_position)
 	print("[gear] upgraded to %s (%d dmg)" % [label, damage])
 	_refresh_inventory_panel(inv)
+	# Refresh hotbar slot 0 so the weapon icon reflects new tier
+	# immediately. Was Adv N partial-fix — slot 0 stayed stale until
+	# next hotbar_changed event (kid pressing 1-5 keys).
+	_rebuild_hotbar_panel(0)
 
 
 func _player_xp_level() -> int:

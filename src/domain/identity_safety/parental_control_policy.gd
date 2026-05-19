@@ -82,6 +82,25 @@ func to_dict() -> Dictionary:
 	}
 
 
+## Friendly default for first-run kid profiles. Distinct from
+## deny_all (which is the fallback for *corrupted* policy). Adv P
+## A2 fix: brand-new profile with no stored policy was getting
+## 60-second session brick + everything disabled, dead-ending the
+## kid. This is the policy used when stored == null AND we have
+## a real profile id.
+static func default_for_first_run() -> ParentalControlPolicy:
+	return ParentalControlPolicy.new(
+		DEFAULT_DAILY_LIMIT_MINUTES,       # 60 min daily
+		DEFAULT_SESSION_LIMIT_MINUTES,     # 30 min per session
+		AIAccessLevel.CREATIVE_ONLY,
+		false,                              # sharing off
+		false,                              # language override off
+		false,                              # cloud sync off
+		true,                               # combat on (kid-safe with caps)
+		5                                   # wave cap so first runs aren't endless
+	)
+
+
 ## Returns the most restrictive policy possible.
 ## Used as a safety fallback when stored policy cannot be decrypted or is
 ## absent. Follows the CLAUDE.md "consent → deny" rule.

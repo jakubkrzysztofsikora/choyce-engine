@@ -376,10 +376,15 @@ func _resolve_policy_for_session() -> ParentalControlPolicy:
 	if _is_autoplay_session():
 		return _permissive_autoplay_policy()
 	if _policy_store == null or _profile == null:
+		# Tampered/missing store or no profile — strict deny.
 		return ParentalControlPolicy.deny_all()
 	var stored: ParentalControlPolicy = _policy_store.load_policy(_profile.profile_id)
 	if stored == null:
-		return ParentalControlPolicy.deny_all()
+		# Brand-new kid profile, never been to parent zone. Friendly
+		# default (Adv P A2 fix) — 60-min daily + 30-min session + combat
+		# on with wave cap 5 — instead of the 1-min deny_all brick.
+		# Parent still sees this in audit + can lock it down anytime.
+		return ParentalControlPolicy.default_for_first_run()
 	return stored
 
 
