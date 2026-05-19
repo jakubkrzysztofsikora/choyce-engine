@@ -434,6 +434,15 @@ func _build_default_ports_phase_2() -> void:
 	# Notify all listening shells that ports are ready.
 	ports_ready.emit()
 
+	# Diagnostic autoplay: CHOYCE_AUTOPLAY=<project_id> fires _on_world_card_pressed
+	# right after Phase 2 so the headless probe can reproduce the click-to-play
+	# hang without needing input automation. Empty value = no autoplay.
+	var autoplay_env := OSEnvironmentAdapter.new()
+	var autoplay_project_id := autoplay_env.get_env("CHOYCE_AUTOPLAY").strip_edges()
+	if not autoplay_project_id.is_empty():
+		print("[autoplay] firing world_card_pressed for project_id=%s" % autoplay_project_id)
+		call_deferred("_on_world_card_pressed", autoplay_project_id, "")
+
 
 ## Populate ProjectStore with the 3 named demo worlds (adventure / farm / city).
 ## Idempotent per starter ID — only seeds worlds whose project_id is absent so

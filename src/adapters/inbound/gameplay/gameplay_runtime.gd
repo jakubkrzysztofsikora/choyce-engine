@@ -43,13 +43,19 @@ func _ready() -> void:
 
 func start_session(world: World, session: Session) -> void:
 	_session = session
+	var t0 := Time.get_ticks_msec()
+	print("[gameplay] start_session: world=%s nodes=%d" % [world.world_id, world.scene_nodes.size()])
 	_world_renderer.render_world(world)
+	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
 	var spawn_pos := _world_renderer.get_spawn_position(0)
 	_player_controller.spawn_at(spawn_pos + Vector3(0, 1, 0))
 	_player_controller.visible = true
 	_player_controller.set_process_input(true)
 	_player_controller.set_process(true)
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	# Don't capture mouse — kid needs to click ESC button / nav back if anything stalls.
+	# Mouse capture made the apparent "hang" feel total since user couldn't escape.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
 
 	# Spawn sparkle at player spawn
 	if _effect_spawner != null:
@@ -60,6 +66,49 @@ func start_session(world: World, session: Session) -> void:
 		if child is Area3D:
 			if not child.body_entered.is_connected(_on_trigger_area_entered):
 				child.body_entered.connect(_on_trigger_area_entered.bind(child))
+
+	_build_hud()
+
+
+## Kid-facing HUD: a Wróć button + control hint so a 5-7 year-old sees what to
+## do after world load. Previously start_session hid PlayShell.Layout, left
+## mouse captured, and gave no on-screen affordances — kid perceived a hang.
+func _build_hud() -> void:
+	if has_node("HUD"):
+		return
+	var hud := CanvasLayer.new()
+	hud.name = "HUD"
+	hud.layer = 5
+	add_child(hud)
+
+	var back := Button.new()
+	back.name = "BackBtn"
+	back.text = "← Wróć"
+	back.custom_minimum_size = Vector2(160, 56)
+	back.add_theme_font_size_override("font_size", 28)
+	back.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	back.offset_left = 32
+	back.offset_top = 32
+	back.offset_right = 192
+	back.offset_bottom = 88
+	back.pressed.connect(end_session)
+	hud.add_child(back)
+
+	var hint := Label.new()
+	hint.name = "ControlsHint"
+	hint.text = "← → ↑ ↓ poruszanie  •  SPACJA skok  •  ESC wyjście"
+	hint.add_theme_font_size_override("font_size", 22)
+	hint.add_theme_color_override("font_color", Color.WHITE)
+	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	hint.add_theme_constant_override("shadow_offset_x", 2)
+	hint.add_theme_constant_override("shadow_offset_y", 2)
+	hint.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	hint.offset_left = -360
+	hint.offset_top = 36
+	hint.offset_right = 360
+	hint.offset_bottom = 76
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hud.add_child(hint)
 
 func end_session() -> void:
 	_world_renderer.clear_world()

@@ -10,14 +10,24 @@ var _spawn_points: Array[Vector3] = []
 func render_world(world: World) -> void:
 	clear_world()
 	_spawn_points.clear()
+	var t0 := Time.get_ticks_msec()
+	var prop_count := 0
+	var fallback_count := 0
 	for node_variant in world.scene_nodes:
 		if not (node_variant is SceneNode):
 			continue
 		var node: SceneNode = node_variant
+		var path := _prop_path_for(node)
+		if not path.is_empty():
+			prop_count += 1
+		else:
+			fallback_count += 1
 		_create_node(node)
 		for child in node.children:
 			if child is SceneNode:
 				_create_node(child)
+	print("[world_renderer] %d props loaded, %d primitive fallbacks in %d ms" %
+		[prop_count, fallback_count, Time.get_ticks_msec() - t0])
 
 func clear_world() -> void:
 	for child in get_children():
