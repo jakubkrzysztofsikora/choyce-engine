@@ -189,6 +189,16 @@ func _build_default_profile() -> PlayerProfile:
 	if not classroom_id.is_empty():
 		profile.preferences["classroom_id"] = classroom_id
 
+	# W1.3: ManageDataLifecycleService now denies COPPA actions on empty
+	# managed_profiles. Populate explicitly so parents in this family can
+	# export/delete their kid's data. Single-kid-per-family is the local-only
+	# default; multi-kid setups would extend this list at profile build time.
+	if role == PlayerProfile.Role.PARENT:
+		var kid_id := OS.get_environment(ENV_PROFILE_ID + "_KID").strip_edges()
+		if kid_id.is_empty():
+			kid_id = "local_kid_1"
+		profile.preferences["managed_profiles"] = [kid_id]
+
 	return profile
 
 
@@ -802,6 +812,16 @@ func _apply_global_theme() -> void:
 	var theme := load("res://data/themes/choyce_theme.tres") as Theme
 	if theme != null:
 		self.theme = theme
+		return
+	# W1.6: theme load failure used to silently fall back to engine defaults,
+	# masking the missing .import sidecars for the font assets it references.
+	# Loud failure so the next reviewer sees the regression instead of
+	# attributing the styling drift to design choices.
+	push_error(
+		"Theme failed to load — UI will render with engine defaults. "
+		+ "Verify data/themes/choyce_theme.tres exists and that the fonts/audio "
+		+ ".import sidecars under data/ are committed (run godot --headless --import)."
+	)
 
 
 func _apply_navigation_theme() -> void:

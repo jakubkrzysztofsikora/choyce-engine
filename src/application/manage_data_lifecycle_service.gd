@@ -146,13 +146,20 @@ func revoke_consent(
 
 
 func _is_authorized(actor: PlayerProfile, subject_id: String) -> bool:
+	# COPPA §312.10 — log every authorization attempt regardless of outcome.
+	# Returns true only when actor is a verified parent who manages the subject.
+	var actor_id := actor.profile_id if actor != null else "<null>"
 	if actor == null or subject_id.strip_edges().is_empty():
+		_log_audit_denial("DATA_AUTH_DENIED", actor_id, subject_id, "actor or subject missing")
 		return false
 	if not actor.is_parent():
+		_log_audit_denial("DATA_AUTH_DENIED", actor_id, subject_id, "actor is not parent role")
 		return false
 	if _role_guard != null and not _role_guard.verify_parent_profile(actor):
+		_log_audit_denial("DATA_AUTH_DENIED", actor_id, subject_id, "role guard rejected parent token")
 		return false
 	if not _is_subject_managed_by_parent(actor, subject_id):
+		_log_audit_denial("DATA_AUTH_DENIED", actor_id, subject_id, "subject not in managed_profiles")
 		return false
 	return true
 
@@ -164,13 +171,17 @@ func _timestamp() -> String:
 
 
 func _is_subject_managed_by_parent(parent: PlayerProfile, subject_id: String) -> bool:
+	# Safety default: empty or missing managed_profiles → DENY. Prior default-allow
+	# collapsed authorization to a single env var (CHOYCE_PROFILE_ROLE=parent).
+	# Caller must explicitly populate parent.preferences.managed_profiles at
+	# profile-build time. Non-Array preferences also denied as defensive guard.
 	var managed_variant: Variant = parent.preferences.get("managed_profiles", [])
-	if managed_variant is Array:
-		var managed_profiles: Array = managed_variant
-		if managed_profiles.is_empty():
-			return true
-		return managed_profiles.has(subject_id)
-	return true
+	if not (managed_variant is Array):
+		return false
+	var managed_profiles: Array = managed_variant
+	if managed_profiles.is_empty():
+		return false
+	return managed_profiles.has(subject_id)
 
 
 func _has_required_cloud_consent(subject_profile_id: String) -> bool:
@@ -190,6 +201,13 @@ func _is_valid_retention_policy(policy: Dictionary) -> bool:
 		if keep_days < 1 or keep_days > 3650:
 			return false
 	return true
+
+
+## COPPA §312.10: emit an audit record on every denied authorization attempt
+## so failed access leaves a forensic trail. Reason is a short free-text string
+## describing the specific check that rejected the request.
+func _log_audit_denial(action: String, actor: String, subject: String, reason: String) -> void:
+	_log_audit(action, actor, subject, reason)
 
 
 func _log_audit(action: String, actor: String, subject: String, detail: String = "") -> void:

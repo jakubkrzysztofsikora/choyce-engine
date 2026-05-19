@@ -37,7 +37,7 @@ theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Layout/Header"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 40
 text = "Tryb gry"
 
 [node name="Info" type="Label" parent="Layout/Header"]

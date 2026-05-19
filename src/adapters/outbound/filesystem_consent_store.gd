@@ -67,6 +67,22 @@ func get_storage_path() -> String:
 	return _consent_file
 
 
+## Permanently remove all consent entries for a profile. Used by the COPPA
+## delete flow in FilesystemDataLifecycleAdapter. Marks the store dirty and
+## forces an immediate flush so the deletion is durable across restarts.
+## Returns true on success, false on IO failure during flush.
+func delete_profile(profile_id: String) -> bool:
+	if profile_id.strip_edges().is_empty():
+		return false
+	var existed := _profiles.has(profile_id)
+	if existed:
+		_profiles.erase(profile_id)
+		_mark_dirty()
+	# Always flush so deletion is immediately durable even if the entry
+	# never existed in memory (defensive against partial-load states).
+	return _flush_to_disk()
+
+
 ## Drive the debounce timer. Pass the milliseconds elapsed since the last call
 ## (e.g. from _process delta converted to ms, or from a fixed-tick loop).
 ## Flushes to disk when accumulated time >= DEBOUNCE_MS and the store is dirty.
