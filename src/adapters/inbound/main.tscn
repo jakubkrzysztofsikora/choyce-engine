@@ -88,6 +88,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+visible = false
 
 [node name="PlayShell" parent="Layout/Body" instance=ExtResource("3_play_scene")]
 layout_mode = 1
@@ -96,6 +97,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+visible = false
 
 [node name="LibraryShell" parent="Layout/Body" instance=ExtResource("4_library_scene")]
 layout_mode = 1
@@ -104,6 +106,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+visible = false
 
 [node name="ParentZoneShell" parent="Layout/Body" instance=ExtResource("5_parent_scene")]
 layout_mode = 1
@@ -112,5 +115,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+visible = false
 
 [node name="MascotOverlay" parent="." instance=ExtResource("6_mascot_scene")]
