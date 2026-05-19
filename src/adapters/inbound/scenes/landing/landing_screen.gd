@@ -115,10 +115,17 @@ func _build_scene_tree() -> void:
 			bg_layer.add_child(cloud)
 
 	# Sparkles
-	# W1.10: anchor centre so the emitter stays mid-screen on any viewport.
+	# W1.10: CPUParticles2D extends Node2D (no set_anchors_preset). Centre
+	# the emitter via viewport rect at build time. Resize callback below
+	# also re-centres on viewport size change.
 	var sparkles := CPUParticles2D.new()
 	sparkles.name = "Sparkles"
-	sparkles.set_anchors_preset(Control.PRESET_CENTER)
+	var vp_size := get_viewport_rect().size
+	sparkles.position = Vector2(vp_size.x / 2.0, vp_size.y / 2.0)
+	get_viewport().size_changed.connect(func() -> void:
+		var size := get_viewport_rect().size
+		sparkles.position = Vector2(size.x / 2.0, size.y / 2.0)
+	)
 	sparkles.amount = 40
 	sparkles.lifetime = 4.0
 	sparkles.direction = Vector2(0.3, -1)
