@@ -22,6 +22,8 @@ const KEY_KID_STATUS_READ_MODEL := "kid_status_read_model"
 const KEY_PARENT_AUDIT_READ_MODEL := "parent_audit_read_model"
 const KEY_AI_PERFORMANCE_READ_MODEL := "ai_performance_read_model"
 const KEY_DATA_LIFECYCLE_PORT := "data_lifecycle_port"
+const KEY_RULES_RUNTIME := "rules_runtime"
+const KEY_RULE_COMPILER := "rule_compiler"
 const ENV_PROFILE_ROLE := "CHOYCE_PROFILE_ROLE"
 const ENV_PROFILE_ID := "CHOYCE_PROFILE_ID"
 const ENV_PROFILE_NAME := "CHOYCE_PROFILE_NAME"
@@ -311,6 +313,8 @@ func _build_default_ports() -> Dictionary:
 		KEY_PARENT_AUDIT_READ_MODEL: parent_audit,
 		KEY_AI_PERFORMANCE_READ_MODEL: ai_performance,
 		KEY_DATA_LIFECYCLE_PORT: data_lifecycle,
+		KEY_RULES_RUNTIME: GodotRulesRuntimeAdapter.new(),
+		KEY_RULE_COMPILER: RuleCompilerService.new(),
 	}
 
 
