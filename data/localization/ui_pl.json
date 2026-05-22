@@ -86,6 +86,17 @@
 		"ui.provenance.hybrid": "Hybrydowe",
 		"ui.tooltip.provenance.source": "Źródło: %s",
 		"ui.tooltip.provenance.model": "Model: %s",
-		"ui.tooltip.provenance.audit": "Audit ID: %s"
+		"ui.tooltip.provenance.audit": "Audit ID: %s",
+		"prop.mur": "mur",
+		"prop.kolumna": "kolumna",
+		"prop.kamienna_płyta": "kamienna płyta",
+		"prop.pochodnia": "pochodnia",
+		"prop.beczka": "beczka",
+		"prop.pajęczyna": "pajęczyna",
+		"prop.skrzynia_skarbów": "skrzynia skarbów",
+		"prop.ninja": "ninja",
+		"prop.wojownik": "wojownik",
+		"prop.szkielet": "szkielet",
+		"prop.mag": "mag"
 	}
 }

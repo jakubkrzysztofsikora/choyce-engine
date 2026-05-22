@@ -52,8 +52,31 @@ const KENNEY_SK := "res://data/models/kenney/survival_kit/Models/GLB format/"
 const KENNEY_NK := "res://data/models/kenney/nature_kit/GLB/"
 const KENNEY_PK := "res://data/models/kenney/pirate_kit/GLB/"
 const KENNEY_FK := "res://data/models/kenney/food_kit/GLB/"
+# KayKit-style dungeon props (CC0 via Poly Pizza, per
+# thoughts/shared/research/free-assets-2026-05-21.md).
+const KAYKIT := "res://data/models/kaykit/"
+# Quaternius-style character rigs (CC0 via Poly Pizza).
+const QUATERNIUS := "res://data/models/quaternius/"
+
+# Polish role-key → character rig path. Used by gameplay code that needs
+# to spawn an NPC/player avatar by role (e.g. enemy_controller). Keys MUST
+# stay lowercase a-z + Polish diacritics + underscore — see CLAUDE.md memory.
+const CHARACTER_GLTF: Dictionary = {
+	"ninja":      QUATERNIUS + "ninja.glb",
+	"wojownik":   QUATERNIUS + "wojownik.glb",
+	"szkielet":   QUATERNIUS + "szkielet.glb",
+	"mag":        QUATERNIUS + "mag.glb",
+}
 
 const PROP_GLTF_MAP: Dictionary = {
+	# --- dungeon world (KayKit-style CC0 via Poly Pizza) ---
+	"mur":             KAYKIT + "mur.glb",
+	"kolumna":         KAYKIT + "kolumna.glb",
+	"kamienna_płyta":  KAYKIT + "kamienna_plyta.glb",
+	"pochodnia":       KAYKIT + "pochodnia.glb",
+	"beczka":          KAYKIT + "beczka.glb",
+	"pajęczyna":       KAYKIT + "pajeczyna.glb",
+	"skrzynia_skarbów": KAYKIT + "skrzynia_skarbow.glb",
 	# --- universal / shared ---
 	"skała":           KENNEY_NK + "rock_tallH.glb",
 	"trawa":           KENNEY_NK + "grass.glb",
