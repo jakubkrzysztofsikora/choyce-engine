@@ -490,17 +490,26 @@ func _build_default_ports_phase_2() -> void:
 	_seed_starter_content_if_empty(project_store, clock)
 
 	# Optional Tauri shell bridge — OFF by default. Only starts when
-	# OS.has_feature("debug") OR CHOYCE_SHELL_BRIDGE=1. See research:
+	# CHOYCE_SHELL_BRIDGE=1 (env-only gate; OS.has_feature("debug") path was
+	# removed because it left the bridge OPEN under the editor and headless
+	# CI — adv-hex-pivot-2026-05-22 C2). See research:
 	# thoughts/shared/research/shell-architecture-2026-05-21.md.
+	# H1: only add_child() AFTER start() succeeds, otherwise the adapter
+	# would tick every frame inside the scene tree without being reachable
+	# from _ports (leak on main-scene reload).
 	var shell_bridge := WebSocketShellBridgeAdapter.new().setup(
 		env,
 		audit_ledger,
 		clock,
 		_ports.get(KEY_KID_STATUS_READ_MODEL, null)
 	)
-	add_child(shell_bridge)
 	if shell_bridge.start():
+		add_child(shell_bridge)
 		_ports[KEY_SHELL_BRIDGE_PORT] = shell_bridge
+	else:
+		# start() already audited any port-collision/bind failure and cleaned
+		# its own state. Free the orphaned instance to release the Object.
+		shell_bridge.free()
 
 	# Re-wire shells with the persistent adapters.
 	if is_node_ready():

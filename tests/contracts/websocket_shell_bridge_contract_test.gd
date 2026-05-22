@@ -3,7 +3,8 @@
 ## Covers:
 ##   PORT-1  ShellBridgePort exposes the documented method surface.
 ##   PORT-2  Default ShellBridgePort returns safe no-ops (empty dict).
-##   SAFETY  Bridge is OFF when neither debug feature nor env flag is set.
+##   SAFETY  Bridge is OFF when the env flag is unset (env-only gate;
+##           OS.has_feature("debug") is no longer consulted — C2).
 ##   ENV-ON  Bridge opens when CHOYCE_SHELL_BRIDGE=1 (simulated via EnvironmentPort).
 ##   ENVELOPE Each command kind produces a {requestId,result|error} reply with
 ##           the matching requestId and the expected shape.
@@ -113,14 +114,13 @@ func _test_safety_default_off() -> void:
 	var env := StubEnv.new()
 	var ledger := StubLedger.new()
 	var adapter := WebSocketShellBridgeAdapter.new().setup(env, ledger, StubClock.new())
-	# Headless/editor processes always report has_feature("debug") == true; simulate
-	# a release template so the safety default-OFF assertion is meaningful.
-	adapter._disable_debug_feature_for_tests()
+	# C2: env-only gate. Editor/headless used to flip OS.has_feature("debug")
+	# unconditionally — that branch has been removed. With CHOYCE_SHELL_BRIDGE
+	# unset the bridge MUST stay closed regardless of build flavour.
 	root.add_child(adapter)
-	# Neither debug feature flag nor env var is set → start() must return false.
 	var ok := adapter.start()
 	_assert_true(not ok,
-		"SAFETY: start() must return false when CHOYCE_SHELL_BRIDGE unset and not debug build")
+		"SAFETY: start() must return false when CHOYCE_SHELL_BRIDGE unset (env-only gate)")
 	_assert_true(ledger.records.is_empty(),
 		"SAFETY: no audit record may be appended when the bridge stays closed")
 	adapter.stop()
@@ -141,7 +141,12 @@ func _test_safety_default_off() -> void:
 	if ledger2.records.size() == 1:
 		_assert_true(ledger2.records[0].event_type == "shell_bridge_opened",
 			"ENV-ON: audit record event_type must be 'shell_bridge_opened'")
+	# C2 safety: per-launch token must exist after start().
+	_assert_true(adapter2._get_auth_token_for_tests().length() == 32,
+		"AUTH-TOKEN: start() must generate a 32-char hex token")
 	adapter2.stop()
+	_assert_true(adapter2._get_auth_token_for_tests() == "",
+		"AUTH-TOKEN: stop() must clear the per-launch token")
 	adapter2.queue_free()
 
 
@@ -162,11 +167,13 @@ func _test_envelope_round_trips() -> void:
 		"ENVELOPE: request_kid_status must surface read-model payload")
 
 	# Outbound notify_* helpers must not throw and must be safe when no peer
-	# is connected (production crash isolation).
+	# is connected (production crash isolation). They now ring-buffer.
 	adapter.notify_session_started("w1", "kid-1")
 	adapter.notify_session_ended({"elapsed_seconds": 60})
 	adapter.notify_publish_state_changed("req-1", "approved")
-	_assert_true(true, "ENVELOPE: notify_* helpers must not raise without a peer")
+	_assert_true(adapter._get_buffer_size_for_tests() == 3,
+		"ENVELOPE: notify_* must ring-buffer when no peer attached (expected 3, got %d)"
+			% adapter._get_buffer_size_for_tests())
 
 	adapter.stop()
 	adapter.queue_free()
