@@ -1,0 +1,38 @@
+{
+  "app": {
+    "name": "CHOYCE ENGINE",
+    "tagline": "DZIECIĘCY KOD. RODZICIELSKA KONTROLA.",
+    "lang": "pl-PL"
+  },
+  "nav": {
+    "play": "ZAGRAJ",
+    "create": "ZRÓB",
+    "parent": "RODZIC",
+    "library": "BIBLIOTEKA"
+  },
+  "landing": {
+    "headline": "ZBUDUJ ŚWIAT",
+    "sub": "// MASZYNA DO TWORZENIA GIER //",
+    "play_cta": "ZAGRAJ",
+    "create_cta": "ZRÓB",
+    "parent_cta": "RODZIC",
+    "status_engine_offline": "SILNIK: OFFLINE",
+    "status_engine_online": "SILNIK: ONLINE",
+    "status_engine_connecting": "SILNIK: ŁĄCZĘ…"
+  },
+  "library": {
+    "title": "BIBLIOTEKA ŚWIATÓW",
+    "sub": "// TWOJE PROJEKTY //",
+    "empty": "BRAK ŚWIATÓW. STWÓRZ PIERWSZY."
+  },
+  "parent": {
+    "title": "STREFA RODZICA",
+    "sub": "// KONTROLA · AUDYT · DANE //",
+    "locked": "ZALOGUJ SIĘ ABY ODBLOKOWAĆ"
+  },
+  "create": {
+    "title": "ZRÓB ŚWIAT",
+    "sub": "// EDYTOR · BLOKI · GŁOS //",
+    "open_engine_cta": "OTWÓRZ EDYTOR"
+  }
+}

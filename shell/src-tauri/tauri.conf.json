@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Choyce Engine",
+  "version": "0.1.0",
+  "identifier": "engine.choyce.shell",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "beforeBuildCommand": "bun run build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../out"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Choyce Engine",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1280,
+        "minHeight": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ws://127.0.0.1:9876 http://127.0.0.1:9876 ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "publisher": "Choyce Engine",
+    "category": "Education",
+    "shortDescription": "Kid-safe Polish-language game engine shell",
+    "longDescription": "Choyce Engine shell — landing / library / parent zone / create chrome. Play mode runs in a Godot 4.6 sidecar.",
+    "resources": ["../src/messages/pl.json"]
+  }
+}

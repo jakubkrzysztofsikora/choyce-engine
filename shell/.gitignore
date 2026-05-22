@@ -1,0 +1,16 @@
+# Next.js / Bun
+node_modules/
+.next/
+out/
+.turbo/
+tsconfig.tsbuildinfo
+
+# Tauri (Rust)
+src-tauri/target/
+src-tauri/gen/
+
+# Logs
+*.log
+
+# OS
+.DS_Store

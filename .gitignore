@@ -56,3 +56,10 @@ __pycache__/
 .claude.json
 .mcp.json
 .ohno/
+
+# Shell (Tauri 2 + Next.js + Bun) — see shell/
+shell/node_modules/
+shell/.next/
+shell/out/
+shell/src-tauri/target/
+shell/src-tauri/gen/
