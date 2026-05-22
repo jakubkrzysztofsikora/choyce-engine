@@ -114,7 +114,34 @@ func _ready() -> void:
 		# Kenney GLB embeds an AnimationPlayer with idle/walk/sprint/jump/fall.
 		_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		if _anim_player != null:
+			# Adv X C1: GLB clips are shared Animation resources. Mutating
+			# `loop_mode` per play() poisoned other character instances and
+			# could flip an attack clip to LOOP_LINEAR → animation_finished
+			# never fires → _is_punching strands forever. Duplicate each
+			# clip once + set loop_mode here; play() never mutates after.
+			for anim_name in _anim_player.get_animation_list():
+				var src := _anim_player.get_animation(anim_name)
+				if src == null:
+					continue
+				var dup := src.duplicate() as Animation
+				var lname := String(anim_name).to_lower()
+				var is_attack := String(anim_name) in ATTACK_ANIMS
+				var is_loop := false
+				if not is_attack:
+					for ln in LOOPING_ANIMS:
+						if lname.begins_with(ln):
+							is_loop = true
+							break
+				dup.loop_mode = Animation.LOOP_LINEAR if is_loop else Animation.LOOP_NONE
+				var lib := _anim_player.get_animation_library("")
+				if lib != null:
+					lib.remove_animation(anim_name)
+					lib.add_animation(anim_name, dup)
 			_play_anim("idle")
+			# Kenney attack clips (attack-melee-*/attack-kick-*) are one-shot.
+			# Return to velocity-driven movement anim when the clip finishes.
+			if not _anim_player.animation_finished.is_connected(_on_anim_finished):
+				_anim_player.animation_finished.connect(_on_anim_finished)
 
 func _physics_process(delta: float) -> void:
 	if not is_processing():
@@ -219,17 +246,48 @@ func _physics_process(delta: float) -> void:
 		_play_anim(want)
 
 
+## Fires when the AnimationPlayer finishes a one-shot clip (mainly
+## the Kenney attack-melee-*/attack-kick-* swings). Clears the punch
+## flag and lets the next physics-process tick re-select a movement
+## anim from velocity.
+func _on_anim_finished(finished_name: StringName) -> void:
+	var name_str := String(finished_name)
+	if name_str in ATTACK_ANIMS:
+		_is_punching = false
+		_current_anim = ""  # force _play_anim to re-pick a movement clip
+		var horiz := Vector2(velocity.x, velocity.z).length()
+		var want := "idle"
+		if not is_on_floor():
+			want = "fall"
+		elif horiz > WALK_VELOCITY_THRESHOLD:
+			want = "walk"
+		_play_anim(want)
+
+
 ## Animation names that should loop continuously. Kenney glTFs default to
 ## loop_mode = NONE on import; without overriding, walk/idle play once
 ## (~1 s) and stop while the kid is still moving. (Bug reported via
 ## /dev:debug 'walking animation works for a moment then stops'.)
 const LOOPING_ANIMS := ["idle", "walk", "sprint", "static"]
 
+## Kenney character GLB skeletal one-shot strike clips. Cycled per
+## _punch_phase to give the Muay-Thai feel: jab → cross → kick → kick.
+const ATTACK_ANIMS := [
+	"attack-melee-right",  # phase 0 — right jab
+	"attack-melee-left",   # phase 1 — left cross
+	"attack-kick-right",   # phase 2 — right kick (elbow stand-in)
+	"attack-kick-left",    # phase 3 — left kick (knee stand-in)
+]
+
 
 ## Switch to the named animation if not already playing. Falls back to whatever
 ## is in the GLB if the name isn't found (some Kenney packs name them differently).
 func _play_anim(name: String) -> void:
 	if _anim_player == null or _current_anim == name:
+		return
+	# Skeletal attack clip is mid-flight — do not let velocity-driven
+	# walk/idle/sprint preempt it. _on_anim_finished restores movement.
+	if _is_punching and not (name in ATTACK_ANIMS):
 		return
 	if not _anim_player.has_animation(name):
 		# Try a fuzzy fallback to anything starting with the name.
@@ -239,16 +297,7 @@ func _play_anim(name: String) -> void:
 				break
 		if not _anim_player.has_animation(name):
 			return
-	# Force loop on continuous-state anims (idle/walk/sprint). Glb import
-	# defaults to LOOP_NONE; the play() call stalls on the last frame
-	# otherwise and we don't restart because _current_anim == name guards
-	# above.
-	for loop_name in LOOPING_ANIMS:
-		if name.to_lower().begins_with(loop_name):
-			var anim := _anim_player.get_animation(name)
-			if anim != null:
-				anim.loop_mode = Animation.LOOP_LINEAR
-			break
+	# loop_mode pre-set in _ready on duplicated clips — no mutation here.
 	_anim_player.play(name)
 	_current_anim = name
 
@@ -336,18 +385,32 @@ func spawn_at(pos: Vector3) -> void:
 ## runtime can spawn swing VFX / SFX.
 func _perform_attack() -> void:
 	_attack_cooldown = ATTACK_COOLDOWN
-	# Squash a tiny attack scale tween for game feel.
-	var attack_tween := create_tween()
-	attack_tween.tween_property(self, "scale", _base_scale * Vector3(1.05, 0.95, 1.05), 0.08)
-	attack_tween.tween_property(self, "scale", _base_scale, 0.12)
+	# Squash on the MESH, not on `self` (CharacterBody3D parent of
+	# Camera3D). Was scaling self → camera scaled with it →
+	# whole-screen "wobble". Cosmetic-only on mesh keeps camera
+	# steady. (User reported "screen jumps weirdly when punching".)
+	if _character_mesh != null:
+		var attack_tween := create_tween()
+		attack_tween.tween_property(_character_mesh, "scale",
+			Vector3(1.08, 0.94, 1.08), 0.06)
+		attack_tween.tween_property(_character_mesh, "scale",
+			Vector3.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 	# Procedural Muay Thai strike. Alternates jab/cross/elbow/knee
 	# pattern so kid sees variety. Kept short (0.22s) to match
 	# combat cooldown — strike resolves before next swing.
 	_trigger_punch_animation()
 
+	# Camera direction = aim ray. Keeps 3rd-person view but lets the
+	# centered crosshair point exactly where the swing lands — kid was
+	# unable to aim because body forward and camera forward disagreed.
 	var hit_origin := global_position + Vector3(0, 0.8, 0)
-	var forward := -transform.basis.z.normalized()
+	var forward: Vector3 = -transform.basis.z.normalized()
+	if _camera != null:
+		var cam_fwd: Vector3 = -_camera.global_transform.basis.z
+		cam_fwd.y = 0.0
+		if cam_fwd.length_squared() > 0.0001:
+			forward = cam_fwd.normalized()
 	var hit_point := hit_origin + forward * (ATTACK_RANGE * 0.5)
 	attacked.emit(_equipped_weapon_damage, hit_point)
 
@@ -376,69 +439,60 @@ func _perform_attack() -> void:
 ##   phase 1  cross — left-arm-out forward thrust, opposite lean
 ##   phase 2  elbow — short range, sharp Z-rotation
 ##   phase 3  knee — slight crouch (Y dip) + forward push
-## Animates the _character_mesh wrapper via tween. The Kenney
-## character's underlying AnimationPlayer keeps running (walk/idle
-## clips) so this overlay reads as fighter motion, not robotic.
+## Plays a Kenney skeletal attack clip on the rigged character mesh.
+## Cycles attack-melee-right → attack-melee-left → attack-kick-right →
+## attack-kick-left to read as a Muay-Thai jab/cross/kick/kick combo.
+## The previous procedural wrapper-rotation tween rotated the whole
+## rigged body as one chunk and barely read on screen; real bone
+## animation isolates the arms/legs so the strike is visible.
 func _trigger_punch_animation() -> void:
-	if _character_mesh == null:
+	if _anim_player == null:
 		return
-	# Kill the previous punch tween so back-to-back swings don't
-	# stack overlapping property targets. Adv G F1+F2: also snap the
-	# mesh back to neutral so a leaked twist or unfinished chain
-	# doesn't strand the kid mid-strike on rapid LMB spam.
+	# Snap mesh back to neutral in case an earlier wrapper-rotation pose
+	# left it tilted, then drop any stale punch tween.
 	if _punch_tween != null and _punch_tween.is_valid():
 		_punch_tween.kill()
-		_is_punching = false   ## Adv M P0 — flag was leaking on edge-case
-		                        ## where kill() cancelled the tween_callback
+	if _character_mesh != null:
 		_character_mesh.rotation = Vector3(0, PI, 0)
 		_character_mesh.position = Vector3.ZERO
+
 	_is_punching = true
-	var phase := _punch_phase % 4
+	var phase := _punch_phase % ATTACK_ANIMS.size()
 	_punch_phase += 1
+	var clip: String = ATTACK_ANIMS[phase]
 
-	# Per-phase: (lean_z_rad, forward_push, y_dip, rotation_y_rad)
-	var lean := PUNCH_LEAN_RAD
-	var push := PUNCH_FORWARD_PUSH
-	var dip := 0.0
-	var twist := 0.0
-	match phase:
-		0:  # jab — right hand straight
-			lean = -PUNCH_LEAN_RAD * 0.6
-			push = PUNCH_FORWARD_PUSH * 0.8
-			twist = -0.12
-		1:  # cross — left hand straight, more weight transfer
-			lean = PUNCH_LEAN_RAD * 0.7
-			push = PUNCH_FORWARD_PUSH
-			twist = 0.18
-		2:  # elbow — short + sharp
-			lean = PUNCH_LEAN_RAD
-			push = PUNCH_FORWARD_PUSH * 0.5
-			twist = -0.20
-		3:  # knee — drop hips + push forward
-			lean = -PUNCH_LEAN_RAD * 0.3
-			push = PUNCH_FORWARD_PUSH * 1.1
-			dip = -0.15
-
-	# Tween toward strike pose, then back to neutral. Parallel block
-	# fires all property tweens at once; chain() switches to sequential
-	# for the return.
-	var t := create_tween()
-	t.set_parallel(true)
-	t.tween_property(_character_mesh, "rotation:z", lean, PUNCH_DURATION * 0.4)
-	t.tween_property(_character_mesh, "rotation:y", PI + twist, PUNCH_DURATION * 0.4)
-	t.tween_property(_character_mesh, "position:z", -push, PUNCH_DURATION * 0.4)
-	t.tween_property(_character_mesh, "position:y", dip, PUNCH_DURATION * 0.4)
-	t.chain()
-	t.tween_property(_character_mesh, "rotation:z", 0.0, PUNCH_DURATION * 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	t.tween_property(_character_mesh, "rotation:y", PI, PUNCH_DURATION * 0.6)
-	t.tween_property(_character_mesh, "position:z", 0.0, PUNCH_DURATION * 0.6)
-	t.tween_property(_character_mesh, "position:y", 0.0, PUNCH_DURATION * 0.6)
-	t.tween_callback(_on_punch_finished)
-	_punch_tween = t
+	# Restart even when the previous clip name matches (rapid LMB on
+	# the same phase needs a fresh play call, not a no-op).
+	if not _anim_player.has_animation(clip):
+		# Some Kenney variants might miss a clip — fall back to whichever
+		# attack clip exists, else punt to idle to clear the flag.
+		var fallback := ""
+		for c in ATTACK_ANIMS:
+			if _anim_player.has_animation(c):
+				fallback = c
+				break
+		if fallback == "":
+			_is_punching = false
+			return
+		clip = fallback
+	var anim := _anim_player.get_animation(clip)
+	if anim != null:
+		anim.loop_mode = Animation.LOOP_NONE
+	_anim_player.play(clip)
+	_current_anim = clip
+	# Adv X C2 / Adv Z P0-2 watchdog: if animation_finished signal drops
+	# (clip override, scene teardown, respawn mid-strike), force-clear
+	# the flag so the kid isn't locked out of walk/idle forever.
+	var anim_len := 0.4
+	if anim != null:
+		anim_len = anim.length + 0.1
+	get_tree().create_timer(anim_len, true, false, true).timeout.connect(_on_punch_watchdog)
 
 
-func _on_punch_finished() -> void:
-	_is_punching = false
+func _on_punch_watchdog() -> void:
+	if _is_punching:
+		_is_punching = false
+		_current_anim = ""
 
 
 ## Subtle Muay Thai stance: forward lean + side-to-side bounce when
@@ -664,9 +718,14 @@ func _try_break_block() -> void:
 
 
 func _landing_squash() -> void:
+	# Jolt Physics rejects non-uniform scale on CharacterBody3D collision
+	# shapes — squash the mesh, not the body. (Was spamming the console
+	# with "scale not supported" + "invalid transform" per frame.)
+	if _character_mesh == null:
+		return
 	var tween := create_tween()
-	tween.tween_property(self, "scale", Vector3(_base_scale.x * 1.12, _base_scale.y * 0.72, _base_scale.z * 1.12), 0.05)
-	tween.tween_property(self, "scale", _base_scale, 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_character_mesh, "scale", Vector3(1.12, 0.72, 1.12), 0.05)
+	tween.tween_property(_character_mesh, "scale", Vector3.ONE, 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _hard_landing_feedback() -> void:
 	hard_landed.emit()

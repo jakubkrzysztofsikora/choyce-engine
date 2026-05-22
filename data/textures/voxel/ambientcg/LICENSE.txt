@@ -1,0 +1,18 @@
+ambientCG materials
+-------------------
+License: CC0 1.0 Universal (Public Domain Dedication)
+URL: https://ambientcg.com/
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+Materials included (1K-PNG, slim variant: Color + NormalGL + Roughness, plus Metalness where applicable):
+- Metal032        — https://ambientcg.com/view?id=Metal032
+- Metal034        — https://ambientcg.com/view?id=Metal034
+- Concrete019     — https://ambientcg.com/view?id=Concrete019
+- Concrete033     — https://ambientcg.com/view?id=Concrete033
+- Asphalt022      — https://ambientcg.com/view?id=Asphalt022
+- PaintedMetal002 — https://ambientcg.com/view?id=PaintedMetal002
+
+No attribution is required per CC0, but ambientCG is credited above as a courtesy.
+Each material is reduced from the full archive to the maps actively used by
+StandardMaterial3D bindings in src/adapters/inbound/gameplay/voxel_texture_registry.gd
+to keep on-disk size under the 150 MB budget.

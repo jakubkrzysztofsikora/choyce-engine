@@ -272,7 +272,10 @@ func _start_landing_audio() -> void:
 	if not has_node("/root/AudioBank"):
 		return
 	var bank: Node = get_node("/root/AudioBank")
-	bank.play_music("landing_ambient", true)
+	# CC0 phonk pack (moderated via scripts/audio/moderate_imported_music.py).
+	# Falls back to the legacy landing_ambient loop if the voxel dir is empty.
+	if not bank.play_phonk_random(true):
+		bank.play_music("landing_ambient", true)
 	await get_tree().create_timer(0.8).timeout
 	bank.play_voice("greet_landing")
 
@@ -405,16 +408,25 @@ func _start_cloud_drift() -> void:
 
 # ---------- styling ----------
 
+## VoxelForge palette — lifted from ~/Repos/personal/voxel globals.css.
+## Used across the landing screen, quick-build chips, and parent zone
+## so the kid sees one consistent look across shells.
+const VOXEL_LIME := Color(0.639, 0.902, 0.208, 1)        # tailwind lime-400
+const VOXEL_LIME_GLOW := Color(0.518, 0.800, 0.086, 1)   # tailwind lime-500
+const VOXEL_YELLOW := Color(0.988, 0.882, 0.278, 1)      # tailwind yellow-300
+const VOXEL_BLACK := Color(0.0, 0.0, 0.0, 1)
+
+
 func _apply_theme() -> void:
 	if _btn_play != null:
-		_style_main_button(_btn_play, Color(1.0, 0.42, 0.21))
+		_style_main_button(_btn_play, VOXEL_LIME)
 	if _btn_create != null:
-		_style_main_button(_btn_create, Color(0.18, 0.72, 0.54))
+		_style_main_button(_btn_create, VOXEL_LIME)
 
 	# Title label styling.
 	var title_node := get_node_or_null("TitleLabel")
 	if title_node is Label:
-		title_node.add_theme_color_override("font_color", Color(1.0, 0.42, 0.21))
+		title_node.add_theme_color_override("font_color", VOXEL_LIME)
 		title_node.add_theme_font_size_override("font_size", 96)
 
 
@@ -426,19 +438,29 @@ func _t(key: String) -> String:
 	return key
 
 
-func _style_main_button(btn: Button, color: Color) -> void:
+func _style_main_button(btn: Button, accent: Color) -> void:
+	# VoxelForge: pure black bg, lime border + lime font, glow shadow
+	# on hover. Replaces the old solid-color kid-button look.
 	var style := StyleBoxFlat.new()
-	style.bg_color = color
-	style.corner_radius_top_left = 24
-	style.corner_radius_top_right = 24
-	style.corner_radius_bottom_left = 24
-	style.corner_radius_bottom_right = 24
+	style.bg_color = VOXEL_BLACK
+	style.border_color = accent
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(16)
+	style.shadow_color = Color(accent.r, accent.g, accent.b, 0.18)
+	style.shadow_size = 0
+	style.content_margin_left = 22
+	style.content_margin_right = 22
+	style.content_margin_top = 10
+	style.content_margin_bottom = 10
 	btn.add_theme_stylebox_override("normal", style)
 	var hover_style := style.duplicate() as StyleBoxFlat
-	hover_style.bg_color = color.lightened(0.15)
+	hover_style.shadow_size = 12   # lime glow on hover
+	hover_style.border_color = VOXEL_YELLOW
 	btn.add_theme_stylebox_override("hover", hover_style)
 	var pressed_style := style.duplicate() as StyleBoxFlat
-	pressed_style.bg_color = color.darkened(0.15)
+	pressed_style.border_color = VOXEL_LIME_GLOW
 	btn.add_theme_stylebox_override("pressed", pressed_style)
-	btn.add_theme_color_override("font_color", Color.WHITE)
+	btn.add_theme_color_override("font_color", accent)
+	btn.add_theme_color_override("font_hover_color", VOXEL_YELLOW)
+	btn.add_theme_color_override("font_pressed_color", VOXEL_LIME_GLOW)
 	btn.add_theme_font_size_override("font_size", 44)

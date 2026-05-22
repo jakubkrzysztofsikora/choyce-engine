@@ -1,6 +1,8 @@
-## Kid mascot — friendly bunny character drawn entirely via _draw() callbacks.
+## Kid mascot — NINJA sidekick character drawn entirely via _draw() callbacks.
+## Replaces the original bunny (kid was 7, asked for something cooler than
+## a baby rabbit). Original IP only — Steve/Mario/brainrot are trademarked
+## and would break the CC0-only constraint in CLAUDE.md.
 ## Anchored bottom-left of viewport. Reacts to DomainEventBus events.
-## Wave V3 note: replace _draw() with AnimatedSprite2D/glTF when Blender assets land.
 ##
 ## Hexagonal: inbound adapter (UI). Node/signal use is intentional.
 ## mouse_filter = MOUSE_FILTER_IGNORE — never blocks UI interaction.
@@ -9,11 +11,19 @@ extends Control
 
 enum State { IDLE, EXCITED, THINKING, SAD, WAVING }
 
-const HEAD_COLOR := Color(1.0, 0.90, 0.80, 1)   # peach
-const EAR_INNER := Color(1.0, 0.62, 0.77, 1)    # pink
-const EYE_COLOR := Color(0.18, 0.18, 0.18, 1)
-const NOSE_COLOR := Color(1.0, 0.42, 0.42, 1)
-const BELLY_COLOR := Color(1, 1, 1, 1)
+# Ninja palette — dark hood, red highlight band, white slit-eyes.
+const HOOD_COLOR := Color(0.10, 0.10, 0.14, 1)   # near-black hood
+const BAND_COLOR := Color(0.85, 0.18, 0.22, 1)   # red headband
+const EYE_GLOW := Color(0.98, 0.98, 1.0, 1)      # white slit eyes
+const EYE_PUPIL := Color(0.08, 0.10, 0.16, 1)    # dark pupil dot
+const BELT_COLOR := Color(0.85, 0.18, 0.22, 1)   # red belt
+const SKIN_BAND := Color(0.96, 0.85, 0.72, 1)    # exposed eye-strip skin
+# Legacy aliases kept for any external draw helpers still in tree.
+const HEAD_COLOR := HOOD_COLOR
+const EAR_INNER := BAND_COLOR
+const EYE_COLOR := EYE_PUPIL
+const NOSE_COLOR := BAND_COLOR
+const BELLY_COLOR := HOOD_COLOR
 
 var _state: State = State.IDLE
 var _event_bus: Variant  # DomainEventBus duck-typed
@@ -32,31 +42,35 @@ func _ready() -> void:
 
 
 func _draw() -> void:
-	# Body
-	draw_circle(Vector2(80, 140), 56, HEAD_COLOR)
-	# Belly oval (approximated with a smaller circle)
-	draw_circle(Vector2(80, 150), 36, BELLY_COLOR)
-	# Head
-	draw_circle(Vector2(80, 72), 48, HEAD_COLOR)
-	# Ears
-	_draw_ear(Vector2(60, 32))
-	_draw_ear(Vector2(100, 32))
-	# Eyes
-	draw_circle(Vector2(68, 70), 6, EYE_COLOR)
-	draw_circle(Vector2(92, 70), 6, EYE_COLOR)
-	# Nose triangle
-	var pts := PackedVector2Array([Vector2(76, 84), Vector2(84, 84), Vector2(80, 90)])
-	draw_polygon(pts, PackedColorArray([NOSE_COLOR, NOSE_COLOR, NOSE_COLOR]))
-	# Paw dots
-	draw_circle(Vector2(52, 188), 8, HEAD_COLOR)
-	draw_circle(Vector2(68, 194), 8, HEAD_COLOR)
-	draw_circle(Vector2(92, 194), 8, HEAD_COLOR)
-	draw_circle(Vector2(108, 188), 8, HEAD_COLOR)
+	# Body — hooded torso (rounded rect via overlapping circles + rect).
+	draw_rect(Rect2(Vector2(32, 110), Vector2(96, 90)), HOOD_COLOR, true)
+	draw_circle(Vector2(80, 110), 48, HOOD_COLOR)
+	# Red belt across the waist.
+	draw_rect(Rect2(Vector2(32, 168), Vector2(96, 10)), BELT_COLOR, true)
+	# Hood — head silhouette.
+	draw_circle(Vector2(80, 64), 48, HOOD_COLOR)
+	# Hood point on top (small triangle) — gives the ninja a peak.
+	var hood_peak := PackedVector2Array([Vector2(80, 12), Vector2(64, 36), Vector2(96, 36)])
+	draw_polygon(hood_peak, PackedColorArray([HOOD_COLOR, HOOD_COLOR, HOOD_COLOR]))
+	# Eye-band — exposed skin strip across the eyes.
+	draw_rect(Rect2(Vector2(36, 56), Vector2(88, 18)), SKIN_BAND, true)
+	# Red headband stripe on top of the eye-band.
+	draw_rect(Rect2(Vector2(36, 50), Vector2(88, 8)), BAND_COLOR, true)
+	# Two slit eyes — narrow horizontal ellipses approximated as rects.
+	draw_rect(Rect2(Vector2(54, 62), Vector2(14, 6)), EYE_GLOW, true)
+	draw_rect(Rect2(Vector2(92, 62), Vector2(14, 6)), EYE_GLOW, true)
+	# Dark pupil dots inside the slit eyes.
+	draw_circle(Vector2(61, 65), 2.5, EYE_PUPIL)
+	draw_circle(Vector2(99, 65), 2.5, EYE_PUPIL)
+	# Crossed-arms hint — two diagonal bands across the chest.
+	draw_line(Vector2(38, 130), Vector2(122, 158), BELT_COLOR, 3)
+	draw_line(Vector2(122, 130), Vector2(38, 158), BELT_COLOR, 3)
 
 
 func _draw_ear(center: Vector2) -> void:
-	draw_circle(center, 14, HEAD_COLOR)
-	draw_circle(center, 8, EAR_INNER)
+	# Legacy method kept so any older call sites compile. No-op visually
+	# now that the ninja has no ears.
+	pass
 
 
 ## Wire the mascot to the DomainEventBus and optional VoicePromptPort.
@@ -87,6 +101,13 @@ func _build_speech_bubble() -> void:
 
 ## Display a speech bubble for duration_sec, optionally invoking VoicePromptPort.
 func say(text: String, duration_sec: float = 3.0) -> void:
+	# Caller (CreateShell._greet_via_mascot) can fire before our own
+	# _ready() builds the bubble. Lazy-build so the first line isn't
+	# eaten and the runtime doesn't NPE on `_speech_label.text`.
+	if _speech_label == null or _speech_panel == null:
+		_build_speech_bubble()
+	if _speech_label == null:
+		return
 	_speech_label.text = text
 	_speech_panel.modulate.a = 0.0
 	_speech_panel.scale = Vector2(0.6, 0.6)
@@ -163,7 +184,7 @@ func _on_domain_event(event: Variant) -> void:
 			say(_phrase_for(event_type))
 		"ParentalPolicyDecryptionFailed":
 			set_state(State.SAD)
-			say("Spróbuj inaczej!")
+			say("Coś nie pasuje. Spróbuj inaczej.")
 		"OnboardingStepChanged":
 			set_state(State.WAVING)
 		_:
@@ -171,8 +192,9 @@ func _on_domain_event(event: Variant) -> void:
 
 
 func _phrase_for(event_type: String) -> String:
+	# Ninja-mascot dialogue — short, calm, dry. No exclamation overload.
 	match event_type:
-		"WorldRemixed": return "Świetnie!"
-		"QuestCompleted": return "Brawo!"
-		"OnboardingFinished": return "Hura! Idziemy bawić się!"
-		_: return "Hej!"
+		"WorldRemixed": return "Niezły remix."
+		"QuestCompleted": return "Tak. Następna misja?"
+		"OnboardingFinished": return "Gotowy. Czas iść."
+		_: return "Cześć."

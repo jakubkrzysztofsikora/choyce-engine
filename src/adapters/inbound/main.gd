@@ -24,6 +24,7 @@ const KEY_AI_PERFORMANCE_READ_MODEL := "ai_performance_read_model"
 const KEY_DATA_LIFECYCLE_PORT := "data_lifecycle_port"
 const KEY_RULES_RUNTIME := "rules_runtime"
 const KEY_RULE_COMPILER := "rule_compiler"
+const KEY_SHELL_BRIDGE_PORT := "shell_bridge"
 const ENV_PROFILE_ROLE := "CHOYCE_PROFILE_ROLE"
 const ENV_PROFILE_ID := "CHOYCE_PROFILE_ID"
 const ENV_PROFILE_NAME := "CHOYCE_PROFILE_NAME"
@@ -112,7 +113,49 @@ func _notification(what: int) -> void:
 					port.flush_rotation()
 
 
+## Inject a fullscreen black ColorRect underneath every shell so the
+## VoxelForge lime accents render against a true dark surface across
+## the entire app — landing, create, play HUD, library, parent zone
+## all read consistently. Mouse-filter IGNORE so it never blocks input.
+## Also overlays a faint CRT-scanline texture (VoxelForge homepage
+## uses repeating-linear-gradient at rgba(0,255,0,0.03)) — gives the
+## sigma terminal vibe without overstimulating.
+func _ensure_voxel_body_bg() -> void:
+	if has_node("VoxelBodyBG"):
+		return
+	var bg := ColorRect.new()
+	bg.name = "VoxelBodyBG"
+	bg.color = Color(0.04, 0.04, 0.04, 1)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg)
+	move_child(bg, 0)
+
+	# CRT scanline overlay — sits just below Layout, above the bg.
+	var scan := ColorRect.new()
+	scan.name = "VoxelScanlines"
+	scan.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scan.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := Shader.new()
+	sh.code = """
+		shader_type canvas_item;
+		uniform float intensity : hint_range(0.0, 0.10) = 0.04;
+		uniform float line_period : hint_range(1.0, 8.0) = 3.0;
+		void fragment() {
+			float band = step(0.5, fract(FRAGCOORD.y / line_period));
+			float a = intensity * band;
+			COLOR = vec4(0.4, 1.0, 0.2, a);  // lime tint
+		}
+	"""
+	var smat := ShaderMaterial.new()
+	smat.shader = sh
+	scan.material = smat
+	add_child(scan)
+	move_child(scan, 1)  # just above bg, below Layout
+
+
 func _ready() -> void:
+	_ensure_voxel_body_bg()
 	# Apply ultra-wide responsive constraint to the root Layout so
 	# NavBar + shells don't stretch edge-to-edge on 3440×1440 screens.
 	# Helper preserves the $Layout node identity → @onready paths
@@ -445,6 +488,19 @@ func _build_default_ports_phase_2() -> void:
 	# Seed starter content on first launch so the kid sees ready-to-play
 	# worlds instead of an empty library + create shell.
 	_seed_starter_content_if_empty(project_store, clock)
+
+	# Optional Tauri shell bridge — OFF by default. Only starts when
+	# OS.has_feature("debug") OR CHOYCE_SHELL_BRIDGE=1. See research:
+	# thoughts/shared/research/shell-architecture-2026-05-21.md.
+	var shell_bridge := WebSocketShellBridgeAdapter.new().setup(
+		env,
+		audit_ledger,
+		clock,
+		_ports.get(KEY_KID_STATUS_READ_MODEL, null)
+	)
+	add_child(shell_bridge)
+	if shell_bridge.start():
+		_ports[KEY_SHELL_BRIDGE_PORT] = shell_bridge
 
 	# Re-wire shells with the persistent adapters.
 	if is_node_ready():
@@ -915,40 +971,37 @@ func _apply_global_theme() -> void:
 	)
 
 
+## VoxelForge palette — matches landing, create chips, parent zone.
+const VOXEL_LIME := Color(0.639, 0.902, 0.208, 1)
+const VOXEL_LIME_GLOW := Color(0.518, 0.800, 0.086, 1)
+const VOXEL_BLACK := Color(0.0, 0.0, 0.0, 0.95)
+
+
 func _apply_navigation_theme() -> void:
-	# Warm cream pill with primary orange border
+	# Black pill, lime border + lime glow. Replaces the orange/cream
+	# kid pill so the top toolbar matches VoxelForge dark + neon look.
 	var pill_style := StyleBoxFlat.new()
-	pill_style.bg_color = Color(1, 0.97, 0.94, 0.95)
-	pill_style.corner_radius_top_left = 32
-	pill_style.corner_radius_top_right = 32
-	pill_style.corner_radius_bottom_left = 32
-	pill_style.corner_radius_bottom_right = 32
-	pill_style.border_width_left = 3
-	pill_style.border_width_top = 3
-	pill_style.border_width_right = 3
-	pill_style.border_width_bottom = 3
-	pill_style.border_color = Color(1.0, 0.42, 0.21, 1)
-	pill_style.shadow_color = Color(0, 0, 0, 0.08)
-	pill_style.shadow_size = 6
-	pill_style.shadow_offset = Vector2(0, 3)
-	pill_style.content_margin_left = 12
+	pill_style.bg_color = VOXEL_BLACK
+	pill_style.set_corner_radius_all(32)
+	pill_style.set_border_width_all(2)
+	pill_style.border_color = VOXEL_LIME
+	pill_style.shadow_color = Color(VOXEL_LIME.r, VOXEL_LIME.g, VOXEL_LIME.b, 0.18)
+	pill_style.shadow_size = 10
+	pill_style.shadow_offset = Vector2(0, 0)
+	pill_style.content_margin_left = 14
 	pill_style.content_margin_top = 8
-	pill_style.content_margin_right = 12
+	pill_style.content_margin_right = 14
 	pill_style.content_margin_bottom = 8
 	_nav_bar.add_theme_stylebox_override("panel", pill_style)
 
-	# Title in primary orange
-	_title_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.21, 1))
+	# Title in lime
+	_title_label.add_theme_color_override("font_color", VOXEL_LIME)
 	_title_label.add_theme_font_size_override("font_size", 22)
 
 	if _active_indicator != null:
 		var indicator_style := StyleBoxFlat.new()
-		# Active indicator: primary orange, height 6, radius 3
-		indicator_style.bg_color = Color(1.0, 0.42, 0.21, 1)
-		indicator_style.corner_radius_top_left = 3
-		indicator_style.corner_radius_top_right = 3
-		indicator_style.corner_radius_bottom_left = 3
-		indicator_style.corner_radius_bottom_right = 3
+		indicator_style.bg_color = VOXEL_LIME
+		indicator_style.set_corner_radius_all(3)
 		_active_indicator.add_theme_stylebox_override("panel", indicator_style)
 		_active_indicator.custom_minimum_size.y = 6
 		_active_indicator.visible = false
@@ -966,9 +1019,11 @@ func _apply_navigation_theme() -> void:
 			continue
 		btn.flat = true
 		btn.add_theme_font_size_override("font_size", 18)
-		btn.add_theme_color_override("font_color", Color(0.42, 0.36, 0.31, 1))
-		btn.add_theme_color_override("font_hover_color", Color(1.0, 0.90, 0.43, 1))
-		btn.add_theme_color_override("font_pressed_color", Color(1.0, 0.42, 0.21, 1))
+		# Inactive nav buttons read in muted lime, hover snaps to bright
+		# yellow-300, pressed locks to lime-500 — same triad as create chips.
+		btn.add_theme_color_override("font_color", Color(0.639, 0.902, 0.208, 0.55))
+		btn.add_theme_color_override("font_hover_color", Color(0.988, 0.882, 0.278, 1))
+		btn.add_theme_color_override("font_pressed_color", VOXEL_LIME_GLOW)
 		btn.focus_mode = Control.FOCUS_NONE
 	
 	_update_active_indicator(SHELL_CREATE)

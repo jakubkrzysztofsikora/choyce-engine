@@ -721,10 +721,27 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 	for i in mini(catalog.size(), 4):
 		var kind: BlockKind = catalog[i]
 		slots.append({"id": kind.block_id, "name": kind.display_name, "color": kind.color})
+	# VoxelForge frame around each hotbar slot — black surface with
+	# lime border, active slot pulses brighter yellow. Inner ColorRect
+	# still shows the block tint so the kid can recognize materials.
+	var voxel_lime := Color(0.639, 0.902, 0.208, 1)
+	var voxel_yellow := Color(0.988, 0.882, 0.278, 1)
 	for i in slots.size():
 		var entry: Dictionary = slots[i]
 		var slot_panel := PanelContainer.new()
 		slot_panel.custom_minimum_size = Vector2(80, 80)
+		var frame := StyleBoxFlat.new()
+		frame.bg_color = Color(0.0, 0.0, 0.0, 0.92)
+		frame.border_color = voxel_yellow if i == active_slot else voxel_lime
+		frame.set_border_width_all(3 if i == active_slot else 2)
+		frame.set_corner_radius_all(8)
+		frame.shadow_color = Color(voxel_yellow.r, voxel_yellow.g, voxel_yellow.b, 0.30) if i == active_slot else Color(0, 0, 0, 0)
+		frame.shadow_size = 8 if i == active_slot else 0
+		frame.content_margin_left = 4
+		frame.content_margin_top = 4
+		frame.content_margin_right = 4
+		frame.content_margin_bottom = 4
+		slot_panel.add_theme_stylebox_override("panel", frame)
 		var slot_bg := ColorRect.new()
 		slot_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 		slot_bg.color = entry["color"]

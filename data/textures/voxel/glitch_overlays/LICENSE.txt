@@ -1,0 +1,20 @@
+Glitch / CRT / scanline overlays
+--------------------------------
+Intended source: https://texture.ninja (CC0 photo-derived overlays)
+License model: CC0 1.0 Universal (Public Domain Dedication)
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+The 7 PNG overlays in this directory are CC0 ORIGINAL PROCEDURAL WORKS generated
+locally by scripts/assets/gen_glitch_overlays.py because texture.ninja's library
+contains no glitch / scanline / CRT tags (verified against its /api/fetch_tags
+endpoint at fetch time). All output is dedicated to the public domain.
+
+Files:
+- scanlines_fine.png, scanlines_thick.png — horizontal CRT scanlines
+- crt_vignette.png                        — vignette + scanline layer
+- glitch_rgb_shift.png                    — RGB-shift glitch bands
+- static_noise.png                        — salt-and-pepper static
+- neon_grid.png                           — magenta neon grid for floor decals
+- vhs_tearing.png                         — VHS tear bands
+
+Recommended use: alpha-blended on top of camera or world materials for phonk feel.

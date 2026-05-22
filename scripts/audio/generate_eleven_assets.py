@@ -27,22 +27,32 @@ if not API_KEY:
     print("ELEVENLABS_API_KEY not set", file=sys.stderr)
     sys.exit(1)
 
-# Multilingual v2 supports Polish. Female warm voice ids (premade):
-# Charlotte: XB0fDUnXU5powFXDhCwa, Lily: pFZP5JQG7iQjIQuC4Bku, Aria: 9BWtsMINqrJLrRacOk9x
-MASCOT_VOICE_ID = "XB0fDUnXU5powFXDhCwa"
+# Multilingual v2 supports Polish. Ninja mascot uses Adam — deep,
+# calm, narrative male voice that reads as "wise sensei" rather than
+# "edgelord". Still kid-safe per CLAUDE.md (age 5-8 target).
+# Older voice ids kept for reference:
+#   Charlotte (warm female): XB0fDUnXU5powFXDhCwa
+#   Lily:                    pFZP5JQG7iQjIQuC4Bku
+#   Aria:                    9BWtsMINqrJLrRacOk9x
+#   Daniel (deep brit):      onwK4e9ZLuTAKqWW03F9
+#   Adam (deep narrator):    pNInz6obpgDQGcFmaJgB  <- ACTIVE
+MASCOT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 TTS_MODEL = "eleven_multilingual_v2"
 
+# Sigma-coded short declarative lines — calm authority, dry humor,
+# slight mystery. No yelling, no rage, no scary content. Reads like
+# a chill ninja sensei talking to a kid apprentice. PL only.
 VOICE_LINES = {
-    "greet_landing":     "Cześć! Jestem twoim królikiem. Naciśnij Zagraj!",
-    "world_picker":      "Wybierz świat do gry!",
-    "celebrate_win":     "Hura! Świetna robota!",
-    "celebrate_collect": "Brawo! Złapałeś!",
-    "block_oops":        "Spróbuj inaczej, kolego.",
-    "tools_unavailable": "Narzędzia śpią. Zaraz wracają!",
-    "no_world":          "Najpierw stwórz świat!",
-    "encourage_create":  "Naciśnij Zrób, żeby coś zbudować.",
-    "parent_zone":       "Tu rządzą rodzice.",
-    "session_end":       "Koniec gry. Zagrasz jeszcze?",
+    "greet_landing":     "Cześć. Jestem twoim ninja. Wciśnij Zagraj.",
+    "world_picker":      "Wybierz świat. Czas iść.",
+    "celebrate_win":     "Tak. Dobra robota.",
+    "celebrate_collect": "Nieźle.",
+    "block_oops":        "Spróbuj jeszcze raz. Spokojnie.",
+    "tools_unavailable": "Sprzęt śpi. Chwila.",
+    "no_world":          "Najpierw stwórz świat. Działaj.",
+    "encourage_create":  "Naciśnij Zrób. Buduj swój świat.",
+    "parent_zone":       "Strefa dla dorosłych. Stop.",
+    "session_end":       "Koniec. Wracaj jutro.",
 }
 
 SFX_PROMPTS = {
@@ -67,6 +77,13 @@ MUSIC_PROMPTS = {
     "little_farm":       "cozy farm music, banjo and harmonica, warm sunny morning, kid friendly, looping, 30 seconds",
     "mushroom_forest":   "magical mushroom forest music, soft pizzicato strings, glockenspiel, ambient mystery, kid friendly, looping, 30 seconds",
     "celebration":       "victory celebration fanfare, brass and timpani, 8 seconds, triumphant",
+    # Kid-safe drift phonk vibe — slow, hazy, no aggressive 808 distortion,
+    # no vocals/shouting/horror. Acts as the new default lobby + create
+    # mode loop (replaces landing_ambient when present).
+    "drift_phonk":       "drift phonk Memphis trap instrumental, prominent rhythmic cowbell loop pattern (the signature phonk cowbell), deep slow 808 sub bass with subtle slide, lo-fi cassette tape saturation and vinyl crackle, slowed-and-reverb chopped-and-screwed pitched-down mood, slow tempo 75 bpm, hypnotic moody atmosphere, instrumental only NO vocals NO shouting NO screams NO sirens NO horror elements, kid-safe (age 7), looping seamlessly, 30 seconds",
+    # Faster phonk for combat — still kid-safe, more energetic but
+    # never harsh. Used by PlayShell when COMBAT mode active.
+    "combat_phonk":      "drift phonk Memphis trap instrumental for action gameplay, signature phonk cowbell rhythm front-and-center, crisp 808 bass with sliding bends, lo-fi cassette texture, chopped-and-screwed vibe, mid tempo 105 bpm, confident focused energetic mood, instrumental only NO vocals NO shouting NO screams NO sirens NO horror elements, kid-safe (age 7), looping seamlessly, 30 seconds",
 }
 
 

@@ -1,0 +1,280 @@
+class_name WebSocketShellBridgeAdapter
+extends Node
+
+## WebSocket adapter exposing the ShellBridgePort surface to the Tauri shell
+## (research: thoughts/shared/research/shell-architecture-2026-05-21.md).
+##
+## INHERITANCE NOTE: GDScript is single-inheritance. The adapter extends Node
+## (so main.gd can add_child() it and we get per-frame _process polling) and
+## DUCK-TYPES the ShellBridgePort interface — every ShellBridgePort method
+## is implemented verbatim. The accompanying contract test verifies the port
+## shape.
+##
+## PRODUCTION SAFETY:
+##   * Bridge is OFF by default. start() returns false unless either
+##     OS.has_feature("debug") is true OR EnvironmentPort.get_var(
+##     "CHOYCE_SHELL_BRIDGE") == "1".
+##   * Server binds to 127.0.0.1 only — never the LAN interface.
+##   * Every successful open() is appended to the AuditLedgerPort with the
+##     event_type "shell_bridge_opened" and the remote port.
+##   * The bridge accepts ONE shell connection at a time. Subsequent
+##     connections replace the previous peer (Tauri auto-reconnect).
+##   * Heartbeat ping every 30 s keeps NAT/proxy state alive.
+##
+## Hexagonal rule: no domain types cross the wire. Inputs/outputs are JSON
+## envelopes: { command, params, requestId } → { requestId, result|error }.
+
+const DEFAULT_PORT: int = 9876
+const BIND_ADDRESS: String = "127.0.0.1"
+const HEARTBEAT_SECONDS: float = 30.0
+const SHELL_BRIDGE_FLAG_ENV: String = "CHOYCE_SHELL_BRIDGE"
+const AUDIT_EVENT_OPENED: String = "shell_bridge_opened"
+
+# ── Outbound dependencies (duck-typed where the port surface is stable). ────
+var _env: EnvironmentPort
+var _audit_ledger: AuditLedgerPort
+var _clock: Object  # ClockPort — duck-typed (only now_iso() used).
+var _kid_status_read_model: Object  # KidStatusReadModelPort — duck-typed.
+
+# ── Runtime state. ────────────────────────────────────────────────────────
+var _tcp_server: TCPServer
+var _peer: WebSocketPeer
+var _port: int = DEFAULT_PORT
+var _active: bool = false
+var _heartbeat_accum: float = 0.0
+var _next_request_id: int = 1
+var _force_enable: bool = false  # Test-only override; production stays gated.
+var _ignore_debug_feature: bool = false  # Test-only: simulate release template.
+
+
+## Wires required outbound dependencies. Returns self for fluent setup().
+## p_env: EnvironmentPort — read CHOYCE_SHELL_BRIDGE.
+## p_audit_ledger: AuditLedgerPort — receives shell_bridge_opened records.
+## p_clock: ClockPort — for audit record timestamps (duck-typed now_iso()).
+## p_kid_status_read_model: optional read-model for request_kid_status().
+## p_port: TCP port (defaults to 9876, same as TestBridgeAdapter).
+func setup(
+	p_env: EnvironmentPort,
+	p_audit_ledger: AuditLedgerPort,
+	p_clock: Object,
+	p_kid_status_read_model: Object = null,
+	p_port: int = DEFAULT_PORT
+) -> WebSocketShellBridgeAdapter:
+	_env = p_env
+	_audit_ledger = p_audit_ledger
+	_clock = p_clock
+	_kid_status_read_model = p_kid_status_read_model
+	_port = p_port
+	return self
+
+
+## Test-only: bypass the feature-flag gate so contract tests can drive the
+## bridge without polluting the real environment. NEVER call in production.
+func _force_enable_for_tests() -> void:
+	_force_enable = true
+
+
+## Test-only: simulate a release-template export (OS.has_feature("debug") == false)
+## so the SAFETY default-OFF assertion can be exercised inside the editor/headless
+## process, where OS.has_feature("debug") is unconditionally true.
+func _disable_debug_feature_for_tests() -> void:
+	_ignore_debug_feature = true
+
+
+## Returns true when the safety gate permits the server to start.
+func _gate_open() -> bool:
+	if _force_enable:
+		return true
+	if not _ignore_debug_feature and OS.has_feature("debug"):
+		return true
+	if _env != null and _env.get_env(SHELL_BRIDGE_FLAG_ENV, "") == "1":
+		return true
+	return false
+
+
+## Starts the WebSocket server. Returns true on success, false if the gate
+## is closed or the bind fails.
+func start() -> bool:
+	if not _gate_open():
+		return false
+	_tcp_server = TCPServer.new()
+	var err: int = _tcp_server.listen(_port, BIND_ADDRESS)
+	if err != OK:
+		push_warning(
+			"WebSocketShellBridgeAdapter: bind on %s:%d failed (err %d)"
+				% [BIND_ADDRESS, _port, err]
+		)
+		_tcp_server = null
+		return false
+	_active = true
+	_audit_open_event()
+	return true
+
+
+## Stops the server and disconnects the active peer.
+func stop() -> void:
+	_active = false
+	if _peer != null:
+		_peer.close(1000, "shell_bridge_stop")
+		_peer = null
+	if _tcp_server != null:
+		_tcp_server.stop()
+		_tcp_server = null
+	_heartbeat_accum = 0.0
+
+
+## Per-frame polling — accepts incoming connections, services the active
+## peer, and ticks the heartbeat counter.
+func _process(delta: float) -> void:
+	if not _active or _tcp_server == null:
+		return
+	_accept_incoming()
+	_service_peer()
+	_tick_heartbeat(delta)
+
+
+func _accept_incoming() -> void:
+	if not _tcp_server.is_connection_available():
+		return
+	# One connection at a time — replace the previous peer (auto-reconnect).
+	var stream: StreamPeerTCP = _tcp_server.take_connection()
+	if stream == null:
+		return
+	var ws := WebSocketPeer.new()
+	var err: int = ws.accept_stream(stream)
+	if err != OK:
+		push_warning("WebSocketShellBridgeAdapter: accept_stream err %d" % err)
+		return
+	if _peer != null:
+		_peer.close(1000, "shell_reconnected")
+	_peer = ws
+	_heartbeat_accum = 0.0
+
+
+func _service_peer() -> void:
+	if _peer == null:
+		return
+	_peer.poll()
+	var state: int = _peer.get_ready_state()
+	if state == WebSocketPeer.STATE_CLOSED:
+		_peer = null
+		return
+	if state != WebSocketPeer.STATE_OPEN:
+		return
+	while _peer.get_available_packet_count() > 0:
+		var pkt: PackedByteArray = _peer.get_packet()
+		_dispatch_envelope(pkt.get_string_from_utf8())
+
+
+func _tick_heartbeat(delta: float) -> void:
+	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	_heartbeat_accum += delta
+	if _heartbeat_accum >= HEARTBEAT_SECONDS:
+		_heartbeat_accum = 0.0
+		_send_envelope({"command": "ping", "params": {}, "requestId": _next_request_id})
+		_next_request_id += 1
+
+
+# ── ShellBridgePort surface (duck-typed; see contract test). ─────────────────
+
+func notify_session_started(p_world_id: String, p_profile_id: String) -> void:
+	_send_envelope({
+		"command": "session_started",
+		"params": {"world_id": p_world_id, "profile_id": p_profile_id},
+		"requestId": _next_request_id,
+	})
+	_next_request_id += 1
+
+
+func notify_session_ended(p_stats: Dictionary) -> void:
+	_send_envelope({
+		"command": "session_ended",
+		"params": p_stats.duplicate(true),
+		"requestId": _next_request_id,
+	})
+	_next_request_id += 1
+
+
+func notify_publish_state_changed(p_req_id: String, p_state: String) -> void:
+	_send_envelope({
+		"command": "publish_state_changed",
+		"params": {"req_id": p_req_id, "state": p_state},
+		"requestId": _next_request_id,
+	})
+	_next_request_id += 1
+
+
+func request_kid_status(p_profile_id: String, p_world_id: String) -> Dictionary:
+	if _kid_status_read_model == null:
+		return {}
+	if _kid_status_read_model.has_method("get_status"):
+		var raw: Variant = _kid_status_read_model.get_status(p_profile_id, p_world_id)
+		if raw is Dictionary:
+			return raw
+	return {}
+
+
+# ── Envelope helpers. ─────────────────────────────────────────────────────
+
+func _send_envelope(envelope: Dictionary) -> void:
+	if _peer == null or _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	_peer.send_text(JSON.stringify(envelope))
+
+
+func _dispatch_envelope(raw: String) -> void:
+	var parsed: Variant = JSON.parse_string(raw)
+	if not (parsed is Dictionary):
+		_reply_error(0, "invalid_envelope")
+		return
+	var envelope: Dictionary = parsed
+	var request_id: int = int(envelope.get("requestId", 0))
+	var command: String = str(envelope.get("command", ""))
+	var params_v: Variant = envelope.get("params", {})
+	var params: Dictionary = params_v if params_v is Dictionary else {}
+	match command:
+		"ping":
+			_reply_ok(request_id, {"pong": true})
+		"request_kid_status":
+			var status := request_kid_status(
+				str(params.get("profile_id", "")),
+				str(params.get("world_id", ""))
+			)
+			_reply_ok(request_id, status)
+		"":
+			_reply_error(request_id, "missing_command")
+		_:
+			_reply_error(request_id, "unknown_command")
+
+
+func _reply_ok(request_id: int, result: Dictionary) -> void:
+	_send_envelope({"requestId": request_id, "result": result})
+
+
+func _reply_error(request_id: int, code: String) -> void:
+	_send_envelope({"requestId": request_id, "error": code})
+
+
+# ── Audit. ────────────────────────────────────────────────────────────────
+
+func _audit_open_event() -> void:
+	if _audit_ledger == null:
+		return
+	var ts: String = ""
+	if _clock != null and _clock.has_method("now_iso"):
+		ts = _clock.now_iso()
+	var prev_hash: String = ""
+	if _audit_ledger.has_method("last_hash"):
+		prev_hash = _audit_ledger.last_hash()
+	var record_id := "shell-bridge-%d-%d" % [Time.get_ticks_msec(), _port]
+	var record := AuditRecord.new(
+		record_id,
+		AUDIT_EVENT_OPENED,
+		record_id,
+		"shell_bridge",
+		ts,
+		{"bind": BIND_ADDRESS, "port": _port},
+		prev_hash
+	)
+	_audit_ledger.append_record(record)

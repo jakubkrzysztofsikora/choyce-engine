@@ -390,52 +390,40 @@ func _set_coppa_status(text: String) -> void:
 		_coppa_status_label.text = text
 
 
+## VoxelForge palette (matches landing + create chips).
+const VOXEL_LIME := Color(0.639, 0.902, 0.208, 1)
+const VOXEL_LIME_GLOW := Color(0.518, 0.800, 0.086, 1)
+const VOXEL_BLACK := Color(0.0, 0.0, 0.0, 1)
+const VOXEL_CARD_BG := Color(0.08, 0.08, 0.08, 1)   # near-black card surface
+
+
+## Builds a card panel style: black surface, lime border, soft lime glow.
+func _voxel_card_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = VOXEL_CARD_BG
+	style.set_corner_radius_all(14)
+	style.set_border_width_all(2)
+	style.border_color = VOXEL_LIME
+	style.shadow_color = Color(VOXEL_LIME.r, VOXEL_LIME.g, VOXEL_LIME.b, 0.12)
+	style.shadow_size = 8
+	style.shadow_offset = Vector2(0, 0)
+	style.content_margin_left = 18
+	style.content_margin_top = 16
+	style.content_margin_right = 18
+	style.content_margin_bottom = 16
+	return style
+
+
 func _apply_theme() -> void:
 	var theme := load("res://data/themes/choyce_theme.tres") as Theme
 	if theme != null:
 		self.theme = theme
-	
+
 	for card in [_audit_card, _ai_card, _playtime_card]:
 		if card != null:
-			var style := StyleBoxFlat.new()
-			style.bg_color = Color8(250, 252, 255)
-			style.corner_radius_top_left = 14
-			style.corner_radius_top_right = 14
-			style.corner_radius_bottom_left = 14
-			style.corner_radius_bottom_right = 14
-			style.border_width_left = 2
-			style.border_width_top = 2
-			style.border_width_right = 2
-			style.border_width_bottom = 2
-			style.border_color = Color8(200, 225, 245)
-			style.shadow_color = Color(0, 0, 0, 0.08)
-			style.shadow_size = 6
-			style.shadow_offset = Vector2(0, 3)
-			style.content_margin_left = 16
-			style.content_margin_top = 16
-			style.content_margin_right = 16
-			style.content_margin_bottom = 16
-			card.add_theme_stylebox_override("panel", style)
-	
-	var controls_style := StyleBoxFlat.new()
-	controls_style.bg_color = Color8(250, 252, 255)
-	controls_style.corner_radius_top_left = 14
-	controls_style.corner_radius_top_right = 14
-	controls_style.corner_radius_bottom_left = 14
-	controls_style.corner_radius_bottom_right = 14
-	controls_style.border_width_left = 2
-	controls_style.border_width_top = 2
-	controls_style.border_width_right = 2
-	controls_style.border_width_bottom = 2
-	controls_style.border_color = Color8(200, 225, 245)
-	controls_style.shadow_color = Color(0, 0, 0, 0.08)
-	controls_style.shadow_size = 6
-	controls_style.shadow_offset = Vector2(0, 3)
-	controls_style.content_margin_left = 16
-	controls_style.content_margin_top = 16
-	controls_style.content_margin_right = 16
-	controls_style.content_margin_bottom = 16
-	$Layout/ControlsPanel.add_theme_stylebox_override("panel", controls_style)
+			card.add_theme_stylebox_override("panel", _voxel_card_style())
+
+	$Layout/ControlsPanel.add_theme_stylebox_override("panel", _voxel_card_style())
 
 
 func _t(key: String) -> String:

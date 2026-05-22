@@ -1,0 +1,18 @@
+Poly Haven HDRI — Shanghai Bund
+-------------------------------
+Intended source: https://polyhaven.com/a/shanghai_bund (2K .hdr)
+Author: Greg Zaal (credit recommended, not required)
+License: CC0 1.0 Universal (Public Domain Dedication)
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+shanghai_bund_2k.hdr in this directory is a CC0 PROCEDURAL PLACEHOLDER generated
+locally by scripts/assets/gen_neon_panorama.py because dl.polyhaven.org was blocked
+by the corporate egress proxy (Cato Networks "File Sharing" category) at fetch time.
+
+To replace with the real Poly Haven file (recommended for visual quality), download
+from an unblocked network:
+
+    curl -L -o shanghai_bund_2k.hdr \
+      https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/shanghai_bund_2k.hdr
+
+The placeholder is also CC0 (originated entirely from local procedural code).

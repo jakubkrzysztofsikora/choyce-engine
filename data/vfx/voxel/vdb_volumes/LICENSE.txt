@@ -1,0 +1,15 @@
+VDB Volumes — smoke / fire / lightning fallback
+-----------------------------------------------
+Intended source: https://jangafx.com/software/embergen/download/free-vdb-animations
+License model: CC0 1.0 Universal (Public Domain Dedication)
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+JangaFX requires a sign-up to download. Per the task brief, the documented
+fallback is OpenGameArt CC0 smoke/explosion sprites. OpenGameArt was also blocked
+by the corporate egress proxy (Cato Networks) at fetch time.
+
+This directory therefore contains 18 CC0 ORIGINAL PROCEDURAL frames generated
+locally by scripts/assets/gen_vfx_extensions.py (PNG flipbook, 6 frames per
+effect: smoke, fire, lightning). All output is public domain.
+
+Replace with JangaFX VDB or OpenGameArt sprites when network access permits.

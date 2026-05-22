@@ -108,10 +108,12 @@ func _ready() -> void:
 		add_child(_onboarding_overlay)
 
 	_ensure_back_button()
+	_ensure_quick_build_row()
 	_make_layout_responsive()
 	_wire_actions()
 	_refresh_labels()
 	_apply_friendly_theme()
+	_greet_via_mascot()
 
 
 ## Inject a top button row: "← Menu" (return to landing) +
@@ -156,6 +158,164 @@ func _ensure_back_button() -> void:
 
 	layout.add_child(row)
 	layout.move_child(row, 0)
+
+
+## "Quick Build" chip row — 4 single-tap presets that scaffold a
+## recognizable world instantly. Was: kid stares at empty canvas,
+## tools do nothing visible (PLACE stacks at origin), bunny is
+## silent. After: tap "🏰 Zamek" → 9 blocks spawn → bunny cheers.
+## This is the kid's "I made something!" moment in <2 seconds.
+func _ensure_quick_build_row() -> void:
+	var layout: VBoxContainer = $Layout
+	if layout == null:
+		return
+	if layout.has_node("QuickBuildRow"):
+		return
+	var row := HBoxContainer.new()
+	row.name = "QuickBuildRow"
+	row.add_theme_constant_override("separation", 10)
+
+	# VoxelForge palette (after inspecting ~/Repos/personal/voxel
+	# globals.css + live UI): pure black bg, lime-400 accent, glitch
+	# headings. Lifted as per-button overrides because the global
+	# theme.tres is still the orange kid scheme — full re-skin pending.
+	var voxel_lime := Color(0.639, 0.902, 0.208, 1)   # tailwind lime-400 ≈ #A3E635
+	var voxel_lime_glow := Color(0.518, 0.800, 0.086, 1)  # lime-500 for borders
+	var voxel_black := Color(0.0, 0.0, 0.0, 1)
+
+	var label := Label.new()
+	label.text = "🥷  NINJA — WYBIERZ MISJĘ:"
+	label.add_theme_font_size_override("font_size", 20)
+	label.add_theme_color_override("font_color", voxel_lime)
+	row.add_child(label)
+
+	for preset in [
+		{"id": "castle",   "label": "[ 🏰 ZAMEK ]"},
+		{"id": "forest",   "label": "[ 🌲 LAS ]"},
+		{"id": "track",    "label": "[ 🏁 TOR ]"},
+		{"id": "surprise", "label": "[ 🎁 NIESPODZIANKA ]"},
+	]:
+		var btn := Button.new()
+		btn.text = preset["label"]
+		btn.custom_minimum_size = Vector2(160, 56)
+		btn.add_theme_font_size_override("font_size", 20)
+		btn.add_theme_color_override("font_color", voxel_lime)
+		btn.add_theme_color_override("font_hover_color", Color(0.988, 0.882, 0.278, 1))  # yellow-300
+		btn.add_theme_color_override("font_pressed_color", voxel_lime_glow)
+		# StyleBoxFlat per state — black bg, lime border, glow-y radius.
+		for sb_state in ["normal", "hover", "pressed", "focus", "disabled"]:
+			var sbf := StyleBoxFlat.new()
+			sbf.bg_color = voxel_black
+			sbf.border_color = voxel_lime if sb_state != "pressed" else voxel_lime_glow
+			sbf.set_border_width_all(2)
+			sbf.set_corner_radius_all(10)
+			sbf.shadow_color = Color(voxel_lime.r, voxel_lime.g, voxel_lime.b, 0.20)
+			sbf.shadow_size = 6 if sb_state == "hover" else 0
+			sbf.content_margin_left = 14
+			sbf.content_margin_right = 14
+			sbf.content_margin_top = 6
+			sbf.content_margin_bottom = 6
+			btn.add_theme_stylebox_override(sb_state, sbf)
+		var preset_id: String = preset["id"]
+		btn.pressed.connect(func(): _quick_build_preset(preset_id))
+		row.add_child(btn)
+
+	layout.add_child(row)
+	# Place right under KidNavRow (index 1) if it exists, else top.
+	var insert_at := 1 if layout.has_node("KidNavRow") else 0
+	layout.move_child(row, insert_at)
+
+
+## Issues a batch of ADD_NODE commands at preset positions through
+## the existing _apply_world_edit_port so the audit/event-bus path
+## remains consistent. No special-case AI placeholder.
+func _quick_build_preset(preset_id: String) -> void:
+	if _apply_world_edit_port == null or _profile == null:
+		_set_status_message(_t("create.error.no_config"), true)
+		return
+	_ensure_world_context()
+	if _active_world_id.is_empty():
+		return
+
+	# Each placement = (display_name, position). The display_name MUST
+	# match a key in WorldRenderer.PROP_GLTF so the runtime loads the
+	# authored Kenney/Blender prop instead of falling back to a white
+	# BoxMesh. (Previous version emitted "castle #0" → no asset → cube.)
+	var placements: Array = []
+	match preset_id:
+		"castle":
+			# Stone walls (skała) on a 3×3 footprint + 4 corner spires
+			# (skała z mchem) with flag markers (flaga) on top corners.
+			for x in [-1, 0, 1]:
+				for z in [-1, 0, 1]:
+					placements.append({"name": "skała", "pos": Vector3(x * 1.2, 0, z * 1.2)})
+			for c in [Vector3(-1.2,0.9,-1.2), Vector3(1.2,0.9,-1.2), Vector3(-1.2,0.9,1.2), Vector3(1.2,0.9,1.2)]:
+				placements.append({"name": "skała z mchem", "pos": c})
+			placements.append({"name": "flaga", "pos": Vector3(-1.2, 1.8, -1.2)})
+			placements.append({"name": "flaga", "pos": Vector3(1.2, 1.8, 1.2)})
+			placements.append({"name": "skrzynia", "pos": Vector3(0, 0, 2.2)})
+		"forest":
+			# Tall oaks in an outer ring, mushrooms + flowers inside,
+			# acorns scattered. Spawn crystal as the centerpiece.
+			for i in 5:
+				var ang := i * TAU / 5.0
+				placements.append({"name": "dąb", "pos": Vector3(cos(ang) * 3.0, 0, sin(ang) * 3.0)})
+			placements.append({"name": "grzyb", "pos": Vector3(-1.4, 0, 0.8)})
+			placements.append({"name": "grzyb mały", "pos": Vector3(1.2, 0, -0.6)})
+			placements.append({"name": "kłoda", "pos": Vector3(0.8, 0, 1.6)})
+			placements.append({"name": "kwiaty", "pos": Vector3(-0.5, 0, -1.2)})
+			placements.append({"name": "kwiaty", "pos": Vector3(1.6, 0, 0.4)})
+			placements.append({"name": "świetlik", "pos": Vector3(0, 0.5, 0)})
+			placements.append({"name": "żołądź", "pos": Vector3(-2.2, 0, 1.8)})
+		"track":
+			# Fence rails forming a straight track + start/finish flags.
+			for x in range(-3, 4):
+				placements.append({"name": "płot", "pos": Vector3(x, 0, -1.2)})
+				placements.append({"name": "płot", "pos": Vector3(x, 0, 1.2)})
+			placements.append({"name": "flaga", "pos": Vector3(-3.0, 0, 0)})
+			placements.append({"name": "flaga", "pos": Vector3(3.0, 0, 0)})
+		"surprise", _:
+			# Random kid-treat sprinkle. Coins, apples, firefly jars,
+			# starfish, pearls — visible collectibles, not boxes.
+			var pool := ["moneta", "jabłko", "świetlik", "rozgwiazda", "perła", "kwiaty", "grzyb mały"]
+			for i in 8:
+				var name: String = pool[i % pool.size()]
+				placements.append({"name": name, "pos": Vector3(randi_range(-3, 3), 0, randi_range(-3, 3))})
+
+	var placed := 0
+	for entry in placements:
+		var cmd := WorldEditCommand.new()
+		cmd.target_node_id = "%s_%d_%d" % [preset_id, placed, Time.get_ticks_msec()]
+		cmd.action = WorldEditCommand.Action.ADD_NODE
+		cmd.node_data = {
+			"type": SceneNode.NodeType.OBJECT,
+			"display_name": entry["name"],
+			"position": entry["pos"],
+		}
+		if _apply_world_edit_port.execute(_active_world_id, cmd, _profile):
+			_apply_command_to_local_world(cmd)
+			placed += 1
+
+	_refresh_workspace_ui()
+	_update_3d_preview(_current_world_instance)
+	_set_status_message("✨ Zbudowano %d klocków!" % placed, false)
+	_mascot_say("Gotowe. %s na mapie. Naciśnij ▶ Graj teraz!" % preset_id)
+
+
+## Routes a greeting through the global Mascot autoload-like node
+## ($MascotOverlay on InboundMain). Silent if unreachable — never
+## blocks the shell.
+func _greet_via_mascot() -> void:
+	_mascot_say("Wybierz misję ↓ albo dotknij narzędzia. Ruszamy!")
+
+
+func _mascot_say(text: String) -> void:
+	var root := get_tree().root if is_inside_tree() else null
+	if root == null:
+		return
+	var mascot := root.find_child("MascotOverlay", true, false)
+	if mascot != null and mascot.has_method("say"):
+		mascot.say(text, 4.0)
 
 
 ## "▶ Graj teraz" — launches a playtest on the CURRENT world the

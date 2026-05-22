@@ -378,3 +378,38 @@ func _resolve_mesh(properties: Dictionary) -> PrimitiveMesh:
 			return CylinderMesh.new()
 		"box", _:
 			return BoxMesh.new()
+
+
+# Builds and applies a WorldEnvironment for the given play mode.
+# `mode` is "combat" (Shanghai Bund neon HDRI sky) or anything else
+# (returns a soft procedural sky — keeps create/landing modes untouched).
+# Idempotent: removes any existing WorldEnvironment child first.
+const _COMBAT_HDRI_PATH := "res://data/textures/voxel/polyhaven_hdri/shanghai_bund_2k.hdr"
+
+func _setup_world_environment(mode: String = "combat") -> void:
+	for child in get_children():
+		if child is WorldEnvironment:
+			child.queue_free()
+	var env := Environment.new()
+	if mode == "combat" and ResourceLoader.exists(_COMBAT_HDRI_PATH):
+		var hdri_tex := ResourceLoader.load(_COMBAT_HDRI_PATH) as Texture2D
+		if hdri_tex != null:
+			var sky_mat := PanoramaSkyMaterial.new()
+			sky_mat.panorama = hdri_tex
+			var sky := Sky.new()
+			sky.sky_material = sky_mat
+			env.background_mode = Environment.BG_SKY
+			env.sky = sky
+			env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+			env.ambient_light_energy = 0.6
+		else:
+			env.background_mode = Environment.BG_COLOR
+			env.background_color = Color(0.05, 0.02, 0.10)
+	else:
+		# Non-combat default: soft procedural sky already used elsewhere.
+		env.background_mode = Environment.BG_COLOR
+		env.background_color = Color(0.40, 0.55, 0.75)
+	var we := WorldEnvironment.new()
+	we.environment = env
+	we.name = "VoxelWorldEnvironment"
+	add_child(we)

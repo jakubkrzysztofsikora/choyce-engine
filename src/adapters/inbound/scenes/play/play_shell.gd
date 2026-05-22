@@ -476,7 +476,22 @@ func show_celebration(stats: Dictionary) -> void:
 	else:
 		_celebration_title.text = _t("play.session.celebration_title")
 
+	# Defensive guards for "click-dead after exit" (user-reported):
+	# 1. Mouse mode sometimes lingers in CAPTURED from FPS look — UI
+	#    swallows the press silently. Force it visible.
+	# 2. Backdrop is mouse_filter=IGNORE, but the celebration panel's
+	#    own button can lose focus if a Tween is mid-flight from a
+	#    prior session. Grab focus explicitly so Enter/Space confirm
+	#    works even with a stuck cursor.
+	# 3. Re-assert layer index so any other ad-hoc CanvasLayer (mascot,
+	#    voice overlay) can't paint on top of CloseButton.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_celebration_layer.layer = 10
 	_celebration_layer.visible = true
+	_celebration_close.disabled = false
+	_celebration_close.mouse_filter = Control.MOUSE_FILTER_STOP
+	_celebration_close.focus_mode = Control.FOCUS_ALL
+	_celebration_close.grab_focus.call_deferred()
 
 	# Audio feedback on celebration
 	var _bank := _audio_bank()
@@ -648,13 +663,71 @@ func _play_world_music(template_id: String) -> void:
 	var bank := _audio_bank()
 	if bank == null:
 		return
-	var track_name: String
+	# Combat-flavored templates get a CC0 phonk track rotated at random
+	# (moderated via scripts/audio/moderate_imported_music.py). Calm
+	# templates keep their thematic kid music. Lobby/default also rolls
+	# the phonk pack to match the landing-screen vibe.
 	match template_id:
-		"adventure": track_name = "adventure_island"
-		"farm":      track_name = "little_farm"
-		"forest":    track_name = "mushroom_forest"
-		_:           track_name = "landing_ambient"
-	bank.play_music(track_name, true)
+		"adventure":
+			if not bank.play_phonk_random(true):
+				bank.play_music("landing_ambient", true)
+		"farm":
+			bank.play_music("little_farm", true)
+		"forest":
+			bank.play_music("mushroom_forest", true)
+		_:
+			if not bank.play_phonk_random(true):
+				bank.play_music("landing_ambient", true)
+
+
+## VoxelForge palette (matches landing, parent zone, create chips).
+const VOXEL_LIME := Color(0.639, 0.902, 0.208, 1)
+const VOXEL_LIME_GLOW := Color(0.518, 0.800, 0.086, 1)
+const VOXEL_YELLOW := Color(0.988, 0.882, 0.278, 1)
+const VOXEL_BLACK := Color(0.0, 0.0, 0.0, 0.92)
+const VOXEL_CARD_BG := Color(0.05, 0.05, 0.05, 0.92)
+
+
+## Single source of truth for VoxelForge panel cards (HUD side panel,
+## minimap, session-end card, celebration panel).
+func _voxel_panel_style(accent: Color = VOXEL_LIME, glow: float = 0.18) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = VOXEL_CARD_BG
+	sb.set_corner_radius_all(14)
+	sb.set_border_width_all(2)
+	sb.border_color = accent
+	sb.shadow_color = Color(accent.r, accent.g, accent.b, glow)
+	sb.shadow_size = 10
+	sb.shadow_offset = Vector2(0, 0)
+	sb.content_margin_left = 18
+	sb.content_margin_top = 16
+	sb.content_margin_right = 18
+	sb.content_margin_bottom = 16
+	return sb
+
+
+## Lime-on-black button — used for HUD CTAs, hotbar tiles, bottom action row.
+## `accent` lets crit/destructive cases swap to yellow or destructive red.
+func _voxel_style_button(btn: Button, accent: Color = VOXEL_LIME, font_size: int = 18) -> void:
+	if btn == null:
+		return
+	for sb_state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = VOXEL_BLACK
+		sb.set_corner_radius_all(10)
+		sb.set_border_width_all(2)
+		sb.border_color = accent if sb_state != "pressed" else VOXEL_LIME_GLOW
+		sb.shadow_color = Color(accent.r, accent.g, accent.b, 0.20 if sb_state == "hover" else 0.0)
+		sb.shadow_size = 8 if sb_state == "hover" else 0
+		sb.content_margin_left = 14
+		sb.content_margin_right = 14
+		sb.content_margin_top = 8
+		sb.content_margin_bottom = 8
+		btn.add_theme_stylebox_override(sb_state, sb)
+	btn.add_theme_color_override("font_color", accent)
+	btn.add_theme_color_override("font_hover_color", VOXEL_YELLOW)
+	btn.add_theme_color_override("font_pressed_color", VOXEL_LIME_GLOW)
+	btn.add_theme_font_size_override("font_size", font_size)
 
 
 func _apply_theme() -> void:
@@ -663,52 +736,27 @@ func _apply_theme() -> void:
 		self.theme = theme
 
 	if _side_panel != null:
-		var side_style := StyleBoxFlat.new()
-		side_style.bg_color = Color8(250, 252, 255)
-		side_style.corner_radius_top_left = 14
-		side_style.corner_radius_top_right = 14
-		side_style.corner_radius_bottom_left = 14
-		side_style.corner_radius_bottom_right = 14
-		side_style.border_width_left = 2
-		side_style.border_width_top = 2
-		side_style.border_width_right = 2
-		side_style.border_width_bottom = 2
-		side_style.border_color = Color8(200, 225, 245)
-		side_style.shadow_color = Color(0, 0, 0, 0.08)
-		side_style.shadow_size = 6
-		_side_panel.add_theme_stylebox_override("panel", side_style)
+		_side_panel.add_theme_stylebox_override("panel", _voxel_panel_style(VOXEL_LIME, 0.14))
 
 	if _minimap_panel != null:
-		var mm_style := StyleBoxFlat.new()
-		mm_style.bg_color = Color8(220, 240, 255)
-		mm_style.corner_radius_top_left = 10
-		mm_style.corner_radius_top_right = 10
-		mm_style.corner_radius_bottom_left = 10
-		mm_style.corner_radius_bottom_right = 10
-		mm_style.border_width_left = 1
-		mm_style.border_width_top = 1
-		mm_style.border_width_right = 1
-		mm_style.border_width_bottom = 1
-		mm_style.border_color = Color8(180, 210, 240)
-		_minimap_panel.add_theme_stylebox_override("panel", mm_style)
+		_minimap_panel.add_theme_stylebox_override("panel", _voxel_panel_style(VOXEL_LIME_GLOW, 0.10))
 
 	if _session_end_panel != null:
-		var se_style := StyleBoxFlat.new()
-		se_style.bg_color = Color8(255, 250, 230)
-		se_style.corner_radius_top_left = 20
-		se_style.corner_radius_top_right = 20
-		se_style.corner_radius_bottom_left = 20
-		se_style.corner_radius_bottom_right = 20
-		se_style.border_width_left = 3
-		se_style.border_width_top = 3
-		se_style.border_width_right = 3
-		se_style.border_width_bottom = 3
-		se_style.border_color = Color8(255, 215, 100)
-		se_style.shadow_color = Color(0, 0, 0, 0.18)
-		se_style.shadow_size = 12
-		se_style.shadow_offset = Vector2(0, 6)
-		se_style.content_margin_left = 24
-		se_style.content_margin_top = 24
-		se_style.content_margin_right = 24
-		se_style.content_margin_bottom = 24
-		_session_end_panel.add_theme_stylebox_override("panel", se_style)
+		# Session-end keeps a slightly warmer accent so the kid reads
+		# "win moment", but still on the dark voxel surface.
+		_session_end_panel.add_theme_stylebox_override("panel", _voxel_panel_style(VOXEL_YELLOW, 0.22))
+
+	# Bottom-row action buttons + any post-session CTAs the kid hits.
+	for btn_path in [
+		"Layout/Actions/SafeRestoreButton",
+		"Layout/Actions/BackToCreateButton",
+		"Layout/Actions/GoLibraryButton",
+		"Layout/Actions/CoopButton",
+		"Layout/Actions/ReplayButton",
+	]:
+		var btn := get_node_or_null(btn_path)
+		if btn is Button:
+			_voxel_style_button(btn, VOXEL_LIME, 18)
+	# Celebration close button (`Zagraj jeszcze`).
+	if _celebration_close != null:
+		_voxel_style_button(_celebration_close, VOXEL_YELLOW, 22)
