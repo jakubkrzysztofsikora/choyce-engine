@@ -119,6 +119,9 @@ func _ready() -> void:
 		_player_controller.landed.connect(_on_landed)
 		_player_controller.hard_landed.connect(_on_hard_landed)
 		_player_controller.jumped.connect(_on_jumped)
+		# Adv Y C2 fix — whoosh on swing miss (no enemy in cone).
+		if _player_controller.has_signal("swing_missed"):
+			_player_controller.swing_missed.connect(_on_player_swing_missed)
 
 	if _victory_sequence != null:
 		_victory_sequence.setup(_effect_spawner, _audio_bus, _screen_feedback, _player_controller)
@@ -468,30 +471,52 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 	enemy.global_position = pos
 
 
-func _on_enemy_damaged(amount: int, position: Vector3) -> void:
-	var is_boss := false
-	# Cheap heuristic: amount ≥ 8 → likely against a boss (bigger HP
-	# bar). Better signal would be enemy.is_boss but the signal
-	# payload is intentionally tight. Visual is the same scale for
-	# now. Future: pass enemy_id through.
-	_spawn_damage_number(amount, position, is_boss)
-	if _screen_feedback != null and _screen_feedback.has_method("shake"):
-		_screen_feedback.shake(3.0, 0.06)
+## Adv Y C2 fix — fire whoosh SFX when a swing hits empty air.
+## Keeps the air swing audible so a 7yo never thinks the button
+## broke.
+func _on_player_swing_missed(attack_origin: Vector3) -> void:
 	if _audio_bus != null:
-		_audio_bus.emit_sfx("collect", position)
+		_audio_bus.emit_sfx("swing_whoosh", attack_origin)
+
+
+func _on_enemy_damaged(amount: int, position: Vector3) -> void:
+	# Cheap heuristic: amount ≥ 8 → likely against a boss (bigger HP
+	# bar). Future: pass enemy_id through.
+	var is_boss := amount >= 8
+	_spawn_damage_number(amount, position, is_boss)
+	# Adv Y C1 fix: hit-stop fires on EVERY hit-connect (35ms mob /
+	# 60ms boss), not only on kill. This is the single biggest "yes I
+	# hit it" signal — Mick Hofman / J.W. Nijman pattern.
+	_apply_hit_stop(0.06 if is_boss else 0.035)
+	# Adv Y C4 fix: per-hit shake is now LOUDER than defeat shake
+	# (because it fires every swing, defeat is the rarer payoff).
+	# Direction = away from player toward hit point so the camera
+	# kicks toward the impact side (Doom/Halo nudge pattern).
+	if _screen_feedback != null:
+		var dir_x := 0.0
+		if _player_controller != null:
+			dir_x = signf(position.x - _player_controller.global_position.x)
+		var dir := Vector2(dir_x, -0.4)
+		if _screen_feedback.has_method("shake_directional"):
+			_screen_feedback.shake_directional(6.0, 0.08, dir)
+		elif _screen_feedback.has_method("shake"):
+			_screen_feedback.shake(6.0, 0.08)
+	# Adv Y C2 fix: real punch SFX, not the coin pickup chime.
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("punch_thud", position)
 
 
 func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> void:
 	print("[combat] defeated %s at %s loot=%s" % [enemy_id, position, loot])
 	# Feel overhaul (Adv M+N #11/#12): per-defeat SFX + screen shake
-	# + hit-stop. Hit-stop is a brief Engine.time_scale dip so the
-	# kid sees the moment of impact. Boss-defeat uses a longer dip
-	# + bigger shake than mob-defeat.
+	# + hit-stop. Adv Y C4: defeat shake is now SOFTER per-hit
+	# because per-hit shake is the loud one now. Hit-stop on kill
+	# stays the bigger of the two (0.08 boss / 0.04 mob).
 	var is_boss := enemy_id == "big_slime"
 	if _screen_feedback != null and _screen_feedback.has_method("shake"):
-		_screen_feedback.shake(8.0 if is_boss else 5.0, 0.25 if is_boss else 0.12)
+		_screen_feedback.shake(7.0 if is_boss else 5.0, 0.10)
 	if _audio_bus != null:
-		_audio_bus.emit_sfx("collect", position)
+		_audio_bus.emit_sfx("punch_thud", position)
 	_apply_hit_stop(0.08 if is_boss else 0.04)
 	# Grant XP first so audit + HUD reflect the new level if a level-up fires.
 	if _xp_service != null:

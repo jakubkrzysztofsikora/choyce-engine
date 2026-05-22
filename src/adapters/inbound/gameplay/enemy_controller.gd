@@ -138,13 +138,35 @@ func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO) -> bool:
 		away.y = 0.0
 		velocity = away * 6.0
 		velocity.y = 3.0
-	# Brief tint flash via material modulate
+	# Adv Y C3 fix — emission-spike white flash (visible on green AND
+	# purple BIG_SLIME). Previous pale-pink (1.0, 0.85, 0.85) tint
+	# was invisible on green slime tint. Snap to pure white + emission
+	# spike for 50ms, then linear-fade back over 120ms. Holds the
+	# bright frame long enough for the kid's eye to register "WHACK"
+	# before the colour returns to the original tint.
 	if _mesh != null and _mesh.material_override is StandardMaterial3D:
 		var mat: StandardMaterial3D = _mesh.material_override
 		var original_color := mat.albedo_color
-		mat.albedo_color = Color(1.0, 0.85, 0.85)
+		var original_emission := mat.emission
+		var original_emission_enabled := mat.emission_enabled
+		var original_emission_energy := mat.emission_energy_multiplier
+		mat.albedo_color = Color.WHITE
+		mat.emission_enabled = true
+		mat.emission = Color.WHITE
+		mat.emission_energy_multiplier = 1.5
 		var tween := create_tween()
-		tween.tween_property(mat, "albedo_color", original_color, 0.18)
+		# Hold the bright frame.
+		tween.tween_interval(0.05)
+		# Linear-fade albedo + emission energy back to original.
+		tween.parallel().tween_property(mat, "albedo_color", original_color, 0.12)
+		tween.parallel().tween_property(mat, "emission_energy_multiplier",
+			original_emission_energy, 0.12)
+		tween.tween_callback(func() -> void:
+			if mat == null:
+				return
+			mat.emission = original_emission
+			mat.emission_enabled = original_emission_enabled
+		)
 	if not health.is_alive:
 		_on_defeat()
 	return true

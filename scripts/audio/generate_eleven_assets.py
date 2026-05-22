@@ -69,6 +69,13 @@ SFX_PROMPTS = {
     "footstep_sand":    "soft footstep on sand, soft scrape, 100ms",
     "jump_up":          "cute little jump squeak, ascending, 200ms",
     "land_soft":        "soft kid landing, small thump, 100ms",
+    # Combat feel SFX (Adv Y C2). Kid-safe punch/kick percussion —
+    # cartoony "whump" not violent meat-impact. No screams, no grunts,
+    # no gore textures. Short and tight so they layer cleanly with the
+    # hit-stop time-scale dip.
+    "punch_thud":       "cartoon punch impact, soft padded thud, low-mid frequency whump, no metallic shimmer, no scream, kid-friendly cartoon style, 150ms",
+    "kick_impact":      "cartoon kick impact, padded boot whump, slightly deeper than punch, soft low thud, no scream no gore, kid-friendly, 180ms",
+    "swing_whoosh":     "fast cartoon arm swing whoosh through air, soft airy sweep, descending pitch, no metallic blade, kid-friendly, 120ms",
 }
 
 MUSIC_PROMPTS = {

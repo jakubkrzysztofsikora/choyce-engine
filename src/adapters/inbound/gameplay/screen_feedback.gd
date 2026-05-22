@@ -20,3 +20,33 @@ func shake(intensity: float = 8.0, duration: float = 0.3) -> void:
 		var offset := Vector3(randf() - 0.5, randf() - 0.5, 0) * intensity
 		tween.tween_property(camera, "position", original_pos + offset, 0.016)
 	tween.tween_property(camera, "position", original_pos, 0.016)
+
+
+## Adv Y C4 fix — directional shake that biases the camera kick
+## toward the hit side. Each per-frame offset is a small symmetric
+## jitter plus a strong directional component along the supplied 2-D
+## screen-space vector. Reads as "punch landed THIS way" instead of
+## "screen shimmied randomly". Caller passes basis * LEFT * sign(...)
+## for sub-second cues; we don't read camera basis here so this stays
+## a pure Control method.
+func shake_directional(intensity: float = 6.0, duration: float = 0.08,
+		direction: Vector2 = Vector2.ZERO) -> void:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return
+	var original_pos := camera.position
+	var dir := direction
+	if dir.length_squared() < 0.0001:
+		dir = Vector2(0.0, -1.0)
+	else:
+		dir = dir.normalized()
+	var tween := create_tween()
+	var frames := maxi(int(duration * 60), 1)
+	for i in range(frames):
+		# Decay the directional kick over the duration so the camera
+		# returns smoothly to rest.
+		var decay := 1.0 - (float(i) / float(frames))
+		var jitter := Vector3((randf() - 0.5) * 0.4, (randf() - 0.5) * 0.4, 0) * intensity
+		var kick := Vector3(dir.x, dir.y, 0) * intensity * 0.85 * decay
+		tween.tween_property(camera, "position", original_pos + jitter + kick, 0.016)
+	tween.tween_property(camera, "position", original_pos, 0.016)

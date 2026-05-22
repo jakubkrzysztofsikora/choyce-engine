@@ -19,6 +19,11 @@ signal landed
 signal hard_landed
 signal jumped
 signal attacked(damage: int, hit_position: Vector3)
+## Adv Y C2 fix — emitted when a swing's in-arc enemy scan finds
+## nothing. Lets the gameplay runtime fire a whoosh SFX from the
+## attack origin so the kid hears their fist cutting air (otherwise
+## misses are silent and a 7yo thinks the button is broken).
+signal swing_missed(attack_origin: Vector3)
 signal hp_changed(current: int, max_hp: int)
 signal player_defeated
 
@@ -419,6 +424,7 @@ func _perform_attack() -> void:
 	var tree := get_tree()
 	if tree == null:
 		return
+	var hit_count := 0
 	for body in tree.get_nodes_in_group("enemies"):
 		if not (body is EnemyController):
 			continue
@@ -431,6 +437,12 @@ func _perform_attack() -> void:
 		if angle > ATTACK_ARC_RADIANS * 0.5:
 			continue
 		(body as EnemyController).apply_damage(_equipped_weapon_damage, global_position)
+		hit_count += 1
+	# Adv Y C2 fix — whoosh on miss (no enemy in cone). Routed via
+	# signal so audio plumbing stays in gameplay_runtime; this layer
+	# doesn't know about AudioEventBus.
+	if hit_count == 0:
+		swing_missed.emit(hit_origin)
 
 
 ## Procedural Muay Thai strike animation. Alternates four moves so
