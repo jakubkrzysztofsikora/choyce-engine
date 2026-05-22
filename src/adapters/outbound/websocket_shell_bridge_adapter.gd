@@ -226,34 +226,68 @@ func _send_envelope(envelope: Dictionary) -> void:
 func _dispatch_envelope(raw: String) -> void:
 	var parsed: Variant = JSON.parse_string(raw)
 	if not (parsed is Dictionary):
-		_reply_error(0, "invalid_envelope")
+		_reply_error(null, "invalid_envelope")
 		return
 	var envelope: Dictionary = parsed
-	var request_id: int = int(envelope.get("requestId", 0))
+	# Accept both schemas:
+	#   Tauri client (godot-bridge.ts): {type:"cmd", id:<num>, command, params}
+	#   Legacy contract test:           {command, params, requestId:<num>}
+	# Echo back whichever id-field the caller used so neither side has to
+	# refactor. Adds `type:"ack"` for the Tauri side; legacy callers ignore it.
+	var id_value: Variant = null
+	if envelope.has("id"):
+		id_value = envelope["id"]
+	elif envelope.has("requestId"):
+		id_value = envelope["requestId"]
+	# Godot's JSON.parse_string promotes JSON numbers to float.
+	# Tauri client correlates pending cmds with === on number, so 42.0
+	# !== 42 would orphan every pending promise. Coerce to int when
+	# the value is whole — leaves strings untouched.
+	if id_value is float and float(id_value) == int(id_value):
+		id_value = int(id_value)
 	var command: String = str(envelope.get("command", ""))
 	var params_v: Variant = envelope.get("params", {})
 	var params: Dictionary = params_v if params_v is Dictionary else {}
 	match command:
-		"ping":
-			_reply_ok(request_id, {"pong": true})
+		"ping", "hello":
+			_reply_ok(id_value, {"pong": true})
 		"request_kid_status":
 			var status := request_kid_status(
 				str(params.get("profile_id", "")),
 				str(params.get("world_id", ""))
 			)
-			_reply_ok(request_id, status)
+			_reply_ok(id_value, status)
 		"":
-			_reply_error(request_id, "missing_command")
+			_reply_error(id_value, "missing_command")
 		_:
-			_reply_error(request_id, "unknown_command")
+			_reply_error(id_value, "unknown_command")
 
 
-func _reply_ok(request_id: int, result: Dictionary) -> void:
-	_send_envelope({"requestId": request_id, "result": result})
+## `id_value` may be int (legacy) or String (Tauri client). Pass null when
+## the inbound envelope was unparseable — adapter still sends an ack so the
+## client surfaces a real error instead of a timeout.
+func _reply_ok(id_value: Variant, result: Dictionary) -> void:
+	var env := {
+		"type": "ack",
+		"ok": true,
+		"result": result,
+	}
+	if id_value != null:
+		env["id"] = id_value
+		env["requestId"] = id_value  # legacy alias for the contract tests
+	_send_envelope(env)
 
 
-func _reply_error(request_id: int, code: String) -> void:
-	_send_envelope({"requestId": request_id, "error": code})
+func _reply_error(id_value: Variant, code: String) -> void:
+	var env := {
+		"type": "ack",
+		"ok": false,
+		"error": code,
+	}
+	if id_value != null:
+		env["id"] = id_value
+		env["requestId"] = id_value
+	_send_envelope(env)
 
 
 # ── Audit. ────────────────────────────────────────────────────────────────
