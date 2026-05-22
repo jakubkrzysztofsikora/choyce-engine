@@ -1,8 +1,9 @@
 [gd_resource type="Theme" load_steps=27 format=3 uid="uid://choyce_theme_001"]
 
-[ext_resource type="FontFile" path="res://data/fonts/Fredoka-Regular.ttf" id="font_fredoka"]
-[ext_resource type="FontFile" path="res://data/fonts/Nunito-Regular.ttf" id="font_nunito"]
-[ext_resource type="FontFile" path="res://data/fonts/Nunito-Bold.ttf" id="font_nunito_bold"]
+[ext_resource type="FontFile" path="res://data/fonts/voxel/rajdhani_regular.ttf" id="font_rajdhani"]
+[ext_resource type="FontFile" path="res://data/fonts/voxel/rajdhani_semibold.ttf" id="font_rajdhani_semibold"]
+[ext_resource type="FontFile" path="res://data/fonts/voxel/audiowide.ttf" id="font_audiowide"]
+[ext_resource type="FontFile" path="res://data/fonts/voxel/rubik_glitch.ttf" id="font_rubik_glitch"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_primary_normal"]
 bg_color = Color(1.0, 0.42, 0.21, 1)
@@ -308,10 +309,10 @@ content_margin_right = 12.0
 content_margin_bottom = 10.0
 
 [resource]
-default_font = ExtResource("font_nunito")
-default_font_size = 28
-Button/font_sizes/font_size = 32
-Button/fonts/font = ExtResource("font_fredoka")
+default_font = ExtResource("font_rajdhani")
+default_font_size = 18
+Button/font_sizes/font_size = 24
+Button/fonts/font = ExtResource("font_audiowide")
 Button/styles/normal = SubResource("StyleBoxFlat_primary_normal")
 Button/styles/hover = SubResource("StyleBoxFlat_primary_hover")
 Button/styles/pressed = SubResource("StyleBoxFlat_primary_pressed")
@@ -327,21 +328,21 @@ CheckButton/styles/pressed = SubResource("StyleBoxFlat_secondary_pressed")
 CheckButton/styles/focus = SubResource("StyleBoxFlat_secondary_hover")
 CheckButton/colors/font_color = Color(0.18, 0.18, 0.18, 1)
 CheckBox/colors/font_color = Color(0.18, 0.18, 0.18, 1)
-Label/font_sizes/font_size = 28
-Label/fonts/font = ExtResource("font_nunito")
+Label/font_sizes/font_size = 20
+Label/fonts/font = ExtResource("font_rajdhani")
 Label/styles/normal = SubResource("StyleBoxFlat_panel")
 Label/colors/font_color = Color(0.18, 0.18, 0.18, 1)
 Label/colors/font_shadow_color = Color(1, 1, 1, 0)
 Label/colors/font_outline_color = Color(1, 1, 1, 0)
-OptionButton/fonts/font = ExtResource("font_nunito_bold")
-OptionButton/font_sizes/font_size = 26
+OptionButton/fonts/font = ExtResource("font_rajdhani_semibold")
+OptionButton/font_sizes/font_size = 20
 OptionButton/colors/font_color = Color(0.18, 0.18, 0.18, 1)
 ItemList/colors/font_color = Color(0.18, 0.18, 0.18, 1)
 ItemList/colors/font_selected_color = Color(0.18, 0.18, 0.18, 1)
 ItemList/font_sizes/font_size = 26
 SpinBox/colors/font_color = Color(0.18, 0.18, 0.18, 1)
-LineEdit/fonts/font = ExtResource("font_nunito")
-LineEdit/font_sizes/font_size = 26
+LineEdit/fonts/font = ExtResource("font_rajdhani")
+LineEdit/font_sizes/font_size = 20
 LineEdit/colors/font_color = Color(0.18, 0.18, 0.18, 1)
 LineEdit/colors/font_placeholder_color = Color(0.42, 0.36, 0.31, 1)
 LineEdit/styles/normal = SubResource("StyleBoxFlat_lineedit")
