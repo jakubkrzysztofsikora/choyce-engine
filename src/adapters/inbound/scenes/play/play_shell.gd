@@ -23,6 +23,10 @@ var _rules_runtime: RulesRuntimePort = null
 var _rule_compiler: RuleCompilerService = null
 var _policy_store: ParentalPolicyStorePort = null
 var _audit_ledger: AuditLedgerPort = null
+## Optional Tauri shell bridge. Injected by main.gd when the
+## CHOYCE_SHELL_BRIDGE feature flag is on. PlayShell forwards it to
+## GameplayRuntime so session start/end events fan out to the desktop UI.
+var _shell_bridge: Object = null
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -116,6 +120,13 @@ func setup_combat_governance(
 ) -> void:
 	_policy_store = policy_store
 	_audit_ledger = audit_ledger
+
+
+## Inject the optional Tauri shell bridge. main.gd passes the
+## WebSocketShellBridgeAdapter when registered; otherwise the bridge
+## stays null and notify_* forwards are no-ops via duck-typed guard.
+func setup_shell_bridge(bridge: Object) -> void:
+	_shell_bridge = bridge
 
 
 func set_profile(profile: PlayerProfile) -> void:
@@ -364,6 +375,10 @@ func _start_gameplay(world: World, session: Session) -> void:
 		var policy: ParentalControlPolicy = _resolve_policy_for_session()
 		var profile_id := _profile.profile_id if _profile != null else "autoplay"
 		_gameplay_runtime.setup_combat_governance(policy, _audit_ledger, profile_id)
+	# Forward the optional Tauri shell bridge so session start/end events
+	# fan out to the desktop UI. No-op when _shell_bridge is null (default).
+	if _shell_bridge != null and _gameplay_runtime.has_method("setup_shell_bridge"):
+		_gameplay_runtime.setup_shell_bridge(_shell_bridge)
 	_gameplay_runtime.start_session(world, session)
 
 

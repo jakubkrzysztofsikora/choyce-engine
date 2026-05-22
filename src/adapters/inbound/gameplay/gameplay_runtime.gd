@@ -73,6 +73,28 @@ const FALL_KILL_PLANE_Y := -50.0
 var _combat_policy: ParentalControlPolicy = null
 var _audit_ledger: AuditLedgerPort = null
 var _profile_id: String = ""
+## Optional outbound bridge to the Tauri shell. When the WS adapter
+## is registered (CHOYCE_SHELL_BRIDGE=1 or debug build), session
+## lifecycle + publish-state events fan out to the desktop UI.
+## Duck-typed via has_method so swapping in a no-op bridge for tests
+## stays painless.
+var _shell_bridge: Object = null
+
+
+## Inject the optional shell bridge. main.gd's _build_default_ports_phase_2
+## passes the WebSocketShellBridgeAdapter when registered; otherwise this
+## stays null and notify_* calls become no-ops.
+func setup_shell_bridge(bridge: Object) -> void:
+	_shell_bridge = bridge
+
+
+func _notify_shell(method: String, args: Array) -> void:
+	if _shell_bridge == null:
+		return
+	if not _shell_bridge.has_method(method):
+		return
+	_shell_bridge.callv(method, args)
+
 
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
@@ -154,6 +176,10 @@ func start_session(world: World, session: Session) -> void:
 	var t0 := Time.get_ticks_msec()
 	print("[gameplay] start_session: world=%s nodes=%d rules=%d" %
 		[world.world_id, world.scene_nodes.size(), world.game_rules.size()])
+	# Fan out to the Tauri shell (if registered) so the desktop UI can close
+	# its world picker / show an in-session badge. No-op when shell bridge
+	# is off (default).
+	_notify_shell("notify_session_started", [world.world_id, _profile_id])
 	_world_renderer.render_world(world)
 	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
 	_register_world_rules(world)
@@ -1148,6 +1174,16 @@ func end_session() -> void:
 		_rules_runtime.reset()
 	# Always release the cursor so post-session menus are clickable.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	# Fan out to the Tauri shell — passes a kid-friendly stats dict so the
+	# desktop UI can render its own celebration card. Computed cheaply
+	# from in-runtime state so this stays a single forward, not a query.
+	_notify_shell("notify_session_ended", [{
+		"score": _score,
+		"xp_level": _xp_level,
+		"xp_current": _xp_current,
+		"wave_number": _wave_number,
+		"weapon_index": _current_weapon_index,
+	}])
 	if _build_grid != null and is_instance_valid(_build_grid):
 		_build_grid.clear_all()
 	if _enemy_root != null and is_instance_valid(_enemy_root):

@@ -887,6 +887,10 @@ func _wire_shell_dependencies() -> void:
 			_phase1_policy_store,
 			_phase1_audit_ledger
 		)
+	# Forward the optional Tauri shell bridge so session start/end events
+	# fan out to the desktop UI. Bridge is null unless CHOYCE_SHELL_BRIDGE=1.
+	if _play_shell.has_method("setup_shell_bridge"):
+		_play_shell.setup_shell_bridge(_ports.get(KEY_SHELL_BRIDGE_PORT, null))
 	_library_shell.setup(
 		_navigator,
 		_profile,
