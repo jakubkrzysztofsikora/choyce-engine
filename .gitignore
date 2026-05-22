@@ -57,9 +57,18 @@ __pycache__/
 .mcp.json
 .ohno/
 
-# Shell (Tauri 2 + Next.js + Bun) — see shell/
-shell/node_modules/
-shell/.next/
-shell/out/
-shell/src-tauri/target/
-shell/src-tauri/gen/
+# First-run asset bulk-download trees (fetched by scripts/assets/fetch_free_assets.sh).
+# These directories carry only .gitkeep in the repo; the binary contents are
+# materialized on first launch and attributed in NOTICES.md.
+data/models/kaykit/
+data/models/quaternius/
+data/textures/voxel/
+data/vfx/voxel/
+data/audio/music/voxel/
+data/.assets_complete
+data/.assets_cache/
+!data/models/kaykit/.gitkeep
+!data/models/quaternius/.gitkeep
+!data/textures/voxel/.gitkeep
+!data/vfx/voxel/.gitkeep
+!data/audio/music/voxel/.gitkeep

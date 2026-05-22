@@ -1,0 +1,45 @@
+# Free-asset manifest for choyce-engine.
+#
+# Each entry in `packs:` describes one downloadable CC0/CC-BY pack that is
+# fetched on first run by `scripts/assets/fetch_free_assets.sh`. The script
+# downloads the URL, verifies its SHA-256, then extracts the archive into
+# `dest`. A pack is considered installed once its id is recorded in
+# `data/.assets_complete`.
+#
+# Schema (version: 1):
+#   version: integer literal 1
+#   packs: list of pack entries, each with the following fields
+#     id          (required, string)  Stable, unique, ascii-snake_case
+#     source      (required, string)  Origin label (e.g. itch.io, opengameart)
+#     url         (required, string)  HTTPS direct-download URL (must end in
+#                                     .zip, .tar.gz, .tgz, or .7z; the fetch
+#                                     script picks the extractor by suffix)
+#     sha256      (required, string)  Lowercase hex digest; literal "TBD"
+#                                     is only allowed during pack proposal
+#                                     PRs and MUST be replaced before merge
+#     license     (required, string)  SPDX-ish tag (CC0, CC-BY-4.0, ...)
+#     dest        (required, string)  Repo-relative extract destination; must
+#                                     start with data/ and end with /
+#     size_mb     (required, integer) Approx. compressed size in MiB; used
+#                                     for "would download N MiB" log lines
+#     attribution (optional, string)  Single-line credit for NOTICES.md
+#                                     (required for non-CC0 licenses)
+#
+# Schema validation:
+#   python3 -c "import yaml; yaml.safe_load(open('scripts/assets/manifest.yaml'))"
+#   yq '.packs[].id' scripts/assets/manifest.yaml
+#
+# Other agents add new pack entries via PR. The notices-gate workflow
+# (.github/workflows/notices-gate.yml) blocks merging if a pack landing
+# under data/ is not also reflected in NOTICES.md.
+
+version: 1
+packs: []
+#   - id: kaykit_adventurers
+#     source: itch.io
+#     url: https://example.invalid/kaykit_adventurers.zip
+#     sha256: TBD
+#     license: CC0
+#     dest: data/models/kaykit/adventurers/
+#     size_mb: 80
+#     attribution: "Kay Lousberg - KayKit Adventurers"

@@ -1,0 +1,64 @@
+name: Notices Gate
+
+# Blocks PRs that add/modify files under data/ without also updating
+# NOTICES.md in the same commit range. Prevents un-attributed CC0/CC-BY
+# assets from sneaking into the bulk-download trees declared in
+# scripts/assets/manifest.yaml.
+
+on:
+  pull_request:
+    paths:
+      - 'data/**'
+      - 'NOTICES.md'
+      - 'scripts/assets/**'
+      - '.github/workflows/notices-gate.yml'
+
+jobs:
+  enforce-notices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require NOTICES.md update when data/ changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+
+          changed=$(git diff --name-only "$base" "$head")
+
+          # Files added/modified under data/ (ignore deletions).
+          data_changes=$(git diff --name-only --diff-filter=AM "$base" "$head" -- 'data/**' || true)
+
+          # .gitkeep files are placeholders, not real assets.
+          data_real_changes=$(printf '%s\n' "$data_changes" | grep -v '/\.gitkeep$' || true)
+
+          if [ -z "$data_real_changes" ]; then
+            echo "No real data/ changes - notices gate skipped."
+            exit 0
+          fi
+
+          if printf '%s\n' "$changed" | grep -qx 'NOTICES.md'; then
+            echo "NOTICES.md updated alongside data/ changes - OK."
+            echo "data/ changes:"
+            printf '%s\n' "$data_real_changes"
+            exit 0
+          fi
+
+          echo "ERROR: data/ files changed but NOTICES.md was NOT updated."
+          echo "Add a credit line in NOTICES.md for every new asset pack."
+          echo
+          echo "data/ files in this PR:"
+          printf '%s\n' "$data_real_changes"
+          exit 1
+
+      - name: Validate manifest schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f scripts/assets/manifest.yaml ]; then
+            python3 -c "import sys,yaml; d=yaml.safe_load(open('scripts/assets/manifest.yaml')) or {}; assert d.get('version')==1, 'manifest version must be 1'; packs=d.get('packs') or []; req=('id','url','sha256','dest','size_mb','license','source'); [ (any(k not in p for k in req) and sys.exit('missing field in pack %r' % p)) for p in packs ]; [ (not str(p['dest']).startswith('data/') and sys.exit('dest must start with data/: %r' % p['id'])) for p in packs ]; print('manifest OK,', len(packs), 'packs')"
+          fi
