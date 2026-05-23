@@ -17,23 +17,18 @@ If you add a new pack to `manifest.yaml`, add a matching block here.
 
 ### data/models/kaykit/
 
-- Kay Lousberg - KayKit Adventurers (CC0) - https://kaylousberg.itch.io/kaykit-adventurers
-- Kay Lousberg - KayKit Dungeon Remastered (CC0) - https://kaylousberg.itch.io/kaykit-dungeon-remastered
-- Kay Lousberg - KayKit Medieval Builder (CC0) - https://kaylousberg.itch.io/kaykit-medieval-builder-pack
-- Kay Lousberg - KayKit Skeletons (CC0) - https://kaylousberg.itch.io/kaykit-skeletons
-- Kay Lousberg - KayKit Animals (CC0) - https://kaylousberg.itch.io/kaykit-animals
-- Kay Lousberg - KayKit Furniture Bits (CC0) - https://kaylousberg.itch.io/furniture-bits
-- Kay Lousberg - KayKit Restaurant Bits (CC0) - https://kaylousberg.itch.io/restaurant-bits
+Bundled in-tree (CC0). Per-pack LICENSE.txt sits next to the .glb files.
+
+- data/models/kaykit/adventurers/        Kay Lousberg - KayKit Adventurers 2.0 (CC0) - https://kaylousberg.itch.io/kaykit-adventurers
+- data/models/kaykit/builder/            Kay Lousberg - KayKit Medieval Builder Pack 1.0 (CC0) - https://kaylousberg.itch.io/kaykit-medieval-builder-pack
+- data/models/kaykit/<individual *.glb>  Kay Lousberg - KayKit Dungeon Remastered (CC0, individual props bundled previously) - https://kaylousberg.itch.io/kaykit-dungeon-remastered
 
 ### data/models/quaternius/
 
-- Quaternius - Ultimate Animated Animals Pack (CC0) - https://quaternius.com/packs/ultimateanimatedanimals.html
-- Quaternius - Ultimate Modular Characters (CC0) - https://quaternius.com/packs/ultimatemodularcharacters.html
-- Quaternius - Ultimate Nature Pack (CC0) - https://quaternius.com/packs/ultimatenature.html
-- Quaternius - Ultimate Stylized Nature (CC0) - https://quaternius.com/packs/ultimatestylizednature.html
-- Quaternius - Ultimate Platformer Pack (CC0) - https://quaternius.com/packs/ultimateplatformer.html
-- Quaternius - Ultimate Modular Ruins (CC0) - https://quaternius.com/packs/ultimatemodularruins.html
-- Quaternius - Ultimate Food Pack (CC0) - https://quaternius.com/packs/ultimatefood.html
+Bundled in-tree (CC0). FBX assets require Godot's FBX2glTF binary path to be configured once in editor settings.
+
+- data/models/quaternius/nature/         Quaternius - Ultimate Nature Pack (CC0, FBX format) - https://quaternius.com/packs/ultimatenature.html
+- data/models/quaternius/<individual *.glb>  Quaternius - Ultimate Modular Characters / Animated Animals (CC0, individual rigs bundled previously) - https://quaternius.com/
 
 ### data/textures/voxel/
 

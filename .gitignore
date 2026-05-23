@@ -57,18 +57,14 @@ __pycache__/
 .mcp.json
 .ohno/
 
-# First-run asset bulk-download trees (fetched by scripts/assets/fetch_free_assets.sh).
-# These directories carry only .gitkeep in the repo; the binary contents are
-# materialized on first launch and attributed in NOTICES.md.
-data/models/kaykit/
-data/models/quaternius/
+# First-run asset bulk-download trees. Big aspirational packs were
+# fetched on demand; what's bundled in-tree is attributed in NOTICES.md.
+# Texture/VFX/voxel-music bulk dirs still gitignored.
 data/textures/voxel/
 data/vfx/voxel/
 data/audio/music/voxel/
 data/.assets_complete
 data/.assets_cache/
-!data/models/kaykit/.gitkeep
-!data/models/quaternius/.gitkeep
 !data/textures/voxel/.gitkeep
 !data/vfx/voxel/.gitkeep
 !data/audio/music/voxel/.gitkeep
