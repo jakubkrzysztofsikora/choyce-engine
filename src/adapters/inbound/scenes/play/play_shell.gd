@@ -678,21 +678,20 @@ func _play_world_music(template_id: String) -> void:
 	var bank := _audio_bank()
 	if bank == null:
 		return
-	# Combat-flavored templates get a CC0 phonk track rotated at random
-	# (moderated via scripts/audio/moderate_imported_music.py). Calm
-	# templates keep their thematic kid music. Lobby/default also rolls
-	# the phonk pack to match the landing-screen vibe.
+	# `sigma_protocol` is the project's main background theme — used
+	# on landing + most templates. Calm templates keep their thematic
+	# kid loop. Combat-flavored templates roll the moderated CC0 phonk
+	# pack for variety; if that dir is empty, the main theme covers.
 	match template_id:
-		"adventure":
-			if not bank.play_phonk_random(true):
-				bank.play_music("landing_ambient", true)
 		"farm":
 			bank.play_music("little_farm", true)
 		"forest":
 			bank.play_music("mushroom_forest", true)
-		_:
+		"adventure":
 			if not bank.play_phonk_random(true):
-				bank.play_music("landing_ambient", true)
+				bank.play_music("sigma_protocol", true)
+		_:
+			bank.play_music("sigma_protocol", true)
 
 
 ## VoxelForge palette (matches landing, parent zone, create chips).

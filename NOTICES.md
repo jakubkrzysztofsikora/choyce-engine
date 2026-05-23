@@ -45,6 +45,10 @@ Bundled in-tree (CC0). FBX assets require Godot's FBX2glTF binary path to be con
 - Pixel Frog (itch.io) - VFX Voxel Burst (CC0) - https://pixelfrog-assets.itch.io/
 - OpenGameArt - Stylized Magic FX (CC0) - https://opengameart.org/
 
+### data/audio/music/
+
+- data/audio/music/sigma_protocol.mp3   ElevenLabs Music (project-generated, ElevenLabs Inc.) - https://elevenlabs.io/  — main background theme used on landing + most templates.
+
 ### data/audio/music/voxel/
 
 - Kenney - Music Loops (CC0) - https://kenney.nl/assets/music-loops

@@ -23,16 +23,35 @@
   "library": {
     "title": "BIBLIOTEKA ŚWIATÓW",
     "sub": "// TWOJE PROJEKTY //",
-    "empty": "BRAK ŚWIATÓW. STWÓRZ PIERWSZY."
+    "empty": "BRAK ŚWIATÓW. STWÓRZ PIERWSZY.",
+    "empty_cta": "STWÓRZ NOWĄ GRĘ",
+    "open_cta": "OTWÓRZ"
   },
   "parent": {
     "title": "STREFA RODZICA",
     "sub": "// KONTROLA · AUDYT · DANE //",
-    "locked": "ZALOGUJ SIĘ ABY ODBLOKOWAĆ"
+    "locked": "ZALOGUJ SIĘ ABY ODBLOKOWAĆ",
+    "set_pin": "USTAW PIN (4 CYFRY)",
+    "enter_pin": "WPISZ PIN",
+    "pin_mismatch": "PIN NIEPOPRAWNY",
+    "unlock": "ODBLOKUJ",
+    "save": "ZAPISZ",
+    "lock": "ZABLOKUJ",
+    "toggle_ai_voices": "GŁOSY AI NPC",
+    "toggle_combat": "WALKA",
+    "toggle_reduce_motion": "OGRANICZ ANIMACJE",
+    "daily_quota": "DZIENNY LIMIT WYPOWIEDZI NPC",
+    "settings_saved": "ZAPISANO"
   },
   "create": {
     "title": "ZRÓB ŚWIAT",
     "sub": "// EDYTOR · BLOKI · GŁOS //",
-    "open_engine_cta": "OTWÓRZ EDYTOR"
+    "open_engine_cta": "OTWÓRZ EDYTOR",
+    "status_engine_offline": "SILNIK: OFFLINE",
+    "status_engine_online": "SILNIK: ONLINE",
+    "status_engine_connecting": "SILNIK: ŁĄCZĘ…",
+    "canvas_hint": "LMB · POSTAW    RMB · ZBURZ    STRZAŁKI+ENTER · KLAWIATURA",
+    "connect_retry": "PRÓBUJ PONOWNIE",
+    "engine_offline_help": "URUCHOM SILNIK W TLE (CHOYCE_SHELL_BRIDGE=1)"
   }
 }
