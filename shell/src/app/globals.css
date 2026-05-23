@@ -268,3 +268,37 @@ input:focus { box-shadow: 0 0 20px rgba(132, 204, 22, 0.15); }
 .bracket-cta:active { transform: translateY(0); }
 .bracket-cta::before { content: "["; color: #84ff00; }
 .bracket-cta::after  { content: "]"; color: #84ff00; }
+
+/* =====================================================================
+   A11y kill switch — disables CRT scanlines, glitch, float, shimmer,
+   rainbow, and CTA hover translation when the user (or the parent
+   zone toggle) prefers reduced motion. Two activation paths:
+     1. OS-level `prefers-reduced-motion: reduce`
+     2. Runtime override: `<html data-reduce-motion="true">` set by the
+        parent zone via localStorage flag `choyce_reduce_motion`.
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .glitch-text::before,
+  .glitch-text::after,
+  .glitch-sub,
+  .animate-float-slow,
+  .animate-float-fast,
+  .animate-float-med,
+  .shimmer,
+  .rainbow-text { animation: none !important; }
+  .scanlines::after { opacity: 0 !important; }
+  .bracket-cta { transition: none !important; }
+  .bracket-cta:hover { transform: none !important; box-shadow: 0 0 0 1px #84ff00 !important; }
+}
+
+html[data-reduce-motion="true"] .glitch-text::before,
+html[data-reduce-motion="true"] .glitch-text::after,
+html[data-reduce-motion="true"] .glitch-sub,
+html[data-reduce-motion="true"] .animate-float-slow,
+html[data-reduce-motion="true"] .animate-float-fast,
+html[data-reduce-motion="true"] .animate-float-med,
+html[data-reduce-motion="true"] .shimmer,
+html[data-reduce-motion="true"] .rainbow-text { animation: none !important; }
+html[data-reduce-motion="true"] .scanlines::after { opacity: 0 !important; }
+html[data-reduce-motion="true"] .bracket-cta { transition: none !important; }
+html[data-reduce-motion="true"] .bracket-cta:hover { transform: none !important; box-shadow: 0 0 0 1px #84ff00 !important; }

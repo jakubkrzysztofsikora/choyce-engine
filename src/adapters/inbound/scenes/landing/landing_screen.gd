@@ -272,9 +272,13 @@ func _start_landing_audio() -> void:
 	if not has_node("/root/AudioBank"):
 		return
 	var bank: Node = get_node("/root/AudioBank")
-	# CC0 phonk pack (moderated via scripts/audio/moderate_imported_music.py).
-	# Falls back to the legacy landing_ambient loop if the voxel dir is empty.
-	if not bank.play_phonk_random(true):
+	# Main background theme — ElevenLabs-generated `sigma_protocol`
+	# (data/audio/music/sigma_protocol.mp3). Falls back to the moderated
+	# CC0 phonk pack, then the legacy landing_ambient loop, if the main
+	# track isn't present on disk (test fixtures, clean clones, etc.).
+	if ResourceLoader.exists("res://data/audio/music/sigma_protocol.mp3"):
+		bank.play_music("sigma_protocol", true)
+	elif not bank.play_phonk_random(true):
 		bank.play_music("landing_ambient", true)
 	await get_tree().create_timer(0.8).timeout
 	bank.play_voice("greet_landing")

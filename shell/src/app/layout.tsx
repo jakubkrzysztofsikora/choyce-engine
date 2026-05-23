@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Script from "next/script";
 import { LOCALE, t } from "@/lib/i18n";
 import "./globals.css";
 
@@ -8,6 +9,16 @@ export const metadata: Metadata = {
   description: "Kid-safe Polish-language game engine — landing/library/parent/create chrome.",
 };
 
+// Runs before hydration so the runtime override (set by the parent zone)
+// applies on first paint and there's no flash of full-motion content.
+// localStorage key: `choyce_reduce_motion` ("true"/"false").
+const REDUCE_MOTION_INIT = `
+(function(){try{
+  var f=localStorage.getItem('choyce_reduce_motion');
+  if(f==='true'){document.documentElement.setAttribute('data-reduce-motion','true');}
+}catch(e){}})();
+`;
+
 export default function RootLayout({
   children,
 }: {
@@ -15,6 +26,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang={LOCALE} className="dark">
+      <head>
+        <Script id="choyce-reduce-motion-init" strategy="beforeInteractive">
+          {REDUCE_MOTION_INIT}
+        </Script>
+      </head>
       <body className="bg-black text-foreground antialiased scanlines">
         <div className="min-h-screen flex flex-col">
           <header className="border-b border-white/10 px-8 py-4 flex items-center justify-between">

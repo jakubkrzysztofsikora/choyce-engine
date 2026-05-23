@@ -1,0 +1,58 @@
+# kid_safe_allowlist.txt
+#
+# One bundled CC0 prop per line. Format:
+#   <repo-relative-path> [| <category>] [| <display_name_pl>]
+#
+# Category and display name are optional — KenneyAssetCatalogAdapter
+# infers both from the path when omitted. Categories use the CAT_*
+# strings on AssetCatalogEntry (TREES_PLANTS, FOOD, BUILDINGS, BLOCKS,
+# ANIMALS, VEHICLES, DECORATION, CHARACTERS).
+#
+# RULES:
+#   1. Explicit allow only. New packs need a human pass before lines land here.
+#   2. No weapons, monsters, prisoner skins, blood textures. KayKit
+#      adventurers/assets/ has bows + axes — those go to the internal
+#      ADVENTURERS_GEAR bucket and stay out of the BUILDER palette.
+#   3. Keep this file under ~500 lines; bigger catalogs slow the kid
+#      down. Curate the best representatives.
+#
+# CI gate (.github/workflows/notices-gate.yml) verifies that every path
+# below points to a file checked into the repo.
+# ---------------------------------------------------------------------
+
+# --- KayKit Adventurers characters (NPC mesh source) -----------------
+data/models/kaykit/adventurers/characters/Barbarian.glb | CHARACTERS | BARBARZYŃCA
+data/models/kaykit/adventurers/characters/Knight.glb | CHARACTERS | RYCERZ
+data/models/kaykit/adventurers/characters/Mage.glb | CHARACTERS | MAG
+data/models/kaykit/adventurers/characters/Ranger.glb | CHARACTERS | ŁOWCZY
+data/models/kaykit/adventurers/characters/Rogue.glb | CHARACTERS | ŁOTRZYK
+data/models/kaykit/adventurers/characters/Rogue_Hooded.glb | CHARACTERS | ŁOTRZYK W KAPTURZE
+
+# --- KayKit Medieval Builder objects ---------------------------------
+data/models/kaykit/builder/objects/market.gltf.glb | BUILDINGS | TARG
+data/models/kaykit/builder/objects/detail_rocks.gltf.glb | DECORATION | KAMIENIE
+data/models/kaykit/builder/objects/wall_hexCornerA.gltf.glb | BUILDINGS | MUR
+data/models/kaykit/builder/objects/wall_hexDoorway.gltf.glb | BUILDINGS | BRAMA
+data/models/kaykit/builder/objects/wall_hexWindow.gltf.glb | BUILDINGS | OKNO
+
+# --- KayKit Dungeon Remastered (top-level individual GLBs) -----------
+data/models/kaykit/beczka.glb | DECORATION | BECZKA
+data/models/kaykit/skrzynia_skarbow.glb | DECORATION | SKRZYNIA
+data/models/kaykit/pochodnia.glb | DECORATION | POCHODNIA
+data/models/kaykit/kolumna.glb | BUILDINGS | KOLUMNA
+data/models/kaykit/mur.glb | BUILDINGS | MUR
+data/models/kaykit/kamienna_plyta.glb | BLOCKS | PŁYTA
+data/models/kaykit/pajeczyna.glb | DECORATION | PAJĘCZYNA
+
+# --- Quaternius Nature (FBX — needs FBX2glTF on first import) --------
+data/models/quaternius/nature/BirchTree_1.fbx | TREES_PLANTS | BRZOZA 1
+data/models/quaternius/nature/BirchTree_2.fbx | TREES_PLANTS | BRZOZA 2
+data/models/quaternius/nature/BirchTree_3.fbx | TREES_PLANTS | BRZOZA 3
+data/models/quaternius/nature/BirchTree_Autumn_1.fbx | TREES_PLANTS | BRZOZA JESIENNA 1
+data/models/quaternius/nature/BirchTree_Autumn_2.fbx | TREES_PLANTS | BRZOZA JESIENNA 2
+
+# --- Quaternius character rigs (individual top-level GLBs) -----------
+data/models/quaternius/ninja.glb | CHARACTERS | NINJA
+data/models/quaternius/mag.glb | CHARACTERS | MAG
+data/models/quaternius/wojownik.glb | CHARACTERS | WOJOWNIK
+data/models/quaternius/szkielet.glb | CHARACTERS | SZKIELET
