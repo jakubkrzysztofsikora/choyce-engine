@@ -56,32 +56,37 @@ func set_spawn_position(pos: Vector3) -> void:
 
 
 func _init() -> void:
-	# Overlay covers full screen but lets events pass when not modal
-	# Actually, usually overlays block input when active.
+	# Overlay covers full screen for child positioning, but IGNOREs all
+	# input itself so clicks reach the create_shell beneath. Only the
+	# interactive children (record button, card) actually catch clicks.
+	# Without this, the full-screen Control was swallowing every click
+	# in the create scene even with PASS — children with default STOP
+	# filter still blocked because they cover spans of the canvas.
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_PASS
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	_record_button = Button.new()
 	_record_button.text = "🎤"
 	_record_button.custom_minimum_size = Vector2(48, 48)
-	# Bottom right
-	_record_button.position = Vector2(100, 100) # Placeholder, will layout in _ready or anchors
+	_record_button.position = Vector2(100, 100)
 	# Phase 8d: disable until ports_ready fires; enabled in notify_ports_ready().
 	_record_button.disabled = true
 	_record_button.pressed.connect(_on_record_pressed)
 	add_child(_record_button)
 
-	# Phase 8d: loading hint shown while deferred adapters are initialising.
+	# Phase 8d: loading hint — small badge, never blocks clicks.
 	_loading_hint = Label.new()
 	_loading_hint.text = "Chwilę..."
 	_loading_hint.add_theme_color_override("font_color", Color8(100, 100, 120))
 	_loading_hint.visible = true
+	_loading_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_loading_hint)
 
-	# FR-022: status label for blocked / no-speech toast messages.
+	# FR-022: status label — info only, no clicks.
 	_status_label = Label.new()
 	_status_label.visible = false
 	_status_label.add_theme_color_override("font_color", Color8(200, 60, 60))
+	_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_status_label)
 
 	_card = VoiceAssistantCard.new()
