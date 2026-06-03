@@ -129,17 +129,15 @@ export default function ParentZonePage() {
   }, []);
 
   return (
-    <section className="px-8 py-12">
-      <header className="mb-10">
-        <h1
-          className="glitch-text text-4xl md:text-6xl font-black tracking-tight neon-lime"
-          data-text={t("parent.title")}
-        >
-          {t("parent.title")}
-        </h1>
-        <p className="mt-3 font-mono text-xs tracking-widest text-white/50">
-          {t("parent.sub")}
-        </p>
+    <section className="min-h-screen bg-gradient-to-b from-indigo-50 via-slate-50 to-violet-50 px-6 py-12">
+      <header className="mx-auto mb-10 max-w-3xl">
+        <div className="mb-2 flex items-center gap-3">
+          <span aria-hidden="true" className="text-4xl">🛡️</span>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-800 md:text-4xl">
+            {t("parent.title")}
+          </h1>
+        </div>
+        <p className="text-sm text-slate-600">{t("parent.sub")}</p>
       </header>
 
       {mode === "loading" && (
@@ -152,10 +150,10 @@ export default function ParentZonePage() {
             e.preventDefault();
             void handleSetPin();
           }}
-          className="max-w-md border border-white/10 bg-card/40 p-8 space-y-4"
+          className="max-w-md rounded-2xl border border-slate-200 bg-white shadow-sm p-8 space-y-4"
           aria-label={t("parent.set_pin")}
         >
-          <div className="font-mono text-xs tracking-widest text-white/70">
+          <div className="text-xs font-bold uppercase tracking-widest text-slate-600">
             {t("parent.set_pin")}
           </div>
           <input
@@ -167,7 +165,7 @@ export default function ParentZonePage() {
             value={pinInput}
             onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ""))}
             placeholder="••••"
-            className="w-full bg-black/60 border border-white/20 px-4 py-2 font-mono text-center tracking-[0.5em] text-lime-300"
+            className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-2xl tracking-[0.5em] text-slate-800 focus:border-indigo-500 focus:outline-none"
             data-testid="parent-pin-new"
           />
           <input
@@ -179,15 +177,15 @@ export default function ParentZonePage() {
             value={pinConfirm}
             onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ""))}
             placeholder="••••"
-            className="w-full bg-black/60 border border-white/20 px-4 py-2 font-mono text-center tracking-[0.5em] text-lime-300"
+            className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-2xl tracking-[0.5em] text-slate-800 focus:border-indigo-500 focus:outline-none"
             data-testid="parent-pin-confirm"
           />
           {error && (
-            <div className="font-mono text-[10px] tracking-widest text-red-400">
+            <div className="rounded-md bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
               {error}
             </div>
           )}
-          <button type="submit" className="bracket-cta text-lime-300">
+          <button type="submit" className="inline-flex items-center rounded-full bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700">
             {t("parent.save")}
           </button>
         </form>
@@ -199,10 +197,10 @@ export default function ParentZonePage() {
             e.preventDefault();
             void handleUnlock();
           }}
-          className="max-w-md border border-white/10 bg-card/40 p-8 space-y-4"
+          className="max-w-md rounded-2xl border border-slate-200 bg-white shadow-sm p-8 space-y-4"
           aria-label={t("parent.enter_pin")}
         >
-          <div className="font-mono text-xs tracking-widest text-white/70">
+          <div className="text-xs font-bold uppercase tracking-widest text-slate-600">
             {t("parent.enter_pin")}
           </div>
           <input
@@ -215,15 +213,15 @@ export default function ParentZonePage() {
             onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ""))}
             placeholder="••••"
             autoFocus
-            className="w-full bg-black/60 border border-white/20 px-4 py-2 font-mono text-center tracking-[0.5em] text-lime-300"
+            className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-center font-mono text-2xl tracking-[0.5em] text-slate-800 focus:border-indigo-500 focus:outline-none"
             data-testid="parent-pin-unlock"
           />
           {error && (
-            <div className="font-mono text-[10px] tracking-widest text-red-400">
+            <div className="rounded-md bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
               {error}
             </div>
           )}
-          <button type="submit" className="bracket-cta text-lime-300">
+          <button type="submit" className="inline-flex items-center rounded-full bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700">
             {t("parent.unlock")}
           </button>
         </form>
@@ -249,10 +247,10 @@ export default function ParentZonePage() {
             onChange={(v) => setSettings({ ...settings, reduceMotion: v })}
             testId="parent-toggle-reduce-motion"
           />
-          <div className="border border-white/10 bg-card/40 p-4 space-y-2">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 space-y-2">
             <label
               htmlFor="daily-quota"
-              className="font-mono text-xs tracking-widest text-white/70"
+              className="text-xs font-bold uppercase tracking-widest text-slate-600"
             >
               {t("parent.daily_quota")}: {settings.dailyQuota}
             </label>
@@ -269,7 +267,7 @@ export default function ParentZonePage() {
                   dailyQuota: Number.parseInt(e.target.value, 10),
                 })
               }
-              className="w-full accent-lime-400"
+              className="w-full accent-indigo-500"
               data-testid="parent-daily-quota"
             />
           </div>
@@ -278,7 +276,7 @@ export default function ParentZonePage() {
             <button
               type="button"
               onClick={handleSave}
-              className="bracket-cta text-lime-300"
+              className="inline-flex items-center rounded-full bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-indigo-700"
               data-testid="parent-save"
             >
               {t("parent.save")}
@@ -286,14 +284,14 @@ export default function ParentZonePage() {
             <button
               type="button"
               onClick={handleLock}
-              className="bracket-cta text-white/60"
+              className="inline-flex items-center rounded-full border border-slate-300 bg-white px-5 py-2 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100"
             >
               {t("parent.lock")}
             </button>
             {savedNotice && (
               <span
                 aria-live="polite"
-                className="font-mono text-[10px] tracking-widest text-lime-400"
+                className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700"
               >
                 {t("parent.settings_saved")}
               </span>
@@ -313,17 +311,17 @@ function ToggleRow(props: {
 }) {
   return (
     <label
-      className="flex items-center justify-between border border-white/10 bg-card/40 px-4 py-3 cursor-pointer"
+      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white shadow-sm px-4 py-3 cursor-pointer"
       data-testid={props.testId}
     >
-      <span className="font-mono text-xs tracking-widest text-white/70">
+      <span className="text-xs font-bold uppercase tracking-widest text-slate-600">
         {props.label}
       </span>
       <input
         type="checkbox"
         checked={props.value}
         onChange={(e) => props.onChange(e.target.checked)}
-        className="w-5 h-5 accent-lime-400"
+        className="h-6 w-6 accent-indigo-500"
       />
     </label>
   );
