@@ -32,7 +32,12 @@
     "sub": "// TWOJE PROJEKTY //",
     "empty": "BRAK ŚWIATÓW. STWÓRZ PIERWSZY.",
     "empty_cta": "STWÓRZ NOWĄ GRĘ",
-    "open_cta": "OTWÓRZ"
+    "open_cta": "OTWÓRZ",
+    "kid_title": "Wybierz swoją grę",
+    "kid_sub": "Każdy świat to inna przygoda.",
+    "kid_play_cta": "Graj",
+    "kid_edit_cta": "Edytuj",
+    "kid_new_cta": "Stwórz nową grę"
   },
   "parent": {
     "title": "STREFA RODZICA",
