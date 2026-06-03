@@ -86,6 +86,19 @@ var _preview_root: Node3D = null
 
 
 func _ready() -> void:
+	# PC-desktop responsive band: center content on M2 Max / 4K monitors
+	# so buttons + workspace stop stretching edge-to-edge. Matches
+	# play_shell which already does this. Use 1600 cap (wider than the
+	# 1280 default) because create needs the horizontal workspace +
+	# preview split.
+	ResponsiveLayout.apply_max_width($Layout, 1600.0)
+
+	# Kid-UX: big visible voice CTA + first-step hint. Replaces the
+	# cryptic "Status tworzenia" panel as the kid's primary entry
+	# point. Spec FR-004 (voice-to-intent) + UX-KID-001 (non-reader
+	# friendly) + UX-005 (educational micro-prompts).
+	_build_kid_voice_cta()
+
 	# Part B: resolve SubViewport preview nodes (null-safe if scene lacks them).
 	_preview_viewport = get_node_or_null("Layout/WorkspaceCard/WorkspaceLayout/PreviewPanel/PreviewViewport/SubViewport")
 	_preview_root = get_node_or_null("Layout/WorkspaceCard/WorkspaceLayout/PreviewPanel/PreviewViewport/SubViewport/PreviewRoot")
@@ -1380,6 +1393,106 @@ func _on_cta_idle_timeout() -> void:
 	_cta_tts_fired = true
 	if _voice_prompt != null and _voice_prompt.has_method("speak"):
 		_voice_prompt.call("speak", _t("create.cta.build_world_voice"))
+
+
+## Kid-UX hero card injected at the top of the create scene. Single
+## big CTA the 6yo can see + hit + understand. Replaces the cryptic
+## "Status tworzenia" text panel as the primary call-to-action.
+##
+## Spec coverage:
+##   FR-004    voice-to-intent creation
+##   UX-001    44px+ touch target (we use 96px hero button)
+##   UX-KID-001 non-reader friendly (emoji-first, voice-first)
+##   UX-KID-002 bounded choices (one big primary CTA, secondary hint)
+##   UX-KID-003 mascot guide ("Powiem ci co zbudować")
+##   UX-005    educational micro-prompts (examples shown)
+func _build_kid_voice_cta() -> void:
+	# Inject above the existing Header so it's the first thing the kid sees.
+	var layout := get_node_or_null("Layout") as VBoxContainer
+	if layout == null:
+		return
+	if layout.get_node_or_null("KidVoiceCTA") != null:
+		return
+
+	var card := PanelContainer.new()
+	card.name = "KidVoiceCTA"
+	card.custom_minimum_size = Vector2(0, 140)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Place at top of the VBox.
+	layout.add_child(card)
+	layout.move_child(card, 0)
+
+	# Friendly gradient-ish background via StyleBoxFlat.
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.38, 0.55, 0.95, 1.0)
+	sb.corner_radius_top_left = 24
+	sb.corner_radius_top_right = 24
+	sb.corner_radius_bottom_left = 24
+	sb.corner_radius_bottom_right = 24
+	sb.content_margin_left = 24
+	sb.content_margin_right = 24
+	sb.content_margin_top = 18
+	sb.content_margin_bottom = 18
+	card.add_theme_stylebox_override("panel", sb)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	card.add_child(row)
+
+	# Big mic button — the hero CTA.
+	var mic_btn := Button.new()
+	mic_btn.name = "MicButton"
+	mic_btn.text = "🎤"
+	mic_btn.add_theme_font_size_override("font_size", 56)
+	mic_btn.custom_minimum_size = Vector2(120, 100)
+	mic_btn.add_theme_color_override("font_color", Color.WHITE)
+	var mic_sb := StyleBoxFlat.new()
+	mic_sb.bg_color = Color(0.95, 0.42, 0.55, 1.0)
+	mic_sb.corner_radius_top_left = 50
+	mic_sb.corner_radius_top_right = 50
+	mic_sb.corner_radius_bottom_left = 50
+	mic_sb.corner_radius_bottom_right = 50
+	mic_btn.add_theme_stylebox_override("normal", mic_sb)
+	var mic_sb_hover := mic_sb.duplicate()
+	mic_sb_hover.bg_color = Color(1.0, 0.5, 0.62, 1.0)
+	mic_btn.add_theme_stylebox_override("hover", mic_sb_hover)
+	mic_btn.pressed.connect(_on_kid_voice_cta_pressed)
+	row.add_child(mic_btn)
+
+	# Text column.
+	var text_vbox := VBoxContainer.new()
+	text_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_vbox.add_theme_constant_override("separation", 6)
+	row.add_child(text_vbox)
+
+	var headline := Label.new()
+	headline.text = "Powiedz mi co zbudować!"
+	headline.add_theme_font_size_override("font_size", 32)
+	headline.add_theme_color_override("font_color", Color.WHITE)
+	text_vbox.add_child(headline)
+
+	var examples := Label.new()
+	examples.text = "Spróbuj: „buduj drzewo” • „buduj dom” • „usuń kwiat”"
+	examples.add_theme_font_size_override("font_size", 20)
+	examples.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.85))
+	text_vbox.add_child(examples)
+
+
+## Kid pressed the big hero mic button. Route directly into the
+## existing VoiceAssistantOverlay record path so the deterministic
+## VoiceWorldCommandService runs without needing the kid to find
+## the small bottom-right 🎤 button.
+func _on_kid_voice_cta_pressed() -> void:
+	if _assistant_overlay == null:
+		_set_status_message("Asystent głosowy nie jest gotowy.", true)
+		return
+	if not _ports_ready:
+		_set_status_message("Chwilę… wczytuję!", false)
+		return
+	if _assistant_overlay.has_method("_on_record_pressed"):
+		_assistant_overlay.call("_on_record_pressed")
+	else:
+		_set_status_message("Nie mogę nagrywać teraz.", true)
 
 
 ## Wave 2 W2-B: deterministic voice fast-path handler. Applies the
