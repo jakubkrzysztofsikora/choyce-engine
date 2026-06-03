@@ -161,6 +161,27 @@
         },
         "required": ["quest_id", "title_pl", "description_pl", "objective_type", "target_count"]
       }
+    },
+    "default_goal": {
+      "type": "object",
+      "description": "Primary win goal shown in the Quest HUD. Maps 1:1 onto GameGoal kinds (collect, enter_zone, talk, build_count).",
+      "properties": {
+        "kind": { "type": "string", "enum": ["collect", "enter_zone", "talk", "build_count"] },
+        "target": { "type": "integer", "minimum": 1 },
+        "label_pl": { "type": "string" },
+        "icon_id": { "type": "string" },
+        "win_condition": { "type": "string", "description": "WinConditionInterpreter DSL expression, e.g. 'inventory.key>=3' or 'in_zone.finish==true'." }
+      },
+      "required": ["kind", "target", "label_pl", "win_condition"]
+    },
+    "lose_conditions": {
+      "type": "object",
+      "description": "Session-end lose triggers. Parent-tunable via ParentalPolicy.",
+      "properties": {
+        "lives": { "type": "integer", "minimum": 1, "description": "Total respawns before lose." },
+        "time_limit_sec": { "type": "integer", "minimum": 0, "description": "Session timeout; 0 disables." },
+        "kill_plane_y": { "type": "number", "description": "Y-coordinate below which the player falls and triggers respawn/lose." }
+      }
     }
   },
   "required": ["template_id", "name_pl", "default_world"]

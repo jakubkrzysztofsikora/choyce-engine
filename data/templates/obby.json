@@ -231,5 +231,17 @@
   "difficulty": "easy",
   "estimated_playtime_min": 10,
   "tags_pl": ["skakanie", "zręczność", "przygoda"],
-  "suggested_age": "6-8"
+  "suggested_age": "6-8",
+  "default_goal": {
+    "kind": "enter_zone",
+    "target": 1,
+    "label_pl": "Dotrzyj do mety",
+    "icon_id": "icon_flag",
+    "win_condition": "in_zone.finish"
+  },
+  "lose_conditions": {
+    "lives": 5,
+    "time_limit_sec": 180,
+    "kill_plane_y": -10.0
+  }
 }
