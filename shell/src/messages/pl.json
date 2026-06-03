@@ -18,7 +18,14 @@
     "parent_cta": "RODZIC",
     "status_engine_offline": "SILNIK: OFFLINE",
     "status_engine_online": "SILNIK: ONLINE",
-    "status_engine_connecting": "SILNIK: ŁĄCZĘ…"
+    "status_engine_connecting": "SILNIK: ŁĄCZĘ…",
+    "kid_hello": "Cześć! Co dziś robimy?",
+    "kid_card_build_title": "Buduj",
+    "kid_card_build_sub": "Twórz swoje światy z bloków i głosem.",
+    "kid_card_play_title": "Graj",
+    "kid_card_play_sub": "Otwórz swoje gry i baw się dobrze.",
+    "kid_card_parent_title": "Rodzic",
+    "kid_card_parent_sub": "Ustawienia, audyt i zgoda."
   },
   "library": {
     "title": "BIBLIOTEKA ŚWIATÓW",
