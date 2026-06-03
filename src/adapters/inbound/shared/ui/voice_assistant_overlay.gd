@@ -2,6 +2,11 @@ class_name VoiceAssistantOverlay
 extends Control
 
 signal action_confirmed(action: AIAssistantAction)
+## Wave 2 W2-B: deterministic-voice fast path. Emitted when the offline
+## VoiceWorldCommandService produces a kid-safe WorldEditCommand from
+## the transcript (no LLM needed). create_shell connects this to the
+## existing ApplyWorldEditService so blocks appear immediately.
+signal voice_command_resolved(command: WorldEditCommand, feedback_pl: String)
 
 var _card: VoiceAssistantCard
 var _record_button: Button
@@ -10,6 +15,13 @@ var _ai_help: RequestAICreationHelpPort
 var _profile: PlayerProfile
 var _session_id: String = "session_default"
 var _localization = null  # Optional LocalizationPolicyPort
+## Wave 2 W2-B: deterministic voice-command service. Optional —
+## when null, overlay falls back to the legacy LLM-mediated path.
+var _voice_command_service: VoiceWorldCommandService = null
+## Player spawn point used as the default voice-built object position.
+## create_shell injects this each session start so blocks appear near
+## the kid, not at world origin.
+var _spawn_position: Vector3 = Vector3.ZERO
 
 ## Phase 8d: input gate — stays false until ports_ready signal fires.
 ## While false: voice record button is disabled and _on_record_pressed returns
@@ -25,6 +37,22 @@ func setup(stt: SpeechToTextPort, ai_help: RequestAICreationHelpPort, profile: P
 	_profile = profile
 	_session_id = session_id
 	_localization = localization
+
+
+## Wave 2 W2-B: inject the deterministic voice-command service.
+## Optional — without it, _on_record_pressed falls through to the
+## legacy LLM-mediated AI-help path.
+func setup_voice_commands(
+	service: VoiceWorldCommandService,
+	spawn_position: Vector3 = Vector3.ZERO
+) -> void:
+	_voice_command_service = service
+	_spawn_position = spawn_position
+
+
+## Update the spawn anchor mid-session as the kid moves around.
+func set_spawn_position(pos: Vector3) -> void:
+	_spawn_position = pos
 
 
 func _init() -> void:
@@ -121,6 +149,19 @@ func _on_record_pressed() -> void:
 			# Genuine STT failure (no speech detected) — show toast and bail.
 			_show_status(_t("voice.no_speech"))
 			return
+
+		# Wave 2 W2-B: deterministic fast path. Try the offline
+		# VoiceWorldCommandService first; it covers buduj/usuń/przesuń
+		# X for a whitelisted Polish noun set. When it produces a
+		# command we ship the kid an edit in <100ms — no LLM round trip,
+		# no network, works offline.
+		if _voice_command_service != null:
+			var fast_cmd := _voice_command_service.interpret(prompt, _spawn_position)
+			if fast_cmd != null:
+				var fast_feedback := _voice_command_service.feedback_line(fast_cmd, prompt)
+				_show_status(fast_feedback)
+				voice_command_resolved.emit(fast_cmd, fast_feedback)
+				return
 
 		var action := _ai_help.execute(_session_id, prompt, _profile, true)
 		if action:

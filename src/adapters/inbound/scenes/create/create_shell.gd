@@ -101,6 +101,19 @@ func _ready() -> void:
 		_assistant_overlay = VoiceAssistantOverlayClass.new()
 		add_child(_assistant_overlay)
 		_assistant_overlay.action_confirmed.connect(_on_ai_action_confirmed)
+		# Wave 2 W2-B: wire the deterministic voice fast-path. The
+		# overlay will try VoiceWorldCommandService first; LLM stays
+		# as the fallback for unrecognised phrasing.
+		if _assistant_overlay.has_method("setup_voice_commands"):
+			var voice_svc := VoiceWorldCommandService.new().setup(
+				PolishIntentExtractor.new().setup(),
+				null
+			)
+			_assistant_overlay.setup_voice_commands(voice_svc, Vector3.ZERO)
+		if _assistant_overlay.has_signal("voice_command_resolved") \
+				and not _assistant_overlay.is_connected(
+					"voice_command_resolved", _on_voice_command_resolved):
+			_assistant_overlay.voice_command_resolved.connect(_on_voice_command_resolved)
 
 	var OnboardingOverlayClass = load("res://src/adapters/inbound/shared/ui/onboarding_overlay.gd")
 	if OnboardingOverlayClass:
@@ -1367,6 +1380,24 @@ func _on_cta_idle_timeout() -> void:
 	_cta_tts_fired = true
 	if _voice_prompt != null and _voice_prompt.has_method("speak"):
 		_voice_prompt.call("speak", _t("create.cta.build_world_voice"))
+
+
+## Wave 2 W2-B: deterministic voice fast-path handler. Applies the
+## offline-built WorldEditCommand and speaks Polish feedback via
+## VoicePromptPort (when wired). Skips the LLM round trip entirely.
+func _on_voice_command_resolved(command: WorldEditCommand, feedback_pl: String) -> void:
+	if command == null:
+		return
+	if _apply_world_edit_port == null or _profile == null:
+		push_warning("create_shell: voice command resolved but apply port / profile missing")
+		return
+	var ok := _apply_world_edit_port.execute(_active_world_id, command, _profile)
+	if ok:
+		_set_status_message(feedback_pl, false)
+		if _voice_prompt != null and _voice_prompt.has_method("speak"):
+			_voice_prompt.call("speak", feedback_pl)
+	else:
+		_set_status_message("Nie udało się. Spróbuj ponownie.", true)
 
 
 func _on_ai_action_confirmed(action: AIAssistantAction) -> void:
