@@ -16,6 +16,7 @@ const TEST_SCRIPTS: Array[Script] = [
 	preload("res://tests/application/test_voice_input_moderation_service.gd"),
 	preload("res://tests/application/test_win_condition_interpreter.gd"),
 	preload("res://tests/application/test_evaluate_goal_service.gd"),
+	preload("res://tests/application/test_npc_dialogue_loader.gd"),
 	preload("res://tests/adapters/outbound/test_moderating_stt_adapter.gd"),
 ]
 
