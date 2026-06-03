@@ -25,6 +25,10 @@ const KEY_DATA_LIFECYCLE_PORT := "data_lifecycle_port"
 const KEY_RULES_RUNTIME := "rules_runtime"
 const KEY_RULE_COMPILER := "rule_compiler"
 const KEY_SHELL_BRIDGE_PORT := "shell_bridge"
+const KEY_PROGRESSION := "manage_progression"
+const KEY_CLONE := "clone_world"
+const KEY_REMIX := "remix_world"
+const KEY_SESSION_PROGRESS_STORE := "session_progress_store"
 const ENV_PROFILE_ROLE := "CHOYCE_PROFILE_ROLE"
 const ENV_PROFILE_ID := "CHOYCE_PROFILE_ID"
 const ENV_PROFILE_NAME := "CHOYCE_PROFILE_NAME"
@@ -281,6 +285,13 @@ func _build_default_ports() -> Dictionary:
 	var consent_store_stub: IdentityConsentPort = LocalConsentStore.new().setup()
 	var audit_ledger_stub: AuditLedgerPort = InMemoryAuditLedger.new().setup()
 	var policy_store_stub: ParentalPolicyStorePort = InMemoryParentalPolicyStore.new().setup()
+	# TASK-025 carry-over closure: progression/clone/remix wired into the
+	# default composition root so Library save/load and remix flows reach
+	# real services instead of NotImplemented push_errors.
+	var progress_store: SessionProgressStorePort = InMemorySessionProgressStore.new().setup()
+	var clone_service := CloneWorldService.new()
+	var remix_service := RemixWorldService.new().setup(progress_store, event_bus)
+	var progression_service := ManageProgressionService.new().setup(progress_store, event_bus)
 
 	var parent_audit := ParentAuditReadModelAdapter.new().setup(audit_ledger_stub, clock)
 
@@ -370,6 +381,10 @@ func _build_default_ports() -> Dictionary:
 		KEY_DATA_LIFECYCLE_PORT: data_lifecycle,
 		KEY_RULES_RUNTIME: GodotRulesRuntimeAdapter.new(),
 		KEY_RULE_COMPILER: RuleCompilerService.new(),
+		KEY_PROGRESSION: progression_service,
+		KEY_CLONE: clone_service,
+		KEY_REMIX: remix_service,
+		KEY_SESSION_PROGRESS_STORE: progress_store,
 	}
 
 
