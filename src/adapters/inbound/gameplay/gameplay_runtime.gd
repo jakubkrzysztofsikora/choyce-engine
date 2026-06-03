@@ -84,6 +84,13 @@ var _session_elapsed_sec: float = 0.0
 var _outcome_emitted: bool = false        ## Guard so end_session is idempotent.
 var _last_goal_check_ratio: float = 0.0   ## Cached so HUD can paint a progress bar.
 
+# Wave 3 W3-A6 goal HUD (built lazily in _build_hud).
+var _goal_panel: PanelContainer = null
+var _goal_label: Label = null
+var _goal_bar: ProgressBar = null
+var _lives_label: Label = null
+var _timer_label: Label = null
+
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
 # + _spawn_next_wave become no-ops.
@@ -1019,6 +1026,64 @@ func _build_hud() -> void:
 	inv_title.add_theme_constant_override("shadow_offset_y", 2)
 	_inventory_panel.add_child(inv_title)
 
+	# Wave 3 W3-A6: goal HUD (top-center). Visible only when setup_goal()
+	# has been called with a non-null GameGoal — otherwise the panel
+	# stays hidden so free-play worlds don't see an empty bar.
+	_goal_panel = PanelContainer.new()
+	_goal_panel.name = "GoalPanel"
+	_goal_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_goal_panel.offset_left = 220
+	_goal_panel.offset_top = 24
+	_goal_panel.offset_right = -260
+	_goal_panel.offset_bottom = 132
+	_goal_panel.visible = (_goal != null)
+	hud.add_child(_goal_panel)
+	var goal_vbox := VBoxContainer.new()
+	goal_vbox.add_theme_constant_override("separation", 4)
+	_goal_panel.add_child(goal_vbox)
+	_goal_label = Label.new()
+	_goal_label.name = "GoalLabel"
+	_goal_label.text = _goal.label if _goal != null else ""
+	_goal_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_goal_label.add_theme_font_size_override("font_size", 24)
+	_goal_label.add_theme_color_override("font_color", Color.WHITE)
+	_goal_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
+	_goal_label.add_theme_constant_override("shadow_offset_x", 2)
+	_goal_label.add_theme_constant_override("shadow_offset_y", 2)
+	goal_vbox.add_child(_goal_label)
+	_goal_bar = ProgressBar.new()
+	_goal_bar.name = "GoalBar"
+	_goal_bar.min_value = 0.0
+	_goal_bar.max_value = 1.0
+	_goal_bar.step = 0.01
+	_goal_bar.value = 0.0
+	_goal_bar.show_percentage = false
+	_goal_bar.custom_minimum_size = Vector2(260, 18)
+	_goal_bar.modulate = Color(1.0, 0.85, 0.35)
+	goal_vbox.add_child(_goal_bar)
+	var meta_hbox := HBoxContainer.new()
+	meta_hbox.add_theme_constant_override("separation", 18)
+	meta_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	goal_vbox.add_child(meta_hbox)
+	_lives_label = Label.new()
+	_lives_label.name = "LivesLabel"
+	_lives_label.text = _format_lives_text()
+	_lives_label.add_theme_font_size_override("font_size", 18)
+	_lives_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.7))
+	_lives_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_lives_label.add_theme_constant_override("shadow_offset_x", 2)
+	_lives_label.add_theme_constant_override("shadow_offset_y", 2)
+	meta_hbox.add_child(_lives_label)
+	_timer_label = Label.new()
+	_timer_label.name = "TimerLabel"
+	_timer_label.text = _format_timer_text()
+	_timer_label.add_theme_font_size_override("font_size", 18)
+	_timer_label.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
+	_timer_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_timer_label.add_theme_constant_override("shadow_offset_x", 2)
+	_timer_label.add_theme_constant_override("shadow_offset_y", 2)
+	meta_hbox.add_child(_timer_label)
+
 	# Wire HP signal from player.
 	if _player_controller != null and _player_controller.has_signal("hp_changed"):
 		_player_controller.hp_changed.connect(_on_player_hp_changed)
@@ -1111,8 +1176,38 @@ func _check_goal_and_lose() -> void:
 		var ctx := _build_goal_context()
 		var outcome := _goal_evaluator.evaluate(_goal, ctx, _score, "")
 		_last_goal_check_ratio = _goal_evaluator.progress_ratio(_goal, ctx)
+		_refresh_goal_hud()
 		if outcome != null and outcome.won:
 			_finish_session(outcome)
+
+
+## Wave 3 W3-A6: keep the goal HUD in sync with current progress, lives,
+## and remaining time. Called from _check_goal_and_lose each tick.
+func _refresh_goal_hud() -> void:
+	if _goal_panel == null:
+		return
+	_goal_panel.visible = (_goal != null)
+	if _goal_bar != null:
+		_goal_bar.value = _last_goal_check_ratio
+	if _lives_label != null:
+		_lives_label.text = _format_lives_text()
+	if _timer_label != null:
+		_timer_label.text = _format_timer_text()
+
+
+func _format_lives_text() -> String:
+	if _lives_remaining < 0:
+		return ""
+	return "❤ × %d" % _lives_remaining
+
+
+func _format_timer_text() -> String:
+	if _time_limit_sec <= 0:
+		return ""
+	var remaining: int = max(0, _time_limit_sec - int(_session_elapsed_sec))
+	var mm: int = remaining / 60
+	var ss: int = remaining % 60
+	return "⏱ %d:%02d" % [mm, ss]
 
 
 ## Snapshot the in-runtime state into the dict shape WinConditionInterpreter
