@@ -493,6 +493,36 @@ func _on_block_removed(cell: Vector3i, kind_id: String) -> void:
 ## Gated by ParentalControlPolicy.combat_enabled (Adv 2 TB-1 fix).
 ## When combat is off, the runtime stays in the legacy
 ## collect-and-touch-win mode — no enemies, no waves.
+## Wave 3 W3-A4 NPC animation tick: idle bob + chase for hostiles.
+## Cheaper than AnimationTree per roster; deterministic so contract
+## tests can drive it without a frame loop.
+func _tick_npcs(delta: float) -> void:
+	if _npc_root == null or not is_instance_valid(_npc_root):
+		return
+	var t := float(Time.get_ticks_msec()) / 1000.0
+	for child in _npc_root.get_children():
+		if not (child is StaticBody3D):
+			continue
+		var body: StaticBody3D = child
+		var role: String = String(body.get_meta("npc_role", NPCCharacter.ROLE_GUIDE))
+		var base_y: float = float(body.get_meta("npc_base_y", body.global_position.y))
+		match role:
+			NPCCharacter.ROLE_GUIDE, NPCCharacter.ROLE_VENDOR:
+				# Friendly bob + slow rotate so kid sees the NPC is alive.
+				body.global_position.y = base_y + sin(t * 2.0 + float(body.get_instance_id() % 7)) * 0.08
+				body.rotate_y(delta * 0.6)
+			NPCCharacter.ROLE_HOSTILE:
+				# Slow chase: lerp toward player on the XZ plane, capped speed.
+				if _player_controller == null or not is_instance_valid(_player_controller):
+					continue
+				var to_player: Vector3 = _player_controller.global_position - body.global_position
+				to_player.y = 0.0
+				if to_player.length() > 1.6:
+					var step: Vector3 = to_player.normalized() * delta * 1.2
+					body.global_position += step
+				body.look_at(_player_controller.global_position, Vector3.UP)
+
+
 ## Wave 3 W3-A3: spawn one visible NPC marker per roster entry around
 ## the player spawn. Each gets a capsule body + Area3D so walking up
 ## triggers the greeting bubble. Visuals are placeholder geometry
@@ -533,6 +563,8 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	root.set_meta("npc_id", npc.npc_id)
 	root.set_meta("npc_name_pl", npc.name_pl)
 	root.set_meta("greeting_pl", npc.line_for("greeting"))
+	root.set_meta("npc_role", npc.role)
+	root.set_meta("npc_base_y", pos.y)
 	root.add_to_group("npcs")
 
 	var capsule := MeshInstance3D.new()
@@ -1326,6 +1358,7 @@ func _physics_process(delta: float) -> void:
 	_check_fall_kill_plane()
 	_session_elapsed_sec += delta
 	_check_goal_and_lose()
+	_tick_npcs(delta)
 
 
 ## Wave 3 W3-A/B: evaluate the active goal + lose conditions each tick.
