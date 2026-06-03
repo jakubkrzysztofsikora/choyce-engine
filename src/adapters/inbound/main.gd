@@ -923,6 +923,9 @@ func _wire_shell_dependencies() -> void:
 			_phase1_project_store, _phase1_clock
 		)
 		_play_shell.setup_goal_pipeline(template_loader, EvaluateGoalService.new())
+	# Wave 3 W3-A3: NPC roster per template.
+	if _play_shell.has_method("setup_npc_pipeline"):
+		_play_shell.setup_npc_pipeline(NPCDialogueLoader.new())
 	_library_shell.setup(
 		_navigator,
 		_profile,

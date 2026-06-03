@@ -34,6 +34,7 @@ var _shell_bridge: Object = null
 var _template_loader: TemplateLoader = null
 var _goal_evaluator: EvaluateGoalService = null
 var _active_template_id: String = ""
+var _npc_loader: NPCDialogueLoader = null
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -109,6 +110,12 @@ func setup_goal_pipeline(
 ) -> void:
 	_template_loader = template_loader
 	_goal_evaluator = evaluator if evaluator != null else EvaluateGoalService.new()
+
+
+## Wave 3 W3-A3: inject the NPC loader so per-session NPC rosters are
+## fetched per template and forwarded to GameplayRuntime.setup_npcs().
+func setup_npc_pipeline(loader: NPCDialogueLoader) -> void:
+	_npc_loader = loader
 
 
 func setup_for_direct_launch(project_store: ProjectStorePort) -> void:
@@ -412,6 +419,14 @@ func _start_gameplay(world: World, session: Session) -> void:
 		if _gameplay_runtime.has_signal("session_outcome") \
 				and not _gameplay_runtime.is_connected("session_outcome", _on_session_outcome):
 			_gameplay_runtime.session_outcome.connect(_on_session_outcome)
+	# Wave 3 W3-A3: NPC roster + parental policy degradation.
+	if _npc_loader != null and not _active_template_id.is_empty() \
+			and _gameplay_runtime.has_method("setup_npcs"):
+		var raw_npcs := _npc_loader.load_npcs_for_template(_active_template_id)
+		var policy := _resolve_policy_for_session()
+		var combat_on: bool = policy != null and policy.combat_enabled
+		var filtered := _npc_loader.filtered_for_policy(raw_npcs, combat_on)
+		_gameplay_runtime.setup_npcs(filtered)
 	_gameplay_runtime.start_session(world, session)
 
 

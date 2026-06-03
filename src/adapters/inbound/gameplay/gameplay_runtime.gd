@@ -84,6 +84,14 @@ var _session_elapsed_sec: float = 0.0
 var _outcome_emitted: bool = false        ## Guard so end_session is idempotent.
 var _last_goal_check_ratio: float = 0.0   ## Cached so HUD can paint a progress bar.
 
+# Wave 3 W3-A3 NPC roster. Injected via setup_npcs(); populated by
+# PlayShell from NPCDialogueLoader.filtered_for_policy(). Empty list
+# means no friendly NPCs spawn (legacy / free-play sessions).
+var _npc_roster: Array = []
+var _npc_root: Node3D = null
+var _npc_dialogue_label: Label = null
+var _active_npc_id: String = ""
+
 # Wave 3 W3-A6 goal HUD (built lazily in _build_hud).
 var _goal_panel: PanelContainer = null
 var _goal_label: Label = null
@@ -199,6 +207,13 @@ func setup_goal(
 	_kill_plane_y = kill_plane_y
 
 
+## Wave 3 W3-A3: inject the NPC roster for this session.
+## Caller (PlayShell) already applied parental policy degradation so
+## hostile NPCs become guides when combat is off.
+func setup_npcs(npcs: Array) -> void:
+	_npc_roster = npcs.duplicate()
+
+
 func setup_combat_data(
 	gear_tiers: Array,        ## Array[GearTierResource]
 	wave_configs: Array       ## Array[WaveConfig]
@@ -258,6 +273,7 @@ func start_session(world: World, session: Session) -> void:
 				child.body_entered.connect(_on_trigger_area_entered.bind(child))
 	_build_hud()
 	_spawn_starter_enemies()
+	_spawn_npcs()
 	_setup_build_grid()
 
 	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
@@ -477,6 +493,160 @@ func _on_block_removed(cell: Vector3i, kind_id: String) -> void:
 ## Gated by ParentalControlPolicy.combat_enabled (Adv 2 TB-1 fix).
 ## When combat is off, the runtime stays in the legacy
 ## collect-and-touch-win mode — no enemies, no waves.
+## Wave 3 W3-A3: spawn one visible NPC marker per roster entry around
+## the player spawn. Each gets a capsule body + Area3D so walking up
+## triggers the greeting bubble. Visuals are placeholder geometry
+## (capsule + role-tinted material) so the kid sees a distinct
+## character; KayKit/Quaternius rigs swap in a follow-up commit.
+func _spawn_npcs() -> void:
+	if _player_controller == null:
+		return
+	if _npc_roster.is_empty():
+		return
+	if _npc_root != null and is_instance_valid(_npc_root):
+		_npc_root.queue_free()
+	_npc_root = Node3D.new()
+	_npc_root.name = "NPCs"
+	add_child(_npc_root)
+
+	var origin := _player_controller.global_position
+	# Arrange NPCs on a ring around the player so the kid sees a small
+	# friendly crowd at spawn. Radius 6m is just outside arm's reach.
+	var count: int = _npc_roster.size()
+	for i in count:
+		var npc_variant: Variant = _npc_roster[i]
+		if not (npc_variant is NPCCharacter):
+			continue
+		var npc: NPCCharacter = npc_variant
+		var angle := (TAU / float(count)) * float(i)
+		var pos := origin + Vector3(cos(angle) * 6.0, 0.0, sin(angle) * 6.0)
+		_spawn_one_npc(npc, pos)
+
+
+## Spawn a single NPC marker: capsule mesh + collision + Area3D for
+## the greeting trigger. Color encodes role so the kid can tell a
+## guide (green) from a vendor (gold) from a (degraded) hostile (red).
+func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
+	var root := StaticBody3D.new()
+	root.name = "npc_%s" % npc.npc_id
+	root.global_position = pos
+	root.set_meta("npc_id", npc.npc_id)
+	root.set_meta("npc_name_pl", npc.name_pl)
+	root.set_meta("greeting_pl", npc.line_for("greeting"))
+	root.add_to_group("npcs")
+
+	var capsule := MeshInstance3D.new()
+	var mesh := CapsuleMesh.new()
+	mesh.height = 1.6
+	mesh.radius = 0.35
+	capsule.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = _color_for_role(npc.role)
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color
+	mat.emission_energy_multiplier = 0.15
+	capsule.material_override = mat
+	root.add_child(capsule)
+
+	var col := CollisionShape3D.new()
+	var shape := CapsuleShape3D.new()
+	shape.height = 1.6
+	shape.radius = 0.35
+	col.shape = shape
+	root.add_child(col)
+
+	# Interaction trigger — 1.8m radius so walking up greets the kid
+	# without requiring precise alignment.
+	var trigger := Area3D.new()
+	trigger.name = "GreetTrigger"
+	var trig_shape := SphereShape3D.new()
+	trig_shape.radius = 1.8
+	var trig_col := CollisionShape3D.new()
+	trig_col.shape = trig_shape
+	trigger.add_child(trig_col)
+	trigger.body_entered.connect(_on_npc_trigger_entered.bind(root))
+	trigger.body_exited.connect(_on_npc_trigger_exited.bind(root))
+	root.add_child(trigger)
+
+	_npc_root.add_child(root)
+
+
+func _color_for_role(role: String) -> Color:
+	match role:
+		NPCCharacter.ROLE_GUIDE:
+			return Color(0.45, 0.85, 0.55)
+		NPCCharacter.ROLE_VENDOR:
+			return Color(1.0, 0.85, 0.35)
+		NPCCharacter.ROLE_HOSTILE:
+			return Color(0.95, 0.4, 0.4)
+		_:
+			return Color(0.7, 0.85, 1.0)
+
+
+func _on_npc_trigger_entered(body: Node, npc_root: Node3D) -> void:
+	if body != _player_controller:
+		return
+	if not is_instance_valid(npc_root):
+		return
+	var name_pl: String = String(npc_root.get_meta("npc_name_pl", ""))
+	var greeting: String = String(npc_root.get_meta("greeting_pl", ""))
+	if greeting.is_empty():
+		return
+	_active_npc_id = String(npc_root.get_meta("npc_id", ""))
+	_show_npc_dialogue(name_pl, greeting)
+
+
+func _on_npc_trigger_exited(body: Node, npc_root: Node3D) -> void:
+	if body != _player_controller:
+		return
+	var leaving_id: String = String(npc_root.get_meta("npc_id", ""))
+	if leaving_id == _active_npc_id:
+		_hide_npc_dialogue()
+		_active_npc_id = ""
+
+
+## Lazily build a single shared dialogue label at the bottom-center.
+## Kept on the HUD CanvasLayer so it sits above 3D geometry.
+func _show_npc_dialogue(name_pl: String, line_pl: String) -> void:
+	if _npc_dialogue_label == null:
+		_npc_dialogue_label = _build_npc_dialogue_label()
+	if _npc_dialogue_label == null:
+		return
+	_npc_dialogue_label.text = "%s: %s" % [name_pl, line_pl]
+	_npc_dialogue_label.visible = true
+
+
+func _hide_npc_dialogue() -> void:
+	if _npc_dialogue_label != null:
+		_npc_dialogue_label.visible = false
+
+
+func _build_npc_dialogue_label() -> Label:
+	var hud := get_node_or_null("HUD")
+	if hud == null:
+		return null
+	var panel := PanelContainer.new()
+	panel.name = "NPCDialogue"
+	panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	panel.offset_left = 280
+	panel.offset_top = -160
+	panel.offset_right = -280
+	panel.offset_bottom = -90
+	hud.add_child(panel)
+	var label := Label.new()
+	label.name = "NPCDialogueLabel"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	label.add_theme_constant_override("shadow_offset_x", 2)
+	label.add_theme_constant_override("shadow_offset_y", 2)
+	label.visible = false
+	panel.add_child(label)
+	return label
+
+
 func _spawn_starter_enemies() -> void:
 	if _player_controller == null:
 		return
