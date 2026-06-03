@@ -2,6 +2,10 @@ class_name GameplayRuntime
 extends Node3D
 
 signal session_ended
+## Emitted at session-end with the WinOutcome so HUD/celebration
+## can branch on win vs. lose vs. reason. Always fires before
+## session_ended for backwards-compat consumers.
+signal session_outcome(outcome: WinOutcome)
 ## Emitted when a rule's action fires.
 ##   action_kind: int — CompiledRule.ActionKind value
 ##   params:      Dict — action params
@@ -66,6 +70,19 @@ const WAVE_RESPAWN_DELAY := 6.0
 ## softlock (Adv 2 H-5). Default world floor is y=0; -50 leaves a
 ## comfortable buffer for tall builds.
 const FALL_KILL_PLANE_Y := -50.0
+
+# Goal + lose-condition injection (Wave 3 W3-A/B). Populated by
+# setup_goal() from main.gd composition root, sourced from the
+# template pack's default_goal + lose_conditions. Null = legacy
+# free-play mode (no win-screen, no lose, kid taps back).
+var _goal: GameGoal = null
+var _goal_evaluator: EvaluateGoalService = null
+var _lives_remaining: int = -1            ## -1 = unlimited
+var _time_limit_sec: int = 0              ## 0 = no timer
+var _kill_plane_y: float = FALL_KILL_PLANE_Y
+var _session_elapsed_sec: float = 0.0
+var _outcome_emitted: bool = false        ## Guard so end_session is idempotent.
+var _last_goal_check_ratio: float = 0.0   ## Cached so HUD can paint a progress bar.
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
@@ -157,6 +174,24 @@ func setup_combat_governance(
 ## if empty, GameplayRuntime falls back to the legacy inline
 ## ladder + procedural wave curve. Services are owned here so the
 ## adapter knows when to apply them; they stay pure RefCounted.
+## Wave 3 W3-A/B: Inject the template-pack goal + lose conditions so
+## the runtime can produce a real WinOutcome at session end.
+## Pass null `goal` for legacy free-play worlds — the runtime stays in
+## collect-or-touch-win mode and emits an "abandoned" outcome on exit.
+func setup_goal(
+	goal: GameGoal,
+	evaluator: EvaluateGoalService,
+	lives: int = -1,
+	time_limit_sec: int = 0,
+	kill_plane_y: float = FALL_KILL_PLANE_Y
+) -> void:
+	_goal = goal
+	_goal_evaluator = evaluator if evaluator != null else EvaluateGoalService.new()
+	_lives_remaining = lives
+	_time_limit_sec = max(0, time_limit_sec)
+	_kill_plane_y = kill_plane_y
+
+
 func setup_combat_data(
 	gear_tiers: Array,        ## Array[GearTierResource]
 	wave_configs: Array       ## Array[WaveConfig]
@@ -176,6 +211,9 @@ func setup_combat_data(
 func start_session(world: World, session: Session) -> void:
 	_session = session
 	_score = 0
+	_session_elapsed_sec = 0.0
+	_outcome_emitted = false
+	_last_goal_check_ratio = 0.0
 	var t0 := Time.get_ticks_msec()
 	print("[gameplay] start_session: world=%s nodes=%d rules=%d" %
 		[world.world_id, world.scene_nodes.size(), world.game_rules.size()])
@@ -1051,6 +1089,62 @@ func _physics_process(delta: float) -> void:
 		_rules_runtime.tick(delta)
 	_check_enemy_wave_respawn(delta)
 	_check_fall_kill_plane()
+	_session_elapsed_sec += delta
+	_check_goal_and_lose()
+
+
+## Wave 3 W3-A/B: evaluate the active goal + lose conditions each tick.
+## Idempotent via _outcome_emitted; safe to call after end_session
+## scheduled but before tree-cleanup completes.
+func _check_goal_and_lose() -> void:
+	if _outcome_emitted or _goal_evaluator == null:
+		return
+
+	# 1) Time-limit lose path (only when a goal is set; free-play has no timer).
+	if _goal != null and _time_limit_sec > 0 and int(_session_elapsed_sec) >= _time_limit_sec:
+		_finish_session(_goal_evaluator.evaluate(
+			_goal, _build_goal_context(), _score, WinOutcome.REASON_TIMEOUT))
+		return
+
+	# 2) Win path (goal_met). Skip for free-play (_goal == null).
+	if _goal != null:
+		var ctx := _build_goal_context()
+		var outcome := _goal_evaluator.evaluate(_goal, ctx, _score, "")
+		_last_goal_check_ratio = _goal_evaluator.progress_ratio(_goal, ctx)
+		if outcome != null and outcome.won:
+			_finish_session(outcome)
+
+
+## Snapshot the in-runtime state into the dict shape WinConditionInterpreter
+## expects. Mirrors GameGoal.progress_ratio() — keep them in sync.
+func _build_goal_context() -> Dictionary:
+	var inventory: Dictionary = {}
+	var zones: Dictionary = {}
+	if _rules_runtime != null:
+		var rt_inv: Variant = _rules_runtime.get_context_value("inventory")
+		if rt_inv is Dictionary:
+			inventory = rt_inv
+		var rt_zones: Variant = _rules_runtime.get_context_value("in_zone")
+		if rt_zones is Dictionary:
+			zones = rt_zones
+	return {
+		"score": _score,
+		"time": int(_session_elapsed_sec),
+		"blocks_placed": _build_grid.placed_count() if _build_grid != null and _build_grid.has_method("placed_count") else 0,
+		"inventory": inventory,
+		"in_zone": zones,
+		"quest": {},
+	}
+
+
+## Single funnel for terminal session states. Emits session_outcome
+## then defers to end_session for the existing teardown path.
+func _finish_session(outcome: WinOutcome) -> void:
+	if _outcome_emitted or outcome == null:
+		return
+	_outcome_emitted = true
+	session_outcome.emit(outcome)
+	end_session()
 
 
 ## Spring block can launch kid past the world edge (Adv 2 H-5). If
@@ -1060,8 +1154,32 @@ func _physics_process(delta: float) -> void:
 func _check_fall_kill_plane() -> void:
 	if _player_controller == null or not is_instance_valid(_player_controller):
 		return
-	if _player_controller.global_position.y < FALL_KILL_PLANE_Y:
+	# Template-pack kill plane overrides the hard-coded fallback.
+	var plane := _kill_plane_y if _goal != null else FALL_KILL_PLANE_Y
+	if _player_controller.global_position.y < plane:
+		_consume_life_or_lose()
+
+
+## Wave 3: lives-aware variant of the legacy soft-respawn. With a finite
+## lives budget (template-pack `lose_conditions.lives`), each fall/HP=0
+## decrements; reaching 0 emits a goal-not-met WinOutcome (lose by
+## abandoned-on-death — closest fit since we don't track death reason
+## in the DSL).
+func _consume_life_or_lose() -> void:
+	if _outcome_emitted:
+		return
+	if _lives_remaining > 0:
+		_lives_remaining -= 1
 		_on_player_defeated()
+		return
+	if _lives_remaining == 0:
+		# Lose: out of lives. Score still counts.
+		var lose := WinOutcome.new(false, WinOutcome.REASON_ABANDONED, _score)
+		lose.mark_completed_now()
+		_finish_session(lose)
+		return
+	# _lives_remaining == -1 (unlimited / free-play) — legacy soft-respawn.
+	_on_player_defeated()
 
 
 ## Endless engagement: once kid clears all enemies in a wave, after

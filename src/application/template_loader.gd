@@ -109,6 +109,44 @@ func _parse_node_type(raw_type: Variant) -> SceneNode.NodeType:
 			return SceneNode.NodeType.OBJECT
 
 
+## Wave 3 W3-A/B: build a GameGoal value object from the template-pack
+## `default_goal` block. Returns null when the template has no goal
+## defined (free-play / legacy worlds). Validates `kind` against the
+## GameGoal.is_valid_kind whitelist so a malformed JSON can't sneak an
+## unknown goal type into the runtime.
+func build_goal_from_template(template_id: String) -> GameGoal:
+	var template_data := load_template(template_id)
+	if template_data.is_empty():
+		return null
+	var raw: Variant = template_data.get("default_goal", null)
+	if not (raw is Dictionary):
+		return null
+	var d: Dictionary = raw
+	var kind := String(d.get("kind", ""))
+	if not GameGoal.is_valid_kind(kind):
+		return null
+	return GameGoal.new(
+		kind,
+		int(d.get("target", 0)),
+		String(d.get("label_pl", "")),
+		String(d.get("icon_id", "")),
+		String(d.get("win_condition", "")),
+	)
+
+
+## Returns the template-pack `lose_conditions` block as a plain dict so
+## callers can pull `lives`, `time_limit_sec`, `kill_plane_y` without
+## coupling to a domain type. Empty dict when absent.
+func build_lose_conditions_from_template(template_id: String) -> Dictionary:
+	var template_data := load_template(template_id)
+	if template_data.is_empty():
+		return {}
+	var raw: Variant = template_data.get("lose_conditions", null)
+	if raw is Dictionary:
+		return raw
+	return {}
+
+
 func _parse_rule_type(raw_type: Variant) -> GameRule.RuleType:
 	if raw_type is int:
 		var raw_int: int = raw_type

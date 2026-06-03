@@ -915,6 +915,14 @@ func _wire_shell_dependencies() -> void:
 	# fan out to the desktop UI. Bridge is null unless CHOYCE_SHELL_BRIDGE=1.
 	if _play_shell.has_method("setup_shell_bridge"):
 		_play_shell.setup_shell_bridge(_ports.get(KEY_SHELL_BRIDGE_PORT, null))
+	# Wave 3 W3-A/B: inject the goal pipeline so adventure + obby
+	# template packs evaluate their default_goal + lose_conditions and
+	# emit a WinOutcome at session end.
+	if _play_shell.has_method("setup_goal_pipeline"):
+		var template_loader := TemplateLoader.new().setup(
+			_phase1_project_store, _phase1_clock
+		)
+		_play_shell.setup_goal_pipeline(template_loader, EvaluateGoalService.new())
 	_library_shell.setup(
 		_navigator,
 		_profile,

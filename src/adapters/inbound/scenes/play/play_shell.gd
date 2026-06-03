@@ -27,6 +27,13 @@ var _audit_ledger: AuditLedgerPort = null
 ## CHOYCE_SHELL_BRIDGE feature flag is on. PlayShell forwards it to
 ## GameplayRuntime so session start/end events fan out to the desktop UI.
 var _shell_bridge: Object = null
+## Wave 3 W3-A/B: optional goal pipeline. When non-null, _start_gameplay
+## reads the project's template_id and injects a GameGoal + lose
+## conditions into GameplayRuntime so the runtime can emit a real
+## WinOutcome at session end.
+var _template_loader: TemplateLoader = null
+var _goal_evaluator: EvaluateGoalService = null
+var _active_template_id: String = ""
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -94,6 +101,16 @@ func setup_voice_prompt(port: VoicePromptPort) -> void:
 	_voice_prompt_port = port
 
 
+## Wave 3 W3-A/B: inject the goal pipeline. Optional — without this,
+## sessions fall back to free-play (no win-screen branch on outcome).
+func setup_goal_pipeline(
+	template_loader: TemplateLoader,
+	evaluator: EvaluateGoalService = null
+) -> void:
+	_template_loader = template_loader
+	_goal_evaluator = evaluator if evaluator != null else EvaluateGoalService.new()
+
+
 func setup_for_direct_launch(project_store: ProjectStorePort) -> void:
 	_project_store = project_store
 
@@ -154,6 +171,7 @@ func launch_world_by_id(project_id: String, world_id: String) -> void:
 		return
 	# Pick music track based on template
 	_play_world_music(project.template_id)
+	_active_template_id = project.template_id
 
 	# Set context and start a session directly via _run_playtest_port
 	_active_world_id = world.world_id
@@ -379,7 +397,47 @@ func _start_gameplay(world: World, session: Session) -> void:
 	# fan out to the desktop UI. No-op when _shell_bridge is null (default).
 	if _shell_bridge != null and _gameplay_runtime.has_method("setup_shell_bridge"):
 		_gameplay_runtime.setup_shell_bridge(_shell_bridge)
+	# Wave 3 W3-A/B: inject template goal + lose conditions when wired.
+	if _template_loader != null and not _active_template_id.is_empty() \
+			and _gameplay_runtime.has_method("setup_goal"):
+		var goal := _template_loader.build_goal_from_template(_active_template_id)
+		var lose := _template_loader.build_lose_conditions_from_template(_active_template_id)
+		_gameplay_runtime.setup_goal(
+			goal,
+			_goal_evaluator,
+			int(lose.get("lives", -1)),
+			int(lose.get("time_limit_sec", 0)),
+			float(lose.get("kill_plane_y", -50.0)),
+		)
+		if _gameplay_runtime.has_signal("session_outcome") \
+				and not _gameplay_runtime.is_connected("session_outcome", _on_session_outcome):
+			_gameplay_runtime.session_outcome.connect(_on_session_outcome)
 	_gameplay_runtime.start_session(world, session)
+
+
+## Wave 3 W3-A/B: terminal-state handler — branches the celebration UI
+## on win vs. lose vs. timeout. Always called BEFORE session_ended so
+## the celebration overlay can show before the back-to-landing
+## teardown.
+func _on_session_outcome(outcome: WinOutcome) -> void:
+	if outcome == null:
+		return
+	if outcome.won:
+		# Reuse the existing victory celebration overlay.
+		if _celebration_layer != null:
+			_celebration_layer.visible = true
+		if _celebration_title != null:
+			_celebration_title.text = "Wygrana!"  # localized further in W3-A6 HUD pass
+	else:
+		# Lose: show the existing session-end panel with reason copy.
+		if _session_end_panel != null:
+			_session_end_panel.visible = true
+		if _session_end_title != null:
+			match outcome.reason:
+				WinOutcome.REASON_TIMEOUT:
+					_session_end_title.text = "Czas się skończył"
+				_:
+					_session_end_title.text = "Spróbuj jeszcze raz"
 
 
 ## Resolve the policy to apply for this session. CLAUDE.md
