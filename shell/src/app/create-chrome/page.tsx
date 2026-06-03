@@ -171,30 +171,28 @@ export default function CreateChromePage() {
   const offline = status !== "open";
 
   return (
-    <section className="px-8 py-12">
-      <header className="mb-6">
-        <h1
-          className="glitch-text text-4xl md:text-6xl font-black tracking-tight neon-lime"
-          data-text={t("create.title")}
-        >
-          {t("create.title")}
-        </h1>
-        <p className="mt-3 font-mono text-xs tracking-widest text-white/50">
-          {t("create.sub")}
-        </p>
+    <section className="min-h-screen bg-gradient-to-b from-emerald-50 via-sky-50 to-amber-50 px-6 py-10">
+      <header className="mx-auto mb-6 max-w-6xl">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="text-4xl">🧱</span>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-800 md:text-4xl">
+            {t("create.title")}
+          </h1>
+        </div>
+        <p className="mt-1 text-sm text-slate-600">{t("create.sub")}</p>
       </header>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-        <div className="font-mono text-[10px] tracking-[0.4em] text-white/60">
+      <div className="mx-auto mb-4 flex max-w-6xl flex-wrap items-center justify-between gap-3">
+        <div className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-600 shadow-sm">
           {engineLabel}
         </div>
         {offline && (
-          <div className="flex items-center gap-3 text-[10px] font-mono text-white/40">
+          <div className="flex items-center gap-3 rounded-full bg-amber-50 px-3 py-1 text-sm text-amber-800 shadow-sm">
             <span>{t("create.engine_offline_help")}</span>
             <button
               type="button"
               onClick={() => void ensureBridge()}
-              className="bracket-cta text-lime-300"
+              className="rounded-full bg-amber-500 px-3 py-1 text-xs font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
             >
               {t("create.connect_retry")}
             </button>
@@ -204,7 +202,6 @@ export default function CreateChromePage() {
 
       <div
         ref={canvasRef}
-        // role + tabIndex make this focusable for keyboard fallback
         role="application"
         aria-label={t("create.title")}
         tabIndex={0}
@@ -213,31 +210,31 @@ export default function CreateChromePage() {
         onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
         data-testid="create-canvas"
-        className="checkerboard-bg relative h-[60vh] w-full border border-lime-500/30 cursor-crosshair focus:outline-none focus:ring-2 focus:ring-lime-400 select-none"
+        className="checkerboard-bg relative mx-auto h-[60vh] w-full max-w-6xl select-none rounded-3xl border-2 border-emerald-300 bg-white/60 shadow-lg focus:border-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-200"
+        style={{ cursor: "crosshair" }}
       >
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <p className="font-mono text-[10px] tracking-widest text-white/40 text-center">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <p className="rounded-2xl bg-white/80 px-6 py-3 text-center text-sm font-medium text-slate-700 shadow-sm">
             {t("create.canvas_hint")}
           </p>
         </div>
         <div
-          // Visual cursor marker for keyboard users — purely cosmetic.
           aria-hidden="true"
           style={{
             position: "absolute",
             left: `calc(${cursorRef.current.x * 100}% - 6px)`,
             top: `calc(${cursorRef.current.y * 100}% - 6px)`,
           }}
-          className="w-3 h-3 border border-lime-400 pointer-events-none"
+          className="pointer-events-none h-3 w-3 rounded-full border-2 border-emerald-500 bg-emerald-200"
         />
       </div>
 
       {lastDispatched && (
         <div
           aria-live="polite"
-          className="mt-3 font-mono text-[10px] tracking-widest text-lime-400/70"
+          className="mx-auto mt-3 max-w-6xl text-center text-sm font-medium text-emerald-700"
         >
-          {`// ${lastDispatched.toUpperCase()}`}
+          {lastDispatched}
         </div>
       )}
     </section>
