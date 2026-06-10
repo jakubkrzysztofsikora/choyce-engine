@@ -61,13 +61,14 @@ theme_override_constants/separation = 6
 
 [node name="StatusTitle" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Status tworzenia"
+theme_override_font_sizes/font_size = 22
+text = "Co robić?"
 
 [node name="StatusMessage" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
 layout_mode = 2
-text = "Kliknij „Umieść”, aby dodać pierwszy obiekt."
+text = "Naciśnij 🎤 powyżej i powiedz np. „buduj drzewo”!"
 autowrap_mode = 3
+theme_override_font_sizes/font_size = 22
 
 [node name="WorldSummary" type="Label" parent="Layout/WorkspaceCard/WorkspaceLayout/Workspace"]
 layout_mode = 2
@@ -121,25 +122,25 @@ theme_override_constants/separation = 12
 alignment = 1
 
 [node name="PlaceButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(130, 52)
+custom_minimum_size = Vector2(150, 80)
 layout_mode = 2
 toggle_mode = true
 text = "➕ Umieść"
 
 [node name="PaintButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(130, 52)
+custom_minimum_size = Vector2(150, 80)
 layout_mode = 2
 toggle_mode = true
 text = "🎨 Pomaluj"
 
 [node name="MoveButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(130, 52)
+custom_minimum_size = Vector2(150, 80)
 layout_mode = 2
 toggle_mode = true
 text = "✋ Przesuń"
 
 [node name="DuplicateButton" type="Button" parent="Layout/Tools"]
-custom_minimum_size = Vector2(140, 52)
+custom_minimum_size = Vector2(160, 80)
 layout_mode = 2
 toggle_mode = true
 text = "📋 Duplikuj"
@@ -150,22 +151,22 @@ theme_override_constants/separation = 12
 alignment = 1
 
 [node name="UndoButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(100, 48)
+custom_minimum_size = Vector2(120, 72)
 layout_mode = 2
 text = "↩ Cofnij"
 
 [node name="SafeRestoreButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(200, 48)
+custom_minimum_size = Vector2(240, 72)
 layout_mode = 2
 text = "🔧 Przywróć bezpieczny zapis"
 
 [node name="GoPlayButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(160, 48)
+custom_minimum_size = Vector2(180, 72)
 layout_mode = 2
 text = "▶ Przejdź do gry"
 
 [node name="GoLibraryButton" type="Button" parent="Layout/Actions"]
-custom_minimum_size = Vector2(180, 48)
+custom_minimum_size = Vector2(200, 72)
 layout_mode = 2
 text = "📚 Przejdź do biblioteki"
 

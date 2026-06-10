@@ -332,7 +332,10 @@ func _quick_build_preset(preset_id: String) -> void:
 ## ($MascotOverlay on InboundMain). Silent if unreachable — never
 ## blocks the shell.
 func _greet_via_mascot() -> void:
-	_mascot_say("Wybierz misję ↓ albo dotknij narzędzia. Ruszamy!")
+	# Kid-UX: voice-first greeting per FR-004 + LEGO "mama duck"
+	# onboarding (lead by example, don't force tutorial). Big mic
+	# button is at the top of the screen — point the kid there.
+	_mascot_say("Naciśnij 🎤 i powiedz np. „buduj drzewo”!")
 
 
 func _mascot_say(text: String) -> void:
@@ -1309,7 +1312,7 @@ func _t(key: String) -> String:
 		"create.steps.intro": "Stwórz: 1) Umieść 2) Pomaluj 3) Zagraj.",
 		"create.status.title": "Status tworzenia",
 		"create.node_list.title": "Obiekty w świecie",
-		"create.hint.choose_tool": "Wybierz narzędzie. Zacznij od Umieść.",
+		"create.hint.choose_tool": "Powiedz 🎤 „buduj drzewo” albo kliknij ➕ Umieść.",
 		"create.tool_selected": "Wybrałeś: %s.",
 		"create.error.port_not_ready": "Tryb tworzenia niegotowy. Uruchom ponownie.",
 		"create.error.no_world": "Brak aktywnego świata. Kliknij Umieść.",
@@ -1345,7 +1348,7 @@ func _t(key: String) -> String:
 		"create.success.move": "Przesunięto obiekt: %s.",
 		"create.success.duplicate": "Utworzono kopię obiektu.",
 		"create.success.generic": "Zmiana zapisana.",
-		"create.template_selected": "Wybrano szablon: %s",
+		"create.template_selected": "Świetnie! Wybrałeś %s. Teraz powiedz 🎤 co dodać!",
 		"create.onboarding.welcome": "Witaj! Zaczynamy budowanie.",
 		"create.onboarding.place_first": "Kliknij tu, aby ustawić obiekt.",
 		"create.onboarding.paint_first": "Teraz pomaluj swój obiekt.",
