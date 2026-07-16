@@ -77,6 +77,10 @@ const FALL_KILL_PLANE_Y := -50.0
 # free-play mode (no win-screen, no lose, kid taps back).
 var _goal: GameGoal = null
 var _goal_evaluator: EvaluateGoalService = null
+## Debug-only: when CHOYCE_AUTOWIN=1 in a debug/editor build, defeat one enemy
+## per tick so the smoke probe drives the whole win loop headlessly (no input
+## automation). Never active in a release build.
+var _autowin: bool = false
 var _lives_remaining: int = -1            ## -1 = unlimited
 var _time_limit_sec: int = 0              ## 0 = no timer
 var _kill_plane_y: float = FALL_KILL_PLANE_Y
@@ -236,6 +240,8 @@ func start_session(world: World, session: Session) -> void:
 	_session_elapsed_sec = 0.0
 	_outcome_emitted = false
 	_last_goal_check_ratio = 0.0
+	_autowin = (OS.has_feature("debug") or OS.has_feature("editor")) \
+		and OS.get_environment("CHOYCE_AUTOWIN") == "1"
 	var t0 := Time.get_ticks_msec()
 	print("[gameplay] start_session: world=%s nodes=%d rules=%d" %
 		[world.world_id, world.scene_nodes.size(), world.game_rules.size()])
@@ -1354,6 +1360,8 @@ func _build_hud() -> void:
 func _physics_process(delta: float) -> void:
 	if _rules_active and _rules_runtime != null:
 		_rules_runtime.tick(delta)
+	if _autowin:
+		_tick_autowin()
 	_check_enemy_wave_respawn(delta)
 	_check_fall_kill_plane()
 	_session_elapsed_sec += delta
@@ -1442,7 +1450,13 @@ func _finish_session(outcome: WinOutcome) -> void:
 		return
 	_outcome_emitted = true
 	session_outcome.emit(outcome)
-	end_session()
+	if outcome.won and _victory_sequence != null:
+		# Win juice: confetti + win sting + green flash. VictorySequence
+		# ends the session itself via completed -> _on_victory_completed,
+		# so don't double-end here.
+		_trigger_victory()
+	else:
+		end_session()
 
 
 ## Spring block can launch kid past the world edge (Adv 2 H-5). If
@@ -1483,6 +1497,18 @@ func _consume_life_or_lose() -> void:
 ## Endless engagement: once kid clears all enemies in a wave, after
 ## WAVE_RESPAWN_DELAY seconds spawn the next wave with +1 enemy and
 ## a stronger archetype mix. Drives the gear-grinding loop.
+## ponytail: debug-only smoke driver. Defeats one live enemy per tick so the
+## headless autoplay probe reaches score>=15 and exercises the full win loop
+## (goal eval -> victory sequence -> session_outcome) without input automation.
+func _tick_autowin() -> void:
+	if _enemy_root == null or not is_instance_valid(_enemy_root):
+		return
+	for child in _enemy_root.get_children():
+		if child is EnemyController and (child as EnemyController).health.is_alive:
+			(child as EnemyController).apply_damage(9999)
+			return
+
+
 func _check_enemy_wave_respawn(delta: float) -> void:
 	if _enemy_root == null or not is_instance_valid(_enemy_root):
 		return

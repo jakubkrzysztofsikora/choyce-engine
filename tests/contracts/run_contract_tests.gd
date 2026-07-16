@@ -67,6 +67,7 @@ const TEST_SCRIPTS: Array[Script] = [
 	preload("res://tests/contracts/parental_policy_store_has_policy_contract_test.gd"),
 	preload("res://tests/contracts/parental_policy_resolve_for_session_contract_test.gd"),
 	preload("res://tests/contracts/play_session_policy_resolution_contract_test.gd"),
+	preload("res://tests/contracts/game_goal_score_progress_contract_test.gd"),
 	preload("res://tests/contracts/set_parental_controls_service_contract_test.gd"),
 	preload("res://tests/contracts/voice_input_moderation_service_contract_test.gd"),
 	preload("res://tests/contracts/publish_workflow_services_contract_test.gd"),

@@ -69,9 +69,9 @@
       "celebration_pl": "Niesamowite! Odkryłeś wszystkie sekrety wyspy."
     },
     "npc_pirate": {
-      "greeting_pl": "Arr! Szukasz skarbu? Musisz najpierw rozwiązać zagadkę.",
-      "hint_pl": "Zbieraj perły — otworzą Ci bramę do ukrytej zatoki.",
-      "celebration_pl": "Arr! Jesteś godzien skarbu!"
+      "greeting_pl": "Arr! Wyspę nękają 3 potwory. Pokonaj je, a skarb będzie twój!",
+      "hint_pl": "Podejdź do potwora i klikaj, aż zniknie w chmurce. Pokonaj wszystkie 3!",
+      "celebration_pl": "Arr! Pokonałeś potwory! Jesteś godzien skarbu!"
     },
     "npc_parrot": {
       "greeting_pl": "Ćwir-ćwir! Witaj na wyspie przygód!",

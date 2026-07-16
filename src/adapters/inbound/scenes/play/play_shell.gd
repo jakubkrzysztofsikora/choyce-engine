@@ -442,7 +442,7 @@ func _on_session_outcome(outcome: WinOutcome) -> void:
 		if _celebration_layer != null:
 			_celebration_layer.visible = true
 		if _celebration_title != null:
-			_celebration_title.text = "Wygrana!"  # localized further in W3-A6 HUD pass
+			_celebration_title.text = _t("ui.play.outcome.win")
 	else:
 		# Lose: show the existing session-end panel with reason copy.
 		if _session_end_panel != null:
@@ -450,9 +450,9 @@ func _on_session_outcome(outcome: WinOutcome) -> void:
 		if _session_end_title != null:
 			match outcome.reason:
 				WinOutcome.REASON_TIMEOUT:
-					_session_end_title.text = "Czas się skończył"
+					_session_end_title.text = _t("ui.play.outcome.timeout")
 				_:
-					_session_end_title.text = "Spróbuj jeszcze raz"
+					_session_end_title.text = _t("ui.play.outcome.retry")
 
 
 ## Resolve the policy to apply for this session. CLAUDE.md
@@ -683,6 +683,9 @@ func _t(key: String) -> String:
 		"ui.common.safe_restore": "Przywróć bezpieczny zapis",
 		"ui.play.go_create": "Wróć do tworzenia",
 		"ui.play.go_library": "Przejdź do biblioteki",
+		"ui.play.outcome.win": "Wygrana!",
+		"ui.play.outcome.timeout": "Czas się skończył",
+		"ui.play.outcome.retry": "Spróbuj jeszcze raz",
 		"play.error.no_world": "Najpierw stwórz świat.",
 		"play.error.load_failed": "Świat nie wczytał się.",
 		"play.error.create_first": "Najpierw stwórz świat!",
