@@ -1353,7 +1353,7 @@ func _build_hud() -> void:
 
 	var hint := Label.new()
 	hint.name = "ControlsHint"
-	hint.text = "WSAD ruch  •  SPACJA skok  •  Myszka patrz  •  LPM atak/kop  •  1-5 wybór  •  ESC pokaż myszkę"
+	hint.text = "WSAD ruch  •  SPACJA skok  •  Myszka patrz  •  LPM atak/kop  •  1-5 wybór  •  ESC mysz"
 	hint.add_theme_font_size_override("font_size", 22)
 	hint.add_theme_color_override("font_color", Color.WHITE)
 	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
@@ -1689,14 +1689,16 @@ func end_session() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		# ESC: if cursor is captured (FPS look mode), release it so
-		# kid can click HUD (back button, hotbar). Press ESC again
-		# from HUD to actually exit the session. Two-press exit
-		# prevents accidental quits during combat.
+		# ESC only ever TOGGLES the mouse cursor — it never ends the
+		# session. The old two-press "second ESC quits" fired on the
+		# first press whenever the cursor was already visible (kid on
+		# HUD, or capture never took), ending the game by accident. The
+		# visible red Back button is the one and only exit.
 		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-			return
-		end_session()
+		else:
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		get_viewport().set_input_as_handled()
 
 func _on_footstep() -> void:
 	if _audio_bus != null:

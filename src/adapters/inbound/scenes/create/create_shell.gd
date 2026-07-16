@@ -139,7 +139,17 @@ func _ready() -> void:
 	_wire_actions()
 	_refresh_labels()
 	_apply_friendly_theme()
-	_greet_via_mascot()
+	# Greet only when the kid actually opens Create — NOT at boot. Firing at
+	# boot made the mascot speak (TTS aloud) over the launcher/landing.
+	if not visibility_changed.is_connected(_on_visibility_changed_greet):
+		visibility_changed.connect(_on_visibility_changed_greet)
+	if visible:
+		_greet_via_mascot()
+
+
+func _on_visibility_changed_greet() -> void:
+	if visible:
+		_greet_via_mascot()
 
 
 ## Inject a top button row: "← Menu" (return to landing) +
