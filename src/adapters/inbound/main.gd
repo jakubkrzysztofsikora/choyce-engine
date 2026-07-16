@@ -82,6 +82,8 @@ var _phase1_policy_store: ParentalPolicyStorePort
 @onready var _library_shell: LibraryShell = $Layout/Body/LibraryShell
 @onready var _parent_shell: ParentZoneShell = $Layout/Body/ParentZoneShell
 
+var _launcher: LauncherOverlay = null
+
 # Accessibility UI
 var _nav_a11y: Button
 var _a11y_dialog: AcceptDialog
@@ -188,6 +190,7 @@ func _ready() -> void:
 	_apply_localized_text()
 	_setup_transitions()
 	_navigator.show_shell(SHELL_LANDING)
+	_show_launcher()
 
 	# Phase 8d: schedule heavy-I/O adapter initialisation for the next frame so
 	# the first frame returns quickly. Shells remain in the ports_ready=false gate
@@ -847,6 +850,24 @@ func _on_transition_requested(from_shell_id: String, to_shell_id: String) -> voi
 
 func _on_shell_changed(shell_id: String) -> void:
 	_update_active_indicator(shell_id)
+
+
+## Thin launcher: the first screen. A big PLAY that drops straight into the
+## Adventure world, reusing the direct-launch path. Skipped under autoplay so
+## the headless smoke probe isn't blocked waiting for a human tap.
+func _show_launcher() -> void:
+	var env := OSEnvironmentAdapter.new()
+	if not env.get_env("CHOYCE_AUTOPLAY").strip_edges().is_empty():
+		return
+	_launcher = LauncherOverlay.new().setup(_localization_policy)
+	_launcher.play_pressed.connect(_on_launcher_play)
+	add_child(_launcher)
+
+
+func _on_launcher_play() -> void:
+	_launcher = null
+	var kid_id := _profile.profile_id if _profile != null else "local_kid_1"
+	_on_world_card_pressed("%s_starter_adventure" % kid_id, "")
 
 
 func _on_world_card_pressed(project_id: String, world_id: String) -> void:
