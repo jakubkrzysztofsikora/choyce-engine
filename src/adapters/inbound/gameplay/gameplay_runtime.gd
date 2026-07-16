@@ -16,6 +16,8 @@ var _player_controller: PlayerController
 var _session: Session
 var _audio_bus: AudioEventBus
 var _sfx_player: SFXPlayer
+## Live NPC voice (ElevenLabs TTS). Silent no-op without ELEVENLABS_API_KEY.
+var _npc_voice: VoicePromptPort = null
 var _effect_spawner: EffectSpawner
 var _screen_feedback: ScreenFeedback
 var _victory_sequence: VictorySequence
@@ -141,6 +143,11 @@ func _ready() -> void:
 	_screen_feedback = $ScreenFeedbackLayer/ScreenFeedback
 	_victory_sequence = $VictorySequence
 	_ambient_player = $AmbientPlayer
+
+	# Live NPC voice via ElevenLabs. Key from env; absent -> silent no-op.
+	var eleven_key := OS.get_environment("ELEVENLABS_API_KEY").strip_edges()
+	var eleven_voice := OS.get_environment("ELEVENLABS_VOICE_ID").strip_edges()
+	_npc_voice = ElevenLabsVoicePromptAdapter.new().setup(self, eleven_key, eleven_voice)
 
 	# Ambient music is now driven by AudioBank (play_music called from PlayShell
 	# when the world is chosen). The _ambient_player node is kept so the scene
@@ -662,6 +669,9 @@ func _show_npc_dialogue(name_pl: String, line_pl: String) -> void:
 		return
 	_npc_dialogue_label.text = "%s: %s" % [name_pl, line_pl]
 	_npc_dialogue_label.visible = true
+	# Speak the line aloud (ElevenLabs). Caption stays as the fallback.
+	if _npc_voice != null:
+		_npc_voice.speak(line_pl)
 
 
 func _hide_npc_dialogue() -> void:
