@@ -238,10 +238,10 @@
   "suggested_age": "6-8",
   "default_goal": {
     "kind": "collect",
-    "target": 3,
-    "label_pl": "Zbierz 3 klucze",
-    "icon_id": "icon_key",
-    "win_condition": "inventory.key>=3"
+    "target": 15,
+    "label_pl": "Pokonaj 3 potwory",
+    "icon_id": "icon_sword",
+    "win_condition": "score>=15"
   },
   "lose_conditions": {
     "lives": 3,

@@ -466,18 +466,14 @@ func _resolve_policy_for_session() -> ParentalControlPolicy:
 	if _policy_store == null or _profile == null:
 		# Tampered/missing store or no profile — strict deny.
 		return ParentalControlPolicy.deny_all()
+	# has_policy distinguishes a brand-new kid (nothing on disk → friendly
+	# first-run default, combat on) from a present-but-unreadable policy
+	# (tamper/wrong key → load_policy fails closed to deny_all). The encrypted
+	# vault returns deny_all() for BOTH absence and tamper, so a stored==null
+	# check alone silently bricked combat on every first session.
+	var has_stored: bool = _policy_store.has_policy(_profile.profile_id)
 	var stored: ParentalControlPolicy = _policy_store.load_policy(_profile.profile_id)
-	# Adv V #4 — type-check the returned value. A corrupted vault
-	# returning a wrong-type Object would bypass the null check.
-	# Defensive: trust nothing about decryption output.
-	if stored == null or not (stored is ParentalControlPolicy):
-		# Brand-new kid profile (or corrupt store), never been to
-		# parent zone. Friendly default (Adv P A2 fix) — 60-min
-		# daily + 30-min session + combat on with wave cap 5 —
-		# instead of the 1-min deny_all brick. Parent still sees
-		# this in audit + can lock it down anytime.
-		return ParentalControlPolicy.default_for_first_run()
-	return stored
+	return ParentalControlPolicy.resolve_for_session(has_stored, stored)
 
 
 func _is_autoplay_session() -> bool:

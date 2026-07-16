@@ -107,6 +107,17 @@ func _emit_decryption_failed(parent_id: String, reason: String) -> void:
 	_event_bus.emit(event)
 
 
+## Presence = a file on disk, independent of whether it decrypts. A tampered
+## or wrong-key file still counts as "present" so resolution honors deny-all
+## rather than treating the profile as brand-new (first-run combat grant).
+func has_policy(parent_id: String) -> bool:
+	if not _is_valid_parent_id(parent_id):
+		return false
+	if _encrypted_storage == null:
+		return false
+	return _encrypted_storage.has_encrypted(_policy_path(parent_id))
+
+
 func _is_ready() -> bool:
 	return _encrypted_storage != null and _encryption_key.size() == 32
 

@@ -101,6 +101,25 @@ static func default_for_first_run() -> ParentalControlPolicy:
 	)
 
 
+## Single decision for which policy governs a play session.
+## `has_stored` comes from ParentalPolicyStorePort.has_policy(); `stored` is
+## the load_policy() result. Absence and an unreadable/deny-all read are
+## distinct: a genuinely-new kid (nothing stored) gets the friendly first-run
+## default (combat on), while a present-but-unreadable policy fails closed to
+## deny_all. Without has_stored these collapse — the encrypted vault returns
+## deny_all() for a brand-new kid, so a `stored == null` check alone would
+## silently disable combat for every first session.
+static func resolve_for_session(
+	has_stored: bool,
+	stored: ParentalControlPolicy
+) -> ParentalControlPolicy:
+	if not has_stored:
+		return default_for_first_run()
+	if stored == null or not (stored is ParentalControlPolicy):
+		return deny_all()
+	return stored
+
+
 ## Returns the most restrictive policy possible.
 ## Used as a safety fallback when stored policy cannot be decrypted or is
 ## absent. Follows the CLAUDE.md "consent → deny" rule.

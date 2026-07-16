@@ -28,3 +28,9 @@ func load_policy(parent_id: String) -> ParentalControlPolicy:
 	if result is ParentalControlPolicy:
 		return result as ParentalControlPolicy
 	return null
+
+
+func has_policy(parent_id: String) -> bool:
+	if parent_id.strip_edges().is_empty():
+		return false
+	return _policies.get(parent_id, null) is ParentalControlPolicy
