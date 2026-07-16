@@ -292,6 +292,16 @@ func _set_main_layout_visible(value: bool) -> void:
 	var layout := get_node_or_null("/root/Main/Layout")
 	if layout != null:
 		layout.visible = value
+	# VoxelBodyBG is an OPAQUE black full-rect ColorRect on Main's 2D canvas —
+	# it draws over the root 3D viewport. Hide it (and the scanline overlay)
+	# during gameplay or the kid sees a black screen with only the HUD
+	# CanvasLayer visible above it.
+	var bg := get_node_or_null("/root/Main/VoxelBodyBG")
+	if bg != null:
+		bg.visible = value
+	var scan := get_node_or_null("/root/Main/VoxelScanlines")
+	if scan != null:
+		scan.visible = value
 
 
 ## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
