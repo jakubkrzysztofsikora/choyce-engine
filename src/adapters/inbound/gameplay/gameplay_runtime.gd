@@ -929,6 +929,8 @@ func _apply_tier(index: int, label: String, damage: int, inv: Dictionary) -> voi
 	_current_weapon_index = index
 	if _player_controller != null and _player_controller.has_method("equip_weapon_damage"):
 		_player_controller.equip_weapon_damage(damage)
+	if _player_controller != null and _player_controller.has_method("set_weapon_visual"):
+		_player_controller.set_weapon_visual(String(_weapon_tiers[index].get("id", "")))
 	if _weapon_label != null:
 		_weapon_label.text = "🗡 %s (%d dmg)" % [label, damage]
 	if _screen_feedback != null:
@@ -1084,6 +1086,17 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 		num_label.size = Vector2(16, 18)
 		num_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_panel.add_child(num_label)
+		# Big emoji icon so slots aren't flat colored squares (user bug).
+		var icon_label := Label.new()
+		icon_label.text = _hotbar_icon_for(String(entry["id"]), i)
+		icon_label.add_theme_font_size_override("font_size", 40)
+		icon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		icon_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		icon_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon_label.offset_top = 6
+		icon_label.offset_bottom = -18
+		icon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot_panel.add_child(icon_label)
 		# Item name bottom — kid sees "Trawa" not "empty square".
 		var name_label := Label.new()
 		name_label.text = String(entry["name"])
@@ -1103,6 +1116,24 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot_panel.add_child(name_label)
 		_hotbar_panel.add_child(slot_panel)
+
+
+## Emoji icon for a hotbar slot. Slot 0 is the weapon (icon follows the
+## current tier: fist -> stick -> sword -> epic sword); slots 1-4 are blocks.
+func _hotbar_icon_for(entry_id: String, slot_index: int) -> String:
+	if slot_index == 0 or entry_id == "weapon":
+		match _weapon_tiers[_current_weapon_index].get("id", "fist"):
+			"stick": return "🪵"
+			"sword_iron": return "🗡️"
+			"sword_epic": return "⚔️"
+			_: return "👊"
+	match entry_id:
+		"grass": return "🌿"
+		"dirt": return "🟫"
+		"wood_oak", "wood": return "🪵"
+		"stone", "brick_red", "brick": return "🪨"
+		"sand": return "🏖️"
+		_: return "🧱"
 
 
 func _on_hotbar_changed(active_slot: int, _block_id: String) -> void:

@@ -564,6 +564,39 @@ func equip_weapon_damage(damage: int) -> void:
 	_equipped_weapon_damage = maxi(damage, 1)
 
 
+const _SWORD_1H := "res://data/models/kaykit/adventurers/assets/sword_1handed.gltf"
+const _SWORD_2H := "res://data/models/kaykit/adventurers/assets/sword_2handed.gltf"
+var _held_weapon: Node3D = null
+
+## Show a real weapon model in the kid's hand for sword tiers. Bare hand
+## (fist/stick) keeps the Muay Thai animation with nothing held. The 2-handed
+## "epic" sword reads as the FF-style big blade. Silent no-op if the model or
+## the character mesh is missing (procedural fallback stays bare-hand).
+func set_weapon_visual(tier_id: String) -> void:
+	if _held_weapon != null and is_instance_valid(_held_weapon):
+		_held_weapon.queue_free()
+		_held_weapon = null
+	if _character_mesh == null:
+		return
+	var model_path := ""
+	match tier_id:
+		"sword_iron": model_path = _SWORD_1H
+		"sword_epic": model_path = _SWORD_2H
+		_: return  # fist / stick — bare-handed Muay Thai
+	if not ResourceLoader.exists(model_path):
+		return
+	var packed: PackedScene = load(model_path)
+	if packed == null:
+		return
+	_held_weapon = packed.instantiate()
+	_character_mesh.add_child(_held_weapon)
+	# Right-hand offset + upright grip. Tuned to the Kenney rig's scale so the
+	# blade sits in the fist and points up-forward.
+	_held_weapon.position = Vector3(0.28, 0.55, 0.15)
+	_held_weapon.rotation_degrees = Vector3(0, 0, -20)
+	_held_weapon.scale = Vector3.ONE * (1.4 if tier_id == "sword_epic" else 1.1)
+
+
 ## Build a translucent BoxMesh that shows where the next block will
 ## land. Top-level Node3D (not parented to player rotation) so the
 ## preview stays axis-aligned in world space regardless of where the
