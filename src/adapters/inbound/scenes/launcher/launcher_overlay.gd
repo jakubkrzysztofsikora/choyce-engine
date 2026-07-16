@@ -15,6 +15,10 @@ signal play_pressed
 const REF := Vector2(1600.0, 960.0)  ## design reference; stretch scales from here
 const ADVENTURE_TITLE := "Wyspa skarbów"
 const _MUSIC := "adventure_island"
+## Music intro length before the beat kicks in. The cinematic fight cutscene
+## plays over this, then a flash reveals the menu on the drop. Tuned by ear to
+## adventure_island; a fixed value beats bundling a beat-detection lib.
+const BEAT_DROP_SEC := 3.2
 
 var _root: Control
 var _title: Label
@@ -23,6 +27,12 @@ var _subtitle: Label
 var _shapes: Array[Dictionary] = []      ## {node, speed, phase, base}
 var _t: float = 0.0
 var _localization = null
+## Cutscene fighters (two clashing silhouettes) animated until the beat drop.
+var _cutscene: Control = null
+var _fighter_l: Polygon2D = null
+var _fighter_r: Polygon2D = null
+var _flash: ColorRect = null
+var _menu_revealed: bool = false
 
 
 func setup(localization = null) -> LauncherOverlay:
@@ -115,9 +125,123 @@ func _build() -> void:
 	col.add_child(btn_wrap)
 
 	_play_btn.pressed.connect(_on_play)
+
+	# Menu starts hidden; the fight cutscene plays, then the beat drop reveals
+	# it. col holds title/subtitle/button — hide the interactive parts until
+	# the drop so the kid watches the intro first.
+	_subtitle.modulate.a = 0.0
+	btn_wrap.modulate.a = 0.0
+	_title.modulate.a = 0.0
+
+	_build_cutscene()
+	# Reveal the menu on the beat drop.
+	var timer := get_tree().create_timer(BEAT_DROP_SEC)
+	timer.timeout.connect(_reveal_menu)
+
+
+## Cinematic intro: two fighter silhouettes charge in from the sides and clash
+## in the middle, building to the beat drop. No video file (Godot 4 has no
+## mp4/webm) — a scripted in-engine cutscene that resolves into the menu.
+func _build_cutscene() -> void:
+	_cutscene = Control.new()
+	_cutscene.name = "Cutscene"
+	_cutscene.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_cutscene.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_cutscene)
+
+	# A big cinematic word over the fight.
+	var hype := Label.new()
+	hype.text = _tr("launcher.cutscene", "PRZYGODA CZEKA…")
+	hype.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hype.add_theme_font_size_override("font_size", 60)
+	hype.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+	hype.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	hype.add_theme_constant_override("shadow_offset_x", 3)
+	hype.add_theme_constant_override("shadow_offset_y", 3)
+	hype.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	hype.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hype.position = Vector2(REF.x * 0.5 - 300, REF.y * 0.22)
+	hype.size = Vector2(600, 80)
+	_cutscene.add_child(hype)
+	var hype_tw := create_tween().set_loops()
+	hype_tw.tween_property(hype, "modulate:a", 0.55, 0.4)
+	hype_tw.tween_property(hype, "modulate:a", 1.0, 0.4)
+
+	# Two fighter silhouettes (simple angular polygons) rush in and clash.
+	_fighter_l = _make_fighter(Color(0.10, 0.14, 0.20, 0.92), false)
+	_fighter_r = _make_fighter(Color(0.55, 0.12, 0.12, 0.92), true)
+	_cutscene.add_child(_fighter_l)
+	_cutscene.add_child(_fighter_r)
+	var ground_y := REF.y * 0.72
+	_fighter_l.position = Vector2(-260, ground_y)
+	_fighter_r.position = Vector2(REF.x + 260, ground_y)
+	# Charge to just off-center, arriving right at the beat drop.
+	var charge := create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	charge.tween_property(_fighter_l, "position:x", REF.x * 0.5 - 150, BEAT_DROP_SEC * 0.92)
+	charge.tween_property(_fighter_r, "position:x", REF.x * 0.5 + 150, BEAT_DROP_SEC * 0.92)
+
+	# White flash overlay, invisible until the drop.
+	_flash = ColorRect.new()
+	_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_flash.color = Color(1, 1, 1, 0)
+	_root.add_child(_flash)
+
+
+func _make_fighter(col: Color, facing_left: bool) -> Polygon2D:
+	var p := Polygon2D.new()
+	# Rough angular fighter silhouette (torso + raised arm), ~130x220.
+	var pts := PackedVector2Array([
+		Vector2(0, 0), Vector2(60, -20), Vector2(90, -110), Vector2(70, -220),
+		Vector2(20, -215), Vector2(30, -120), Vector2(-10, -60), Vector2(-30, 0),
+	])
+	if facing_left:
+		for i in pts.size():
+			pts[i].x = -pts[i].x
+	p.polygon = pts
+	p.color = col
+	return p
+
+
+## Beat drop: flash, snap the menu in, punt the fighters off-screen, fade the
+## cutscene out. This is the "cutscene turns into a menu when the beat starts."
+func _reveal_menu() -> void:
+	if _menu_revealed:
+		return
+	_menu_revealed = true
+
+	# Flash punch.
+	if _flash != null:
+		var ftw := create_tween()
+		ftw.tween_property(_flash, "color:a", 0.85, 0.06)
+		ftw.tween_property(_flash, "color:a", 0.0, 0.45)
+
+	# Fighters recoil off-screen.
+	if _fighter_l != null:
+		var lt := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		lt.tween_property(_fighter_l, "position:x", -400.0, 0.4)
+	if _fighter_r != null:
+		var rt := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		rt.tween_property(_fighter_r, "position:x", REF.x + 400.0, 0.4)
+
+	# Menu pops in (title, subtitle, GRAJ).
+	_title.pivot_offset = Vector2(_title.size.x * 0.5, _title.size.y * 0.5)
+	_title.scale = Vector2(0.6, 0.6)
+	var mtw := create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	mtw.tween_property(_title, "scale", Vector2.ONE, 0.5)
+	mtw.tween_property(_title, "modulate:a", 1.0, 0.4)
+	mtw.tween_property(_subtitle, "modulate:a", 1.0, 0.5).set_delay(0.15)
+	var btn_wrap := _play_btn.get_parent()
+	if btn_wrap != null:
+		mtw.tween_property(btn_wrap, "modulate:a", 1.0, 0.5).set_delay(0.25)
 	_play_btn.grab_focus()
 
-	_animate_intro()
+	# Fade + free the cutscene layer shortly after.
+	var ct := get_tree().create_timer(0.6)
+	ct.timeout.connect(func() -> void:
+		if _cutscene != null and is_instance_valid(_cutscene):
+			_cutscene.queue_free()
+			_cutscene = null)
 
 
 ## Animated sky: vertical gradient + a soft radial sun glow that breathes +
@@ -202,23 +326,11 @@ func _style_play_button(btn: Button) -> void:
 	btn.add_theme_color_override("font_pressed_color", Color(0.92, 1, 0.92))
 
 
-func _animate_intro() -> void:
-	# Title + button pop in.
-	_title.scale = Vector2(0.6, 0.6)
-	_title.modulate.a = 0.0
-	_play_btn.scale = Vector2(0.6, 0.6)
-	_play_btn.pivot_offset = _play_btn.custom_minimum_size * 0.5
-	_title.pivot_offset = Vector2(_title.size.x * 0.5, _title.size.y * 0.5)
-	var tw := create_tween().set_parallel(true).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_title, "scale", Vector2.ONE, 0.6)
-	tw.tween_property(_title, "modulate:a", 1.0, 0.5)
-	tw.chain().tween_property(_play_btn, "scale", Vector2.ONE, 0.5).set_delay(0.15)
-
-
 func _process(delta: float) -> void:
 	_t += delta
-	# Gentle idle pulse on the PLAY button so it reads as "tap me".
-	if _play_btn != null and is_instance_valid(_play_btn):
+	# Gentle idle pulse on the PLAY button — only after the beat-drop reveal,
+	# so it doesn't fight the reveal pop-in tween.
+	if _menu_revealed and _play_btn != null and is_instance_valid(_play_btn):
 		var pulse := 1.0 + sin(_t * 2.4) * 0.04
 		_play_btn.scale = Vector2(pulse, pulse)
 	# Drift floating shapes; wrap across the reference width.
