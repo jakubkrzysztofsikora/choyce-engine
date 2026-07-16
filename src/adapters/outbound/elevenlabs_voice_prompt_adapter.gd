@@ -12,8 +12,11 @@ extends VoicePromptPort
 const _API_HOST := "https://api.elevenlabs.io"
 const _MODEL := "eleven_multilingual_v2"
 const _CACHE_DIR := "user://voice_cache"
-## ElevenLabs public multilingual voice — works for Polish. Overridable via env.
-const _DEFAULT_VOICE := "onwK4e9ZLuTAKqWW03F"   # "Daniel"
+## ElevenLabs default voice — a stock voice on the standard library ("Harry -
+## Fierce Warrior", fits a game NPC). The multilingual_v2 model speaks Polish
+## regardless of the voice's label. Overridable via ELEVENLABS_VOICE_ID; if an
+## account lacks this voice the request 404s and NPCs fall back to captions.
+const _DEFAULT_VOICE := "SOYHLrjzK2X1ezoPC6cr"
 
 var _api_key: String = ""
 var _voice_id: String = _DEFAULT_VOICE
