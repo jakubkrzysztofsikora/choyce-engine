@@ -83,11 +83,17 @@ func cancel() -> void:
 	_pending_text = ""
 
 
-func _on_request_completed(_result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_request_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	var line := _pending_text
 	_pending_text = ""
+	if result != HTTPRequest.RESULT_SUCCESS:
+		# result != 0 is a transport-level failure (e.g. 3 = can't connect,
+		# usually TLS/cert issues in a headless/sandbox context). NPCs fall
+		# back to captions; a real desktop run with a system cert store connects.
+		push_warning("ElevenLabsVoicePrompt: transport failure result=%d (captions only)" % result)
+		return
 	if code != 200 or body.is_empty():
-		push_warning("ElevenLabsVoicePrompt: TTS failed code=%d" % code)
+		push_warning("ElevenLabsVoicePrompt: TTS failed http=%d" % code)
 		return
 	# Persist so this line never costs a second request.
 	var path := _cache_path(line)
