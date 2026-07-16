@@ -132,6 +132,9 @@ func _build() -> void:
 	_subtitle.modulate.a = 0.0
 	btn_wrap.modulate.a = 0.0
 	_title.modulate.a = 0.0
+	# Invisible AND non-interactive during the cutscene, so an early Enter/tap
+	# can't launch a session mid-intro. Re-enabled on the beat-drop reveal.
+	_play_btn.disabled = true
 
 	_build_cutscene()
 	# Reveal the menu on the beat drop.
@@ -234,6 +237,7 @@ func _reveal_menu() -> void:
 	var btn_wrap := _play_btn.get_parent()
 	if btn_wrap != null:
 		mtw.tween_property(btn_wrap, "modulate:a", 1.0, 0.5).set_delay(0.25)
+	_play_btn.disabled = false
 	_play_btn.grab_focus()
 
 	# Fade + free the cutscene layer shortly after.
