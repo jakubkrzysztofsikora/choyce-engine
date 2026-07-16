@@ -13,6 +13,7 @@ var _kid_status_read_model: KidStatusReadModel
 var _get_world_callback: Callable
 var _active_world_id: String = ""
 var _gameplay_runtime: GameplayRuntime
+var _split_screen: SplitScreenRuntime = null
 var _provenance_badge: ProvenanceBadge
 var _no_world_cta_button: Button = null
 var _voice_prompt_port: VoicePromptPort = null
@@ -372,11 +373,11 @@ func _launch_playtest(local_coop: bool) -> Session:
 	var mode_label: String = _t("play.mode.coop") if local_coop else _t("play.mode.solo")
 	_info.text = "%s: %s (%s)" % [_t("play.session.started"), mode_label, session.session_id]
 	_session_start_time = Time.get_ticks_msec() / 1000.0
-	_start_gameplay(world, session)
+	_start_gameplay(world, session, local_coop)
 	return session
 
 
-func _start_gameplay(world: World, session: Session) -> void:
+func _start_gameplay(world: World, session: Session, local_coop: bool = false) -> void:
 	if _gameplay_runtime != null:
 		_gameplay_runtime.queue_free()
 		_gameplay_runtime = null
@@ -428,6 +429,8 @@ func _start_gameplay(world: World, session: Session) -> void:
 		var filtered := _npc_loader.filtered_for_policy(raw_npcs, combat_on)
 		_gameplay_runtime.setup_npcs(filtered)
 	_gameplay_runtime.start_session(world, session)
+	if local_coop:
+		_spawn_split_screen()
 
 
 ## Wave 3 W3-A/B: terminal-state handler — branches the celebration UI
@@ -496,7 +499,19 @@ func _permissive_autoplay_policy() -> ParentalControlPolicy:
 	)
 
 
+func _spawn_split_screen() -> void:
+	if _gameplay_runtime == null:
+		return
+	_split_screen = SplitScreenRuntime.new().setup(_gameplay_runtime)
+	get_tree().root.add_child(_split_screen)
+	# Second player joins once the world + P1 exist this frame.
+	_split_screen.call_deferred("attach_second_player")
+
+
 func _on_session_ended() -> void:
+	if _split_screen != null:
+		_split_screen.teardown()
+		_split_screen = null
 	if _gameplay_runtime != null:
 		_gameplay_runtime.queue_free()
 		_gameplay_runtime = null

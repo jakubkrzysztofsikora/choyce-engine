@@ -17,6 +17,15 @@ func _ready() -> void:
     _ensure_action("hotbar_3", [KEY_3])
     _ensure_action("hotbar_4", [KEY_4])
     _ensure_action("hotbar_5", [KEY_5])
+    # Player 2 (local split-screen co-op) — right-hand keys so both kids share
+    # one keyboard. Arrows move, RCtrl attacks, RShift sprints, Enter jumps.
+    _ensure_action("p2_move_forward", [KEY_UP])
+    _ensure_action("p2_move_back", [KEY_DOWN])
+    _ensure_action("p2_move_left", [KEY_LEFT])
+    _ensure_action("p2_move_right", [KEY_RIGHT])
+    _ensure_action("p2_jump", [KEY_KP_0, KEY_ENTER])
+    _ensure_action("p2_sprint", [KEY_CTRL])
+    _ensure_action("p2_attack", [KEY_KP_1, KEY_SLASH])
     print("InputMap initialized")
 
 func _ensure_action(action_name: String, keycodes: Array) -> void:

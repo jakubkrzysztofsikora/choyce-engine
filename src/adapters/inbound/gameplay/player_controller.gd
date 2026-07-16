@@ -40,6 +40,20 @@ const PLAYER_REGEN_PER_SEC := 2.0
 var _health: HealthState
 var _attack_cooldown: float = 0.0
 var _equipped_weapon_damage: int = STARTER_WEAPON_DAMAGE
+## Input action prefix for local co-op. "" = player 1 (default, solo path
+## unchanged). "p2_" routes movement/jump/sprint/attack to the P2 action set
+## the split-screen runtime registers (arrow keys / RCtrl / RShift).
+var _act_prefix: String = ""
+
+
+## Route this controller's input to a distinct action set (local co-op P2).
+## Call before the first physics tick. Empty prefix keeps the P1 bindings.
+func set_action_prefix(prefix: String) -> void:
+	_act_prefix = prefix
+
+
+func _act(name: String) -> String:
+	return _act_prefix + name
 
 # Procedural Muay Thai fight animation state. No skeletal-bone work
 # required — animates the existing _character_mesh wrapper via tween
@@ -159,7 +173,7 @@ func _physics_process(delta: float) -> void:
 		_coyote_time -= delta
 
 	# Jump buffer
-	if Input.is_action_just_pressed("jump"):
+	if Input.is_action_just_pressed(_act("jump")):
 		_jump_buffer = JUMP_BUFFER_TIME
 	else:
 		_jump_buffer -= delta
@@ -178,10 +192,10 @@ func _physics_process(delta: float) -> void:
 		jumped.emit()
 
 	# Movement
-	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input_dir := Input.get_vector(_act("move_left"), _act("move_right"), _act("move_forward"), _act("move_back"))
 	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
-	var is_sprinting := Input.is_action_pressed("sprint")
+	var is_sprinting := Input.is_action_pressed(_act("sprint"))
 	var speed := SPRINT_SPEED if is_sprinting else WALK_SPEED
 
 	if direction.length() > 0:
@@ -201,7 +215,7 @@ func _physics_process(delta: float) -> void:
 	# Route LMB / "attack" action through GameModeService — block in
 	# active slot → break; weapon in slot → attack. Matches
 	# Minecraft Bedrock; dissolves Adv 5 #1 mouse-rebind concern.
-	if Input.is_action_just_pressed("attack") and _attack_cooldown <= 0.0:
+	if Input.is_action_just_pressed(_act("attack")) and _attack_cooldown <= 0.0:
 		_dispatch_lmb()
 	# Place still bound to dedicated action (K) AND right mouse in
 	# build mode. _process_build_input handles K + 1-5.
@@ -700,13 +714,13 @@ func _process_build_input() -> void:
 		return
 	# Hotbar slot selection.
 	for i in range(_hotbar.size()):
-		if Input.is_action_just_pressed("hotbar_%d" % (i + 1)):
+		if Input.is_action_just_pressed(_act("hotbar_%d" % (i + 1))):
 			_active_slot = i
 			hotbar_changed.emit(_active_slot, _hotbar[i])
 	# Place or break — raycast 6m ahead.
-	if Input.is_action_just_pressed("place_block"):
+	if Input.is_action_just_pressed(_act("place_block")):
 		_try_place_block()
-	if Input.is_action_just_pressed("break_block"):
+	if Input.is_action_just_pressed(_act("break_block")):
 		_try_break_block()
 
 
