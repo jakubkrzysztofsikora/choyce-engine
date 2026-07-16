@@ -145,7 +145,10 @@ func _ready() -> void:
 	_ambient_player = $AmbientPlayer
 
 	# Live NPC voice via ElevenLabs. Key from env; absent -> silent no-op.
+	# Accept both env spellings (ELEVENLABS_API_KEY and ELEVEN_LABS_API_KEY).
 	var eleven_key := OS.get_environment("ELEVENLABS_API_KEY").strip_edges()
+	if eleven_key.is_empty():
+		eleven_key = OS.get_environment("ELEVEN_LABS_API_KEY").strip_edges()
 	var eleven_voice := OS.get_environment("ELEVENLABS_VOICE_ID").strip_edges()
 	_npc_voice = ElevenLabsVoicePromptAdapter.new().setup(self, eleven_key, eleven_voice)
 
