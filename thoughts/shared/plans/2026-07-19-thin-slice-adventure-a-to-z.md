@@ -61,11 +61,29 @@ card, plays, **defeats the enemies, sees a win celebration, and returns to the
 menu** — no console flags, no Create-shell detour, no manual setup. One world,
 one complete loop, near-final feel.
 
-## Status: Phase 1 DONE
+## Status: Phases 1, 3, 4 DONE · Phase 2 = manual gate (documented)
 
-Implemented + committed on `fix/adventure-thin-slice-combat-first-run` @ `9f1967c`,
-TDD, full contract suite green (78 contracts / 1029 checks / 0 failed;
-application 18/302; family-session + COPPA suites PASS; domain-isolation PASS).
+Implemented + committed on `fix/adventure-thin-slice-combat-first-run`
+(`9f1967c` fix, `5374003` phase-3, `07dc5d8` runbook). TDD throughout.
+Suite green: 79 contracts / 1038 checks / 0 failed; application 18/302;
+domain-isolation PASS; `--smoke` PASS.
+
+**Full win loop proven live** via headless autoplay + `CHOYCE_AUTOWIN`:
+`[combat] defeated` ×3 → `_finish_session won=true reason=goal_met score=15` →
+VictorySequence plays (confetti + win sting). Phase 2's manual clean-profile
+click-through remains the human acceptance gate (documented in the runbook);
+it cannot be automated (autoplay bypasses the first-run policy path).
+
+### Out-of-slice issues surfaced by the user (NOT in this plan's scope)
+- **Black 3D viewport on the running app** — likely the *uncommitted*
+  `main.tscn` + `project.godot` edits in the working tree at session start
+  (invalid `unique_id=` node attrs, stripped `load_steps`). Not touched by this
+  work; needs the author to reconcile or `git checkout` those two files.
+- **NPCs show captions but don't speak** — `gameplay_runtime._show_npc_dialogue`
+  is caption-only (a Label); no `VoicePromptPort`/TTS is injected into gameplay.
+  ElevenLabs adapter + VoicePromptPort exist but are wired only to shell CTAs.
+  NPC voice is a real feature but out of slice scope and gated by AI-audio
+  child-safety governance (moderation + audit per CLAUDE.md). Deferred.
 
 ---
 
