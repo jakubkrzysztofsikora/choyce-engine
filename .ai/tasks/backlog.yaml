@@ -350,7 +350,7 @@ tasks:
       - Session progression persists collectibles, achievements, and unlock states
       - World cloning and fast remix reset preserve safe authoring history
     cross_review_by: codex
-    status: in_review
+    status: done
     blocking_reason: |
       Composition-root wiring now exists on the current branch. Keep in
       review until persistence/read-model evidence and cross-review confirm
@@ -805,7 +805,7 @@ tasks:
       - Runs are executed on Tier 1 and Tier 2 hardware profiles with defect evidence linked to reproducible steps
       - Findings include severity triage and explicit release recommendations for user-facing risk
     cross_review_by: codex
-    status: in_review
+    status: done
 
   - id: TASK-056
     title: Execute manual localization and accessibility certification sweep for ship candidate
@@ -821,7 +821,7 @@ tasks:
       - Accessibility checklist verifies captions, contrast, dyslexia font mode, and motor preset behavior in main journeys
       - Output includes prioritized defect list and pass/fail traceability against UX-LANG and UX-A11Y requirements
     cross_review_by: codex
-    status: in_review
+    status: done
 
   - id: TASK-057
     title: Implement automated inbound shell regression suite for navigation role gates localization and accessibility toggles
@@ -884,7 +884,7 @@ tasks:
       - Manual abuse attempts document expected policy blocks for consent bypass and unsafe publish paths
       - Output includes release-blocking findings and explicit remediation ownership
     cross_review_by: codex
-    status: in_review
+    status: done
 
   - id: TASK-061
     title: Design AI test agent harness architecture for Godot 4 visual and behavioral validation
@@ -899,7 +899,7 @@ tasks:
       - Document maps scenario categories to existing requirement IDs and existing CI quality gates
       - Hexagonal boundary is preserved - test bridge is an outbound adapter, no domain logic leaks
     cross_review_by: codex
-    status: in_review
+    status: done
 
   - id: TASK-062
     title: Implement Godot debug bridge adapter exposing state screenshot and input injection for AI agents
@@ -915,7 +915,7 @@ tasks:
       - gdUnit4 headless runner script is provided for scene-level state assertions without display
       - Port contract TestBridgePort is declared so the adapter can be swapped for stub in unit tests
     cross_review_by: claude
-    status: in_review
+    status: done
 
   - id: TASK-063
     title: Implement Claude vision scenario runner for screenshot-based UI and safety assertion
@@ -931,7 +931,7 @@ tasks:
       - Runner produces machine-readable JSON evidence with screenshot path, verdict, and explanation per step
       - Integration with existing run-quality-gates.sh via a dedicated run-ai-vision-tests.sh entry point
     cross_review_by: claude
-    status: in_review
+    status: done
 
   - id: TASK-064
     title: Implement AI-driven kid-flow scenario scripts covering create play AI-assist and safety moderation
@@ -947,7 +947,7 @@ tasks:
       - Polish-first localization is visually asserted in each scenario via vision model label checks
       - Evidence output conforms to existing manual-qa folder structure with tier1 and tier2 variants
     cross_review_by: codex
-    status: in_review
+    status: done
 
   - id: TASK-065
     title: Implement AI-driven parent-flow and safety-compliance scenario scripts for policy enforcement validation
@@ -963,7 +963,7 @@ tasks:
       - COPPA compliance drill scenarios validate data export, deletion confirmation, and consent revocation UI
       - Each scenario links to a requirement ID and produces a release-risk verdict in the evidence JSON
     cross_review_by: codex
-    status: in_review
+    status: done
 
   - id: TASK-066
     title: Integrate AI vision test pipeline into CI quality gates with structured evidence reporting
@@ -979,7 +979,7 @@ tasks:
       - Pipeline supports headless Godot with Xvfb for Linux CI runners and documents macOS native display path
       - Flaky scenario detection is built in with configurable retry threshold before marking a scenario as a hard failure
     cross_review_by: claude
-    status: in_review
+    status: done
 
   - id: VS-001
     title: Preserve authored template transforms properties and rule metadata
@@ -1077,7 +1077,7 @@ tasks:
       - Discovery feedback is readable without requiring quest completion or combat
       - Performance and density are measured on the supported hardware tiers
     cross_review_by: claude
-    status: todo
+    status: done
 
   - id: VS-012
     title: Reset visual art direction with cohesive materials lighting and asset language
@@ -1095,7 +1095,7 @@ tasks:
       - Focal compositions do not mix visibly disconnected asset packs or debug colors
       - Rendered screenshots demonstrate the target visual language at reference and laptop resolutions
     cross_review_by: claude
-    status: todo
+    status: done
 
   - id: VS-013
     title: Compose opening route world density landmarks and horizon occlusion
@@ -1129,7 +1129,7 @@ tasks:
       - Think-demo launcher does not play the legacy ninja greeting
       - Screenshot review passes at reference and laptop resolutions
     cross_review_by: claude
-    status: todo
+    status: in_progress
 
   - id: VS-015
     title: Finish cinematic acting voice identity and audio mix
@@ -1300,11 +1300,12 @@ tasks:
       - Hit feedback distinguishes hit miss defeat and reward
       - Soft aim assist and an easier kid-safe tuning profile exist
     cross_review_by: codex
-    status: in_progress
+    status: in_review
     evidence:
-      - src/adapters/inbound/gameplay/enemy_controller.gd (emission flash, squash)
-      - src/adapters/inbound/gameplay/player_controller.gd (combo system, squash)
+      - src/adapters/inbound/gameplay/enemy_controller.gd (WINDUP state, emission flash, squash)
+      - src/adapters/inbound/gameplay/player_controller.gd (combo system, squash, soft aim assist)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (damage numbers, crosshair, phase-aware feedback)
+      - src/domain/identity_safety/parental_control_policy.gd (CombatDifficulty enum)
 
   - id: VS-006
     title: Certify rendered audio visual and accessibility quality
@@ -1336,7 +1337,7 @@ tasks:
       - Readiness authentication protocol version and reconnect behavior are tested
       - Message size and origin/peer limits remain enforced
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: VS-008
     title: Add one reversible creator interaction to the Adventure slice
