@@ -593,18 +593,25 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	root.set_meta("npc_base_y", pos.y)
 	root.add_to_group("npcs")
 
-	var capsule := MeshInstance3D.new()
-	var mesh := CapsuleMesh.new()
-	mesh.height = 1.6
-	mesh.radius = 0.35
-	capsule.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = _color_for_role(npc.role)
-	mat.emission_enabled = true
-	mat.emission = mat.albedo_color
-	mat.emission_energy_multiplier = 0.15
-	capsule.material_override = mat
-	root.add_child(capsule)
+	# Real rigged, textured character model per role — replaces the old
+	# solid-color capsule so kids can tell an NPC apart from a prop. Falls
+	# back to a tinted capsule only if the model fails to load.
+	var visual := _build_npc_visual(npc.role)
+	root.add_child(visual)
+
+	# Floating name label so the kid instantly reads "someone to talk to".
+	var label := Label3D.new()
+	label.text = npc.name_pl
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = false
+	label.fixed_size = true
+	label.pixel_size = 0.0012
+	label.font_size = 96
+	label.outline_size = 24
+	label.modulate = Color(1, 1, 1)
+	label.outline_modulate = Color(0, 0, 0, 0.85)
+	label.position = Vector3(0, 2.05, 0)
+	root.add_child(label)
 
 	var col := CollisionShape3D.new()
 	var shape := CapsuleShape3D.new()
@@ -627,6 +634,53 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	root.add_child(trigger)
 
 	_npc_root.add_child(root)
+
+
+## Quaternius character models by NPC role. All three are textured AND carry
+## inline animations (Idle/Run/HitReact…) so no retargeting is needed:
+##   ninja    — 14 anims (guide/default)
+##   wojownik — textured warrior (vendor); 0 anims -> static but recognizable
+##   szkielet — 5 anims (hostile)
+const _NPC_MODEL_BY_ROLE := {
+	"guide": "res://data/models/quaternius/ninja.glb",
+	"vendor": "res://data/models/quaternius/wojownik.glb",
+	"hostile": "res://data/models/quaternius/szkielet.glb",
+}
+const _NPC_IDLE_HINTS := ["Idle", "idle", "CharacterArmature|Idle", "SkeletonArmature|Skeleton_Idle"]
+
+
+## Build the NPC's visual node: a loaded character model (idle-animated when the
+## model has clips), or a tinted capsule fallback if loading fails.
+func _build_npc_visual(role: String) -> Node3D:
+	var path: String = _NPC_MODEL_BY_ROLE.get(role, _NPC_MODEL_BY_ROLE["guide"])
+	if ResourceLoader.exists(path):
+		var packed: PackedScene = load(path)
+		if packed != null:
+			var model := packed.instantiate() as Node3D
+			if model != null:
+				# Quaternius rigs author facing +Z; face -Z toward the approaching kid.
+				model.rotation.y = PI
+				var anim := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+				if anim != null:
+					for hint in _NPC_IDLE_HINTS:
+						if anim.has_animation(hint):
+							anim.get_animation(hint).loop_mode = Animation.LOOP_LINEAR
+							anim.play(hint)
+							break
+				return model
+	# Fallback: tinted capsule (old behavior) so an NPC is never invisible.
+	var capsule := MeshInstance3D.new()
+	var mesh := CapsuleMesh.new()
+	mesh.height = 1.6
+	mesh.radius = 0.35
+	capsule.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = _color_for_role(role)
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color
+	mat.emission_energy_multiplier = 0.15
+	capsule.material_override = mat
+	return capsule
 
 
 func _color_for_role(role: String) -> Color:
