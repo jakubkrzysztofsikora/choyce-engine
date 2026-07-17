@@ -166,7 +166,7 @@ func _build_cutscene() -> void:
 	hype.position = Vector2(REF.x * 0.5 - 300, REF.y * 0.22)
 	hype.size = Vector2(600, 80)
 	_cutscene.add_child(hype)
-	var hype_tw := create_tween().set_loops()
+	var hype_tw := create_tween().set_loops(5)  # bounded: cutscene lasts ~3.2s
 	hype_tw.tween_property(hype, "modulate:a", 0.55, 0.4)
 	hype_tw.tween_property(hype, "modulate:a", 1.0, 0.4)
 
