@@ -274,6 +274,25 @@ func _load_music(music_name: String) -> AudioStream:
 	if s == null:
 		push_warning("AudioBank: music not found — %s" % path)
 	_music_cache[music_name] = s
+	# H1: Set loop_offset to skip silent tails for seamless looping
+	if s is AudioStreamMP3:
+		s.loop = true
+		# Known music files and their loop points (end of silence tail)
+		match music_name:
+			"adventure_island":
+				s.loop_offset = 28.0
+			"celebration":
+				s.loop_offset = 28.7
+			"combat_phonk":
+				s.loop_offset = 29.0
+			"landing_ambient":
+				s.loop_offset = 29.2
+			"little_farm":
+				s.loop_offset = 28.3
+			"mushroom_forest":
+				s.loop_offset = 28.1
+			_:  # default: try to detect from file duration
+				pass
 	return s
 
 
@@ -291,6 +310,10 @@ func _play_music_from_dir(dir: String, slug: String, fade_in: bool) -> void:
 		if stream == null:
 			push_warning("AudioBank: music not found — %s" % path)
 		_music_cache[cache_key] = stream
+		if stream is AudioStreamMP3:
+			stream.loop = true
+			# Voxel phonk tracks: default loop offset to avoid silence
+			stream.loop_offset = 29.0
 	if stream == null or _music_player == null:
 		return
 	if stream is AudioStreamMP3:
