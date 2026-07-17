@@ -115,14 +115,24 @@ const PROP_GLTF_MAP: Dictionary = {
 }
 
 
-## Returns a new ShaderMaterial using the toon cel shader, tinted with
-## base_color. The shadow_color is automatically derived (darkened 35 %).
-func _make_toon_material(base_color: Color) -> ShaderMaterial:
+## Returns a new ShaderMaterial using the toon cel shader. When the source
+## model carries an albedo_texture it is passed through and the color tint is
+## forced to white so the texture shows at full fidelity (the shader multiplies
+## albedo * texture) — this is the fix for textured models rendering as flat
+## "blobs". For genuinely untextured primitives (tex == null) the base_color
+## tint drives the look as before.
+func _make_toon_material(base_color: Color, tex: Texture2D = null) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
 	mat.shader = TOON_CEL_SHADER
-	mat.set_shader_parameter("albedo", base_color)
+	var tint := Color.WHITE if tex != null else base_color
+	mat.set_shader_parameter("albedo", tint)
+	if tex != null:
+		mat.set_shader_parameter("albedo_texture", tex)
 	mat.set_shader_parameter("light_steps", 2.0)
-	mat.set_shader_parameter("shadow_color", base_color.darkened(0.35))
+	# Shadow band derived from the effective look: for textured props a light
+	# cool shadow reads better than a darkened flat tint.
+	var shadow := Color(0.72, 0.74, 0.82) if tex != null else base_color.darkened(0.35)
+	mat.set_shader_parameter("shadow_color", shadow)
 	return mat
 
 
@@ -176,16 +186,20 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = node
 		var color := Color.WHITE
+		var tex: Texture2D = null
 		var existing_mat := mi.get_surface_override_material(0)
 		if existing_mat == null and mi.mesh != null:
 			existing_mat = mi.get_active_material(0)
 		if existing_mat is StandardMaterial3D:
-			color = existing_mat.albedo_color
-		# Override placeholder near-white (all rgb >= 0.7) with the name-keyed
-		# tint so kids see something colored. Real authored colors pass through.
-		if fallback_tint != null and color.r >= 0.7 and color.g >= 0.7 and color.b >= 0.7:
+			var std := existing_mat as StandardMaterial3D
+			color = std.albedo_color
+			tex = std.albedo_texture
+		# When the model carries a real texture atlas, use it — don't flatten
+		# to a name-tint. The name-keyed tint only rescues genuinely untextured
+		# placeholder props (near-white baseColorFactor, no texture).
+		if tex == null and fallback_tint != null and color.r >= 0.7 and color.g >= 0.7 and color.b >= 0.7:
 			color = fallback_tint
-		mi.material_override = _make_toon_material(color)
+		mi.material_override = _make_toon_material(color, tex)
 
 
 func _create_node(node: SceneNode) -> void:
