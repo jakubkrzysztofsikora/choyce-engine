@@ -512,11 +512,41 @@ func _perform_attack() -> void:
 		if cam_fwd.length_squared() > 0.0001:
 			forward = cam_fwd.normalized()
 	var hit_point := hit_origin + forward * (ATTACK_RANGE * 0.5)
+	# Adv BB P0-3 fix: soft aim assist for 7yo
+	# Find nearest enemy in expanded cone and rotate toward it
+	var tree := get_tree()
+	if tree != null:
+		var best_enemy: EnemyController = null
+		var best_angle := ATTACK_ARC_RADIANS * 0.5
+		var best_distance := ATTACK_RANGE * 1.4
+		for body in tree.get_nodes_in_group("enemies"):
+			if not (body is EnemyController):
+				continue
+			var to_enemy: Vector3 = body.global_position - global_position
+			to_enemy.y = 0.0
+			var distance := to_enemy.length()
+			if distance > ATTACK_RANGE * 1.4:
+				continue
+			var angle := forward.angle_to(to_enemy.normalized())
+			if angle > ATTACK_ARC_RADIANS * 1.5:
+				continue
+			if best_enemy == null or angle < best_angle or (angle == best_angle and distance < best_distance):
+				best_enemy = body as EnemyController
+				best_angle = angle
+				best_distance = distance
+		if best_enemy != null and absf(best_angle) < 0.5:  # ~28°
+			var to_e := (best_enemy.global_position - global_position)
+			to_e.y = 0.0
+			var assist_yaw := forward.signed_angle_to(to_e.normalized(), Vector3.UP)
+			if absf(assist_yaw) < 0.5:
+				rotate_y(assist_yaw * 0.6)  # 60% of the way — visible but not robotic
+				forward = -transform.basis.z.normalized()  # Update forward after rotation
+				hit_point = hit_origin + forward * (ATTACK_RANGE * 0.5)
+	
 	attacked.emit(_equipped_weapon_damage, hit_point)
 
 	# Hit-detect: scan scene tree for EnemyControllers in arc.
 	# (Cheap O(N) — kid maps will rarely hold > 20 enemies.)
-	var tree := get_tree()
 	if tree == null:
 		return
 	var hit_count := 0
