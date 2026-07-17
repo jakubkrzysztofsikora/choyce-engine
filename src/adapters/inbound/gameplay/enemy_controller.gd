@@ -18,9 +18,11 @@ signal defeated(enemy_id: String, position: Vector3, loot: Array)
 
 const GRAVITY := 18.0           ## m/s^2 — slightly heavier than player for snappy bounce
 const BOUNCE_INTERVAL := 1.2    ## SLIME hops every N seconds
-const BOUNCE_VELOCITY := 5.0
-const BOUNCER_VELOCITY := 7.5
+const BOUNCE_VELOCITY := 3.8
+const BOUNCER_VELOCITY := 5.0
 const BOUNCER_INTERVAL := 0.9
+const CONTACT_ATTACK_WINDUP := 0.32
+const CONTACT_ATTACK_COOLDOWN := 1.1
 
 
 enum State { IDLE, WANDER, CHASE, HURT, DEFEAT }
@@ -37,6 +39,10 @@ var _wander_remaining: float = 0.0
 var _spawn_origin: Vector3 = Vector3.ZERO
 var _mesh: MeshInstance3D
 var _collision: CollisionShape3D
+var _ground_shadow: MeshInstance3D
+var _attack_marker: MeshInstance3D
+var _contact_attack_remaining: float = 0.0
+var _contact_attack_cooldown: float = 0.0
 ## Boolean guard — `_collision.set_deferred("disabled", true)` alone
 ## is racy on Godot 4.6.2: a second damage source in the same tick
 ## can re-enter _on_defeat before the deferred call lands and
@@ -87,7 +93,9 @@ func _build_visuals() -> void:
 	else:
 		var sph := SphereMesh.new()
 		sph.radius = radius
-		sph.height = radius * 2.0
+		# A slightly squashed jelly silhouette reads as a character instead of
+		# an unexplained floating ball.
+		sph.height = radius * 1.65
 		mesh_res = sph
 	_mesh.mesh = mesh_res
 	var mat := StandardMaterial3D.new()
@@ -95,6 +103,72 @@ func _build_visuals() -> void:
 	mat.roughness = 0.7
 	_mesh.material_override = mat
 	add_child(_mesh)
+	_build_face(_mesh, radius)
+	_build_ground_shadow(radius)
+	_build_attack_marker(radius)
+
+	# Keep the controller grounded on the large authored terrain even when a
+	# bounce ends on a seam between the runtime floor and a template surface.
+	floor_snap_length = 0.35
+	safe_margin = 0.04
+
+
+func _build_face(parent: Node3D, radius: float) -> void:
+	var eye_mat := StandardMaterial3D.new()
+	eye_mat.albedo_color = Color(0.03, 0.04, 0.08)
+	eye_mat.roughness = 0.45
+	for x in [-0.14, 0.14]:
+		var eye := MeshInstance3D.new()
+		var eye_mesh := SphereMesh.new()
+		eye_mesh.radius = 0.065
+		eye_mesh.height = 0.13
+		eye.mesh = eye_mesh
+		eye.material_override = eye_mat
+		eye.position = Vector3(x, 0.08, -radius * 0.82)
+		parent.add_child(eye)
+
+	var mouth := MeshInstance3D.new()
+	var mouth_mesh := BoxMesh.new()
+	mouth_mesh.size = Vector3(0.18, 0.035, 0.035)
+	mouth.mesh = mouth_mesh
+	mouth.material_override = eye_mat
+	mouth.position = Vector3(0, -0.10, -radius * 0.83)
+	parent.add_child(mouth)
+
+
+func _build_ground_shadow(radius: float) -> void:
+	_ground_shadow = MeshInstance3D.new()
+	_ground_shadow.name = "GroundShadow"
+	var shadow_mesh := CylinderMesh.new()
+	shadow_mesh.top_radius = radius * 1.15
+	shadow_mesh.bottom_radius = radius * 1.15
+	shadow_mesh.height = 0.025
+	_ground_shadow.mesh = shadow_mesh
+	var shadow_mat := StandardMaterial3D.new()
+	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shadow_mat.albedo_color = Color(0.02, 0.04, 0.08, 0.24)
+	_ground_shadow.material_override = shadow_mat
+	_ground_shadow.top_level = true
+	add_child(_ground_shadow)
+
+
+func _build_attack_marker(radius: float) -> void:
+	_attack_marker = MeshInstance3D.new()
+	_attack_marker.name = "AttackTelegraph"
+	var marker_mesh := CylinderMesh.new()
+	marker_mesh.top_radius = radius * 1.35
+	marker_mesh.bottom_radius = radius * 1.35
+	marker_mesh.height = 0.025
+	_attack_marker.mesh = marker_mesh
+	var marker_mat := StandardMaterial3D.new()
+	marker_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	marker_mat.albedo_color = Color(1.0, 0.78, 0.18, 0.8)
+	_attack_marker.material_override = marker_mat
+	_attack_marker.position.y = -radius + 0.04
+	_attack_marker.visible = false
+	add_child(_attack_marker)
 
 
 func _physics_process(delta: float) -> void:
@@ -102,6 +176,7 @@ func _physics_process(delta: float) -> void:
 		return
 	health.tick(delta)
 	_hurt_remaining = maxf(_hurt_remaining - delta, 0.0)
+	_contact_attack_cooldown = maxf(_contact_attack_cooldown - delta, 0.0)
 
 	# Gravity
 	if not is_on_floor():
@@ -109,41 +184,54 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = 0.0
 
-	match _state:
-		State.IDLE:
-			_state_idle(delta)
-		State.WANDER:
-			_state_wander(delta)
-		State.CHASE:
-			_state_chase(delta)
-		State.HURT:
-			_state_hurt(delta)
-		State.DEFEAT:
-			pass
+	if _contact_attack_remaining > 0.0:
+		_contact_attack_remaining -= delta
+		velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, 20.0 * delta)
+		if _contact_attack_remaining <= 0.0:
+			_perform_contact_attack()
+	else:
+		match _state:
+			State.IDLE:
+				_state_idle(delta)
+			State.WANDER:
+				_state_wander(delta)
+			State.CHASE:
+				_state_chase(delta)
+			State.HURT:
+				_state_hurt(delta)
+			State.DEFEAT:
+				pass
 
 	move_and_slide()
+	if _ground_shadow != null and is_instance_valid(_ground_shadow):
+		_ground_shadow.global_position = Vector3(global_position.x, 0.015, global_position.z)
 	_check_aggro()
 
 
-func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO) -> bool:
+func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO, attack_style: String = "punch") -> bool:
 	if not health.apply_damage(amount):
 		return false
 	emit_signal("damaged", health.current_hp)
 	emit_signal("damaged_with_amount", amount, global_position + Vector3(0, 0.4, 0))
 	_state = State.HURT
 	_hurt_remaining = 0.2
+	# Adv Y H5 fix: kicks get 2x knockback
+	var knockback_mult := 2.0 if attack_style == "kick" else 1.0
 	# Knockback away from attacker
 	if knockback_from != Vector3.ZERO:
 		var away := (global_position - knockback_from).normalized()
 		away.y = 0.0
-		velocity = away * 6.0
-		velocity.y = 3.0
+		velocity = away * 6.0 * knockback_mult
+		velocity.y = 3.0 * knockback_mult
 	# Adv Y C3 fix — emission-spike white flash (visible on green AND
 	# purple BIG_SLIME). Previous pale-pink (1.0, 0.85, 0.85) tint
 	# was invisible on green slime tint. Snap to pure white + emission
 	# spike for 50ms, then linear-fade back over 120ms. Holds the
 	# bright frame long enough for the kid's eye to register "WHACK"
-	# before the colour returns to the original tint.
+	# Adv Y C3 fix: emission-spike white flash with 80ms hold + snap-back.
+	# Previous pale-pink (1.0, 0.85, 0.85) tint was invisible on green slime.
+	# Snap to pure white + emission spike, hold 80ms, then snap back instantly.
 	if _mesh != null and _mesh.material_override is StandardMaterial3D:
 		var mat: StandardMaterial3D = _mesh.material_override
 		var original_color := mat.albedo_color
@@ -154,18 +242,25 @@ func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO) -> bool:
 		mat.emission_enabled = true
 		mat.emission = Color.WHITE
 		mat.emission_energy_multiplier = 1.5
+		# Adv Y M2 fix: vertical squash + horizontal stretch on hit reads as "OOF"
+		# Parallel-tween with the emission flash for simultaneous visual feedback
+		var original_scale := _mesh.scale
+		var squash_tween := create_tween().set_parallel(true)
+		squash_tween.tween_property(_mesh, "scale",
+			Vector3(1.3, 0.65, 1.3), 0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		squash_tween.tween_property(_mesh, "scale",
+			original_scale, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		var tween := create_tween()
-		# Hold the bright frame.
-		tween.tween_interval(0.05)
-		# Linear-fade albedo + emission energy back to original.
-		tween.parallel().tween_property(mat, "albedo_color", original_color, 0.12)
-		tween.parallel().tween_property(mat, "emission_energy_multiplier",
-			original_emission_energy, 0.12)
+		# Hold the bright frame for 80ms so the eye registers "WHACK"
+		tween.tween_interval(0.08)
 		tween.tween_callback(func() -> void:
 			if mat == null:
 				return
+			# Snap back to original in one frame (no tween)
+			mat.albedo_color = original_color
 			mat.emission = original_emission
 			mat.emission_enabled = original_emission_enabled
+			mat.emission_energy_multiplier = original_emission_energy
 		)
 	if not health.is_alive:
 		_on_defeat()
@@ -231,8 +326,10 @@ func _state_chase(delta: float) -> void:
 	var to_player := _player_ref.global_position - global_position
 	to_player.y = 0.0
 	if to_player.length() < 0.6:
-		# In contact range — try contact-damage on player via callback metadata.
-		_try_contact_damage()
+		# Contact damage is an explicit, readable attack now: pause, show the
+		# warning ring, then bonk once on cooldown instead of damaging every
+		# physics frame with no visible cause.
+		_begin_contact_attack()
 		return
 	match definition.archetype:
 		EnemyDefinition.Archetype.BOUNCER:
@@ -261,6 +358,30 @@ func _try_contact_damage() -> void:
 		return
 	_player_ref.call_deferred("apply_damage_from_enemy",
 		definition.contact_damage, global_position)
+
+
+func _begin_contact_attack() -> void:
+	if _contact_attack_cooldown > 0.0 or _contact_attack_remaining > 0.0:
+		return
+	_contact_attack_remaining = CONTACT_ATTACK_WINDUP
+	_contact_attack_cooldown = CONTACT_ATTACK_COOLDOWN
+	if _attack_marker != null and is_instance_valid(_attack_marker):
+		_attack_marker.visible = true
+		_attack_marker.scale = Vector3(0.65, 1.0, 0.65)
+		var tween := create_tween()
+		tween.tween_property(_attack_marker, "scale", Vector3.ONE, CONTACT_ATTACK_WINDUP)
+		tween.tween_callback(func() -> void:
+			if _attack_marker != null and is_instance_valid(_attack_marker):
+				_attack_marker.visible = false
+		)
+
+
+func _perform_contact_attack() -> void:
+	if _player_ref == null or not is_instance_valid(_player_ref):
+		return
+	if global_position.distance_to(_player_ref.global_position) > 1.35:
+		return
+	_try_contact_damage()
 
 
 func _pick_wander_target() -> void:

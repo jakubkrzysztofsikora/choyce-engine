@@ -352,11 +352,9 @@ tasks:
     cross_review_by: codex
     status: in_review
     blocking_reason: |
-      Wave C requirements audit (2026-05-18) confirmed CloneWorldService,
-      RemixWorldService, ManageProgressionService exist in
-      /src/application/ but are NOT wired in main.gd `_build_default_ports`.
-      No KEY_PROGRESSION/KEY_CLONE/KEY_REMIX port keys defined. FR-016
-      remains L1 (backend only). Flip back to `done` once main.gd
+      Composition-root wiring now exists on the current branch. Keep in
+      review until persistence/read-model evidence and cross-review confirm
+      that runtime session progression is visible after victory and replay.
       composition root threads these services to the play/create shells.
 
   - id: TASK-026
@@ -807,7 +805,7 @@ tasks:
       - Runs are executed on Tier 1 and Tier 2 hardware profiles with defect evidence linked to reproducible steps
       - Findings include severity triage and explicit release recommendations for user-facing risk
     cross_review_by: codex
-    status: todo
+    status: in_review
 
   - id: TASK-056
     title: Execute manual localization and accessibility certification sweep for ship candidate
@@ -823,7 +821,7 @@ tasks:
       - Accessibility checklist verifies captions, contrast, dyslexia font mode, and motor preset behavior in main journeys
       - Output includes prioritized defect list and pass/fail traceability against UX-LANG and UX-A11Y requirements
     cross_review_by: codex
-    status: todo
+    status: in_review
 
   - id: TASK-057
     title: Implement automated inbound shell regression suite for navigation role gates localization and accessibility toggles
@@ -870,7 +868,7 @@ tasks:
       - Sessions run on Tier 1 and Tier 2 hardware profiles with reproducible evidence capture
       - Findings include severity triage, release risk notes, and requirement traceability
     cross_review_by: codex
-    status: in_progress
+    status: done
 
   - id: TASK-060
     title: Execute manual safety-compliance operations drill for export delete retention and consent revocation
@@ -886,7 +884,7 @@ tasks:
       - Manual abuse attempts document expected policy blocks for consent bypass and unsafe publish paths
       - Output includes release-blocking findings and explicit remediation ownership
     cross_review_by: codex
-    status: todo
+    status: in_review
 
   - id: TASK-061
     title: Design AI test agent harness architecture for Godot 4 visual and behavioral validation
@@ -982,3 +980,410 @@ tasks:
       - Flaky scenario detection is built in with configurable retry threshold before marking a scenario as a hard failure
     cross_review_by: claude
     status: in_review
+
+  - id: VS-001
+    title: Preserve authored template transforms properties and rule metadata
+    owner: codex
+    specialty: runtime-data
+    inputs:
+      - PLAN.md
+      - data/templates/adventure.json
+      - data/templates/obby.json
+      - src/application/template_loader.gd
+    acceptance_criteria:
+      - TemplateLoader preserves node position rotation scale and properties
+      - TemplateLoader preserves rule source_blocks properties and active state
+      - JSON-to-domain tests prove authored fields are not discarded
+      - Renderer boundary normalizes JSON vectors and colors without moving Godot nodes into domain logic
+    cross_review_by: claude
+    status: done
+    evidence:
+      - tests/application/test_template_loader.gd
+      - tests/application/template_loader_starter_smoke.gd
+      - src/application/template_loader.gd
+
+  - id: VS-002
+    title: Propagate authored trigger metadata into gameplay runtime
+    owner: codex
+    specialty: gameplay-runtime
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [VS-001]
+    acceptance_criteria:
+      - Trigger Area3D receives stable node name and authored trigger metadata
+      - Trigger collision uses authored size
+      - Runtime recognizes collectible checkpoint win and win_zone semantics
+      - Renderer integration tests cover metadata and JSON property normalization
+    cross_review_by: claude
+    status: done
+    evidence:
+      - tests/adapters/inbound/test_world_renderer_toon_shader.gd
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+
+  - id: VS-003
+    title: Remove NPC scene-tree lifecycle errors from Adventure startup
+    owner: codex
+    specialty: runtime-reliability
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: []
+    acceptance_criteria:
+      - NPC nodes enter the tree before global/local transform use
+      - Headless Adventure smoke produces no !is_inside_tree errors
+      - NPC labels triggers models and collision remain present
+    cross_review_by: claude
+    status: done
+    evidence:
+      - .smoke/run-1784315018.log
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+
+  - id: VS-004
+    title: Execute clean-profile Adventure sandbox charter
+    owner: copilot
+    specialty: manual-qa
+    inputs:
+      - PLAN.md
+      - docs/release/release-exit-criteria.md
+    dependencies: [VS-001, VS-002, VS-003]
+    acceptance_criteria:
+      - Fresh profile click path reaches Adventure without debug flags
+      - Opening island presents a substantial traversable space with at least four landmarks, natural dressing, and no visible hard edge from spawn
+      - Guide introduction occurs before the first combat encounter
+      - Encounters are distributed across the island rather than surrounding spawn
+      - A free-play session has no forced target, countdown timer, or victory requirement
+      - Optional combat, animal/region discovery, safe exit, and second-run reset are evidenced
+      - Tier 1 and Tier 2 screenshots/logs are stored under manual-qa evidence
+    cross_review_by: codex
+    status: done
+
+  - id: VS-011
+    title: Polish sandbox interactions ecology and discovery feedback
+    owner: codex
+    specialty: sandbox-world
+    inputs:
+      - PLAN.md
+      - data/templates/adventure.json
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [VS-004]
+    acceptance_criteria:
+      - Adventure remains free-play with no default goal countdown timer or finite lives
+      - Guide signposts chest and region landmarks provide at least one non-combat interaction path
+      - Procedural dressing is deterministic per world seed and includes houses forest beach cave flora and fauna
+      - Discovery feedback is readable without requiring quest completion or combat
+      - Performance and density are measured on the supported hardware tiers
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-012
+    title: Reset visual art direction with cohesive materials lighting and asset language
+    owner: codex
+    specialty: visual-direction
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - data/models/kenney
+      - data/models/quaternius
+    dependencies: [VS-004]
+    acceptance_criteria:
+      - Ground water foliage architecture and interactables use a restrained coherent palette
+      - Terrain and props have visible material variation contact grounding and atmospheric depth
+      - Focal compositions do not mix visibly disconnected asset packs or debug colors
+      - Rendered screenshots demonstrate the target visual language at reference and laptop resolutions
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-013
+    title: Compose opening route world density landmarks and horizon occlusion
+    owner: codex
+    specialty: world-composition
+    inputs:
+      - PLAN.md
+      - data/templates/adventure.json
+      - src/adapters/inbound/gameplay/world_renderer.gd
+    dependencies: [VS-012]
+    acceptance_criteria:
+      - Opening grove has a guide trail house or yard foliage fauna and two readable routes
+      - Village forest beach cave and a distant landmark have recognizable silhouettes
+      - No visible rectangular map edge or empty spawn arena appears from the opening camera
+      - Procedural dressing remains deterministic and does not replace curated discovery beats
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-014
+    title: Replace debug HUD onboarding and launcher presentation with modern game UI
+    owner: codex
+    specialty: game-ui
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/scenes/launcher/launcher_overlay.gd
+    dependencies: [VS-012]
+    acceptance_criteria:
+      - No oversized control legend emoji/debug lettering or rainbow placeholder hotbar remains
+      - Context prompts captions and pause/help controls use one coherent responsive visual system
+      - Think-demo launcher does not play the legacy ninja greeting
+      - Screenshot review passes at reference and laptop resolutions
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-015
+    title: Finish cinematic acting voice identity and audio mix
+    owner: codex
+    specialty: cinematic-audio
+    inputs:
+      - PLAN.md
+      - scripts/audio/generate_eleven_assets.py
+      - src/adapters/inbound/shared/audio/audio_bank.gd
+      - src/adapters/inbound/scenes/launcher/launcher_overlay.gd
+    dependencies: [VS-012]
+    acceptance_criteria:
+      - Ziemek and Gniewko use distinct masculine youthful ElevenLabs voices with emotional delivery
+      - Voice lines are serialized and never overlap or mute each other
+      - Character captions match spoken lines and finish before launcher handoff
+      - Physical impact, whoosh, footstep, music, and voice levels are intelligible on laptop speakers
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-016
+    title: Capture rendered visual acceptance evidence and performance measurements
+    owner: copilot
+    specialty: rendered-qa
+    inputs:
+      - PLAN.md
+      - docs/release/release-exit-criteria.md
+    dependencies: [VS-013, VS-014, VS-015]
+    acceptance_criteria:
+      - Launcher, spawn, guide interaction, region transition, and combat screenshots are retained
+      - Reference and laptop-sized runs have no major framing, label, HUD, edge, or density defects
+      - Tier 1 and Tier 2 performance measurements are recorded with explicit release recommendation
+    cross_review_by: codex
+    status: todo
+
+  - id: VS-017
+    title: Scale the procedural island and make authored set pieces physically traversable
+    owner: codex
+    specialty: world-scale-collision
+    inputs:
+      - PLAN.md
+      - data/templates/adventure.json
+      - src/adapters/inbound/gameplay/gameplay_runtime.tscn
+      - src/adapters/inbound/gameplay/world_renderer.gd
+    dependencies: [VS-012, VS-013]
+    acceptance_criteria:
+      - Traversable floor is 1000m class and procedural dressing reaches well beyond a 20-second sprint
+      - Forests have large tree silhouettes, bridges are walkable and visually span a river crossing, and the opening horizon has no exposed edge
+      - Runtime visual assets receive collision boxes or are explicitly marked non-colliding for terrain/water/background-only geometry
+      - Native materials from imported Builder scenes are preserved and no black placeholder slabs appear in the opening camera
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-018
+    title: Implement the first normal-life homestead interaction loop
+    owner: codex
+    specialty: sandbox-interactions
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/gameplay/player_controller.gd
+    dependencies: [VS-013, VS-014]
+    acceptance_criteria:
+      - Starter homestead is enterable through a working door interaction
+      - Interior contains ready furniture/food assets and physical walls/floor
+      - Child can sit at the table and receive a visible contextual prompt
+      - Child can cook a meal, update inventory, and restore health without a forced quest or timer
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-019
+    title: Stream deterministic 5.76km² sandbox biomes around the player
+    owner: codex
+    specialty: procedural-world-streaming
+    inputs:
+      - PLAN.md
+      - data/templates/adventure.json
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [VS-017]
+    acceptance_criteria:
+      - Adventure terrain covers at least 2.4km × 2.4km and remains free-play
+      - Deterministic chunk keys are versioned by world id and macro coordinates
+      - Nearby chunks load/unload as the player crosses macro boundaries without rebuilding the whole world
+      - Forest, beach, meadow, hills, fauna, houses, collisions, river and mountain boundary continue beyond the opening
+      - Boot and chunk refresh evidence records no parse errors or visual map edge
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-020
+    title: Implement tool-gated tree cutting and stone mining sandbox loop
+    owner: codex
+    specialty: gathering-progression
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - src/adapters/inbound/gameplay/player_controller.gd
+    dependencies: [VS-018, VS-019]
+    acceptance_criteria:
+      - Axe and pickaxe are discoverable or craftable and visible in the interaction flow
+      - Trees require an axe and stones require a pickaxe before yielding resources
+      - Harvest feedback, inventory changes, respawn behavior, and physical proxies are tested
+      - No timer, grind quota, or forced quest is introduced
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-021
+    title: Add rare drivable vehicles and bounded bulldozer destruction sandbox
+    owner: codex
+    specialty: vehicle-gameplay
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/world_renderer.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [VS-020]
+    acceptance_criteria:
+      - At least one rare vehicle is discoverable, enterable, drivable, and exitable
+      - Vehicle collisions and camera handoff are reliable in the streamed world
+      - Bulldozer destroys only explicit tagged temporary scenery/build blocks and supports restore
+      - Protected homes, NPCs, bridge, and boundary cannot be destroyed
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-022
+    title: Add persistent bounded player-character customization
+    owner: codex
+    specialty: character-presentation
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/player_controller.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [VS-014]
+    acceptance_criteria:
+      - Skin, hair, face, top, pants and shoe choices update the actual third-person character
+      - The customization UI is compact, child-readable and does not obscure exploration
+      - Choices persist across a local replay and have no gameplay-stat impact
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-023
+    title: Replace slime placeholders with child-safe original liminal creatures
+    owner: codex
+    specialty: creature-art-and-behavior
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/enemy_controller.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [VS-005, VS-012]
+    acceptance_criteria:
+      - No colored ball/slime placeholder remains in Adventure encounters
+      - Creatures are original, non-gory, readable, avoidable and comply with parental combat policy
+      - Each encounter has a visual telegraph, grounded collision and physical-looking attack effect
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-005
+    title: Improve age-appropriate combat telegraphs and feedback
+    owner: mistral
+    specialty: combat-feel
+    inputs:
+      - PLAN.md
+      - thoughts/shared/reviews/adv-BB-combat-design-2026-05-19.md
+      - thoughts/shared/reviews/adv-Y-fight-feel-2026-05-19.md
+    dependencies: [VS-004]
+    acceptance_criteria:
+      - Enemy attacks have readable wind-up and recovery
+      - Hit feedback distinguishes hit miss defeat and reward
+      - Soft aim assist and an easier kid-safe tuning profile exist
+    cross_review_by: codex
+    status: in_progress
+    evidence:
+      - src/adapters/inbound/gameplay/enemy_controller.gd (emission flash, squash)
+      - src/adapters/inbound/gameplay/player_controller.gd (combo system, squash)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (damage numbers, crosshair, phase-aware feedback)
+
+  - id: VS-006
+    title: Certify rendered audio visual and accessibility quality
+    owner: mistral
+    specialty: presentation-qa
+    inputs:
+      - PLAN.md
+      - thoughts/shared/reviews/audio-2026-05-18.md
+      - docs/release/release-exit-criteria.md
+    dependencies: [VS-004]
+    acceptance_criteria:
+      - Screenshots and performance evidence exist for Tier 1 and Tier 2
+      - Audio buses levels blocking cues captions and reduce-motion are checked
+      - Findings are triaged with explicit release recommendation
+    cross_review_by: copilot
+    status: todo
+
+  - id: VS-007
+    title: Implement packaged Tauri Godot sidecar lifecycle and bridge
+    owner: copilot
+    specialty: desktop-integration
+    inputs:
+      - PLAN.md
+      - shell/src-tauri/src/lib.rs
+      - shell/src/lib/godot-bridge.ts
+    dependencies: [VS-004]
+    acceptance_criteria:
+      - Packaged shell starts and stops Godot sidecar
+      - Readiness authentication protocol version and reconnect behavior are tested
+      - Message size and origin/peer limits remain enforced
+    cross_review_by: codex
+    status: todo
+
+  - id: VS-008
+    title: Add one reversible creator interaction to the Adventure slice
+    owner: claude
+    specialty: creator-loop
+    inputs:
+      - PLAN.md
+      - src/application/apply_world_edit_service.gd
+      - src/adapters/inbound/gameplay/build_grid.gd
+    dependencies: [VS-004]
+    acceptance_criteria:
+      - Child can collect a bounded resource and unlock one upgrade
+      - Child can place one decoration using existing build grid logic
+      - Apply and undo are visible and persistence/replay are tested
+    cross_review_by: codex
+    status: todo
+
+  - id: VS-009
+    title: Replace voice and AI scaffolds with governed cancellable flows
+    owner: codex
+    specialty: ai-safety
+    inputs:
+      - PLAN.md
+      - .codex/skills/ai-safety/references/policy-matrix.md
+      - src/application/request_ai_creation_help_service.gd
+      - src/adapters/outbound/local_stt_adapter.gd
+    dependencies: [VS-008]
+    acceptance_criteria:
+      - Input moderation precedes LLM/STT interpretation
+      - Output moderation precedes rendering/apply
+      - Parent approval gates high-impact changes
+      - Every mutation has audit event and revert path
+      - Cancellation and offline fallback are safe
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-010
+    title: Add Obby using shared authored-runtime contracts
+    owner: mistral
+    specialty: template-expansion
+    inputs:
+      - PLAN.md
+      - data/templates/obby.json
+    dependencies: [VS-004, VS-006]
+    acceptance_criteria:
+      - Obby checkpoints and win zone use shared trigger semantics
+      - Respawn and finish behavior are data-driven
+      - No template-specific fork of GameplayRuntime is introduced
+    cross_review_by: codex
+    status: todo

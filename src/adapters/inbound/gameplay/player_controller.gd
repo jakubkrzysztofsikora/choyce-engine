@@ -9,10 +9,14 @@ const VERTICAL_LOOK_LIMIT := 1.2
 const COYOTE_TIME := 0.1
 const JUMP_BUFFER_TIME := 0.1
 const FOOTSTEP_INTERVAL := 0.4
-const BASE_FOV := 75.0
-const SPRINT_FOV := 82.0
+const BASE_FOV := 64.0
+const SPRINT_FOV := 70.0
 const GRAVITY_RISE_MULTIPLIER := 1.0
 const GRAVITY_FALL_MULTIPLIER := 1.35
+const BUILD_RAY_RANGE := 8.0
+const WATER_MOVE_MULTIPLIER := 0.48
+const WATER_SINK_SPEED := 1.3
+const WATER_SWIM_UP_VELOCITY := 3.4
 
 signal footstep
 signal landed
@@ -36,10 +40,17 @@ const ATTACK_ARC_RADIANS := 1.4   ## ~80° front cone
 const STARTER_WEAPON_DAMAGE := 4
 const PLAYER_MAX_HP := 100
 const PLAYER_REGEN_PER_SEC := 2.0
+## Adv Y M3 fix: combo-window cooldown system
+const COMBO_WINDOW_SEC := 0.5
+const COMBO_COOLDOWN := 0.18
+const COMBO_RECOVERY_SEC := 0.6
+const MAX_COMBO_SWINGS := 2
 
 var _health: HealthState
 var _attack_cooldown: float = 0.0
 var _equipped_weapon_damage: int = STARTER_WEAPON_DAMAGE
+var _last_swing_time: float = 0.0
+var _combo_count: int = 0
 ## Input action prefix for local co-op. "" = player 1 (default, solo path
 ## unchanged). "p2_" routes movement/jump/sprint/attack to the P2 action set
 ## the split-screen runtime registers (arrow keys / RCtrl / RShift).
@@ -67,8 +78,12 @@ const MUAY_THAI_FORWARD_LEAN := 0.10 ## ~6° permanent forward stance
 const MUAY_THAI_BOUNCE_AMP := 0.04
 const MUAY_THAI_BOUNCE_FREQ := 1.6   ## Hz
 const MUAY_THAI_POSE_LERP := 6.0
+## Adv Y M4 fix: increased squash for visible punch feedback
+## Was (1.08, 0.94, 1.08) — too small to read at speed
+const PUNCH_SQUASH_SCALE := Vector3(1.18, 0.86, 1.18)
 
 var _punch_phase: int = 0           ## 0=jab(R), 1=cross(L), 2=elbow(R)…
+var _last_attack_style: String = "punch"
 var _is_punching: bool = false
 var _muay_thai_t: float = 0.0
 var _punch_tween: Tween = null
@@ -79,6 +94,7 @@ var _punch_tween: Tween = null
 var _build_grid: BuildGrid = null
 var _hotbar: Array = []        ## Array[String] block_ids
 var _active_slot: int = 0      ## 0-based index into _hotbar
+var _equipped_tool_id := ""
 
 ## Game-mode resolver — equipped-slot kind drives whether LMB
 ## breaks blocks (build mode) or attacks (combat mode). Lazy-init
@@ -105,6 +121,8 @@ var _camera_base_y: float = 1.6
 var _character_mesh: Node3D
 var _anim_player: AnimationPlayer
 var _current_anim: String = ""
+var _world_interaction_lock: float = 0.0
+var _in_water: bool = false
 const WALK_VELOCITY_THRESHOLD := 0.5
 
 func _ready() -> void:
@@ -165,6 +183,10 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if not is_processing():
 		return
+	if _world_interaction_lock > 0.0:
+		_world_interaction_lock -= delta
+		velocity = Vector3.ZERO
+		return
 
 	# Coyote time
 	if is_on_floor():
@@ -178,14 +200,21 @@ func _physics_process(delta: float) -> void:
 	else:
 		_jump_buffer -= delta
 
-	# Better gravity curve
+	# Better gravity curve. Water is an Area3D volume, not an invisible wall:
+	# gravity turns into a gentle sink and jump becomes a small swim stroke.
 	var gravity := ProjectSettings.get_setting("physics/3d/default_gravity") as float
-	if not is_on_floor():
+	if _in_water:
+		velocity.y = move_toward(velocity.y, -WATER_SINK_SPEED, gravity * 0.42 * delta)
+	elif not is_on_floor():
 		var gravity_mult := GRAVITY_RISE_MULTIPLIER if velocity.y > 0 else GRAVITY_FALL_MULTIPLIER
 		velocity.y -= gravity * gravity_mult * delta
 
 	# Jump with coyote time and buffering
-	if _jump_buffer > 0.0 and _coyote_time > 0.0:
+	if _in_water and _jump_buffer > 0.0:
+		velocity.y = WATER_SWIM_UP_VELOCITY
+		_jump_buffer = 0.0
+		jumped.emit()
+	elif _jump_buffer > 0.0 and _coyote_time > 0.0:
 		velocity.y = JUMP_VELOCITY
 		_jump_buffer = 0.0
 		_coyote_time = 0.0
@@ -197,6 +226,8 @@ func _physics_process(delta: float) -> void:
 
 	var is_sprinting := Input.is_action_pressed(_act("sprint"))
 	var speed := SPRINT_SPEED if is_sprinting else WALK_SPEED
+	if _in_water:
+		speed *= WATER_MOVE_MULTIPLIER
 
 	if direction.length() > 0:
 		velocity.x = direction.x * speed
@@ -263,6 +294,12 @@ func _physics_process(delta: float) -> void:
 		elif horiz > WALK_VELOCITY_THRESHOLD:
 			want = "sprint" if is_sprinting else "walk"
 		_play_anim(want)
+
+
+## Called by the renderer's authored water volumes. This stays on the player
+## adapter so physics response is owned by movement rather than a scenery prop.
+func set_in_water(active: bool) -> void:
+	_in_water = active
 
 
 ## Fires when the AnimationPlayer finishes a one-shot clip (mainly
@@ -399,19 +436,63 @@ func spawn_at(pos: Vector3) -> void:
 		print("[player_controller] spawn_at: player=%s camera=%s current=%s" %
 			[global_position, _camera.global_position, _camera.current])
 
+
+func play_sit_at(pos: Vector3) -> void:
+	# Small authored interaction pose for the home loop. Input is locked for a
+	# moment so the kid sees the action complete instead of cancelling it with
+	# the next movement tick.
+	global_position = Vector3(pos.x, global_position.y, pos.z)
+	velocity = Vector3.ZERO
+	_world_interaction_lock = 1.7
+	if _character_mesh == null:
+		return
+	var tween := create_tween()
+	tween.tween_property(_character_mesh, "position:y", -0.28, 0.18)
+	tween.parallel().tween_property(_character_mesh, "rotation:x", -0.35, 0.18)
+	tween.tween_interval(1.15)
+	tween.tween_property(_character_mesh, "position:y", 0.0, 0.22)
+	tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.22)
+
 ## Sweep the front cone for enemies. Hit each EnemyController within
 ## ATTACK_RANGE + ATTACK_ARC. Emit `attacked` signal so gameplay
 ## runtime can spawn swing VFX / SFX.
 func _perform_attack() -> void:
-	_attack_cooldown = ATTACK_COOLDOWN
+	# Adv Y M3 fix: combo-window cooldown system
+	var now := Time.get_ticks_msec() / 1000.0
+	var in_combo_window := now - _last_swing_time < COMBO_WINDOW_SEC
+	_last_swing_time = now
+	
+	# Reset combo if outside window or at max swings
+	if not in_combo_window:
+		_combo_count = 0
+	
+	# After phase 3 (kick-left), enforce hard recovery
+	# Check if this was the last swing in the combo
+	var is_last_combo_swing := _punch_phase % 4 == 3  # phase 3 is the last in 0-3 cycle
+	
+	if is_last_combo_swing:
+		# Hard recovery after kick
+		_attack_cooldown = COMBO_RECOVERY_SEC
+		_combo_count = 0
+	elif _combo_count < MAX_COMBO_SWINGS and in_combo_window:
+		# Fast combo swing
+		_attack_cooldown = COMBO_COOLDOWN
+		_combo_count += 1
+	else:
+		# Normal cooldown
+		_attack_cooldown = ATTACK_COOLDOWN
+		_combo_count = 1
+	
 	# Squash on the MESH, not on `self` (CharacterBody3D parent of
 	# Camera3D). Was scaling self → camera scaled with it →
 	# whole-screen "wobble". Cosmetic-only on mesh keeps camera
 	# steady. (User reported "screen jumps weirdly when punching".)
 	if _character_mesh != null:
 		var attack_tween := create_tween()
+		# Adv Y M4 fix: bigger squash for visible punch feedback
+		# Was (1.08, 0.94, 1.08) — too small to read at speed
 		attack_tween.tween_property(_character_mesh, "scale",
-			Vector3(1.08, 0.94, 1.08), 0.06)
+			PUNCH_SQUASH_SCALE, 0.08)
 		attack_tween.tween_property(_character_mesh, "scale",
 			Vector3.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
@@ -450,7 +531,8 @@ func _perform_attack() -> void:
 		var angle := forward.angle_to(to_enemy.normalized())
 		if angle > ATTACK_ARC_RADIANS * 0.5:
 			continue
-		(body as EnemyController).apply_damage(_equipped_weapon_damage, global_position)
+		# Adv Y H5 fix: pass attack style for 2x kick knockback
+		(body as EnemyController).apply_damage(_equipped_weapon_damage, global_position, _last_attack_style)
 		hit_count += 1
 	# Adv Y C2 fix — whoosh on miss (no enemy in cone). Routed via
 	# signal so audio plumbing stays in gameplay_runtime; this layer
@@ -485,6 +567,7 @@ func _trigger_punch_animation() -> void:
 	_is_punching = true
 	var phase := _punch_phase % ATTACK_ANIMS.size()
 	_punch_phase += 1
+	_last_attack_style = "kick" if phase >= 2 else "punch"
 	var clip: String = ATTACK_ANIMS[phase]
 
 	# Restart even when the previous clip name matches (rapid LMB on
@@ -513,6 +596,10 @@ func _trigger_punch_animation() -> void:
 	if anim != null:
 		anim_len = anim.length + 0.1
 	get_tree().create_timer(anim_len, true, false, true).timeout.connect(_on_punch_watchdog)
+
+
+func get_last_attack_style() -> String:
+	return _last_attack_style
 
 
 func _on_punch_watchdog() -> void:
@@ -580,6 +667,8 @@ func equip_weapon_damage(damage: int) -> void:
 
 const _SWORD_1H := "res://data/models/kaykit/adventurers/assets/sword_1handed.gltf"
 const _SWORD_2H := "res://data/models/kaykit/adventurers/assets/sword_2handed.gltf"
+const _AXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-axe.glb"
+const _PICKAXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-pickaxe.glb"
 var _held_weapon: Node3D = null
 
 ## Show a real weapon model in the kid's hand for sword tiers. Bare hand
@@ -596,6 +685,8 @@ func set_weapon_visual(tier_id: String) -> void:
 	match tier_id:
 		"sword_iron": model_path = _SWORD_1H
 		"sword_epic": model_path = _SWORD_2H
+		"tool_axe": model_path = _AXE
+		"tool_pickaxe": model_path = _PICKAXE
 		_: return  # fist / stick — bare-handed Muay Thai
 	if not ResourceLoader.exists(model_path):
 		return
@@ -609,6 +700,40 @@ func set_weapon_visual(tier_id: String) -> void:
 	_held_weapon.position = Vector3(0.28, 0.55, 0.15)
 	_held_weapon.rotation_degrees = Vector3(0, 0, -20)
 	_held_weapon.scale = Vector3.ONE * (1.4 if tier_id == "sword_epic" else 1.1)
+
+
+func equip_tool(tool_id: String) -> void:
+	if tool_id not in ["tool_axe", "tool_pickaxe"]:
+		return
+	_equipped_tool_id = tool_id
+	set_weapon_visual(tool_id)
+	if _hotbar.is_empty():
+		_hotbar.append(tool_id)
+	else:
+		_hotbar[0] = tool_id
+	_active_slot = 0
+	hotbar_changed.emit(_active_slot, tool_id)
+
+
+func has_equipped_tool(tool_id: String) -> bool:
+	return _equipped_tool_id == tool_id
+
+
+func select_creative_build_item(item_id: String) -> void:
+	if item_id in ["tool_axe", "tool_pickaxe"]:
+		equip_tool(item_id)
+		return
+	var catalog_ids: Array[String] = []
+	for kind in BlockKind.default_catalog():
+		catalog_ids.append((kind as BlockKind).block_id)
+	if item_id not in catalog_ids:
+		return
+	if _hotbar.size() < 2:
+		_hotbar.append(item_id)
+	else:
+		_hotbar[1] = item_id
+	_active_slot = 1
+	hotbar_changed.emit(_active_slot, item_id)
 
 
 ## Build a translucent BoxMesh that shows where the next block will
@@ -727,23 +852,38 @@ func _process_build_input() -> void:
 func _build_raycast() -> Dictionary:
 	if _build_grid == null:
 		return {}
-	var origin := global_position + Vector3(0, 0.8, 0)
+	# TPP placement must follow the camera's composition, never the character's
+	# hips. The old body-forward ray put the block beside the thing the child was
+	# visibly pointing at, which made building feel arbitrary.
+	var origin := global_position + Vector3(0, 1.0, 0)
 	var forward := -transform.basis.z.normalized()
-	var end := origin + forward * 6.0
+	if _camera != null:
+		var viewport := _camera.get_viewport()
+		if viewport != null:
+			var screen_center := viewport.get_visible_rect().size * 0.5
+			origin = _camera.project_ray_origin(screen_center)
+			forward = _camera.project_ray_normal(screen_center).normalized()
+	var end := origin + forward * BUILD_RAY_RANGE
 	var space := get_world_3d().direct_space_state
 	var params := PhysicsRayQueryParameters3D.create(origin, end, 1, [self])
-	return space.intersect_ray(params)
+	var hit := space.intersect_ray(params)
+	if not hit.is_empty():
+		return hit
+	# When the camera looks over empty ground, retain an intuitive TPP target
+	# rather than falling back to a body-relative guess. The visual ghost makes
+	# the exact snapped cell explicit before the child clicks.
+	if absf(forward.y) > 0.0001:
+		var distance_to_ground := -origin.y / forward.y
+		if distance_to_ground > 0.0 and distance_to_ground <= BUILD_RAY_RANGE:
+			return {"position": origin + forward * distance_to_ground, "normal": Vector3.UP}
+	return {}
 
 
 func _try_place_block() -> void:
 	var hit := _build_raycast()
 	var cell: Vector3i
 	if hit.is_empty():
-		# No hit — place at point 3m ahead, snapped to ground level.
-		var forward := -transform.basis.z.normalized()
-		var pos := global_position + forward * 3.0
-		pos.y = global_position.y - 0.5  ## one cell below player feet
-		cell = _build_grid.world_to_cell(pos)
+		return
 	else:
 		# Place adjacent to hit face — use normal to offset.
 		var hit_pos: Vector3 = hit.get("position", global_position)
