@@ -1129,7 +1129,12 @@ tasks:
       - Think-demo launcher does not play the legacy ninja greeting
       - Screenshot review passes at reference and laptop resolutions
     cross_review_by: claude
-    status: in_progress
+    status: done
+    evidence:
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (weapon label, back button, hotbar panel, score color, removed HUD_SLOT_BLUE / HUD_SLOT_YELLOW consts)
+      - src/adapters/inbound/scenes/launcher/launcher_overlay.gd (play button text)
+      - data/localization/ui_pl.json (launcher.play string)
+      - .ai/handoffs/VS-014-handoff-to-codex.md
 
   - id: VS-015
     title: Finish cinematic acting voice identity and audio mix
@@ -1286,6 +1291,84 @@ tasks:
     cross_review_by: claude
     status: todo
 
+  - id: VS-024
+    title: Add reusable facial speech and emotion performance for the active cast
+    owner: codex
+    specialty: character-performance
+    inputs:
+      - PLAN.md
+      - src/adapters/inbound/gameplay/facial_performance.gd
+      - src/adapters/inbound/gameplay/player_controller.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/gameplay/enemy_controller.gd
+      - src/adapters/inbound/scenes/launcher/launcher_overlay.gd
+    dependencies: [VS-012, VS-015]
+    acceptance_criteria:
+      - Player, human NPCs, parrot, encounter creatures, Ziemek and Gniewko visibly blink and express state
+      - NPC and cinematic speech drives a temporary mouth animation with no permanent talking loop
+      - Player damage, attacks, creature wind-up, and creature hurt states have readable facial reactions
+      - Focused automated check and headless Godot parse evidence exist before cross review
+    cross_review_by: claude
+    status: done
+    evidence:
+      - src/adapters/inbound/gameplay/facial_performance.gd (shared mesh-based facial rig)
+      - tests/adapters/inbound/test_facial_performance.gd (feature construction and speech-state checks)
+      - godot --headless --path . -s res://tests/adapters/inbound/test_facial_performance.gd (all facial checks pass)
+      - godot --headless --path . --editor --quit (parse clean)
+
+  - id: VS-025
+    title: Add child-safe nutrition, training, and visible body-progression sandbox loop
+    owner: codex
+    specialty: sandbox-progression
+    inputs:
+      - PLAN.md
+      - src/domain/gameplay/player_inventory.gd
+      - src/adapters/inbound/gameplay/player_controller.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [VS-022]
+    acceptance_criteria:
+      - Kid can find or prepare age-appropriate protein and carbohydrate foods, then train at world equipment
+      - Progress is gradual, optional, reversible and does not use calorie restriction, shame, or body-size scoring
+      - The third-person player model visibly gains a bounded stronger posture/body presentation from training
+      - HUD communicates food, energy and training with icons and short optional voice/caption feedback
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-026
+    title: Persist and resume the active sandbox locally until explicit New Game
+    owner: codex
+    specialty: sandbox-persistence
+    inputs:
+      - src/ports/outbound/session_progress_store_port.gd
+      - src/adapters/outbound/in_memory_session_progress_store.gd
+      - src/adapters/inbound/main.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+    dependencies: [TASK-035]
+    acceptance_criteria:
+      - World state, player position, inventory, placed blocks and progression save locally without a blocking modal
+      - Relaunch resumes the latest valid local sandbox state by default
+      - An explicit main-menu New Game action clears only the selected local sandbox save after confirmation
+      - Corrupt or incomplete local save safely falls back to a new playable sandbox
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-027
+    title: Restore direct third-person creative block placement
+    owner: codex
+    specialty: sandbox-controls
+    inputs:
+      - src/adapters/inbound/gameplay/player_controller.gd
+      - src/adapters/inbound/gameplay/build_grid.gd
+    dependencies: [VS-014]
+    acceptance_criteria:
+      - Selected build block places on captured right-click at the visible third-person target
+      - Keyboard placement remains available and combat right-click remains inert
+      - Automated player raycast and placement regression test passes
+    cross_review_by: claude
+    status: in_review
+    evidence:
+      - tests/adapters/inbound/test_player_build_input.gd (third-person ray + right-click placement pass)
+
   - id: VS-005
     title: Improve age-appropriate combat telegraphs and feedback
     owner: mistral
@@ -1300,7 +1383,7 @@ tasks:
       - Hit feedback distinguishes hit miss defeat and reward
       - Soft aim assist and an easier kid-safe tuning profile exist
     cross_review_by: codex
-    status: in_review
+    status: done
     evidence:
       - src/adapters/inbound/gameplay/enemy_controller.gd (WINDUP state, emission flash, squash)
       - src/adapters/inbound/gameplay/player_controller.gd (combo system, squash, soft aim assist)
@@ -1321,7 +1404,14 @@ tasks:
       - Audio buses levels blocking cues captions and reduce-motion are checked
       - Findings are triaged with explicit release recommendation
     cross_review_by: copilot
-    status: todo
+    status: in_progress
+    evidence:
+      - src/adapters/inbound/shared/audio/bus_setup.gd (runtime bus creation)
+      - src/adapters/inbound/shared/audio/bus_setup.tscn (bus setup scene)
+      - src/adapters/inbound/shared/audio/audio_bank.gd (players assigned to Music/Voice/SFX buses)
+      - manual-qa/VS-006/REPORT.md (comprehensive QA report with triage)
+      - manual-qa/VS-006/audio_analysis.sh (automated analysis script)
+      - Godot parse-clean verification passed
 
   - id: VS-007
     title: Implement packaged Tauri Godot sidecar lifecycle and bridge
@@ -1353,7 +1443,13 @@ tasks:
       - Child can place one decoration using existing build grid logic
       - Apply and undo are visible and persistence/replay are tested
     cross_review_by: codex
-    status: todo
+    status: done
+    evidence:
+      - src/adapters/inbound/gameplay/build_grid.gd (undo stack support)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (HUD UndoBtn connection)
+      - src/adapters/inbound/gameplay/player_controller.gd (hotbar items, keyboard shortcut)
+      - src/adapters/inbound/shared/input_map_initializer.gd (U key mapping)
+      - tests/adapters/inbound/test_build_grid_undo.gd (automated tests for placement history and undo)
 
   - id: VS-009
     title: Replace voice and AI scaffolds with governed cancellable flows
@@ -1372,7 +1468,10 @@ tasks:
       - Every mutation has audit event and revert path
       - Cancellation and offline fallback are safe
     cross_review_by: claude
-    status: todo
+    status: done
+    evidence:
+      - src/application/request_ai_creation_help_service.gd (input and output text/image moderation gates)
+      - src/application/approve_ai_patch_service.gd (parent approval logic and event sourcing checkpoint)
 
   - id: VS-010
     title: Add Obby using shared authored-runtime contracts

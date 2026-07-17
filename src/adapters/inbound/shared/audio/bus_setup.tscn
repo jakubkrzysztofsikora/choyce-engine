@@ -1,0 +1,14 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+[gd_scene load_steps=2 format=3]
+
+[ext_resource path="res://src/adapters/inbound/shared/audio/bus_setup.gd" type="Script" id=1]
+
+[node name="BusSetup" type="Node"]
+script = ExtResource( 1 )
