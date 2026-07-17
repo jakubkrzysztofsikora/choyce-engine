@@ -1018,6 +1018,45 @@ func _on_player_attacked(damage: int, hit_position: Vector3) -> void:
 	# Cache attack style for use in _on_enemy_damaged
 	if _player_controller != null and _player_controller.has_method("get_last_attack_style"):
 		_last_attack_style = _player_controller.get_last_attack_style()
+
+
+func _update_crosshair_enemy_hover() -> void:
+	if _crosshair_h == null or _crosshair_v == null or _player_controller == null:
+		return
+	var camera := _player_controller.find_child("Camera3D", true, false)
+	if camera == null:
+		camera = _player_controller.find_child("Camera", true, false)
+	if camera == null or not (camera is Camera3D):
+		_crosshair_h.color = Color(1, 1, 1, 0.8)
+		_crosshair_v.color = Color(1, 1, 1, 0.8)
+		return
+	var from := (camera as Camera3D).project_ray_origin(Vector2(0.5, 0.5))
+	var to := from + (camera as Camera3D).project_ray_normal(Vector2(0.5, 0.5)) * 1.8
+	var space_state := get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.new()
+	query.from = from
+	query.to = to
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.exclude = [camera]
+	var result := space_state.intersect_ray(query)
+	var is_enemy_in_range := false
+	if result:
+		var collider: Node3D = result.collider
+		if collider != null and is_instance_valid(collider):
+			var body: Node3D = collider
+			while body != null:
+				if body.is_in_group("enemies"):
+					is_enemy_in_range = true
+					break
+				body = body.get_parent() as Node3D
+				if body == null:
+					break
+	var color := Color(1.0, 0.4, 0.4, 0.8) if is_enemy_in_range else Color(1, 1, 1, 0.8)
+	_crosshair_h.color = color
+	_crosshair_v.color = color
+
+
 func _on_enemy_damaged(amount: int, position: Vector3) -> void:
 	# Cheap heuristic: amount ≥ 8 → likely against a boss (bigger HP
 	# bar). Future: pass enemy_id through.
@@ -1850,6 +1889,8 @@ func _physics_process(delta: float) -> void:
 	if _world_renderer != null and _player_controller != null and is_instance_valid(_player_controller):
 		_world_renderer.set_exploration_focus(_player_controller.global_position)
 	_tick_world_interactions()
+	# Adv Y H4 fix: tint crosshair red when enemy is in range
+	_update_crosshair_enemy_hover()
 	if _interaction_feedback_until > 0.0:
 		_interaction_feedback_until -= delta
 		if _interaction_feedback_until <= 0.0 and _interaction_prompt_label != null:

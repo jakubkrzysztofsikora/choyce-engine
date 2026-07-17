@@ -25,7 +25,7 @@ const CONTACT_ATTACK_WINDUP := 0.32
 const CONTACT_ATTACK_COOLDOWN := 1.1
 
 
-enum State { IDLE, WANDER, CHASE, HURT, DEFEAT }
+enum State { IDLE, WANDER, CHASE, WINDUP, HURT, DEFEAT }
 
 
 var definition: EnemyDefinition
@@ -33,6 +33,10 @@ var health: HealthState
 var _state: State = State.IDLE
 var _bounce_cooldown: float = 0.0
 var _hurt_remaining: float = 0.0
+## Adv BB P0-2: telegraph wind-up before attack
+var _telegraph_remaining: float = 0.0
+const WINDUP_DURATION := 0.8
+const BOSS_WINDUP_DURATION := 1.2
 var _player_ref: Node3D
 var _wander_target: Vector3 = Vector3.ZERO
 var _wander_remaining: float = 0.0
@@ -198,6 +202,8 @@ func _physics_process(delta: float) -> void:
 				_state_wander(delta)
 			State.CHASE:
 				_state_chase(delta)
+			State.WINDUP:
+				_state_windup(delta)
 			State.HURT:
 				_state_hurt(delta)
 			State.DEFEAT:
@@ -325,12 +331,8 @@ func _state_chase(delta: float) -> void:
 		return
 	var to_player := _player_ref.global_position - global_position
 	to_player.y = 0.0
-	if to_player.length() < 0.6:
-		# Contact damage is an explicit, readable attack now: pause, show the
-		# warning ring, then bonk once on cooldown instead of damaging every
-		# physics frame with no visible cause.
-		_begin_contact_attack()
-		return
+	# Note: Contact attack is now triggered via WINDUP state (Adv BB P0-2)
+	# when enemy gets within attack range. This provides readable wind-up telegraph.
 	match definition.archetype:
 		EnemyDefinition.Archetype.BOUNCER:
 			_bounce_toward(to_player, BOUNCER_VELOCITY, BOUNCER_INTERVAL, delta)
@@ -341,6 +343,55 @@ func _state_chase(delta: float) -> void:
 func _state_hurt(_delta: float) -> void:
 	if _hurt_remaining <= 0.0:
 		_state = State.CHASE if _player_in_range() else State.WANDER
+
+
+## Adv BB P0-2: WINDUP state for attack telegraph
+func _state_windup(delta: float) -> void:
+	_telegraph_remaining -= delta
+	# Keep facing the player during wind-up
+	if _player_ref != null:
+		var to_player := _player_ref.global_position - global_position
+		to_player.y = 0.0
+		if to_player.length_squared() > 0.0001:
+			look_at(_player_ref.global_position + Vector3(0, 0.5, 0), Vector3.UP)
+		# If player moves out of attack range, abort wind-up and return to chase
+		if to_player.length() > 1.0:  # Slightly larger threshold for hysteresis
+			_state = State.CHASE
+			# Reset color
+			if _mesh != null and _mesh.material_override is StandardMaterial3D:
+				var mat: StandardMaterial3D = _mesh.material_override
+				if mat.has_meta("original_color"):
+					mat.albedo_color = mat.get_meta("original_color")
+				else:
+					mat.albedo_color = definition.tint
+			if _mesh != null:
+				_mesh.scale = Vector3.ONE
+	if _telegraph_remaining <= 0.0:
+		# Wind-up complete, trigger attack
+		_begin_contact_attack()
+		# Reset visuals after attack
+		if _mesh != null and _mesh.material_override is StandardMaterial3D:
+			var mat: StandardMaterial3D = _mesh.material_override
+			if mat.has_meta("original_color"):
+				mat.albedo_color = mat.get_meta("original_color")
+			else:
+				mat.albedo_color = definition.tint
+		if _mesh != null:
+			_mesh.scale = Vector3.ONE
+
+
+func _start_windup_visuals() -> void:
+	# Scale up and tint red for wind-up
+	if _mesh != null and _mesh.material_override is StandardMaterial3D:
+		var mat: StandardMaterial3D = _mesh.material_override
+		# Store original color to restore later
+		if not mat.has_meta("original_color"):
+			mat.set_meta("original_color", mat.albedo_color)
+		mat.albedo_color = Color(1.0, 0.3, 0.3)  # Red tint
+		# Scale up
+		if _mesh != null:
+			var windup_tween := create_tween()
+			windup_tween.tween_property(_mesh, "scale", Vector3(1.3, 1.3, 1.3), 0.1)
 
 
 func _bounce_toward(direction: Vector3, magnitude: float, interval: float, delta: float) -> void:
@@ -393,12 +444,19 @@ func _pick_wander_target() -> void:
 func _check_aggro() -> void:
 	if _player_ref == null:
 		return
-	if _state == State.HURT or _state == State.DEFEAT:
+	if _state == State.HURT or _state == State.DEFEAT or _state == State.WINDUP:
 		return
 	if definition.disposition == EnemyDefinition.Disposition.PASSIVE:
 		return
 	var dist := global_position.distance_to(_player_ref.global_position)
-	if dist <= definition.aggro_radius:
+	# Adv BB P0-2: enter WINDUP when in attack range (closer than aggro)
+	var attack_threshold := 0.8  # Distance to start wind-up
+	if dist <= attack_threshold and _state != State.WINDUP:
+		_state = State.WINDUP
+		_telegraph_remaining = BOSS_WINDUP_DURATION if definition.archetype == EnemyDefinition.Archetype.BIG_SLIME else WINDUP_DURATION
+		# Start visual wind-up: scale up and tint red
+		_start_windup_visuals()
+	elif dist <= definition.aggro_radius:
 		if _state != State.CHASE:
 			_state = State.CHASE
 	elif _state == State.CHASE and dist > definition.aggro_radius * 1.5:
