@@ -994,6 +994,10 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 	enemy.add_to_group("enemies")
 	# setup() before add_child so definition is non-null when _ready fires.
 	enemy.setup(def, _player_controller)
+	# Adv BB P0-7 fix: apply easy mode scaling if enabled
+	if _combat_policy != null and _combat_policy.combat_difficulty == ParentalControlPolicy.CombatDifficulty.EASY:
+		enemy.health.max_hp = int(enemy.health.max_hp * 0.6)
+		enemy.definition.contact_damage = int(enemy.definition.contact_damage * 0.5)
 	enemy.defeated.connect(_on_enemy_defeated)
 	# Hook hit feedback: floating "-N" damage label + short shake +
 	# percussive SFX on every landed swing. (Adv N/M feel overhaul.)

@@ -7,6 +7,8 @@ extends RefCounted
 
 ## AI access level for the child.
 enum AIAccessLevel { DISABLED, CREATIVE_ONLY, FULL }
+## Combat difficulty level (Adv BB P0-7)
+enum CombatDifficulty { EASY, NORMAL }
 
 ## Default daily playtime limit in minutes (0 = unlimited).
 const DEFAULT_DAILY_LIMIT_MINUTES: int = 60
@@ -23,6 +25,8 @@ var cloud_sync_consent: bool
 ## CLAUDE.md "Prioritize child safety and parental controls"). Parent
 ## opts in for older kids who play Roblox-style obby/combat.
 var combat_enabled: bool
+## Combat difficulty setting (Adv BB P0-7): EASY reduces enemy HP and damage
+var combat_difficulty: CombatDifficulty = CombatDifficulty.EASY
 ## Maximum wave number the WaveDirector will spawn. 0 = no waves
 ## past the starter pack. Caps frustration spiral for younger kids
 ## (Adv 2 H-3 fix).
@@ -37,7 +41,8 @@ func _init(
 	p_language_override: bool = false,
 	p_cloud_sync: bool = false,
 	p_combat_enabled: bool = false,
-	p_combat_wave_cap: int = 0
+	p_combat_wave_cap: int = 0,
+	p_combat_difficulty: CombatDifficulty = CombatDifficulty.EASY
 ) -> void:
 	daily_playtime_limit_minutes = maxi(0, p_daily_limit)
 	session_playtime_limit_minutes = maxi(0, p_session_limit)
@@ -47,6 +52,7 @@ func _init(
 	cloud_sync_consent = p_cloud_sync
 	combat_enabled = p_combat_enabled
 	combat_wave_cap = maxi(0, p_combat_wave_cap)
+	combat_difficulty = p_combat_difficulty
 
 
 func is_ai_disabled() -> bool:
