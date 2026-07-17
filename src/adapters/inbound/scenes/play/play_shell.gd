@@ -378,6 +378,11 @@ func _launch_playtest(local_coop: bool) -> Session:
 
 
 func _start_gameplay(world: World, session: Session, local_coop: bool = false) -> void:
+	# H5: Stop world music before starting gameplay to prevent stacking
+	var bank := _audio_bank()
+	if bank != null and bank.has_method("stop_music"):
+		bank.stop_music(true)  # fade out over 0.4s
+	
 	if _gameplay_runtime != null:
 		_gameplay_runtime.queue_free()
 		_gameplay_runtime = null
@@ -775,8 +780,10 @@ func _play_world_music(template_id: String) -> void:
 		"forest":
 			bank.play_music("mushroom_forest", true)
 		"adventure":
-			if not bank.play_phonk_random(true):
-				bank.play_music("sigma_protocol", true)
+			# The sandbox needs a continuous, welcoming exploration bed. The
+			# previous random phonk fallback made the world feel like a menu and
+			# could be silent when the optional pack was not imported.
+			bank.play_music("adventure_island", true)
 		_:
 			bank.play_music("sigma_protocol", true)
 
