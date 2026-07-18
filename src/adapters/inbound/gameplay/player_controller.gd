@@ -1129,6 +1129,26 @@ func setup_build_grid(grid: BuildGrid) -> void:
 	_select_hotbar_slot(0)
 
 
+## Creative inventory can surface the full safe catalog without permanently
+## filling the compact five-slot HUD. Reuse the last slot for a selected block
+## that is not already pinned, then emit the normal hotbar signal so held tool,
+## ghost preview and HUD all stay in sync.
+func select_creative_item(item_id: String) -> void:
+	if item_id.is_empty():
+		return
+	var existing_index := _hotbar.find(item_id)
+	if existing_index >= 0:
+		_select_hotbar_slot(existing_index)
+		return
+	if _hotbar.is_empty():
+		_hotbar.append(item_id)
+		_select_hotbar_slot(0)
+		return
+	var replace_index := _hotbar.size() - 1
+	_hotbar[replace_index] = item_id
+	_select_hotbar_slot(replace_index)
+
+
 func _process_build_input() -> void:
 	if _build_grid == null or _hotbar.is_empty():
 		return

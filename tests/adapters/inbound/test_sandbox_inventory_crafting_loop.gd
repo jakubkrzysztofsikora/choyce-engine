@@ -33,6 +33,11 @@ func _run() -> void:
 		"direct session keeps collected materials in one local inventory")
 	_assert(runtime._inventory_overlay != null and not runtime._inventory_overlay.visible,
 		"full backpack is present but closed during exploration")
+	_assert(runtime._creative_catalog_item_ids().has("tool_axe") and runtime._creative_catalog_item_ids().has("brick_red"),
+		"creative inventory exposes the shipped tool and block catalog")
+	runtime._select_creative_catalog_item("brick_red")
+	_assert(runtime._player_controller._hotbar.has("brick_red"),
+		"choosing a creative catalog item routes it into the active build hotbar")
 	runtime._toggle_inventory_overlay()
 	_assert(runtime._inventory_overlay.visible and runtime._player_controller.is_input_disabled(),
 		"explicit inventory open pauses world input instead of stealing keys at rest")
