@@ -1517,7 +1517,7 @@ tasks:
       - Audio buses levels blocking cues captions and reduce-motion are checked
       - Findings are triaged with explicit release recommendation
     cross_review_by: copilot
-    status: in_progress
+    status: in_review
     evidence:
       - src/adapters/inbound/shared/audio/bus_setup.gd (runtime bus creation)
       - src/adapters/inbound/shared/audio/bus_setup.tscn (bus setup scene)
@@ -1527,6 +1527,9 @@ tasks:
       - src/adapters/inbound/gameplay/screen_feedback.gd (shake/shake_directional respect reduce-motion)
       - src/adapters/inbound/gameplay/effect_spawner.gd (all particle effects respect reduce-motion)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (ambient particles respect reduce-motion)
+      - src/adapters/inbound/shared/ui/voice_assistant_overlay.gd (safety-block audio wiring)
+      - src/adapters/inbound/scenes/landing/landing_screen.gd (world music lifecycle)
+      - src/adapters/inbound/scenes/launcher/launcher_overlay.gd (launcher music lifecycle)
       - manual-qa/VS-006/REPORT.md (comprehensive QA report with triage, updated with reduce-motion and audio fixes)
       - manual-qa/VS-006/audio_analysis.sh (automated analysis script)
       - manual-qa/VS-006/audio_report.txt (updated audio analysis after fixes)
@@ -1535,8 +1538,13 @@ tasks:
       - data/audio/sfx/eleven/victory_fanfare.mp3 (normalized from -0.9dB to -3.9dB)
       - data/audio/sfx/eleven/kick_impact.mp3 (normalized from 0dB to -3.2dB)
       - data/audio/sfx/eleven/punch_thud.mp3 (normalized from 0dB to -3.1dB)
+      - data/audio/sfx/eleven/ui_click.mp3 (trimmed from 1.0s to 0.052s)
+      - data/audio/sfx/eleven/ui_confirm.mp3 (trimmed from 1.0s to 0.469s)
+      - data/audio/sfx/eleven/ui_back.mp3 (trimmed from 2.0s to 1.7s)
+      - data/audio/sfx/eleven/ui_hover.mp3 (trimmed from 1.0s to 0.496s)
       - data/audio/music/*.mp3 (trailing silence trimmed from all music files)
       - Godot parse-clean verification passed
+      - .ai/handoffs/VS-006-handoff-to-copilot.md (cross-review handoff document)
 
   - id: VS-007
     title: Implement packaged Tauri Godot sidecar lifecycle and bridge
