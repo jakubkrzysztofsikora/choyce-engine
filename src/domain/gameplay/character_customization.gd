@@ -8,6 +8,7 @@ class_name CharacterCustomization
 extends RefCounted
 
 const FACE_VARIANTS := ["a", "b", "c", "d", "e", "f"]
+const HERO_IDENTITIES := ["ziemek", "gniewko"]
 const SKIN_PALETTE := [
 	Color(0.99, 0.84, 0.69),  ## light
 	Color(0.93, 0.74, 0.55),  ## medium-light
@@ -45,6 +46,10 @@ var hair: int = 0
 var top: int = 0
 var pants: int = 0
 var shoes: int = 0
+## First-run defaults use Ziemek's authored wardrobe. Once a child changes a
+## swatch, the explicit override is saved and must win on the next launch.
+var hero_identity: String = "ziemek"
+var use_signature_outfit: bool = true
 
 
 func clamp_in_place() -> CharacterCustomization:
@@ -54,6 +59,7 @@ func clamp_in_place() -> CharacterCustomization:
 	top = clamp(top, 0, TOP_PALETTE.size() - 1)
 	pants = clamp(pants, 0, PANTS_PALETTE.size() - 1)
 	shoes = clamp(shoes, 0, SHOES_PALETTE.size() - 1)
+	hero_identity = hero_identity if hero_identity in HERO_IDENTITIES else "ziemek"
 	return self
 
 
@@ -65,6 +71,8 @@ func to_dict() -> Dictionary:
 		"top": top,
 		"pants": pants,
 		"shoes": shoes,
+		"hero_identity": hero_identity,
+		"use_signature_outfit": use_signature_outfit,
 	}
 
 
@@ -76,4 +84,8 @@ static func from_dict(d: Dictionary) -> CharacterCustomization:
 	c.top = int(d.get("top", 0))
 	c.pants = int(d.get("pants", 0))
 	c.shoes = int(d.get("shoes", 0))
+	c.hero_identity = String(d.get("hero_identity", "ziemek"))
+	# Preserve legacy saved swatches rather than silently replacing them with
+	# the new protagonist preset on the next session.
+	c.use_signature_outfit = bool(d.get("use_signature_outfit", false))
 	return c.clamp_in_place()

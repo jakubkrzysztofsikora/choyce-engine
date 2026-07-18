@@ -123,7 +123,7 @@ tasks:
       - Camp civilians are grounded human characters with small work/wander loops and individual safe interaction/reaction lines
       - An independent implementation review verifies the runtime paths and direct-play evidence before this task is marked done
     cross_review_by: claude
-    status: in_review
+    status: done
     evidence:
       - src/adapters/inbound/gameplay/vehicles/vehicle_base.gd (child-safe hard speed cap; safe egress raycast fallback to last grounded position; collision layer/mask restoration)
       - tests/adapters/inbound/test_vehicle_runtime.gd (_assert_vehicle_safety_and_fallbacks regression: speed cap, ramp grounded collision, void-safe egress, collision restore, fist fallback, equipped-tool fallback)
@@ -135,6 +135,76 @@ tasks:
       - godot4 --headless --path . --script tests/adapters/inbound/test_adventure_music_states.gd (all music state-transition assertions pass)
       - godot4 --headless --path . --script tests/domain/test_sandbox_state.gd and tests/application/test_sandbox_persistence.gd (no unrelated breakage)
       - Handoff: all VS-048 acceptance criteria are now covered by implementation and regression tests. Junior-coder slice complete; pending Claude cross-review per task cross_review_by before marking done.
+      - .ai/reviews/VS-048-claude-review-2026-07-18.json (Claude cross-review: APPROVE; all acceptance criteria met, production-ready)
+    claude_cr_findings:
+      - PASS: Child-safe hard speed cap implemented via _speed vector clamped to MAX_SPEED (20.0)
+      - PASS: Safe egress with raycast fallback to last grounded position prevents endless fall
+      - PASS: Collision layer/mask restoration on enter/exit maintains proper collision group membership
+      - PASS: Vehicle safety regression test covers speed cap, ramp grounded collision, void-safe egress, collision restore, fist fallback, equipped-tool fallback
+      - PASS: _spawn_npcs no longer early-returns on empty roster; starter-camp residents always spawn
+      - PASS: NPC collision shapes named for testability
+      - PASS: Camp civilian regression test validates all behavior criteria
+      - PASS: _tick_adventure_music implements correct state machine (drive > danger > explore)
+      - PASS: set_adventure_music_state supports all required states with seamless crossfades
+      - PASS: rotate_adventure_track maintains continuous playback
+      - PASS: Runtime contract test verifies all state transitions
+      - PASS: All headless regression tests pass (vehicle, civilians, music, sandbox, persistence)
+      - APPROVE: VS-048 implementation fully meets all acceptance criteria; production-ready
+
+  - id: VS-049
+    title: Deliver one shared collect → inventory → craft → build sandbox loop
+    owner: codex
+    specialty: sandbox-loop
+    inputs:
+      - .ai/research-compendium/RESEARCH_PLAN_008_Camera_3D_Preview_TPP_Building.md
+      - .ai/research-compendium/RESEARCH_VS-011_Sandbox_Interaction_Ecology.md
+      - src/domain/gameplay/player_inventory.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/gameplay/player_controller.gd
+      - src/adapters/inbound/gameplay/build_grid.gd
+    dependencies: [VS-020, VS-044]
+    acceptance_criteria:
+      - Collecting a real tree or rock visibly changes one shared, image-led inventory without forcing a quest or timer
+      - Opening inventory is explicit, never steals gameplay keys while unfocused, and can craft at least meal, stick, and iron sword only when the recipe materials exist
+      - Crafted tools/weapons have a visible held representation and feed the existing build/combat mechanics
+      - Creative default exposes the shipped safe block/tool catalog through the inventory while preserving the camera-ray ghost, collision-aware placement, and undo path
+      - Save/restore retains inventory and placed blocks; focused runtime tests cover the full loop
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-050
+    title: Complete local split-screen co-op over the shared sandbox state
+    owner: codex
+    specialty: local-coop
+    inputs:
+      - .ai/research-compendium/RESEARCH_VS-030_BasicMultiplayer_Evaluation.md
+      - src/adapters/inbound/gameplay/split_screen_runtime.gd
+      - src/adapters/inbound/scenes/play/play_shell.gd
+      - tests/adapters/inbound/test_split_screen_hero_pairing.gd
+    dependencies: [VS-049, VS-046]
+    acceptance_criteria:
+      - PlayShell launches a clear two-player local session with Ziemek and Gniewko in the same World3D
+      - Both players can move, act on shared resources, and build from the shared creative catalog without duplicated world state
+      - Co-op teardown restores solo input bindings and cannot corrupt the local save
+      - The split panes maintain grounded third-person cameras and test coverage exercises join, action routing, and cleanup
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-051
+    title: Design a private invite-only peer-to-peer family-session transport
+    owner: copilot
+    specialty: engine-networking
+    inputs:
+      - .ai/research-compendium/RESEARCH_VS-030_BasicMultiplayer_Evaluation.md
+      - .codex/skills/ai-safety/SKILL.md
+      - src/domain/gameplay/player_inventory.gd
+    dependencies: [VS-050, TASK-045]
+    acceptance_criteria:
+      - No implementation starts before local co-op proves shared-state authority and disconnect-safe persistence
+      - Design records host authority, private invite/consent, child-safe roles, save conflict handling, and offline fallback
+      - Any transport change is separately reviewed for safety and cannot expose public discovery or unrestricted chat
+    cross_review_by: codex
+    status: todo
 
   - id: VS-044
     title: Align the Adventure river with the bridge and compose a dense opening grove
@@ -4267,4 +4337,3 @@ tasks:
       - PASS: Reconnect contracts ensure session recovery
       - PASS: All quality gates pass without warnings
       - APPROVE: VS-036 character rigs and local co-op are production-ready.
-

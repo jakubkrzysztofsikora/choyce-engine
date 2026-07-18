@@ -43,6 +43,10 @@ var _goal_evaluator: EvaluateGoalService = null
 var _active_template_id: String = ""
 var _npc_loader: NPCDialogueLoader = null
 var _sandbox_persistence: SandboxPersistenceService = null
+## Optional, governed NPC dialogue seams. They remain null for the ordinary
+## offline demo, so authored local dialogue still works without a model.
+var _llm: LLMPort = null
+var _moderation: ModerationPort = null
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -91,7 +95,9 @@ func setup(
 	localization_policy: LocalizationPolicyPort,
 	run_playtest_port: RunPlaytestPort,
 	kid_status_read_model: KidStatusReadModel = null,
-	get_world_callback: Callable = Callable()
+	get_world_callback: Callable = Callable(),
+	llm: LLMPort = null,
+	moderation: ModerationPort = null
 ) -> PlayShell:
 	_navigator = navigator
 	_profile = profile
@@ -99,6 +105,8 @@ func setup(
 	_run_playtest_port = run_playtest_port
 	_kid_status_read_model = kid_status_read_model
 	_get_world_callback = get_world_callback
+	_llm = llm
+	_moderation = moderation
 	if _provenance_badge != null and _provenance_badge.has_method("setup"):
 		_provenance_badge.call("setup", _localization_policy)
 
@@ -561,6 +569,9 @@ func _start_gameplay(world: World, session: Session, local_coop: bool = false) -
 		var combat_on: bool = policy != null and policy.combat_enabled
 		var filtered := _npc_loader.filtered_for_policy(raw_npcs, combat_on)
 		_gameplay_runtime.setup_npcs(filtered)
+		if _gameplay_runtime.has_method("setup_npc_llm"):
+			_gameplay_runtime.setup_npc_llm(_llm, _moderation)
+
 	# VS-026: Connect save signal so sandbox state persists on session end.
 	if _gameplay_runtime.has_signal("session_save_requested") \
 			and not _gameplay_runtime.is_connected("session_save_requested", _on_session_save_requested):

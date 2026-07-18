@@ -79,6 +79,19 @@ var _hotbar_panel: HBoxContainer
 var _undo_button: Button
 var _inventory_panel: Container
 var _inventory_labels: Dictionary = {}  ## item_id -> Label
+## The rules runtime is authoritative when injected, but direct/demo sessions
+## must not lose collected items just because that optional integration is
+## absent. This local mirror is also the hand-off seam for local co-op.
+var _local_inventory: Dictionary = {}
+var _inventory_overlay: PanelContainer = null
+var _inventory_grid: GridContainer = null
+var _craft_recipe_list: VBoxContainer = null
+var _inventory_open := false
+const SANDBOX_RECIPES := {
+	"meal": {"needs": {"food_apple": 1}, "gives": {"meal": 1}, "label": "Posiłek"},
+	"stick": {"needs": {"wood_oak": 3}, "gives": {"stick": 1}, "label": "Patyk"},
+	"sword_iron": {"needs": {"wood_oak": 3, "ore_iron": 2}, "gives": {"sword_iron": 1}, "label": "Żelazny miecz"},
+}
 var _weapon_tiers := [
 	{"id": "fist",      "damage": 4,  "label": "Pięść",          "needs": {}},
 	{"id": "stick",     "damage": 7,  "label": "Patyk",          "needs": {"wood_oak": 3}},
@@ -234,6 +247,12 @@ var _npc_dialogue_input: LineEdit = null
 var _npc_dialogue_send: Button = null
 var _npc_dialogue_close: Button = null
 var _npc_dialogue_history: Dictionary = {}
+# A provider is optional enrichment, never a modal gameplay dependency. Keep a
+# generation token so a late model callback cannot overwrite a local reply
+# after its short fail-safe timeout.
+var _npc_dialogue_request_sequence := 0
+var _active_npc_dialogue_request_id := -1
+const NPC_DIALOGUE_REPLY_TIMEOUT_SECONDS := 4.0
 
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
@@ -1846,6 +1865,12 @@ func _build_npc_dialogue_label() -> Label:
 		hbox.add_child(input)
 		_npc_dialogue_input = input
 		input.text_submitted.connect(_on_npc_dialogue_submitted)
+		# The controller polls Input actions every frame. GUI consumption alone
+		# therefore cannot stop E/G/W from also becoming world actions while their
+		# letters are typed. Disable player input only while this LineEdit owns
+		# focus; gravity and physics keep running normally.
+		input.focus_entered.connect(_on_npc_dialogue_input_focus_entered)
+		input.focus_exited.connect(_on_npc_dialogue_input_focus_exited)
 
 		var send_btn := Button.new()
 		send_btn.name = "DialogueSendButton"
@@ -1877,6 +1902,7 @@ func _on_npc_dialogue_submitted(text: String = "") -> void:
 
 	if _npc_dialogue_input != null:
 		_npc_dialogue_input.text = ""
+		_npc_dialogue_input.release_focus()
 
 	var npc_name := ""
 	if _npc_root != null:
@@ -1890,7 +1916,42 @@ func _on_npc_dialogue_submitted(text: String = "") -> void:
 	if _npc_dialogue_label != null:
 		_npc_dialogue_label.text = "%s myśli..." % npc_name
 
-	_execute_npc_completions(text)
+	_npc_dialogue_request_sequence += 1
+	var request_id := _npc_dialogue_request_sequence
+	_active_npc_dialogue_request_id = request_id
+	if _npc_llm_port == null:
+		_present_npc_reply(_active_npc_id, npc_name, _authored_npc_fallback_line(_active_npc_from_roster()))
+		_active_npc_dialogue_request_id = -1
+		return
+	_execute_npc_completions(text, request_id)
+	# A local model can accept a request and never invoke its callback. Do not
+	# strand a child in a permanent “thinking” UI; present the authored response
+	# after a short bound and ignore a late callback by request id.
+	var tree := get_tree()
+	if tree != null:
+		tree.create_timer(NPC_DIALOGUE_REPLY_TIMEOUT_SECONDS).timeout.connect(func() -> void:
+			if _active_npc_dialogue_request_id != request_id:
+				return
+			_present_npc_reply(_active_npc_id, npc_name, _authored_npc_fallback_line(_active_npc_from_roster()))
+			_active_npc_dialogue_request_id = -1
+		)
+
+
+func _on_npc_dialogue_input_focus_entered() -> void:
+	if _player_controller != null and _player_controller.has_method("set_input_disabled"):
+		_player_controller.set_input_disabled(true)
+
+
+func _on_npc_dialogue_input_focus_exited() -> void:
+	if _player_controller != null and _player_controller.has_method("set_input_disabled"):
+		_player_controller.set_input_disabled(false)
+
+
+func _active_npc_from_roster() -> NPCCharacter:
+	for npc_variant in _npc_roster:
+		if npc_variant is NPCCharacter and npc_variant.npc_id == _active_npc_id:
+			return npc_variant as NPCCharacter
+	return null
 
 
 func _get_inventory() -> Dictionary:
@@ -1898,19 +1959,25 @@ func _get_inventory() -> Dictionary:
 		var raw: Variant = _rules_runtime.get_context_value("inventory")
 		if raw is Dictionary:
 			return raw
-	return {}
+	return _local_inventory
+
+
+func _commit_inventory(inventory: Dictionary, changed_item_id: String = "") -> void:
+	_local_inventory = inventory.duplicate(true)
+	if _rules_runtime != null:
+		_rules_runtime.set_context_value("inventory", inventory)
+		if not changed_item_id.is_empty():
+			_rules_runtime.on_event("inventory_changed", {"item": changed_item_id})
+	_refresh_inventory_panel(inventory)
 
 
 func _add_inventory_item(item_id: String, amount: int = 1) -> void:
 	var inventory := _get_inventory()
 	inventory[item_id] = int(inventory.get(item_id, 0)) + amount
-	if _rules_runtime != null:
-		_rules_runtime.set_context_value("inventory", inventory)
-		_rules_runtime.on_event("inventory_changed", {"item": item_id})
-	_refresh_inventory_panel(inventory)
+	_commit_inventory(inventory, item_id)
 
 
-func _execute_npc_completions(player_text: String) -> void:
+func _execute_npc_completions(player_text: String, request_id: int = -1) -> void:
 	if _npc_llm_port == null:
 		return
 
@@ -1987,6 +2054,8 @@ func _execute_npc_completions(player_text: String) -> void:
 		{},
 		func(_token: String) -> void: pass,
 		func(result: Dictionary) -> void:
+			if request_id >= 0 and _active_npc_dialogue_request_id != request_id:
+				return
 			var reply_text := str(result.get("text", "")).strip_edges()
 			# Providers are optional enrichment. A transport/model failure must
 			# never become an NPC's line; the child gets a real authored response
@@ -1994,6 +2063,7 @@ func _execute_npc_completions(player_text: String) -> void:
 			if _is_unusable_npc_model_result(result, reply_text):
 				var local_reply := _authored_npc_fallback_line(captured_authored_npc)
 				_present_npc_reply(npc_id, captured_npc_name, local_reply)
+				_active_npc_dialogue_request_id = -1
 				return
 
 			if _npc_moderation != null:
@@ -2013,6 +2083,7 @@ func _execute_npc_completions(player_text: String) -> void:
 				clean_text = reply_text.substr(0, reply_text.find("<decision>")).strip_edges()
 
 			_present_npc_reply(npc_id, captured_npc_name, clean_text)
+			_active_npc_dialogue_request_id = -1
 
 			if not decision_json.is_empty():
 				_apply_npc_decision(decision_json)
@@ -2175,18 +2246,31 @@ func _on_player_attacked(damage: int, hit_position: Vector3) -> void:
 ## inside a generous child-friendly forward cone, animate the harvest as three
 ## deliberate hits, then reuse the normal inventory/reward path.
 func _on_player_tool_used(tool_id: String, effect_origin: Vector3, forward: Vector3) -> void:
-	if _player_controller == null:
+	_on_player_tool_used_for(_player_controller, tool_id, effect_origin, forward)
+
+
+## Shared-world adapter for both local players. The resource/inventory state
+## belongs to GameplayRuntime; only target selection belongs to the actor that
+## actually swung the tool.
+func _on_player_tool_used_for(actor: PlayerController, tool_id: String, effect_origin: Vector3, forward: Vector3) -> void:
+	if actor == null or not is_instance_valid(actor):
 		return
 	var required_action := "gather_wood" if tool_id == "tool_axe" else "gather_stone"
 	var target: Node3D = null
 	var best_score := INF
-	for candidate in get_tree().get_nodes_in_group("world_interactable"):
+	var candidates := get_tree().get_nodes_in_group("world_interactable")
+	# The actual forest, not only isolated loot props, is harvestable with an
+	# axe. These roots carry the same resource metadata as interaction anchors
+	# but deliberately have no large E-radius bubble around every trunk.
+	if tool_id == "tool_axe":
+		candidates.append_array(get_tree().get_nodes_in_group("harvestable_tree"))
+	for candidate in candidates:
 		if not (candidate is Node3D) or not is_instance_valid(candidate):
 			continue
 		var anchor := candidate as Node3D
 		if String(anchor.get_meta("interaction_action", "")) != required_action:
 			continue
-		var to_target := anchor.global_position - _player_controller.global_position
+		var to_target := anchor.global_position - actor.global_position
 		to_target.y = 0.0
 		var distance := to_target.length()
 		if distance > 3.4 or distance < 0.01:
@@ -2209,8 +2293,8 @@ func _on_player_tool_used(tool_id: String, effect_origin: Vector3, forward: Vect
 		for enemy_candidate in get_tree().get_nodes_in_group("enemies"):
 			if enemy_candidate is EnemyController and is_instance_valid(enemy_candidate):
 				var enemy := enemy_candidate as EnemyController
-				if enemy.global_position.distance_to(_player_controller.global_position) <= 2.15:
-					_player_controller._perform_attack()
+				if enemy.global_position.distance_to(actor.global_position) <= 2.15:
+					actor._perform_attack()
 					break
 		_interaction_feedback("Podejdź bliżej do %s." % ("drzewa" if tool_id == "tool_axe" else "skały"),
 			"gather_wood" if tool_id == "tool_axe" else "gather_stone")
@@ -2334,21 +2418,12 @@ func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> voi
 func _on_loot_picked_up(item_id: String, quantity: int) -> void:
 	if _audio_bus != null and _player_controller != null:
 		_audio_bus.emit_sfx("collect", _player_controller.global_position)
-	# Update inventory via rules-runtime context (single source of truth).
+	var inventory := _get_inventory()
+	inventory[item_id] = int(inventory.get(item_id, 0)) + quantity
+	_commit_inventory(inventory, item_id)
 	if _rules_runtime != null:
-		var inv: Variant = _rules_runtime.get_context_value("inventory")
-		var inv_dict: Dictionary = inv if inv is Dictionary else {}
-		inv_dict[item_id] = int(inv_dict.get(item_id, 0)) + quantity
-		_rules_runtime.set_context_value("inventory", inv_dict)
-		_rules_runtime.on_event("inventory_changed", {"item": item_id})
 		_rules_runtime.on_event("collect_%s" % item_id, {})
-		_refresh_inventory_panel(inv_dict)
-		_try_auto_upgrade_weapon(inv_dict)
-	else:
-		# Fallback when rules runtime not wired — local inventory map.
-		var inv_dict: Dictionary = {}
-		inv_dict[item_id] = quantity
-		_refresh_inventory_panel(inv_dict)
+	_try_auto_upgrade_weapon(inventory)
 
 
 func _refresh_inventory_panel(inv: Dictionary) -> void:
@@ -2391,6 +2466,158 @@ func _refresh_inventory_panel(inv: Dictionary) -> void:
 			_inventory_panel.add_child(slot)
 			_inventory_labels[item_id] = label
 		label.text = "×%d" % count
+	_refresh_inventory_overlay(inv)
+
+
+## Exploration retains a compact pictorial backpack. The complete inventory is
+## an explicit, paused-input panel, so crafting never turns the normal HUD into
+## a text-heavy editor overlay.
+func _build_inventory_overlay(hud: CanvasLayer) -> void:
+	if _inventory_overlay != null:
+		return
+	var panel := PanelContainer.new()
+	panel.name = "SandboxInventoryOverlay"
+	panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	panel.offset_left = -392
+	panel.offset_top = -226
+	panel.offset_right = -28
+	panel.offset_bottom = 226
+	panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.28, 0.72, 0.55), 0.96))
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	hud.add_child(panel)
+	_inventory_overlay = panel
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	panel.add_child(content)
+	var title := Label.new()
+	title.text = "PLECAK"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	content.add_child(title)
+	var grid := GridContainer.new()
+	grid.name = "InventoryGrid"
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	content.add_child(grid)
+	_inventory_grid = grid
+	var recipes_title := Label.new()
+	recipes_title.text = "Zrób"
+	recipes_title.add_theme_font_size_override("font_size", 18)
+	content.add_child(recipes_title)
+	var recipes := VBoxContainer.new()
+	recipes.name = "CraftRecipes"
+	recipes.add_theme_constant_override("separation", 6)
+	content.add_child(recipes)
+	_craft_recipe_list = recipes
+	for recipe_id in SANDBOX_RECIPES.keys():
+		var recipe: Dictionary = SANDBOX_RECIPES[recipe_id]
+		var button := Button.new()
+		button.name = "Craft_%s" % recipe_id
+		button.text = String(recipe.get("label", recipe_id))
+		button.focus_mode = Control.FOCUS_CLICK
+		button.pressed.connect(func() -> void: _craft_inventory_recipe(recipe_id))
+		recipes.add_child(button)
+	var close_hint := Label.new()
+	close_hint.text = "I — zamknij"
+	close_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	close_hint.add_theme_font_size_override("font_size", 14)
+	close_hint.modulate = Color(0.78, 0.86, 0.90)
+	content.add_child(close_hint)
+	_refresh_inventory_overlay(_get_inventory())
+
+
+func _refresh_inventory_overlay(inventory: Dictionary) -> void:
+	if _inventory_grid == null:
+		return
+	for child in _inventory_grid.get_children():
+		child.queue_free()
+	for item_id in inventory.keys():
+		var count := int(inventory[item_id])
+		if count <= 0:
+			continue
+		var slot := PanelContainer.new()
+		slot.custom_minimum_size = Vector2(72, 72)
+		slot.tooltip_text = "%s ×%d" % [_pretty_item_name(String(item_id)), count]
+		slot.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.35, 0.62, 0.78), 0.78))
+		var icon := TextureRect.new()
+		icon.texture = _inventory_texture_for(String(item_id))
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = 7
+		icon.offset_top = 7
+		icon.offset_right = -7
+		icon.offset_bottom = -7
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		var badge := Label.new()
+		badge.text = "×%d" % count
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		badge.set_anchors_preset(Control.PRESET_FULL_RECT)
+		badge.add_theme_font_size_override("font_size", 16)
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(badge)
+		_inventory_grid.add_child(slot)
+	if _craft_recipe_list != null:
+		for child in _craft_recipe_list.get_children():
+			var button := child as Button
+			if button == null:
+				continue
+			var recipe_id := String(button.name).trim_prefix("Craft_")
+			button.disabled = not _has_recipe_materials(recipe_id, inventory)
+
+
+func _toggle_inventory_overlay() -> void:
+	if _inventory_overlay == null:
+		return
+	_inventory_open = not _inventory_open
+	_inventory_overlay.visible = _inventory_open
+	if _player_controller != null and _player_controller.has_method("set_input_disabled"):
+		_player_controller.set_input_disabled(_inventory_open)
+	if _inventory_open:
+		_refresh_inventory_overlay(_get_inventory())
+
+
+func _has_recipe_materials(recipe_id: String, inventory: Dictionary = {}) -> bool:
+	var recipe: Dictionary = SANDBOX_RECIPES.get(recipe_id, {})
+	if recipe.is_empty():
+		return false
+	var available := inventory if not inventory.is_empty() else _get_inventory()
+	var needs: Dictionary = recipe.get("needs", {})
+	for item_id in needs:
+		if int(available.get(item_id, 0)) < int(needs[item_id]):
+			return false
+	return true
+
+
+func _craft_inventory_recipe(recipe_id: String) -> void:
+	var inventory := _get_inventory()
+	if not _has_recipe_materials(recipe_id, inventory):
+		_interaction_feedback("Brakuje składników.")
+		return
+	var recipe: Dictionary = SANDBOX_RECIPES[recipe_id]
+	var needs: Dictionary = recipe.get("needs", {})
+	var gives: Dictionary = recipe.get("gives", {})
+	for item_id in needs:
+		inventory[item_id] = int(inventory.get(item_id, 0)) - int(needs[item_id])
+	for item_id in gives:
+		inventory[item_id] = int(inventory.get(item_id, 0)) + int(gives[item_id])
+	_commit_inventory(inventory, recipe_id)
+	if recipe_id == "stick":
+		_apply_tier(1, "Patyk", 7, inventory)
+	elif recipe_id == "sword_iron":
+		_apply_tier(2, "Żelazny miecz", 12, inventory)
+	elif recipe_id == "meal" and _player_controller != null and _player_controller.get_health() != null:
+		var health := _player_controller.get_health()
+		health.heal(20)
+		_player_controller.hp_changed.emit(health.current_hp, health.max_hp)
+	if _audio_bus != null and _player_controller != null:
+		_audio_bus.emit_sfx("collect", _player_controller.global_position)
+	_interaction_feedback("Gotowe: %s" % String(recipe.get("label", recipe_id)))
 
 
 func _pretty_item_name(item_id: String) -> String:
@@ -2892,6 +3119,7 @@ func _build_hud() -> void:
 	_inventory_panel.offset_right = 300
 	_inventory_panel.offset_bottom = -110
 	hud.add_child(_inventory_panel)
+	_build_inventory_overlay(hud)
 
 	# Wave 3 W3-A6: goal HUD (top-center). Visible only when setup_goal()
 	# has been called with a non-null GameGoal — otherwise the panel
@@ -3220,17 +3448,12 @@ func _gather_world_resource(anchor: Node3D) -> void:
 	var item_id := String(anchor.get_meta("resource_item_id", ""))
 	if item_id.is_empty():
 		return
-	var inventory: Dictionary = {}
-	if _rules_runtime != null:
-		var raw: Variant = _rules_runtime.get_context_value("inventory")
-		if raw is Dictionary:
-			inventory = raw
+	var inventory := _get_inventory()
 	inventory[item_id] = int(inventory.get(item_id, 0)) + 1
+	_commit_inventory(inventory, item_id)
 	if _rules_runtime != null:
-		_rules_runtime.set_context_value("inventory", inventory)
 		_rules_runtime.on_event("inventory_changed", {"item": item_id})
 		_rules_runtime.on_event("collect_%s" % item_id, {})
-	_refresh_inventory_panel(inventory)
 	_try_auto_upgrade_weapon(inventory)
 	if _audio_bus != null:
 		var action := String(anchor.get_meta("resource_action", ""))
@@ -3250,11 +3473,7 @@ func _gather_world_resource(anchor: Node3D) -> void:
 
 
 func _craft_home_meal() -> void:
-	var inventory: Dictionary = {}
-	if _rules_runtime != null:
-		var raw: Variant = _rules_runtime.get_context_value("inventory")
-		if raw is Dictionary:
-			inventory = raw
+	var inventory := _get_inventory()
 	# The starter kitchen has a forgiving first recipe so the child can learn
 	# the loop immediately; later meals consume an apple or gathered wood.
 	var has_ingredient := int(inventory.get("apple", 0)) > 0 or int(inventory.get("wood_oak", 0)) > 0
@@ -3264,10 +3483,7 @@ func _craft_home_meal() -> void:
 		else:
 			inventory["wood_oak"] = int(inventory["wood_oak"]) - 1
 	inventory["meal"] = int(inventory.get("meal", 0)) + 1
-	if _rules_runtime != null:
-		_rules_runtime.set_context_value("inventory", inventory)
-		_rules_runtime.on_event("inventory_changed", {"item": "meal"})
-	_refresh_inventory_panel(inventory)
+	_commit_inventory(inventory, "meal")
 	if _player_controller != null and _player_controller.get_health() != null:
 		var health := _player_controller.get_health()
 		health.current_hp = mini(health.current_hp + 20, health.max_hp)
@@ -3632,6 +3848,31 @@ func end_session() -> void:
 	session_ended.emit()
 
 func _input(event: InputEvent) -> void:
+	# Once the child explicitly focuses the composer, it owns every character.
+	# This runs before generic interaction/vehicle handlers, which otherwise see
+	# E/G despite the LineEdit receiving the same character later in Godot's GUI
+	# event pipeline.
+	if _npc_dialogue_input != null and _npc_dialogue_input.has_focus() \
+			and event is InputEventKey:
+		get_viewport().set_input_as_handled()
+		return
+	# NPC conversation is intentionally unfocused on arrival so movement and
+	# interaction keys stay with the world. Enter is the explicit, discoverable
+	# handoff into typing: the first press focuses the composer, the next Enter
+	# is handled by LineEdit and submits the written message.
+	if _npc_dialogue_panel != null and _npc_dialogue_panel.visible \
+			and _npc_dialogue_input != null and not _npc_dialogue_input.has_focus() \
+			and event is InputEventKey and event.pressed and not event.echo \
+			and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
+		_npc_dialogue_input.grab_focus()
+		var dialogue_viewport := get_viewport()
+		if dialogue_viewport != null:
+			dialogue_viewport.set_input_as_handled()
+		return
+	if event.is_action_pressed("inventory"):
+		_toggle_inventory_overlay()
+		get_viewport().set_input_as_handled()
+		return
 	# E is shared by generic interaction and vehicle egress. Runtime input runs
 	# before dynamically spawned vehicle nodes, so consume egress first or E can
 	# be swallowed by the generic interaction path and trap the player inside.
@@ -3671,7 +3912,7 @@ func _on_player_farted(effect_origin: Vector3) -> void:
 	if _sandbox_hint_panel != null and is_instance_valid(_sandbox_hint_panel):
 		_sandbox_hint_panel.visible = false
 	if _audio_bus != null:
-		_audio_bus.emit_sfx("fart_kid_safe", effect_origin)
+		_audio_bus.emit_sfx("fart_cc0_short", effect_origin)
 	if _effect_spawner != null:
 		_effect_spawner.spawn_stink_cloud(effect_origin)
 	if _npc_root == null:

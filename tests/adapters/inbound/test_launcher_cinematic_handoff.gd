@@ -36,6 +36,8 @@ func _run() -> void:
 	_assert(launcher._menu_vignette != null and menu_column != null \
 		and launcher._root.get_child(-1) == menu_column,
 		"vignette sits behind launcher controls while controls stay above 3D key art")
+	_assert(launcher._play_btn.focus_mode == Control.FOCUS_CLICK and not launcher._play_btn.has_focus(),
+		"launcher waits for an intentional Play click instead of focusing and auto-starting")
 	launcher.queue_free()
 	await process_frame
 	quit(_exit_code)

@@ -54,6 +54,7 @@ signal ports_ready
 
 var _navigator := ShellNavigator.new()
 var _ports: Dictionary = {}
+var _llm_port: LLMPort = null
 var _feature_flags: FeatureFlagService
 var _localization_policy: LocalizationPolicyPort
 var _accessibility_policy: AccessibilityPolicyPort
@@ -411,7 +412,12 @@ func _build_default_ports() -> Dictionary:
 	event_bus.subscribe_all(Callable(ai_performance, "update_from_event"))
 	event_bus.subscribe_all(Callable(kid_status, "update_from_event"))
 
-	var llm := OllamaLLMAdapter.new().setup(consent_store_stub)
+	var base_url := OS.get_environment("ANTHROPIC_BASE_URL")
+	if not base_url.is_empty():
+		_llm_port = LiteLLMAdapter.new().setup()
+	else:
+		_llm_port = OllamaLLMAdapter.new().setup(consent_store_stub)
+	var llm := _llm_port
 	var tool_gateway := DeterministicToolExecutionGateway.new().setup()
 
 	var data_lifecycle := ManageDataLifecycleService.new().setup(
@@ -546,7 +552,12 @@ func _build_default_ports_phase_2() -> void:
 	if parent_audit != null and parent_audit.has_method("setup"):
 		parent_audit.setup(audit_ledger, clock)
 
-	var llm := OllamaLLMAdapter.new().setup(consent_store)
+	var base_url := OS.get_environment("ANTHROPIC_BASE_URL")
+	if not base_url.is_empty():
+		_llm_port = LiteLLMAdapter.new().setup()
+	else:
+		_llm_port = OllamaLLMAdapter.new().setup(consent_store)
+	var llm := _llm_port
 
 	var data_lifecycle_adapter := FilesystemDataLifecycleAdapter.new().setup(
 		project_store,
@@ -1159,7 +1170,9 @@ func _wire_shell_dependencies() -> void:
 		func() -> World:
 			if _create_shell.has_method("get_active_world"):
 				return _create_shell.get_active_world()
-			return null
+			return null,
+		_llm_port,
+		_phase1_moderation
 	)
 	if not _play_shell.gameplay_runtime_created.is_connected(_on_play_shell_gameplay_runtime_created):
 		_play_shell.gameplay_runtime_created.connect(_on_play_shell_gameplay_runtime_created)

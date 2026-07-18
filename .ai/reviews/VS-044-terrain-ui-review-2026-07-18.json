@@ -1,0 +1,27 @@
+{
+  "task_id": "VS-044/VS-014",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "path": "terrain3d_world_adapter.gd; gameplay_runtime.gd",
+      "message": "Do not remove the safety ground collider merely because Terrain3D was asked to rebuild; retain it until live terrain ray contacts prove the active spawn and bridge bank are backed by Terrain3D collision."
+    },
+    {
+      "severity": "high",
+      "path": "tests/adapters/inbound/test_terrain3d_world_adapter.gd",
+      "message": "Pure bank-height math is insufficient. Add extension-gated integration coverage for imported terrain, dynamic collision and spawn/bank ray contact."
+    },
+    {
+      "severity": "medium",
+      "path": "tests/adapters/inbound/test_hotbar_image_hud_contract.gd",
+      "message": "Build the HUD and inspect actual slot children/icons/active border; retain a clean, unobstructed capture."
+    },
+    {
+      "severity": "high",
+      "path": "/tmp/choyce-terrain3d-riverbanks-2m.png; /tmp/choyce-image-hotbar-no-numbers.png",
+      "message": "Desktop-window-obscured screenshots cannot close the visual gate. The first vista remains flat lawn plus a cyan river strip; captured visual evidence must be unobstructed and show traversal." 
+    }
+  ]
+}

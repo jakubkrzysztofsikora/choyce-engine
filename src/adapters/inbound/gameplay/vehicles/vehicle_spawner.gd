@@ -16,13 +16,15 @@ const VEHICLE_CONFIGS := {
 	"simple": {
 		"script": "res://src/adapters/inbound/gameplay/vehicles/simple_vehicle.gd",
 		"scene": "res://scenes/vehicles/simple_vehicle.tscn",
-		"max_speed": 12.0,
+		# A rare car is the long-distance tool for the 5.76km² sandbox.  It must
+		# decisively outpace a 10m/s sprint while remaining controllable on hills.
+		"max_speed": 28.0,
 		"mass": 1000.0
 	},
 	"tractor": {
 		"script": "res://src/adapters/inbound/gameplay/vehicles/simple_vehicle.gd",
 		"scene": "res://scenes/vehicles/tractor.tscn",
-		"max_speed": 10.0,
+		"max_speed": 16.0,
 		"mass": 1500.0
 	},
 	"bulldozer": {

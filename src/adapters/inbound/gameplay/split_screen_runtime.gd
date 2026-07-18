@@ -70,6 +70,24 @@ func attach_second_player() -> void:
 	_p2 = _build_player()
 	_p2.set_action_prefix("p2_")
 	_p2_viewport.add_child(_p2)
+	# P1 begins as the turquoise, backpacked Ziemek. P2 is not a duplicate
+	# avatar: switch the same grounded/facial rig to Gniewko's clean polo and
+	# navy-trouser identity immediately after it enters the scene tree.
+	_p2.set_hero_identity(PlayerController.HERO_IDENTITY_GNIEWKO)
+	# Both children operate one shared BuildGrid and one shared inventory owned
+	# by GameplayRuntime. P2 gets the same creative hotbar mechanics; its tool
+	# signal is explicitly routed with P2 as the actor for correct target picks.
+	var build_grid := _runtime.get("_build_grid") as BuildGrid
+	if build_grid != null:
+		_p2.setup_build_grid(build_grid)
+	if _runtime.has_method("_on_player_tool_used_for"):
+		_p2.tool_used.connect(func(tool_id: String, effect_origin: Vector3, forward: Vector3) -> void:
+			_runtime.call("_on_player_tool_used_for", _p2, tool_id, effect_origin, forward)
+		)
+	if _runtime.has_method("_on_player_farted"):
+		_p2.farted.connect(func(effect_origin: Vector3) -> void:
+			_runtime.call("_on_player_farted", effect_origin)
+		)
 	var p1 := _runtime.get_node_or_null("PlayerController")
 	var spawn := Vector3(2, 1, 0)
 	if p1 != null:
@@ -112,7 +130,9 @@ func _build_player() -> PlayerController:
 	col.transform = Transform3D(Basis(), Vector3(0, 0.8, 0))
 	var shape := CapsuleShape3D.new()
 	shape.radius = 0.35
-	shape.height = 1.6
+	# Match P1's physical envelope exactly. The former 1.6m capsule had a
+	# different floor contact plane, so P2 could appear to hover alongside him.
+	shape.height = 1.8
 	col.shape = shape
 	body.add_child(col)
 
@@ -125,10 +145,12 @@ func _build_player() -> PlayerController:
 
 	var cam := Camera3D.new()
 	cam.name = "Camera3D"
-	# Same 3rd-person offset/tilt as P1's camera in the runtime scene.
+	# Same third-person offset/tilt as P1's camera in the runtime scene. Keeping
+	# one camera language prevents the right pane feeling like a high spectator
+	# view rather than Gniewko's own adventure view.
 	cam.transform = Transform3D(
 		Basis(Vector3(1, 0, 0), deg_to_rad(15.0)),
-		Vector3(0, 2.5, 4.5))
+		Vector3(0, 1.7, 4.2))
 	body.add_child(cam)
 	return body
 

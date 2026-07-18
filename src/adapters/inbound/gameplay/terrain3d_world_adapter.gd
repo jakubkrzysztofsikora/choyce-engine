@@ -8,6 +8,8 @@ extends Node3D
 
 const WORLD_SIZE_M := 2400.0
 const HEIGHTMAP_RESOLUTION := 512
+const OPENING_RIVERBANK_RELIEF_NORMALIZED := 0.028
+const OPENING_FLANK_HILL_NORMALIZED := 0.160
 const FOREST_FLOOR: Texture2D = preload("res://data/textures/generated/forest-meadow-ground-v1.png")
 const OPEN_MEADOW: Texture2D = preload("res://data/textures/generated/stylized-meadow-ground-v2.png")
 const PBR_DIRT: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Color.jpg")
@@ -143,9 +145,11 @@ func _configure_materials() -> void:
 		return
 	# Keep three related natural layers. The palette follows the research-backed
 	# sage/earth family rather than multiplying every source into olive yellow.
-	assets.call("set_texture", 0, _make_texture_asset("Forest floor", FOREST_FLOOR, Color(0.76, 0.83, 0.76), 0.32))
-	assets.call("set_texture", 1, _make_texture_asset("Open meadow", OPEN_MEADOW, Color(0.70, 0.80, 0.78), 0.28))
-	assets.call("set_texture", 2, _make_texture_asset("Ridge earth", PBR_DIRT, Color(0.63, 0.57, 0.50), 0.18))
+	# A slightly quieter palette lets the house, water and characters carry the
+	# composition instead of turning the whole 5km² island into one olive board.
+	assets.call("set_texture", 0, _make_texture_asset("Forest floor", FOREST_FLOOR, Color(0.67, 0.74, 0.66), 0.32))
+	assets.call("set_texture", 1, _make_texture_asset("Open meadow", OPEN_MEADOW, Color(0.64, 0.71, 0.66), 0.28))
+	assets.call("set_texture", 2, _make_texture_asset("Ridge earth", PBR_DIRT, Color(0.58, 0.53, 0.48), 0.18))
 	terrain.set("assets", assets)
 	var material: Object = terrain.get("material") as Object
 	if material == null:
@@ -229,9 +233,68 @@ func _make_open_world_heightmap(seed_source: String) -> Image:
 			var north_mountain := _landform(local, Vector2(-0.12, -0.39), Vector2(0.18, 0.13), 0.62)
 			var east_mountain := _landform(local, Vector2(0.36, -0.22), Vector2(0.15, 0.17), 0.70)
 			var west_mountain := _landform(local, Vector2(-0.40, 0.20), Vector2(0.17, 0.16), 0.58)
-			var height := clampf(rolling_land + forest_ridge + cave_hill + north_mountain + east_mountain + west_mountain, 0.0, 1.0)
+			# The opening was deliberately held completely flat for the house and
+			# bridge, but that also made the water a graphic strip laid on a lawn.
+			# Add a shallow, walkable Terrain3D bank profile around the authored
+			# river crossing. It stays zero at the bridge ramps and player spawn,
+			# rises only beyond their clear corridor, and uses the same meander math
+			# as the WorldRenderer river so visible terrain and water agree.
+			var opening_riverbank := _opening_riverbank_relief(local)
+			# The original safety plateau extended so far that the first live frame
+			# stayed a lawn even though the five-square-kilometre island had distant
+			# mountains. Two broad side hills begin beyond the camp/bridge corridor:
+			# they make the nearby woodland feel like terrain a child can enter while
+			# preserving flat, proven contacts at spawn, house, ramps and water.
+			var opening_flank_hills := _opening_flank_hill_relief(local)
+			var height := clampf(rolling_land + forest_ridge + cave_hill + north_mountain + east_mountain + west_mountain + opening_riverbank + opening_flank_hills, 0.0, 1.0)
 			map.set_pixel(x, z, Color(height, 0.0, 0.0, 1.0))
 	return map
+
+
+## Terrain3D height is normalized before `import_images()` maps it to the
+## 90-metre world scale. A 0.028 ridge creates a readable 2–2.5m outer bank;
+## its 17m shoulder remains gentle enough for the child bridge approach and
+## the existing dynamic collision.
+func _opening_riverbank_relief(local: Vector2) -> float:
+	var world_x := local.x * WORLD_SIZE_M
+	var world_z := local.y * WORLD_SIZE_M
+	# Match `WorldRenderer._river_bank_pair()` without coupling the visual-world
+	# boundary to the adapter. At x=0 this remains z=-24, the authored bridge.
+	var river_center_z := -24.0 + sin(world_x * 0.0031) * 18.0 + sin(world_x * 0.0087) * 5.0
+	var bank_distance := absf(world_z - river_center_z)
+	# The player start and the two bridge ramps must remain on their proven flat
+	# contact. Relief begins outside the 10m channel, then reaches its readable
+	# shoulder over the following 18m of natural shoreline.
+	var bank_shoulder := smoothstep(12.5, 30.0, bank_distance)
+	# Shape just the composed opening around the crossing. Farther out the normal
+	# forest/mountain landforms own the terrain, avoiding a ruler-straight ridge
+	# along the full 2.4km river.
+	var crossing_window := 1.0 - smoothstep(120.0, 230.0, absf(world_x))
+	# Keep the south spawn lawn flat while allowing the north bank to rise around
+	# the house/forest approach. This prevents the grounded player from visually
+	# sinking into Terrain3D before reaching the crossing.
+	var south_spawn_clearance := 0.0 if world_z > -8.0 else 1.0
+	return OPENING_RIVERBANK_RELIEF_NORMALIZED * bank_shoulder * crossing_window * south_spawn_clearance
+
+
+## Broad, playable hills on both sides of the composed crossing.  This is not
+## a prop ridge: Terrain3D supplies one continuous rendered and physical slope.
+## The exact central corridor remains flat for the child spawn, camp route,
+## bridge ramps and starter home while the flanks rise into the forest edge.
+func _opening_flank_hill_relief(local: Vector2) -> float:
+	var world_x := local.x * WORLD_SIZE_M
+	var world_z := local.y * WORLD_SIZE_M
+	# Hills sit 55–115m beyond the start and to either side of the 4m bridge
+	# route. At the map's 90m vertical scale their peaks are about 14m high,
+	# enough to break the lawn horizon but gentle across their 150m footprint.
+	var west_hill := _landform(local, Vector2(-0.068, -0.064), Vector2(0.078, 0.075), OPENING_FLANK_HILL_NORMALIZED)
+	var east_hill := _landform(local, Vector2(0.070, -0.072), Vector2(0.082, 0.078), OPENING_FLANK_HILL_NORMALIZED * 0.92)
+	# A generous central exclusion keeps every authored contact at x≈0 intact;
+	# the smooth edge avoids a collision step where a child leaves the route.
+	var route_clearance := smoothstep(15.0, 34.0, absf(world_x))
+	# Do not lift the immediate camp/spawn lawn, which ends around z=-8.
+	var north_of_spawn := 1.0 - smoothstep(-25.0, -9.0, world_z)
+	return (west_hill + east_hill) * route_clearance * north_of_spawn
 
 
 ## Elliptic macro landform in normalized map coordinates. Keeping this in the

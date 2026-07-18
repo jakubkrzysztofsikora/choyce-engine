@@ -70,6 +70,8 @@ func _run_tests() -> void:
 	_test_procedural_tree_scale_and_palm_source_are_human_scale()
 	_test_opening_grove_has_a_dense_human_scale_frame()
 	_test_opening_grove_has_dense_foreground_foliage()
+	_test_opening_flank_groundcover_stays_off_the_bridge_lane()
+	await _test_opening_basecamp_is_a_colliding_lived_in_tableau()
 	_test_opening_bridge_shore_uses_the_textured_stone_path()
 	_test_opening_riverbank_has_layered_thickets_outside_the_bridge_lane()
 	_test_opening_riverbank_visuals_stay_out_of_swim_channel()
@@ -366,10 +368,53 @@ func _test_opening_grove_has_dense_foreground_foliage() -> void:
 	_assert(source.contains("Vector3(-3.0, 0, -8)")  # New bush positions
 		and source.contains("Vector3(3.0, 0, -9)")
 		and source.contains("opening_grove_grass_")  # New grass clusters
+		and source.contains('name_key.begins_with("opening_grove_grass")')
 		and source.contains("opening_grove_flower_")  # New flower accents
-		and source.contains("grass_large.glb")  # Grass asset path
+		and source.contains("grass_large.glb")  # grass asset path
 		and source.contains("flower_purpleA.glb"),  # Flower asset path
-		"opening grove has dense foreground foliage: bushes, grass, flowers in immediate clearing")
+		"opening grove foliage is dense and every grass instance uses the restrained natural palette")
+
+
+func _test_opening_flank_groundcover_stays_off_the_bridge_lane() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains("func _build_opening_flank_groundcover(seed_source: String)")
+		and source.contains("for index in range(44)")
+		and source.contains("side * rng.randf_range(8.5, 29.0)")
+		and source.contains("opening_grove_bush_flank_")
+		and source.contains("bush_path, true, Vector3(1.28, 1.10, 1.12)")
+		and source.contains("opening_grove_grass_flank_"),
+		"opening flank groundcover is deterministic, colliding where dense, and kept outside the bridge lane")
+
+
+## The start must contain a purposeful camp, not leave the child in an empty
+## lawn. Each visible camp object owns close-fit physical presence, while the
+## centre route remains clear for the bridge tutorial.
+func _test_opening_basecamp_is_a_colliding_lived_in_tableau() -> void:
+	var r := _make_renderer()
+	r._build_opening_basecamp_tableau()
+	await process_frame
+	for node_name in [
+		"OpeningBasecampTent", "OpeningBasecampHalfTent", "OpeningBasecampFire",
+		"OpeningBasecampChest", "OpeningBasecampBarrel", "OpeningBasecampLogWest",
+		"OpeningBasecampLogSouth",
+	]:
+		var prop := r.get_node_or_null(node_name) as StaticBody3D
+		var has_collision := false
+		if prop != null:
+			for child in prop.get_children():
+				if child is CollisionShape3D and (child as CollisionShape3D).shape != null:
+					has_collision = true
+					break
+		# Imported GLB roots vary (some preserve their own Node3D wrapper), so
+		# inspect the physical root plus its non-collision visual child instead of
+		# assuming a MeshInstance3D is directly discoverable before rendering.
+		_assert(prop != null and has_collision \
+			and prop.get_child_count() >= 2,
+			"starter basecamp %s is a visible colliding supplied prop" % node_name)
+	var firelight := r.get_node_or_null("OpeningBasecampFirelight") as OmniLight3D
+	_assert(firelight != null and firelight.omni_range >= 7.0,
+		"starter basecamp has a warm firelight pool")
+	r.queue_free()
 
 
 ## The visible river approach uses supplied cliff modules. Their import has a
@@ -435,6 +480,7 @@ func _test_quaternius_forest_surface_profiles_are_explicit() -> void:
 		and source.contains("func _make_readable_forest_foliage_material(variant_tint: Color = Color.WHITE)")
 		and source.contains("var is_quaternius_forest_tree :=")
 		and source.contains("func _forest_foliage_tint_for_asset(name_key: String)")
+		and source.contains("func _is_harvestable_tree_asset(asset_path: String)")
 		and source.contains("trunk_collision"),
 		"CC0 forest variants use explicit readable foliage and trunk-collision profiles")
 
@@ -457,9 +503,10 @@ func _test_quaternius_forest_profiles_apply_at_runtime() -> void:
 				collision = child as CollisionShape3D
 				break
 		var shape := collision.shape as BoxShape3D if collision != null else null
-		if shape != null and shape.size.x >= 1.70 and shape.size.x <= 4.80 \
-			and shape.size.z >= 1.70 and shape.size.z <= 4.80 \
-			and shape.size.y >= 24.0 and shape.size.y <= 48.0:
+		if shape != null and shape.size.x >= 0.70 and shape.size.x <= 1.25 \
+			and shape.size.z >= 0.70 and shape.size.z <= 1.25 \
+			and shape.size.y >= 10.0 and shape.size.y <= 12.0 \
+			and tree.is_in_group("harvestable_tree"):
 			fitted_trunk_count += 1
 		for mesh_variant in tree.find_children("*", "MeshInstance3D", true, false):
 			var mesh_instance := mesh_variant as MeshInstance3D

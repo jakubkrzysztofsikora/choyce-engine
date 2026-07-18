@@ -10,7 +10,7 @@ extends VehicleBase
 
 
 # Vehicle-specific configuration
-@export var max_speed_override: float = 12.0
+@export var max_speed_override: float = 28.0
 @export var engine_force_override: float = 180.0
 @export_enum("tractor", "car") var vehicle_visual_profile := "tractor"
 @export var use_authored_vehicle_visual := false

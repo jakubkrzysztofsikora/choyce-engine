@@ -22,6 +22,14 @@ const MUSIC_DIR := "res://data/audio/music/"
 ## Every track in this dir has passed STT-based lyric moderation against
 ## data/moderation/rules_pl.json. play_phonk_random() rotates through them.
 const MUSIC_DIR_VOXEL := "res://data/audio/music/voxel/"
+## Curated from the imported, moderation-cleared pack. These sets deliberately
+## favour bright synth hooks, punchy drums, and short-form game energy over the
+## slower ambient/R&B material in the source pack.  They are the closest fit to
+## a playful, Roblox-like gen-Z phonk bed without introducing lyrics.
+const GEN_Z_PHONK_EXPLORATION := ["circuit_synthwave", "tokyo_trap", "drift_synthwave_02"]
+const GEN_Z_PHONK_DANGER := ["drift_drums_xd250", "tokyo_trap", "circuit_synthwave"]
+const GEN_Z_PHONK_DRIVE := ["drift_drums_xd250", "tokyo_trap", "circuit_synthwave"]
+const GEN_Z_PHONK_NIGHT := ["drift_synthwave_01", "circuit_synthwave"]
 
 const SFX_POOL_SIZE := 6
 const HOVER_THROTTLE_MSEC := 100
@@ -40,8 +48,13 @@ var _last_phonk_index: int = -1
 var _sfx_pool: Array[AudioStreamPlayer] = []
 var _melee_pool: Array[AudioStreamPlayer] = []
 var _music_player: AudioStreamPlayer
+var _music_player_secondary: AudioStreamPlayer
 var _voice_player: AudioStreamPlayer
 var _voice_queue: Array[Dictionary] = []
+var _active_music_player := 0
+var _music_transition: Tween = null
+var _current_music_key := ""
+var _adventure_music_state := ""
 
 var _last_hover_msec: int = 0
 
@@ -59,8 +72,13 @@ func _ready() -> void:
 	_music_player = AudioStreamPlayer.new()
 	_music_player.name = "MusicPlayer"
 	_music_player.bus = "Music"
-	_music_player.volume_db = 0.0
+	_music_player.volume_db = -40.0
 	add_child(_music_player)
+	_music_player_secondary = AudioStreamPlayer.new()
+	_music_player_secondary.name = "MusicPlayerSecondary"
+	_music_player_secondary.bus = "Music"
+	_music_player_secondary.volume_db = -40.0
+	add_child(_music_player_secondary)
 
 	_voice_player = AudioStreamPlayer.new()
 	_voice_player.name = "VoicePlayer"
@@ -235,20 +253,7 @@ const MUSIC_TARGET_VOLUME_DB := -12.0
 
 func play_music(music_name: String, fade_in: bool = true) -> void:
 	var stream := _load_music(music_name)
-	if stream == null or _music_player == null:
-		return
-	if stream is AudioStreamMP3:
-		stream.loop = true
-	_music_player.stream = stream
-	_music_player.pitch_scale = MUSIC_PITCH
-	if fade_in:
-		_music_player.volume_db = -40.0
-		_music_player.play()
-		var tw := create_tween()
-		tw.tween_property(_music_player, "volume_db", MUSIC_TARGET_VOLUME_DB, 1.2)
-	else:
-		_music_player.volume_db = MUSIC_TARGET_VOLUME_DB
-		_music_player.play()
+	_play_music_stream(stream, music_name, fade_in)
 
 
 ## Plays a random CC0 phonk track from data/audio/music/voxel/.
@@ -269,15 +274,90 @@ func play_phonk_random(fade_in: bool = true) -> bool:
 	return true
 
 
+func _play_curated_voxel_track(candidates: Array, fade_in: bool = true) -> bool:
+	var available: Array[String] = []
+	for candidate_variant in candidates:
+		var candidate := String(candidate_variant)
+		if candidate in _voxel_phonk_slugs:
+			available.append(candidate)
+	if available.is_empty():
+		return false
+	var idx := randi() % available.size()
+	if available.size() > 1 and available[idx] == _current_music_key.get_file().get_basename():
+		idx = (idx + 1) % available.size()
+	_play_music_from_dir(MUSIC_DIR_VOXEL, available[idx], fade_in)
+	return true
+
+
+## Runtime-facing music director for the playable adventure. These are all
+## local, moderated, non-lyrical tracks. Keeping selection here makes menu,
+## direct-launch, driving, and combat transitions use one crossfade path.
+func set_adventure_music_state(state: String) -> void:
+	var normalized := state.strip_edges().to_lower()
+	if normalized.is_empty():
+		normalized = "explore"
+	if normalized == _adventure_music_state and _active_music_is_playing():
+		return
+	_adventure_music_state = normalized
+	match normalized:
+		"danger":
+			if not _play_curated_voxel_track(GEN_Z_PHONK_DANGER, true):
+				play_music("combat_phonk", true)
+		"drive":
+			if not _play_curated_voxel_track(GEN_Z_PHONK_DRIVE, true):
+				play_music("drift_phonk", true)
+		"night":
+			if not _play_curated_voxel_track(GEN_Z_PHONK_NIGHT, true):
+				play_music("mushroom_forest", true)
+		"explore":
+			if not _play_curated_voxel_track(GEN_Z_PHONK_EXPLORATION, true):
+				play_music("adventure_island", true)
+		_:
+			play_music("adventure_island", true)
+
+
+## Rotate a state-specific bed through the same crossfade path. This keeps a
+## long sandbox session lively while never cutting music, SFX, or dialogue off.
+func rotate_adventure_track() -> void:
+	match _adventure_music_state:
+		"danger":
+			_play_curated_voxel_track(GEN_Z_PHONK_DANGER, true)
+		"drive":
+			_play_curated_voxel_track(GEN_Z_PHONK_DRIVE, true)
+		"night":
+			_play_curated_voxel_track(GEN_Z_PHONK_NIGHT, true)
+		"explore":
+			_play_curated_voxel_track(GEN_Z_PHONK_EXPLORATION, true)
+
+
+## Compatibility entry point for existing callers. New runtime code should use
+## rotate_adventure_track() so every play state can stay fresh.
+func rotate_adventure_exploration_track() -> void:
+	if _adventure_music_state == "explore":
+		rotate_adventure_track()
+
+
 func stop_music(fade_out: bool = true) -> void:
-	if _music_player == null or not _music_player.playing:
+	if _music_player == null:
+		return
+	if _music_transition != null and is_instance_valid(_music_transition):
+		_music_transition.kill()
+	var playing_players: Array[AudioStreamPlayer] = []
+	for player in [_music_player, _music_player_secondary]:
+		if player != null and player.playing:
+			playing_players.append(player)
+	if playing_players.is_empty():
 		return
 	if fade_out:
-		var tw := create_tween()
-		tw.tween_property(_music_player, "volume_db", -40.0, 0.4)
-		tw.tween_callback(_music_player.stop)
+		_music_transition = create_tween()
+		for player in playing_players:
+			_music_transition.parallel().tween_property(player, "volume_db", -40.0, 0.4)
+			_music_transition.parallel().tween_callback(player.stop)
 	else:
-		_music_player.stop()
+		for player in playing_players:
+			player.stop()
+	_current_music_key = ""
+	_adventure_music_state = ""
 
 
 # ---------- private loaders ----------
@@ -354,20 +434,39 @@ func _play_music_from_dir(dir: String, slug: String, fade_in: bool) -> void:
 			stream.loop = true
 			# Voxel phonk tracks: default loop offset to avoid silence
 			stream.loop_offset = 29.0
-	if stream == null or _music_player == null:
+	_play_music_stream(stream, dir + slug, fade_in)
+
+
+func _active_music_is_playing() -> bool:
+	var active := _music_player if _active_music_player == 0 else _music_player_secondary
+	return active != null and active.playing
+
+
+func _play_music_stream(stream: AudioStream, music_key: String, fade_in: bool) -> void:
+	if stream == null or _music_player == null or _music_player_secondary == null:
+		return
+	if music_key == _current_music_key and _active_music_is_playing():
 		return
 	if stream is AudioStreamMP3:
 		stream.loop = true
-	_music_player.stream = stream
-	_music_player.pitch_scale = MUSIC_PITCH
-	if fade_in:
-		_music_player.volume_db = -40.0
-		_music_player.play()
-		var tw := create_tween()
-		tw.tween_property(_music_player, "volume_db", MUSIC_TARGET_VOLUME_DB, 1.2)
-	else:
-		_music_player.volume_db = MUSIC_TARGET_VOLUME_DB
-		_music_player.play()
+	var from := _music_player if _active_music_player == 0 else _music_player_secondary
+	var to := _music_player_secondary if _active_music_player == 0 else _music_player
+	if _music_transition != null and is_instance_valid(_music_transition):
+		_music_transition.kill()
+	to.stream = stream
+	to.pitch_scale = MUSIC_PITCH
+	to.volume_db = -40.0 if fade_in else MUSIC_TARGET_VOLUME_DB
+	to.play()
+	_current_music_key = music_key
+	if not fade_in or not from.playing:
+		from.stop()
+		_active_music_player = 1 - _active_music_player
+		return
+	_music_transition = create_tween()
+	_music_transition.tween_property(from, "volume_db", -40.0, 0.85)
+	_music_transition.parallel().tween_property(to, "volume_db", MUSIC_TARGET_VOLUME_DB, 0.85)
+	_music_transition.tween_callback(from.stop)
+	_active_music_player = 1 - _active_music_player
 
 
 ## Scans res://data/audio/music/voxel/ at startup and remembers the

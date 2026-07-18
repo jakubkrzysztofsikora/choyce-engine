@@ -44,7 +44,7 @@ void vertex() {
 	// Use world-space coordinates for flow to ensure DUDV distortion is based on
 	// local/world metres rather than normalized 0-1 UVs. This prevents the full-river
 	// length from compressing the flow pattern into a single repeat.
-	vec3 world_pos = (WORLD_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float a = sin((world_pos.x * wave_scale) + TIME * wave_speed);
 	float b = cos((world_pos.z * wave_scale * 0.73) + TIME * wave_speed * 0.83);
 	wave_mix = (a + b) * 0.25 + 0.5;

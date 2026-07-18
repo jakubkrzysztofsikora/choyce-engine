@@ -151,7 +151,10 @@ func _build() -> void:
 	_play_btn.text = _tr("launcher.play", "GRAJ")
 	_play_btn.custom_minimum_size = Vector2(420, 140)
 	_play_btn.add_theme_font_size_override("font_size", 64)
-	_play_btn.focus_mode = Control.FOCUS_ALL
+	# A launcher should begin in a resting, cinematic state. Click focus still
+	# supports Enter after an intentional click, but avoids a queued ui_accept
+	# event or application activation immediately starting the saved world.
+	_play_btn.focus_mode = Control.FOCUS_CLICK
 	_style_play_button(_play_btn)
 	# Center the button within the column regardless of its min-size.
 	var btn_wrap := HBoxContainer.new()
@@ -744,7 +747,6 @@ func _reveal_menu() -> void:
 	if btn_wrap != null:
 		mtw.tween_property(btn_wrap, "modulate:a", 1.0, 0.5).set_delay(0.25)
 	_play_btn.disabled = false
-	_play_btn.grab_focus()
 
 	# Keep the frozen cutscene as the static menu key art until the child presses
 	# Play. It is owned by this overlay and is released normally with it.

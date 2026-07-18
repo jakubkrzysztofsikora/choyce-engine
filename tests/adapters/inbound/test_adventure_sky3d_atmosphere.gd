@@ -51,8 +51,8 @@ func _run() -> void:
 	_assert(legacy_environment != null and legacy_environment.environment == null,
 		"the static Environment is detached while Sky3D is active")
 	_assert(not (runtime.get_node_or_null("DirectionalLight3D") as DirectionalLight3D).visible
-		and not (runtime.get_node_or_null("FillLight") as DirectionalLight3D).visible,
-		"legacy lights do not double-light the Sky3D world")
+		and (runtime.get_node_or_null("FillLight") as DirectionalLight3D).visible,
+		"Sky3D owns the key light while the shadowless fill preserves night readability")
 	if sky != null:
 		sky.set("current_time", 22.0)
 		await process_frame

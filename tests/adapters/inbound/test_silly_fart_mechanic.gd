@@ -6,7 +6,7 @@ const InputMapInitializer = preload("res://src/adapters/inbound/shared/input_map
 const EffectSpawner = preload("res://src/adapters/inbound/gameplay/effect_spawner.gd")
 const GameplayRuntime = preload("res://src/adapters/inbound/gameplay/gameplay_runtime.gd")
 const NPCDialogueLoader = preload("res://src/application/npc_dialogue_loader.gd")
-const FART_SFX := "res://data/audio/sfx/eleven/fart_kid_safe.mp3"
+const FART_SFX := "res://data/audio/sfx/eleven/fart_cc0_short.mp3"
 const ADVENTURE_NPC_VOICE_FILES := [
 	"res://data/audio/voice/adventure_olek_greeting.mp3",
 	"res://data/audio/voice/adventure_pablo_greeting.mp3",
@@ -43,7 +43,7 @@ func _run() -> void:
 	get_root().add_child(initializer)
 	await process_frame
 	_assert(InputMap.has_action("silly_fart"), "G-key sandbox action is registered")
-	_assert(ResourceLoader.exists(FART_SFX), "generated ElevenLabs family-safe fart SFX is shipped")
+	_assert(ResourceLoader.exists(FART_SFX), "CC0 short fart SFX is shipped")
 	_test_shipped_adventure_npc_voice_fallback()
 	_test_sandbox_fart_affordance()
 	_test_adventure_roster_has_authored_fart_reactions()
@@ -83,11 +83,11 @@ func _test_sandbox_fart_affordance() -> void:
 	get_root().add_child(runtime)
 	runtime.add_child(hud)
 	runtime._build_sandbox_fart_hint(hud)
-	var hint := runtime._sandbox_hint_panel.get_node_or_null("HintKeyLabel") as Label if runtime._sandbox_hint_panel != null else null
 	var hint_icon := runtime._sandbox_hint_panel.get_node_or_null("HintIcon") as TextureRect if runtime._sandbox_hint_panel != null else null
 	_assert(runtime._sandbox_hint_panel != null and runtime._sandbox_hint_panel.visible \
-		and hint != null and hint.text == "G" and hint_icon != null and hint_icon.texture != null,
-		"optional fart mechanic has one compact image-led G-key affordance")
+		and runtime._sandbox_hint_panel.get_node_or_null("HintKeyLabel") == null \
+		and hint_icon != null and hint_icon.texture != null and hint_icon.tooltip_text.contains("G"),
+		"optional fart mechanic has one compact image-only affordance with a non-rendered keyboard tooltip")
 	runtime._on_player_farted(Vector3.ZERO)
 	_assert(not runtime._sandbox_hint_panel.visible,
 		"fart hint dismisses after the child discovers the gag")

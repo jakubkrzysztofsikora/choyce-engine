@@ -1,0 +1,27 @@
+{
+  "task_id": "VS-044/VS-014",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "path": "world_renderer.gd: riverbank visual-only assets",
+      "message": "Visual-only riverbank props must terrain-ground independently of collision and be tested against the imported terrain height and swim channel."
+    },
+    {
+      "severity": "high",
+      "path": "/tmp/choyce-opening-bank-props-grounded.jpg",
+      "message": "Visual gate remains open: water, foreground lawn, and mixed toy-scale assets do not yet deliver the required natural opening composition."
+    },
+    {
+      "severity": "medium",
+      "path": "gameplay_runtime.gd terrain probe",
+      "message": "Use a session/generation token and exact adapter reference so stale collision probes cannot disable a later session's safety floor."
+    },
+    {
+      "severity": "medium",
+      "path": "HUD first frame",
+      "message": "The compact menu should not compete visually with world discovery; inspect the full first frame, not hotbar slots alone."
+    }
+  ]
+}

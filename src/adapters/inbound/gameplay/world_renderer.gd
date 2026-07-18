@@ -1004,8 +1004,8 @@ func _build_opening_grove() -> void:
 		# The supplied trees are 1.5–3.6m at unit scale. A child needs a true
 		# 7–14m woodland edge rather than potted scenery beside the player.
 		var scale := float(entry[1]) * 1.24
-		var collision_size := (OPENING_FOREST_TREE_COLLISION_PROFILES.get(tree_path,
-			Vector3(1.0, 10.0, 1.0)) as Vector3) * scale
+		var collision_size := OPENING_FOREST_TREE_COLLISION_PROFILES.get(tree_path,
+			Vector3(1.0, 10.0, 1.0)) as Vector3
 		_add_visual_asset("opening_grove_tree_%d" % i, entry[0], Vector3.ONE * scale,
 			float(i) * 0.71, tree_path, true, collision_size)
 	var bush_positions := [
@@ -1186,10 +1186,10 @@ func _build_opening_courtyard() -> void:
 	var gateway_right_scale := 3.35
 	_add_visual_asset("OpeningForestGatewayTreeL", Vector3(-18.0, 0.0, -42.2), Vector3.ONE * gateway_left_scale,
 		0.18, gateway_left_path, true,
-		(OPENING_FOREST_TREE_COLLISION_PROFILES[gateway_left_path] as Vector3) * gateway_left_scale)
+		OPENING_FOREST_TREE_COLLISION_PROFILES[gateway_left_path] as Vector3)
 	_add_visual_asset("OpeningForestGatewayTreeR", Vector3(-12.0, 0.0, -42.2), Vector3.ONE * gateway_right_scale,
 		-0.32, gateway_right_path, true,
-		(OPENING_FOREST_TREE_COLLISION_PROFILES[gateway_right_path] as Vector3) * gateway_right_scale)
+		OPENING_FOREST_TREE_COLLISION_PROFILES[gateway_right_path] as Vector3)
 	_add_opening_dirt_trail("OpeningTrailForestGateway", Vector3(-8.2, 0.035, -39.4),
 		2.65, 14.0, -1.96)
 
@@ -1327,12 +1327,11 @@ func _build_opening_forest_mass(seed_source: String) -> void:
 			# 7–14m adult range instead of shrinking it below the player/house.
 			var scale := forest_rng.randf_range(2.45, 3.95)
 			var tree_path := String(tree_paths[forest_rng.randi_range(0, tree_paths.size() - 1)])
-			# The visual source is deliberately varied 2.45–3.95×. Scale the
-			# selected trunk profile in the same world-space ratio; inverse scaling
-			# in `_add_visual_asset()` then cancels only the child transform, not
-			# the physical contact size. A giant pine can no longer have a tiny
-			# birch-sized invisible blocker.
-			var trunk_collision := (OPENING_FOREST_TREE_COLLISION_PROFILES.get(tree_path, Vector3(1.0, 11.0, 1.0)) as Vector3) * scale
+			# Collision profiles are already world-space trunk measurements.
+			# `_add_visual_asset()` inverse-scales the collision child, so multiplying
+			# this by the decorative canopy scale created 3–5m invisible walls around
+			# otherwise enterable trees. Keep the physical contact at the bark.
+			var trunk_collision := OPENING_FOREST_TREE_COLLISION_PROFILES.get(tree_path, Vector3(1.0, 11.0, 1.0)) as Vector3
 			var tree := _add_visual_asset(
 				"OpeningForestMass_%02d_%02d" % [cluster_index, tree_index],
 				position,
@@ -2654,11 +2653,25 @@ func _add_visual_asset(
 	root.position = _terrain_grounded_position(asset_position) if collidable or ground_to_terrain else asset_position
 	root.rotation.y = rotation_y
 	root.scale = asset_scale
+	# Forest trees must behave like trees: a close axe swing can fell them.
+	# Do not give the same behavior to decorative bushes/props merely because a
+	# node name contains "tree"; only imported Quaternius tree assets get this
+	# lightweight harvest contract.
+	if collidable and _is_harvestable_tree_asset(path):
+		root.add_to_group("harvestable_tree")
+		root.set_meta("interaction_action", "gather_wood")
+		root.set_meta("resource_action", "gather_wood")
+		root.set_meta("resource_item_id", "wood_oak")
 	var container: Node = parent_node if parent_node != null else self
 	container.add_child(root)
 	if collidable and instance is Node3D and collision != null:
 		_align_collidable_asset_to_ground(root, instance as Node3D, collision, effective_collision_size)
 	return root
+
+
+func _is_harvestable_tree_asset(asset_path: String) -> bool:
+	var filename := asset_path.get_file().to_lower()
+	return asset_path.contains("/quaternius/nature/") and filename.contains("tree")
 
 
 ## Terrain3D owns the visible island height away from the intentionally flat

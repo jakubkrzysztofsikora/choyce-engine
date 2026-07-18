@@ -73,6 +73,9 @@ func _test_homestead_has_complete_shell_and_playable_collision() -> void:
 			"house closes its 12m shell at %s" % edge_name)
 	_assert(renderer.get_node_or_null("HomeGabledRoof") != null,
 		"home has a full gabled roof rather than a flat debug slab")
+	_assert(renderer.get_node_or_null("HomeRoofFront") != null
+		and renderer.get_node_or_null("HomeRoofBack") != null,
+		"home seals both gable ends with matching village roof-front modules")
 	_assert(renderer.get_node_or_null("HomeChimney") != null, "home has a chimney silhouette")
 	# The individual tiles deliberately do not join a gameplay group: they are
 	# decorative PBR surfaces while HomeFloor owns the physical surface.
@@ -87,14 +90,17 @@ func _test_homestead_has_complete_shell_and_playable_collision() -> void:
 	_assert(door != null and door.is_in_group("world_interactable"),
 		"front door remains an interactable physical object")
 	var door_visual := door.get_node_or_null("HomeDoorVisual") as Node3D if door != null else null
-	_assert(door_visual != null and is_zero_approx(door_visual.position.x)
-		and is_equal_approx(door_visual.scale.x, 2.0)
+	_assert(door_visual != null and is_equal_approx(door_visual.position.x, 0.084)
+		and is_equal_approx(door_visual.scale.x, 1.975)
 		and is_equal_approx(door_visual.scale.y, 1.18),
 		"front door starts at its real hinge and fills the village doorway")
 	var door_bounds := _world_mesh_bounds(door_visual)
 	_assert(door_bounds.z > 0.60 and door_bounds.z < 0.70 and door_bounds.w > 3.08 and door_bounds.w < 3.18,
 		"door mesh spans the wall's real threshold-to-lintel height")
-	_assert(door_bounds.x > 22.75 and door_bounds.x < 23.00 and door_bounds.y > 24.95 and door_bounds.y < 25.20,
+	# The house now sits at the bridge's north-bank destination (x=12) rather
+	# than screen-right (x=18); the same 2.2m physical doorway must still bound
+	# the authored mesh exactly.
+	_assert(door_bounds.x > 10.89 and door_bounds.x < 10.93 and door_bounds.y > 13.08 and door_bounds.y < 13.12,
 		"door mesh stays inside the physical 2.2m doorway horizontally")
 	renderer.toggle_door(door)
 	await create_timer(0.42).timeout

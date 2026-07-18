@@ -633,6 +633,14 @@ evidence is `/tmp/choyce-world-audit-water-port.png`; independent visual review
 is pending. The scene is still a prototype-level composition and must not pass
 the visual gate on this work alone.
 
+The same capture made the starter house's roof-to-wall proportion visibly
+wrong. The source `Roof_RoundTiles_8x12` is 6.4m tall at unit scale, but had
+been placed at full height above 3.1m walls. The starter shell now calibrates
+that roof to the room, adds its matching `Roof_Front_Brick8` caps at both gable
+ends, and fits the visible door exactly inside its 2.2m physical leaf. Both the
+modular-house and renderer checks pass; the fresh visual evidence is
+`/tmp/choyce-world-audit-house-caps.png`.
+
 This is a direct grounding/composition repair, not proof of the visual gate:
 the retained capture still shows a prototype HUD, overly sparse near-field
 details, disconnected source-asset language, and terrain forms that need a
@@ -653,6 +661,173 @@ API as a safe no-op for models that do not ship matching shapes. This removes
 the leaked English overlay and makes the visual/audio bootstrap trustworthy;
 it does not make the current world art acceptable.
 
+### Review-driven opening rescue, iteration 2 — 2026-07-18
+
+The first independent review of VS-044 correctly rejected the initial river and
+grove pass. The visual water ribbon and its collision did not share a real
+meander, the forest began too far beyond the camera, the foreground remained a
+lawn, and the photographic leaf tile clashed with low-poly canopy geometry.
+The live implementation now uses one sampled bank-pair function for the water
+mesh and its 96 overlapping shallow-water volumes, adds non-colliding wet-earth
+bank ribbons from the same samples, begins colliding forest masses immediately
+beyond the north bank, and layers ready-made bush/grass/rock thickets outside
+the two routes. The incompatible photographic leaf source was replaced with a
+purpose-built stylised leaf tile after checking the installed local foliage
+assets. This pass is evidenced by `/tmp/choyce-live-updated-world.png` and the
+focused renderer contract.
+
+That capture also makes the remaining failures unambiguous: the river is still
+too geometrically flat, the clearing has too much bare foreground, local
+assets still read as a mixed prototype kit, and the default blue-uniform player
+does not represent Ziemek or Gniewko. **VS-044 remains in progress**, not in
+review, until a fresh adversarial review can judge a materially stronger live
+frame. **VS-046** is now the separate, visual-priority hero task: translate the
+approved Ziemek/Gniewko concepts into distinct rigged gameplay silhouettes
+without using the supplied child photographs as game textures or breaking face,
+tool, local-split-screen, or persistence contracts.
+
+Night is also a direct visual-playability constraint. Sky3D now has a 48-minute
+day, boosted moonlight, a lowered night sky contribution that actually exposes
+ambient energy, and a retained shadowless fill light. The prior configuration
+clamped its night contribution above the day value and produced the black live
+frame the user reported. The Sky3D regression test covers the changed light
+ownership; a live night traversal capture remains required before visual-gate
+acceptance.
+
+### Hostile re-review result — 2026-07-18
+
+The required re-review returned **REQUEST_CHANGES** and its evidence is retained
+at `.ai/reviews/VS-044-codex-visual-runtime-rereview-2026-07-18.json`. Two
+concrete defects were repaired immediately: visible bridge stairs now sit over
+matched convex ramp collision instead of generic boxes, and wet river-bank
+ribbons no longer carry a global 20cm lift—they slope from the generated water
+line to sampled Terrain3D height. Focused Sky3D and renderer contracts pass
+after this repair, and `/tmp/choyce-live-grounded-banks.png` is the fresh
+direct-play evidence.
+
+The review remains correct on the remaining visual gate failures: the opening
+still looks like a sparse kit prototype, the river does not yet read as deep or
+moving in the actual camera, and the default blue-uniform protagonist is not a
+credible Ziemek or Gniewko. The shadowless night fill is now time-of-day
+responsive rather than a daytime wash, but a rendered night traversal capture
+is still required. These are implementation blockers, not deferred polish.
+
+### Hero identity correction — 2026-07-18
+
+VS-046 is now in progress. The generic blue uniform is replaced at runtime by
+a selective UV/material treatment on the existing animated character rig:
+Ziemek's starting garment reads turquoise, his lower garment reads dark cargo,
+and a scaled supplied bag mesh is mounted outside the camera-visible back. The
+first capsule-clothes experiment was rejected after a live capture because it
+read as rigid armour; no such primitive torso/leg proxy is retained. Face
+performance, locomotion animation and held-tool sockets stay on the original
+character hierarchy, and a focused regression test checks the Ziemek layer and
+the clean removal of his backpack when switching to Gniewko.
+
+This does **not** clear the character-art gate. Gniewko still needs a distinct
+polished live look and local split-screen selection remains incomplete. The
+available generic source rig is materially below the supplied concept-turnaround
+quality, so VS-046 needs a real child-proportioned replacement/garment asset
+before it can be accepted as visual-rescue evidence.
+
+### Water and forest evidence loop — 2026-07-18
+
+VS-044 now renders the meandering river at 192 longitudinal segments with 12
+cross-river strips, correct upward normals, repeated supplied SimpleWater DUDV
+flow, and an opaque turquoise/deep-channel material. Collision deliberately
+stays at the proven 96 overlapping water volumes. The focused renderer and
+bridge contracts pass, and `/tmp/choyce-water-flow-current.png` is the direct
+play capture after the runtime uniform correction.
+
+That capture is still **not** visual-gate evidence: from the real third-person
+opening view the river remains too much like a broad graphic band, and the
+opening composition remains sparse/toy-scale. A CC0 Nature broadleaf test was
+captured at `/tmp/choyce-opening-broadleaf-test.png` and removed immediately:
+its bark UVs produced visible horizontal striping and its crown overwhelmed the
+frame. The supplied Fantasy-Free package is AGPL and `gdTree3D` has no supplied
+license file, so neither is bundled without an explicit licensing decision.
+
+### Forest material and contact correction — 2026-07-18
+
+The next approved local reuse is the CC0 Quaternius Ultimate Nature Pack that
+was already imported in `data/models/quaternius/nature`. Its Common, Pine and
+Birch silhouettes now provide the deep opening forest instead of repeating the
+near-field oak across every distance. The first rendered trial correctly
+failed: the source's low-poly canopy normals combined with the generic cel
+shader into near-black crowns. The repair is deliberately narrow: those four
+sources use `forest_foliage.gdshader`, which preserves the local leaf texture
+with a bounded ambient floor, while their individual trunk collision profiles
+replace one generic forest box. The direct-play capture
+`/tmp/choyce-forest-readable-shore-rocks.png` verifies that the black-crown
+failure and white bridge-side cliff cube are removed; the latter now uses
+irregular ready-made rock meshes.
+
+The cross-agent re-review remained `REQUEST_CHANGES` and is retained at
+`.ai/reviews/VS-044-forest-material-rereview-2026-07-18.json`. Its valid
+collision finding was repaired: every trunk profile now scales with its
+2.45–3.95× visual instance before the collision child cancels inherited
+transform scale. The foliage material now retains directional light with a
+bounded minimum response instead of being unshaded, and the renderer test
+instantiates the deterministic forest to check material overrides plus
+scale-matched physical shapes. `/tmp/choyce-forest-lit-scaled-collision.png`
+is the fresh live capture after that correction.
+
+The first bank-understorey experiment was rejected from direct play because
+the supplied `plant_flatTall` meshes rendered as bright cyan crystal-like
+forms. They were removed rather than hidden by another shader. The retained
+bush/rock-only replacement at `/tmp/choyce-riverbank-bush-only.png` has no
+neon artifact and keeps the bridge lane open, but it remains insufficient:
+the foreground is still predominantly lawn and the river is still a broad
+graphic stripe. The next correction must introduce actual terrain-conforming
+bank relief and a bridge-to-forest travel frame, not merely add more props.
+
+Terrain3D now owns a bounded 2–2.5m outer-bank shoulder around the authored
+opening crossing. Its pure heightfield contract proves that the spawn, channel
+and bridge ramp remain flat while the north bank gains visible relief; the
+direct-play test is `tests/adapters/inbound/test_terrain3d_world_adapter.gd`.
+This is still not acceptance evidence: the first capture needs an unobstructed
+child-height bridge-to-forest frame before the terrain/visual cohesion can be
+judged.
+
+The hotbar has also removed its visible `1–5` control legend. It remains
+icon-led, with non-rendered tooltips retaining assistive/keyboard names; its
+focused contract is `tests/adapters/inbound/test_hotbar_image_hud_contract.gd`.
+`/tmp/choyce-image-hotbar-no-numbers.png` confirms the numbered overlay is
+gone, though the desktop capture is not the final UI quality gate.
+
+This is still only a repair, not VS-044 acceptance. The retained capture shows
+that the clearing remains overly open, the river still reads as a graphic band,
+and the new forest needs understorey, bank depth and a bridge-to-forest traversal
+capture before it can be described as an engaging natural space.
+
+### Terrain collision, grounded river dressing, and image HUD verification — 2026-07-18
+
+The first Terrain3D bank pass exposed a safety flaw: asking Terrain3D to build
+dynamic collision is not proof that its local physics mesh already exists. The
+flat fallback collider now remains active at session start and is disabled only
+after four physics frames and direct rays confirm Terrain3D below the player,
+camp dressing, and both north-bank samples. This is covered by the installed
+extension—not only height-map maths—in
+`tests/adapters/inbound/test_terrain3d_world_adapter.gd`; the direct Adventure
+boot logs the successful handoff.
+
+`/tmp/choyce-opening-bank-props-grounded.jpg` is the first unobscured opening
+capture after that repair. It also revealed and corrected a concrete placement
+bug: several nominal riverbank foliage entries were inside the meandering swim
+channel, producing the floating cyan/white plants seen in play. The rendered
+bank now uses low textured bushes instead of the offending tall cards, all
+named riverbank props are regression-checked outside the physical water
+cross-section, and the water grade is a deeper muted stream rather than a pale
+cyan strip.
+
+The hotbar is now verified by constructing the real HUD: it has five
+texture-backed slots, no visible `Label` child, and a contrast-checked selected
+border. This satisfies only the icon-first control repair. Neither the HUD nor
+the opening world passes the final visual gate yet: the clean capture still
+shows too much open lawn, mixed source-model language and a weak bridge-to-
+forest discovery frame. The next visual task is therefore a deliberately
+curated landmark/forest approach, not another random prop scatter.
+
 ## Explicit non-goals for the next implementation batch
 
 - Do not add another world type.
@@ -666,6 +841,30 @@ it does not make the current world art acceptable.
   gate is accepted; keep that idea bookmarked for a later bounded experiment
   using tailnet LiteLLM decisions, ElevenLabs dialogue, allowlisted actions,
   moderation, budgets, fallbacks, and audit logs.
+
+## Sandbox-loop and co-op priority — 2026-07-18
+
+The next systems slice is deliberately one connected free-play loop, not more
+isolated mechanics:
+
+`real tree/rock → shared pictorial inventory → chosen craft → held item →
+camera-ray build → undo/save → play together`
+
+VS-049 owns the loop. It will keep creative mode as the default: the shipped
+safe block/tool catalog is available from inventory, while gathering still gives
+the child a meaningful, non-grindy reason to explore and make recipes. Inventory
+opens only on an explicit action, owns the keyboard only while focused, and keeps
+the image-first HUD uncluttered during exploration. Crafting starts with clear,
+bounded recipes (food, stick, iron sword) and uses the existing held-item,
+resource, build-grid and save seams rather than making a parallel inventory.
+
+VS-050 is the immediate multiplayer target: reliable local split-screen. Both
+children must inhabit one World3D and mutate the same inventory/resources/build
+state before any network work begins. The existing research makes LAN/P2P a
+separate host-authority, consent, safe-role, save-conflict and disconnect
+problem; it is tracked as VS-051 and remains design-only until local co-op is
+proven and reviewed. This keeps private family multiplayer possible without
+pretending a second viewport is a peer-to-peer implementation.
 
 ## References
 

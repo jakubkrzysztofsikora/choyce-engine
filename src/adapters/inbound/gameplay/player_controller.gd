@@ -3,21 +3,30 @@ extends CharacterBody3D
 
 const WALK_SPEED := 5.0
 const SPRINT_SPEED := 10.0
+const MOVEMENT_DECELERATION := 20.0
 const JUMP_VELOCITY := 4.5
 const MOUSE_SENSITIVITY := 0.003
 const VERTICAL_LOOK_LIMIT := 1.2
 const COYOTE_TIME := 0.1
 const JUMP_BUFFER_TIME := 0.1
 const FOOTSTEP_INTERVAL := 0.4
-const BASE_FOV := 64.0
-const SPRINT_FOV := 70.0
+# Match the composed third-person opening camera. A 64–70° lens made the
+# real bridge and 12m home read as tiny props surrounded by empty lawn; 55°
+# still left the live frame feeling like a small diorama. A restrained 50°
+# lens gives the opening destination and child hero a more legible scale.
+const BASE_FOV := 50.0
+const SPRINT_FOV := 54.0
 const GRAVITY_RISE_MULTIPLIER := 1.0
 const GRAVITY_FALL_MULTIPLIER := 1.35
 const BUILD_RAY_RANGE := 8.0
 const WATER_MOVE_MULTIPLIER := 0.48
-const WATER_SINK_SPEED := 1.3
+const WATER_SINK_SPEED := 0.18
 const WATER_SWIM_UP_VELOCITY := 3.4
 const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
+const HERO_CLOTHING_SHADER := preload("res://src/adapters/inbound/gameplay/shaders/hero_clothing.gdshader")
+const KENNEY_TOON_COLORMAP := preload("res://data/models/kenney/toon_characters/Models/GLB format/Textures/colormap.png")
+const KENNEY_BAG_SCENE := preload("res://data/models/kenney/food_kit/GLB/bag.glb")
+const ZIEMEK_HOODIE_PATTERN := preload("res://data/textures/generated/ziemek-hoodie-fabric-v1.png")
 
 signal footstep
 signal landed
@@ -74,6 +83,22 @@ func set_action_prefix(prefix: String) -> void:
 func _act(name: String) -> String:
 	return _act_prefix + name
 
+
+var _input_disabled: bool = false
+
+func set_input_disabled(disabled: bool) -> void:
+	_input_disabled = disabled
+	if disabled:
+		# Release mouse capture so user can click chat LineEdit
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	else:
+		# Capture mouse again for 3D navigation
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+func is_input_disabled() -> bool:
+	return _input_disabled
+
+
 # Procedural Muay Thai fight animation state. No skeletal-bone work
 # required — animates the existing _character_mesh wrapper via tween
 # and lerp. Cheap, keeps the Kenney character's own idle/walk anims
@@ -127,11 +152,31 @@ var _head_bob_time: float = 0.0
 var _base_scale: Vector3 = Vector3.ONE
 var _camera_base_y: float = 1.6
 var _character_mesh: Node3D
+# The imported Kenney rig's visual feet do not share the CharacterBody origin.
+# Keep the calibrated resting offset separately: transient combat/fart/sit poses
+# must return to this value, never to y=0 (which reintroduces visible hovering).
+var _character_visual_ground_y := 0.0
 var _facial_performance
 var _anim_player: AnimationPlayer
+## The starting Adventure hero is Ziemek.  These are wearable pieces mounted
+## below the imported character root rather than a second character/face mesh:
+## the same rig continues to drive locomotion, tool sockets and facial acting.
+## A later local-co-op spawn can select Gniewko through the same seam.
+const HERO_IDENTITY_ZIEMEK := "ziemek"
+const HERO_IDENTITY_GNIEWKO := "gniewko"
+const ZIEMEK_HOODIE := Color("#27b8b4")
+const ZIEMEK_HOODIE_DARK := Color("#126f76")
+const ZIEMEK_CARGO := Color("#20252d")
+const ZIEMEK_SHOE := Color("#263b3e")
+const ZIEMEK_LIME := Color("#9ac941")
+const GNIEWKO_POLO := Color("#e9e1d2")
+const GNIEWKO_NAVY := Color("#202e43")
+var _hero_identity := HERO_IDENTITY_ZIEMEK
 var _current_anim: String = ""
 var _world_interaction_lock: float = 0.0
 var _in_water: bool = false
+const VOID_RECOVERY_Y := -28.0
+var _last_safe_ground_position := Vector3.ZERO
 var _sit_collision_layer: int = 0
 var _sit_collision_mask: int = 0
 var _sitting_collision_disabled := false
@@ -147,6 +192,7 @@ func _ready() -> void:
 	floor_snap_length = 0.34
 	safe_margin = 0.025
 	_health = HealthState.new(PLAYER_MAX_HP)
+	_last_safe_ground_position = global_position
 	hp_changed.emit(_health.current_hp, _health.max_hp)
 	_build_ghost_preview()
 	_camera = $Camera3D
@@ -203,6 +249,10 @@ func _ready() -> void:
 			# Return to velocity-driven movement anim when the clip finishes.
 			if not _anim_player.animation_finished.is_connected(_on_anim_finished):
 				_anim_player.animation_finished.connect(_on_anim_finished)
+		# Make the authored protagonist readable even before the gameplay runtime
+		# loads the saved customization.  That later pass keeps this layer and can
+		# recolor it when the player deliberately changes a cosmetic choice.
+		_apply_hero_identity_layer()
 
 
 ## Imported character scenes are not consistent about their root origin. The
@@ -225,6 +275,7 @@ func _ground_character_visual() -> void:
 			lowest_y = minf(lowest_y, character_local_corner.y)
 	if is_finite(lowest_y):
 		_character_mesh.position.y += _controller_floor_local_y() - lowest_y
+		_character_visual_ground_y = _character_mesh.position.y
 
 
 ## CharacterBody3D's origin is not necessarily its floor. Keep this derived
@@ -244,7 +295,18 @@ func _controller_floor_local_y() -> float:
 	return 0.0
 
 func _physics_process(delta: float) -> void:
+	if global_position.y < VOID_RECOVERY_Y:
+		_recover_from_void()
+		return
 	if not is_processing():
+		return
+	if _input_disabled:
+		var gravity := ProjectSettings.get_setting("physics/3d/default_gravity") as float
+		if not is_on_floor():
+			velocity.y -= gravity * delta
+		velocity.x = move_toward(velocity.x, 0, MOVEMENT_DECELERATION * delta)
+		velocity.z = move_toward(velocity.z, 0, MOVEMENT_DECELERATION * delta)
+		move_and_slide()
 		return
 	if _world_interaction_lock > 0.0:
 		_world_interaction_lock -= delta
@@ -331,6 +393,10 @@ func _physics_process(delta: float) -> void:
 			_hard_landing_feedback()
 		_check_spring_block_launch()
 	_was_on_floor = is_on_floor()
+	if is_on_floor() and global_position.y >= VOID_RECOVERY_Y:
+		_last_safe_ground_position = global_position
+	if global_position.y < VOID_RECOVERY_Y:
+		_recover_from_void()
 
 	# Footstep rhythm
 	if is_on_floor() and direction.length() > 0:
@@ -369,6 +435,15 @@ func _physics_process(delta: float) -> void:
 ## adapter so physics response is owned by movement rather than a scenery prop.
 func set_in_water(active: bool) -> void:
 	_in_water = active
+
+
+## Dynamic Terrain3D collision can momentarily be unavailable at a streamed
+## tile boundary. Recover to the latest real floor contact instead of letting
+## a child fall forever through a visual-only gap.
+func _recover_from_void() -> void:
+	global_position = _last_safe_ground_position + Vector3.UP * 0.35
+	velocity = Vector3.ZERO
+	_in_water = false
 
 
 ## Fires when the AnimationPlayer finishes a one-shot clip (mainly
@@ -436,6 +511,8 @@ var _mouse_dragging: bool = false
 func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
+	if _input_disabled:
+		return
 
 	# Mouse motion alone rotates the camera. The cursor is captured for the
 	# 3D session so motion deltas are raw. ESC releases capture so the kid can
@@ -502,6 +579,7 @@ func _process(delta: float) -> void:
 
 func spawn_at(pos: Vector3) -> void:
 	global_position = pos
+	_last_safe_ground_position = pos
 	velocity = Vector3.ZERO
 	_was_on_floor = false
 	_coyote_time = 0.0
@@ -517,20 +595,18 @@ func spawn_at(pos: Vector3) -> void:
 
 
 func play_sit_at(pos: Vector3) -> void:
-	# The seat target is authored at the chair's actual seat height. Temporarily
-	# opt out of collision while the fixed pose occupies that furniture volume;
-	# otherwise CharacterBody3D resolves the overlap by pushing the avatar into
-	# the chair or table on the next physics tick.
-	_sit_collision_layer = collision_layer
-	_sit_collision_mask = collision_mask
-	collision_layer = 0
-	collision_mask = 0
-	_sitting_collision_disabled = true
-	global_position = pos
+	# Never disable the controller collision for a furniture pose. The former
+	# approach made a chair interaction a route through Terrain3D's streamed
+	# floor, so a child could fall forever from a perfectly ordinary table.
+	# Keep the physical body grounded; only the visible rig performs the sit.
+	_restore_sit_collision()
+	var grounded_seat := pos
+	grounded_seat.y = maxf(pos.y, _last_safe_ground_position.y)
+	global_position = grounded_seat
+	_last_safe_ground_position = grounded_seat
 	velocity = Vector3.ZERO
 	_world_interaction_lock = 1.7
 	if _character_mesh == null:
-		_restore_sit_collision()
 		return
 	var standing_mesh_y := _character_mesh.position.y
 	var tween := create_tween()
@@ -539,7 +615,6 @@ func play_sit_at(pos: Vector3) -> void:
 	tween.tween_interval(1.15)
 	tween.tween_property(_character_mesh, "position:y", standing_mesh_y, 0.22)
 	tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.22)
-	tween.tween_callback(_restore_sit_collision)
 
 
 func _restore_sit_collision() -> void:
@@ -559,15 +634,15 @@ func _perform_silly_fart() -> void:
 		_facial_performance.set_emotion(FacialPerformance.Emotion.SURPRISED, 0.65)
 	if _character_mesh != null and is_instance_valid(_character_mesh):
 		var tween := create_tween()
-		tween.tween_property(_character_mesh, "position:y", -0.055, 0.07)
+		tween.tween_property(_character_mesh, "position:y", _character_visual_ground_y - 0.055, 0.07)
 		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.10, 0.07)
-		tween.tween_property(_character_mesh, "position:y", 0.0, 0.16)
+		tween.tween_property(_character_mesh, "position:y", _character_visual_ground_y, 0.16)
 		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.16)
-	# The third-person camera sits on the avatar's local +Z side. A literal
-	# behind-the-back puff therefore rose between camera and player, obscuring the
-	# body. Keep the playful effect in front-and-to-the-side of the avatar where
-	# it remains readable without taking over the camera composition.
-	var effect_origin := global_position - global_transform.basis.z * 0.68 + global_transform.basis.x * 0.24 + Vector3(0.0, 0.28, 0.0)
+	# This is intentionally the avatar's rear hip, not its face/front. The old
+	# camera-friendly offset made the green cloud read as a burp. A short rear
+	# offset and waist-height origin keep the gag legible in third person while
+	# still clearly originating from the correct end of the character.
+	var effect_origin := global_position + global_transform.basis.z * 0.52 + Vector3(0.0, 0.72, 0.0)
 	farted.emit(effect_origin)
 
 
@@ -712,7 +787,7 @@ func _trigger_punch_animation() -> void:
 		_punch_tween.kill()
 	if _character_mesh != null:
 		_character_mesh.rotation = Vector3(0, PI, 0)
-		_character_mesh.position = Vector3.ZERO
+		_character_mesh.position = Vector3(0.0, _character_visual_ground_y, 0.0)
 
 	_is_punching = true
 	var phase := _punch_phase % ATTACK_ANIMS.size()
@@ -823,12 +898,14 @@ const _AXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-axe.
 const _PICKAXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-pickaxe.glb"
 var _held_weapon: Node3D = null
 var _held_item_anchor: BoneAttachment3D = null
+var _held_visual_tier_id := ""
 
 ## Show a real weapon model in the kid's hand for sword tiers. Bare hand
 ## (fist/stick) keeps the Muay Thai animation with nothing held. The 2-handed
 ## "epic" sword reads as the FF-style big blade. Silent no-op if the model or
 ## the character mesh is missing (procedural fallback stays bare-hand).
 func set_weapon_visual(tier_id: String) -> void:
+	_held_visual_tier_id = tier_id
 	if _held_weapon != null and is_instance_valid(_held_weapon):
 		_held_weapon.queue_free()
 		_held_weapon = null
@@ -840,7 +917,9 @@ func set_weapon_visual(tier_id: String) -> void:
 		"sword_epic": model_path = _SWORD_2H
 		"tool_axe": model_path = _AXE
 		"tool_pickaxe": model_path = _PICKAXE
-		_: return  # fist / stick — bare-handed Muay Thai
+		_:
+			_held_visual_tier_id = ""
+			return  # fist / stick — bare-handed Muay Thai
 	if not ResourceLoader.exists(model_path):
 		return
 	var packed: PackedScene = load(model_path)
@@ -849,9 +928,10 @@ func set_weapon_visual(tier_id: String) -> void:
 	_held_weapon = packed.instantiate()
 	var anchor := _ensure_held_item_anchor()
 	(anchor if anchor != null else _character_mesh).add_child(_held_weapon)
-	# The Kenney player is a compact 30cm rig. The old half-metre root offset
-	# placed a tool in empty air beside the avatar. Bind to arm-right and keep a
-	# hand-scale grip offset so every animation carries the item with the arm.
+	# This compact rig has no separate hand bone: `arm-right` is the final bone
+	# in the real skin hierarchy. Keep the grip inside that bone's local frame
+	# so idle, walk and attack animation carry the tool instead of letting it
+	# orbit the character as a world-space prop.
 	_held_weapon.position = Vector3(0.0, -0.115, 0.018)
 	_held_weapon.rotation_degrees = Vector3(0.0, 0.0, -12.0)
 	_held_weapon.scale = Vector3.ONE * (0.88 if tier_id.begins_with("tool_") else 1.0)
@@ -1023,29 +1103,11 @@ func _perform_tool_action(tool_id: String) -> void:
 
 
 func _trigger_tool_animation(tool_id: String = "") -> void:
-	# Do not play the bare-hand combo while an axe/pick is equipped. The held
-	# ready-made mesh is the visible swing, returning quickly to its grip.
-	if _held_weapon == null or not is_instance_valid(_held_weapon):
-		return
-	var base_rotation := _held_weapon.rotation
-	var tween := create_tween()
-	# Tool-specific swing animations: axe has a broader horizontal arc,
-	# pickaxe has a more vertical chopping motion.
-	if tool_id == "tool_axe":
-		# Axe: wide horizontal swing
-		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(-1.1, 0.25, 0.9), 0.12)
-		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(0.4, -0.15, -0.3), 0.14)
-		tween.tween_property(_held_weapon, "rotation", base_rotation, 0.12)
-	elif tool_id == "tool_pickaxe":
-		# Pickaxe: vertical chopping motion
-		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(-0.8, 0.35, 0.6), 0.10)
-		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(0.2, -0.25, -0.2), 0.12)
-		tween.tween_property(_held_weapon, "rotation", base_rotation, 0.10)
-	else:
-		# Generic tool swing
-		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(-0.95, 0.18, 0.82), 0.11)
-		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(0.32, -0.12, -0.28), 0.13)
-		tween.tween_property(_held_weapon, "rotation", base_rotation, 0.12)
+	# Never tween the model independently of the limb. That made the axe look
+	# like it was flying by itself. The tool is bone-attached, and this uses the
+	# same real skeletal strike clip that moves the right arm.
+	_trigger_punch_animation()
+	_last_attack_style = "axe" if tool_id == "tool_axe" else "pickaxe"
 
 
 func _ensure_game_mode_service() -> GameModeService:
@@ -1214,12 +1276,25 @@ func set_face_variant(variant: String, set: String = "male") -> void:
 ## Apply a saved/edited CharacterCustomization to the live character.
 ## Handles both the face swap and the per-body-part color overrides.
 ## Safe to call multiple times; subsequent calls just re-tint.
-func apply_customization(c: CharacterCustomization) -> void:
+func apply_customization(c: CharacterCustomization, enforce_hero_preset: bool = false) -> void:
 	if c == null:
 		return
 	c.clamp_in_place()
+	set_hero_identity(c.hero_identity)
+	var use_signature := enforce_hero_preset or c.use_signature_outfit
 	set_face_variant(c.face, _active_face_set)
-	_apply_customization_colors(c)
+	_apply_customization_colors(c, use_signature)
+	_apply_hero_identity_layer(c, use_signature)
+
+
+## Select the visual identity without replacing the underlying animated rig.
+## This is intentionally cosmetic: input, save data and gameplay stats remain
+## separate from which of the two boys is shown.
+func set_hero_identity(identity: String) -> void:
+	if identity not in [HERO_IDENTITY_ZIEMEK, HERO_IDENTITY_GNIEWKO]:
+		return
+	_hero_identity = identity
+	_apply_hero_identity_layer()
 
 
 func _is_valid_face_variant(variant: String, set: String) -> bool:
@@ -1232,7 +1307,13 @@ func _swap_character_glb(path: String) -> void:
 	if not ResourceLoader.exists(path):
 		push_warning("[player_controller] missing face GLB: %s" % path)
 		return
+	var restore_visual := _held_visual_tier_id
+	_held_item_anchor = null
 	if _character_mesh != null and is_instance_valid(_character_mesh):
+		# Remove synchronously before mounting the next GLB.  Leaving the old
+		# queued-for-deletion node in place created two CharacterMesh children for
+		# a frame, so path-based callers could pick the retired face rig.
+		remove_child(_character_mesh)
 		_character_mesh.queue_free()
 		_character_mesh = null
 	if _facial_performance != null and is_instance_valid(_facial_performance):
@@ -1252,12 +1333,15 @@ func _swap_character_glb(path: String) -> void:
 	add_child(new_mesh)
 	_character_mesh = new_mesh
 	_setup_character_appearance()
+	if not restore_visual.is_empty():
+		set_weapon_visual(restore_visual)
 
 
 func _setup_character_appearance() -> void:
 	if _character_mesh == null or not is_instance_valid(_character_mesh):
 		return
 	_character_mesh.rotation.y = PI
+	_ground_character_visual()
 	_facial_performance = FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(_character_mesh)
 	_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _anim_player == null:
@@ -1283,26 +1367,142 @@ func _setup_character_appearance() -> void:
 	_play_anim("idle")
 	if not _anim_player.animation_finished.is_connected(_on_anim_finished):
 		_anim_player.animation_finished.connect(_on_anim_finished)
+	_apply_hero_identity_layer()
 
 
-func _apply_customization_colors(c: CharacterCustomization) -> void:
+func _apply_customization_colors(c: CharacterCustomization, enforce_hero_preset: bool = false) -> void:
 	if _character_mesh == null or not is_instance_valid(_character_mesh):
 		return
 	var body := _find_mesh_by_name(_character_mesh, "body-mesh")
 	if body != null:
-		# Kenney toon characters use one body mesh for skin + clothes; mix the
-		# kid's outfit + hair picks into one tint so each choice still moves
-		# the character visually without requiring per-bodypart re-meshing.
-		var tint: Color = (
-			CharacterCustomization.TOP_PALETTE[c.top]
-			+ CharacterCustomization.PANTS_PALETTE[c.pants]
-			+ CharacterCustomization.SHOES_PALETTE[c.shoes]
-			+ CharacterCustomization.HAIR_PALETTE[c.hair]
-		) * 0.25
-		_tint_mesh(body, tint)
+		# Keep the original skinned material until the hero shader is installed
+		# below.  It selectively recolours garment swatches instead of tinting
+		# skin, hair and trousers together like the old uniform treatment.
+		body.material_override = null
 	var head := _find_mesh_by_name(_character_mesh, "head-mesh")
 	if head != null:
 		_tint_mesh(head, CharacterCustomization.SKIN_PALETTE[c.skin])
+
+
+func _hero_top_color(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> Color:
+	if enforce_hero_preset or c == null:
+		return ZIEMEK_HOODIE if _hero_identity == HERO_IDENTITY_ZIEMEK else GNIEWKO_POLO
+	return CharacterCustomization.TOP_PALETTE[c.top]
+
+
+func _hero_pants_color(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> Color:
+	if enforce_hero_preset or c == null:
+		return ZIEMEK_CARGO if _hero_identity == HERO_IDENTITY_ZIEMEK else GNIEWKO_NAVY
+	return CharacterCustomization.PANTS_PALETTE[c.pants]
+
+
+func _hero_shoe_color(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> Color:
+	if enforce_hero_preset or c == null:
+		return ZIEMEK_SHOE if _hero_identity == HERO_IDENTITY_ZIEMEK else GNIEWKO_NAVY.darkened(0.25)
+	return CharacterCustomization.SHOES_PALETTE[c.shoes]
+
+
+## Recolour the real skinned garment mesh and add only a ready-made backpack.
+## The previous capsule-based clothes looked like rigid armour in third-person
+## play, so no primitive torso/leg stand-ins are kept here.
+func _apply_hero_identity_layer(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> void:
+	if _character_mesh == null or not is_instance_valid(_character_mesh):
+		return
+	var previous := _character_mesh.get_node_or_null("HeroIdentityLayer")
+	if previous != null:
+		# Detach synchronously so the replacement keeps the canonical name, then
+		# let the renderer release the old GLB materials at the end of the frame.
+		# Immediate free() was producing material-null churn while a Forward+
+		# frame still referenced the old backpack surface overrides.
+		_character_mesh.remove_child(previous)
+		previous.queue_free()
+	var layer := Node3D.new()
+	layer.name = "HeroIdentityLayer"
+	_character_mesh.add_child(layer)
+
+	var top := _hero_top_color(c, enforce_hero_preset)
+	var pants := _hero_pants_color(c, enforce_hero_preset)
+	var use_ziemek_pattern := _hero_identity == HERO_IDENTITY_ZIEMEK and (enforce_hero_preset or c == null)
+	_apply_hero_clothing_material(top, pants, use_ziemek_pattern)
+
+	# Ziemek's backpack is a supplied, textured Kenney mesh, scaled from its
+	# source bounds to sit within the child's shoulders. It reads from behind
+	# without becoming a rigid body proxy.
+	if _hero_identity == HERO_IDENTITY_ZIEMEK:
+		var backpack := KENNEY_BAG_SCENE.instantiate() as Node3D
+		if backpack == null:
+			return
+		backpack.name = "ZiemekBackpack"
+		# The source character faces +Z, while CharacterMesh rotates 180° for
+		# gameplay; its camera-visible back is therefore local -Z. Keep the bag
+		# fully outside the body depth instead of embedding it in the torso.
+		backpack.position = Vector3(0.0, 0.20, -0.33)
+		backpack.scale = Vector3.ONE * 0.34
+		_tint_identity_meshes(backpack, Color("#30373a"))
+		layer.add_child(backpack)
+		var patch := BoxMesh.new()
+		patch.size = Vector3(0.065, 0.058, 0.012)
+		_add_identity_mesh(layer, "ZiemekBackpackBadge", patch, ZIEMEK_LIME, Vector3(0.0, 0.287, -0.49))
+
+
+func _apply_hero_clothing_material(top_color: Color, pants_color: Color, use_ziemek_pattern: bool = false) -> void:
+	var body_meshes := _find_meshes_by_name_token(_character_mesh, "body-mesh")
+	if body_meshes.is_empty():
+		return
+	# Kenney GLBs split the animated torso, sleeves and lower body across several
+	# mesh instances. Applying the hoodie shader only to the first `body-mesh`
+	# left a grey torso beside turquoise sleeves in the live third-person view.
+	for body in body_meshes:
+		var material := ShaderMaterial.new()
+		material.shader = HERO_CLOTHING_SHADER
+		material.set_shader_parameter("source_albedo", KENNEY_TOON_COLORMAP)
+		material.set_shader_parameter("garment_color", top_color)
+		material.set_shader_parameter("trouser_color", pants_color)
+		material.set_shader_parameter("hoodie_pattern", ZIEMEK_HOODIE_PATTERN)
+		material.set_shader_parameter("hoodie_pattern_strength", 0.72 if use_ziemek_pattern else 0.0)
+		body.material_override = material
+
+
+func _tint_identity_meshes(root: Node, color: Color) -> void:
+	if root is MeshInstance3D:
+		_apply_identity_material(root as MeshInstance3D, color)
+	for candidate in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := candidate as MeshInstance3D
+		if mesh != null:
+			_apply_identity_material(mesh, color)
+
+
+## Some imported GLB props carry per-surface materials that survive a plain
+## material_override in the Forward+ renderer.  Override each surface too so
+## Ziemek's supplied backpack cannot fall back to the food-kit's yellow pickup
+## palette in the live third-person view.
+func _apply_identity_material(mesh: MeshInstance3D, color: Color) -> void:
+	if mesh == null:
+		return
+	var material := _flat_identity_material(color)
+	mesh.material_override = material
+	if mesh.mesh == null:
+		return
+	for surface_index in mesh.mesh.get_surface_count():
+		mesh.set_surface_override_material(surface_index, material)
+
+
+func _flat_identity_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.64
+	return material
+
+
+func _add_identity_mesh(parent: Node3D, node_name: String, mesh: PrimitiveMesh, color: Color, local_position: Vector3) -> MeshInstance3D:
+	var instance := MeshInstance3D.new()
+	instance.name = node_name
+	instance.mesh = mesh
+	instance.material_override = _flat_identity_material(color)
+	instance.position = local_position
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(instance)
+	return instance
 
 
 func _find_mesh_by_name(root: Node, mesh_name: String) -> MeshInstance3D:
@@ -1315,6 +1515,20 @@ func _find_mesh_by_name(root: Node, mesh_name: String) -> MeshInstance3D:
 		if found != null:
 			return found
 	return null
+
+
+func _find_meshes_by_name_token(root: Node, token: String) -> Array[MeshInstance3D]:
+	var matches: Array[MeshInstance3D] = []
+	if root == null:
+		return matches
+	var normalized_token := token.to_lower()
+	if root is MeshInstance3D and root.name.to_lower().contains(normalized_token):
+		matches.append(root as MeshInstance3D)
+	for candidate in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := candidate as MeshInstance3D
+		if mesh != null and mesh.name.to_lower().contains(normalized_token):
+			matches.append(mesh)
+	return matches
 
 
 ## Tints a mesh while preserving its imported texture: duplicates the active

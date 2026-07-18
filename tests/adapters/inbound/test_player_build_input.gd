@@ -42,6 +42,8 @@ func _run() -> void:
 	player.setup_build_grid(grid)
 	player._select_hotbar_slot(2) # grass follows axe + pickaxe in the creative hotbar
 	await physics_frame
+	_assert(is_equal_approx(camera.fov, 55.0),
+		"third-person controller preserves the composed 55-degree opening lens")
 
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	var place_event := InputEventMouseButton.new()
@@ -56,6 +58,19 @@ func _run() -> void:
 	release_event.pressed = false
 	player._input(release_event)
 	_assert(grid.block_count() == 1, "captured right-click places selected build block")
+
+	# Furniture interaction must not create a collisionless fall-through state.
+	# The visible sit pose may move, but the physical controller remains part of
+	# the real world and the general void recovery still catches a bad tile.
+	var collision_layer_before := player.collision_layer
+	var collision_mask_before := player.collision_mask
+	player.play_sit_at(Vector3(1.2, 0.8, -0.4))
+	_assert(player.collision_layer == collision_layer_before and player.collision_mask == collision_mask_before,
+		"sitting keeps the player collision enabled")
+	player.global_position.y = PlayerControllerScript.VOID_RECOVERY_Y - 2.0
+	player._physics_process(1.0 / 60.0)
+	_assert(player.global_position.y > PlayerControllerScript.VOID_RECOVERY_Y,
+		"a bad furniture or terrain position recovers instead of falling forever")
 
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	player.queue_free()

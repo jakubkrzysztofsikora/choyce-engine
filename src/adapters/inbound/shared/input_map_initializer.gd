@@ -13,6 +13,7 @@ func _ready() -> void:
     _ensure_action("place_block", [KEY_K])           # voxel build / drop block from hotbar
     _ensure_action("break_block", [KEY_L])           # mine / destroy block
     _ensure_action("undo", [KEY_U])                  # undo last block action
+    _ensure_action("inventory", [KEY_I])             # explicit backpack/crafting panel
     _ensure_action("silly_fart", [KEY_G])            # optional harmless sandbox gag
     _ensure_action("hotbar_1", [KEY_1])
     _ensure_action("hotbar_2", [KEY_2])
@@ -47,6 +48,14 @@ func _ready() -> void:
     _ensure_action("p2_jump", [KEY_KP_0, KEY_ENTER])
     _ensure_action("p2_sprint", [KEY_CTRL])
     _ensure_action("p2_attack", [KEY_KP_1, KEY_SLASH])
+    _ensure_action("p2_place_block", [KEY_KP_ADD])
+    _ensure_action("p2_break_block", [KEY_KP_SUBTRACT])
+    _ensure_action("p2_undo", [KEY_KP_MULTIPLY])
+    _ensure_action("p2_hotbar_1", [KEY_KP_2])
+    _ensure_action("p2_hotbar_2", [KEY_KP_3])
+    _ensure_action("p2_hotbar_3", [KEY_KP_4])
+    _ensure_action("p2_hotbar_4", [KEY_KP_5])
+    _ensure_action("p2_hotbar_5", [KEY_KP_6])
     print("InputMap initialized")
 
 func _ensure_action(action_name: String, keycodes: Array) -> void:

@@ -136,17 +136,22 @@ shape = SubResource("CapsuleShape3D_player")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="PlayerController"]
-; A shallow third-person angle keeps enough ground for building while giving
-; the opening frame room for the guide, bridge, far-bank house and landmarks.
-; The previous -25° pitch made nearly two thirds of the screen blurred ground.
-transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 1.7, 4.2)
+; A restrained game-camera lens keeps the bridge, house and forest destination
+; legible in the first third-person frame instead of turning the opening into a
+; wide, lawn-dominant editor overview. Players retain free look for building.
+transform = Transform3D(1, 0, 0, 0, 0.984808, 0.173648, 0, -0.173648, 0.984808, 0, 1.7, 4.2)
+fov = 50.0
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
 shadow_enabled = true
 shadow_blur = 0.8
-shadow_bias = 0.05
-shadow_normal_bias = 2.0
+; A 2m normal bias made contact shadows visibly detach from the playable
+; characters, which reads as floating even while the controller is grounded.
+; Keep enough bias for the broad Terrain3D surface, but let boots, furniture
+; and NPC feet retain an immediate contact shadow.
+shadow_bias = 0.02
+shadow_normal_bias = 0.55
 directional_shadow_mode = 2
 directional_shadow_split_1 = 0.08
 directional_shadow_split_2 = 0.2
