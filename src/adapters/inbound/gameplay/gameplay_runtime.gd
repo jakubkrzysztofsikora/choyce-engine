@@ -426,6 +426,16 @@ func _setup_adventure_sky() -> void:
 	# animated shader material onto that new resource.
 	sky.environment = environment
 	sky.call("_initialize")
+	# SkyDome builds once during Sky3D's initial enter-tree pass. Rebinding the
+	# Environment above gives it the retained project settings, but its cached
+	# material still points at that first temporary Environment unless we update
+	# the addon-owned cache as well. Without this, clouds/time animate an unseen
+	# shader while the viewport sky stays frozen.
+	var sky_dome := sky.get_node_or_null("SkyDome")
+	if sky_dome != null and environment.sky != null:
+		sky_dome.set("environment", environment)
+		sky_dome.set("sky_material", environment.sky.sky_material)
+		sky_dome.set("cumulus_material", environment.sky.sky_material)
 	_adventure_sky = sky
 	# Set these after the node enters the tree, once Sky3D has created its
 	# TimeOfDay/SunLight/MoonLight/SkyDome children.

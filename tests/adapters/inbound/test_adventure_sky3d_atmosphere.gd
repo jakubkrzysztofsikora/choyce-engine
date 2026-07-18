@@ -34,6 +34,9 @@ func _run() -> void:
 		"the transferred Environment receives Sky3D's animated shader material")
 	_assert(get_root().get_viewport().world_3d.environment == sky.environment,
 		"Sky3D's Environment is the active viewport atmosphere")
+	var dome := sky.get_node_or_null("SkyDome")
+	_assert(dome != null and dome.get("sky_material") == sky.environment.sky.sky_material,
+		"SkyDome animates the same shader material the viewport renders")
 	_assert(sky != null and sky.get_node_or_null("SunLight") is DirectionalLight3D,
 		"Sky3D provides a real shadow-casting sun")
 	_assert(sky != null and sky.get_node_or_null("MoonLight") is DirectionalLight3D,

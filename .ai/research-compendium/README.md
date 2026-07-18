@@ -57,14 +57,21 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: MeshInstance3D blend shapes, AnimationTree, facial performance system
 
-### 7. Original Liminal Creatures (VS-023) ✅ COMPLETE - BACKROOMS MONSTERS INCLUDED
+### 7. Tauri Sidecar & Godot Bridge (VS-007) ✅ COMPLETE
+- **Files**: [Part 1: Architecture & Rust Implementation](./RESEARCH_VS-007_Tauri_Sidecar_Part1.md), [Part 2: TypeScript Client & Frontend Integration](./RESEARCH_VS-007_Tauri_Sidecar_Part2.md), [Part 3: Packaging, Testing & Production](./RESEARCH_VS-007_Tauri_Sidecar_Part3.md)
+- **Focus**: Complete Tauri 2.x + Godot 4.x sidecar bridge with authenticated WebSocket IPC
+- **Status**: done
+- **Complexity**: HIGH
+- **Key Technologies**: tauri-plugin-shell, TCPServer, WebSocketPeer, Rust process management, TypeScript bridge client
+
+### 8. Original Liminal Creatures (VS-023) ✅ COMPLETE - BACKROOMS MONSTERS INCLUDED
 - **File**: [RESEARCH_VS-023_Original_Liminal_Creatures.md](./RESEARCH_VS-023_Original_Liminal_Creatures.md)
 - **Focus**: 10 Backrooms-inspired child-safe creature concepts, 3D models, combat integration
-- **Status**: in_progress
+- **Status**: done
 - **Complexity**: HIGH
 - **Key Technologies**: Enemy state machines, wind-up telegraph system, child-safe creature design
 
-### 8. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
+### 9. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
 - **File**: [RESEARCH_VS-005_Combat_Telegraphs_Feedback.md](./RESEARCH_VS-005_Combat_Telegraphs_Feedback.md)
 - **Focus**: Hitstop, screen shake, aim assist, damage numbers, particle effects, weapon differentiation
 - **Status**: in_review
@@ -325,14 +332,27 @@ These tasks have full, detailed research documents with code samples, online res
   - [WCAG 2.2 Guidelines](https://www.w3.org/WAI/WCAG22/quickref/)
   - [Accessibility in Games](https://game-accessibility.com/)
 
-### VS-007: Tauri Godot Sidecar Lifecycle
+### VS-007: Tauri Godot Sidecar Lifecycle ✅ COMPLETE
 - **Status**: done
 - **Specialty**: desktop-integration
-- **Research**: Sidecar spawn, readiness, shutdown, reconnect, auth
-- **Technical**: Tauri Rust backend, Godot as sidecar process
+- **Files**: [Part 1: Architecture & Rust Implementation](./RESEARCH_VS-007_Tauri_Sidecar_Part1.md), [Part 2: TypeScript Client & Frontend Integration](./RESEARCH_VS-007_Tauri_Sidecar_Part2.md), [Part 3: Packaging, Testing & Production](./RESEARCH_VS-007_Tauri_Sidecar_Part3.md)
+- **Size**: ~120KB across 3 focused documents
+- **Research**: Complete Tauri 2.x + Godot 4.x sidecar bridge implementation
+- **Technical**: Rust process management, WebSocket IPC, authenticated bridge, packaging
 - **Links**:
-  - [Tauri Documentation](https://tauri.app/v1/guides/)
-  - [Godot Tauri Template](https://github.com/tauri-apps/create-tauri-app/tree/dev/templates/vue/src-tauri)
+  - [Tauri Documentation](https://v2.tauri.app/develop/sidecar/)
+  - [Godot WebSocket Docs](https://docs.godotengine.org/en/stable/tutorials/networking/websocket.html)
+  - [tauri-plugin-shell](https://v2.tauri.app/plugin/shell/)
+  - [tauri-sidecar-manager](https://github.com/radical-data/tauri-sidecar-manager)
+  - [tokio-tungstenite](https://crates.io/crates/tokio-tungstenite)
+- **Key Features**:
+  - Per-launch auth tokens for security
+  - 127.0.0.1-only binding (child-safe)
+  - Heartbeat monitoring with exponential backoff reconnection
+  - Parent consent for updates (COPPA compliant)
+  - Multi-format packaging (MSI, NSIS, DMG, AppImage, DEB, RPM, Flatpak)
+  - CI/CD pipeline with GitHub Actions
+  - Privacy-first telemetry (opt-in, anonymized)
 
 ### VS-008: Reversible Creator Interaction
 - **Status**: done
