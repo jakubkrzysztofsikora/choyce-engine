@@ -1,0 +1,91 @@
+{
+  "task_id": "TASK-063",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "pass",
+      "message": "ANTHROPIC_API_KEY is read from environment variable, never logged, never written to evidence JSON files. API key is only passed to anthropic.Anthropic client constructor.",
+      "path": "scripts/testing/ai_vision_runner.py:374-389",
+      "checklist_item": "ANTHROPIC_API_KEY handling — never logged, never written to evidence JSON"
+    },
+    {
+      "severity": "pass",
+      "message": "Evidence JSON (summary.json, rollup, verdict files) contains no child PII. Only includes scenario_id, run_id, commit_sha, timestamps, and technical state data. No user identifiers, names, or personal data.",
+      "path": "scripts/testing/ai_vision_runner.py:269,319,357,440",
+      "checklist_item": "Evidence JSON contains no child PII (state sections use session IDs only)"
+    },
+    {
+      "severity": "pass",
+      "message": "Screenshot retry logic implemented with SCREENSHOT_RETRY=3 constant, 1 second delay between attempts. Catches all exceptions during capture.",
+      "path": "scripts/testing/ai_vision_runner.py:49,98-107",
+      "checklist_item": "Retry logic on screenshot capture (3 attempts, 1s delay) is sufficient"
+    },
+    {
+      "severity": "pass",
+      "message": "state_fingerprint function uses json.dumps(state, sort_keys=True) which produces stable, deterministic JSON string for reliable stall detection.",
+      "path": "scripts/testing/ai_vision_runner.py:196-197,232",
+      "checklist_item": "state_fingerprint correctly detects stalls (JSON serialisation is stable)"
+    },
+    {
+      "severity": "pass",
+      "message": "navigate_to action injects action_name via bridge.inject_input with type='action'. Properly waits after injection (wait_after_ms, default 1000ms).",
+      "path": "scripts/testing/ai_vision_runner.py:323-329",
+      "checklist_item": "navigate_to action — verify the action_name injection works through bridge"
+    },
+    {
+      "severity": "pass",
+      "message": "Rollup JSON schema compatible with validation. Includes task, tier, run_id, commit_sha, overall_verdict, scenario counts, requirement_ids (line 353), and nested scenarios array.",
+      "path": "scripts/testing/ai_vision_runner.py:427-440",
+      "checklist_item": "Rollup JSON is compatible with validate-manual-qa-artifacts.sh expected schema"
+    },
+    {
+      "severity": "pass",
+      "message": "Vision model pinned to 'claude-opus-4-6' constant (line 45). Used consistently in VisionAsserter.assert_screenshot (line 154).",
+      "path": "scripts/testing/ai_vision_runner.py:45,154",
+      "checklist_item": "Vision model is pinned to a specific model string (currently claude-opus-4-6)"
+    },
+    {
+      "severity": "minor",
+      "message": "YAML parse errors are NOT caught. yaml.safe_load at line 408 will raise yaml.YAMLError on malformed YAML, crashing the runner. Recommend wrapping in try-except to skip file and continue with other scenarios.",
+      "path": "scripts/testing/ai_vision_runner.py:407-408",
+      "checklist_item": "Error handling: bridge down, YAML parse error, API rate limit — all handled gracefully",
+      "recommendation": "Add try-except around yaml.safe_load to catch YAMLError and print warning instead of crashing"
+    },
+    {
+      "severity": "minor",
+      "message": "No global scenario timeout. Runner relies on step-level wait timeouts only. Long-running scenarios could hang indefinitely if steps don't timeout. Recommend adding --timeout flag and enforcing per-scenario deadline.",
+      "path": "scripts/testing/ai_vision_runner.py:406-417",
+      "checklist_item": "Timeout per scenario enforced (currently relies on step-level waits, no global timer)",
+      "recommendation": "Add per-scenario timeout parameter and deadline check in execute_scenario loop"
+    },
+    {
+      "severity": "info",
+      "message": "Anthropic client has max_retries=2 by default, providing basic rate limit handling. Vision API errors are caught at line 180. Bridge errors caught throughout (lines 86, 94, 104, 117). Bridge down handled with timeout at lines 382-386.",
+      "path": "scripts/testing/ai_vision_runner.py:86,94,104,117,180,382-386",
+      "checklist_item": "Error handling: bridge down, YAML parse error, API rate limit — all handled gracefully"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "python_runner_sends_screenshots_to_claude": "PASS - VisionAsserter sends PNG to Claude vision API with structured prompts (EN+PL), receives pass/fail/confidence/reasoning",
+      "scenario_dsl_supports_steps": "PASS - Supports assert_visual, assert_state, input, wait_for_event, capture_evidence, navigate_to actions",
+      "machine_readable_json_evidence": "PASS - Produces step-NN.png, step-NN-verdict.json, summary.json, rollup-tierN-TIMESTAMP.json",
+      "integration_with_quality_gates": "PASS - Integrated via run-ai-vision-tests.sh entry point, wired into run-quality-gates.sh"
+    },
+    "review_checklist": {
+      "api_key_handling": "PASS",
+      "no_child_pii": "PASS",
+      "screenshot_retry": "PASS",
+      "stall_detection": "PASS",
+      "navigate_action": "PASS",
+      "rollup_schema": "PASS",
+      "model_pinning": "PASS",
+      "error_handling": "PASS_WITH_NOTES",
+      "timeout_enforcement": "PASS_WITH_NOTES"
+    }
+  },
+  "summary": "APPROVE. TASK-063 Claude vision scenario runner is well-implemented with comprehensive features. Two minor issues identified: (1) YAML parse errors not caught, (2) no global scenario timeout. Both are edge cases that don't block approval. All acceptance criteria met. Integration with CI quality gates verified.",
+  "score": 9,
+  "max_score": 10
+}

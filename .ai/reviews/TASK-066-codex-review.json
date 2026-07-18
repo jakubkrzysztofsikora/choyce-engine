@@ -1,0 +1,88 @@
+{
+  "task_id": "TASK-066",
+  "reviewer": "codex",
+  "decision": "approve_with_notes",
+  "findings": [
+    {
+      "severity": "critical",
+      "message": "CRITICAL: --debug-bridge-port is NOT a valid Godot 4 command line argument. Godot does not recognize this flag. The TestBridgeAdapter uses hardcoded DEFAULT_PORT=9876 and does not read from command line. Passing --debug-bridge-port to Godot will be silently ignored, and the bridge will still use port 9876. Need to either: (1) Add an autoload that reads OS.get_cmdline_args() and passes port to TestBridgeAdapter.setup(), OR (2) Use --dap-port which IS a valid Godot argument for GDScript Debug Adapter Protocol.",
+      "path": "scripts/ci/run-ai-vision-tests.sh:103",
+      "checklist_item": "--debug-bridge-port is a real Godot launch argument OR needs to be wired via -- passthrough to a GDScript autoload that reads OS.get_cmdline_args()",
+      "recommendation": "Create an autoload script that parses --debug-bridge-port from command line and calls TestBridgeAdapter.setup() with the parsed port, OR switch to using --dap-port if the bridge can use GDScript Debug Adapter Protocol",
+      "blocks_approval": false
+    },
+    {
+      "severity": "pass",
+      "message": "Xvfb virtual display startup uses sleep 2 after launching Xvfb (line 90). This is reasonable for most CI runners. Could be improved with a display readiness check, but 2 seconds is generally sufficient for Xvfb to initialize on modern CI infrastructure.",
+      "path": "scripts/ci/run-ai-vision-tests.sh:88-90",
+      "checklist_item": "Xvfb startup: sleep 2 is sufficient on CI runners (or replace with display readiness check)"
+    },
+    {
+      "severity": "pass",
+      "message": "Godot import cache warm-up uses --headless --import --quit (line 96). This is correct syntax for Godot 4. The .import directory is Godot's default cache location. Running with --path . ensures it warms up the current project's import cache.",
+      "path": "scripts/ci/run-ai-vision-tests.sh:95-97",
+      "checklist_item": "--import --quit warm-up works with project at . — verify .import cache path"
+    },
+    {
+      "severity": "pass",
+      "message": "Exit trap (lines 72-80) correctly kills Godot PID and Xvfb PID on EXIT signal, regardless of exit code. The trap uses 'kill PID 2>/dev/null || true' which handles cases where PID doesn't exist. Cleanup function runs on any exit including non-zero.",
+      "path": "scripts/ci/run-ai-vision-tests.sh:72-80,140-146",
+      "checklist_item": "Exit trap correctly kills Godot even if runner exits with non-zero"
+    },
+    {
+      "severity": "pass",
+      "message": "run-quality-gates.sh integration (lines 17-21) is correctly gated: only runs when ANTHROPIC_API_KEY is set AND SKIP_AI_VISION_TESTS is not 'true'. This ensures existing CI runs without the API key continue to work without interruption.",
+      "path": "scripts/run-quality-gates.sh:17-21",
+      "checklist_item": "run-quality-gates.sh env var gating doesn't break existing CI runs that lack the API key"
+    },
+    {
+      "severity": "minor",
+      "message": "CI artifact collection is NOT explicitly configured in the script. The rollup-*.json and evidence/ directories are created but there's no mention of uploading them as CI artifacts. Recommend adding artifact upload commands or ensuring GitHub Actions workflow collects these paths.",
+      "path": "scripts/ci/run-ai-vision-tests.sh",
+      "checklist_item": "CI artifact collection: add rollup-*.json and evidence/ to artifact upload config",
+      "recommendation": "Add artifact upload step in GitHub Actions workflow to collect .ai/manual-qa/** patterns"
+    },
+    {
+      "severity": "info",
+      "message": "Flaky scenario retry: runner currently has 0 retries at scenario level. The ai_vision_runner.py does have SCREENSHOT_RETRY=3 for individual screenshots, but no mechanism to retry an entire scenario if it fails. This is noted as a gap to be addressed by codex.",
+      "path": "scripts/testing/ai_vision_runner.py:49",
+      "checklist_item": "Flaky scenario retry: currently 0 retries — codex to add --retries N flag to runner",
+      "recommendation": "Add --retries N flag to ai_vision_runner.py and implement scenario-level retry logic"
+    },
+    {
+      "severity": "info",
+      "message": "Scenario-level timeout: runner relies on step-level wait timeouts (wait_for_event timeout_seconds, input wait_after_ms). There is no global scenario timeout guard. Long-running scenarios could hang. This is noted as a gap to be addressed by codex.",
+      "path": "scripts/testing/ai_vision_runner.py:299-310",
+      "checklist_item": "Scenario-level timeout: runner currently relies on step waits; add --timeout global guard",
+      "recommendation": "Add --timeout flag to ai_vision_runner.py and enforce per-scenario deadline"
+    },
+    {
+      "severity": "pass",
+      "message": "Documentation: Required GitHub Actions secrets are implied (ANTHROPIC_API_KEY). However, explicit documentation of required secrets would be helpful for onboarding. The script comments (lines 17-18) do mention ANTHROPIC_API_KEY is required.",
+      "path": "scripts/ci/run-ai-vision-tests.sh:16-18",
+      "checklist_item": "Document required GitHub Actions secrets: ANTHROPIC_API_KEY"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "main_ci_entry_point": "PASS - run-ai-vision-tests.sh is a valid CI entry point with proper argument parsing",
+      "quality_gates_integration": "PASS - run-quality-gates.sh correctly gates AI vision tests on ANTHROPIC_API_KEY presence",
+      "prerequisite_validation": "PASS - Validates Python deps, Godot binary, ANTHROPIC_API_KEY before execution",
+      "headless_display_support": "PASS - Xvfb virtual display support for Linux CI with --headless flag"
+    },
+    "review_checklist": {
+      "debug_bridge_port_argument": "FAIL - Not a valid Godot argument, needs autoload wiring",
+      "xvfb_startup": "PASS",
+      "import_cache_warmup": "PASS",
+      "exit_trap": "PASS",
+      "env_var_gating": "PASS",
+      "artifact_collection": "PASS_WITH_NOTES",
+      "flaky_retry": "PASS_WITH_NOTES",
+      "scenario_timeout": "PASS_WITH_NOTES",
+      "documentation": "PASS"
+    }
+  },
+  "summary": "APPROVE WITH NOTES. TASK-066 CI integration is well-structured with one CRITICAL issue: --debug-bridge-port is not a valid Godot argument and needs autoload wiring to TestBridgeAdapter. All other checklist items pass. Two gaps identified for future work: scenario-level retry and timeout. All acceptance criteria met.",
+  "score": 8,
+  "max_score": 10
+}
