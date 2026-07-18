@@ -34,3 +34,6 @@ fi
 "${GODOT_BIN}" --headless --path . --script tests/contracts/run_task_032_tests.gd
 "${GODOT_BIN}" --headless --path . --script tests/contracts/run_task_044_tests.gd
 "${GODOT_BIN}" --headless --path . --script tests/contracts/run_task_047_tests.gd
+"${GODOT_BIN}" --headless --path . --script tests/application/test_npc_answer_library.gd
+"${GODOT_BIN}" --headless --path . --script tests/integration/test_npc_psychology_voice_library.gd
+
