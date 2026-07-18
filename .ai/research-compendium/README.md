@@ -966,16 +966,27 @@ These are the core foundation tasks that implement the hexagonal architecture an
 
 ### **VS-026: Sandbox Persistence** ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-026_Sandbox_Persistence.md](./RESEARCH_VS-026_Sandbox_Persistence.md)
-- **Status**: done
+- **Deep Enrichment**: [RESEARCH_VS-026_DEEP_ENRICHMENT.md](./RESEARCH_VS-026_DEEP_ENRICHMENT.md) (+34KB, +500 links, Loop 14)
+- **Status**: done - Deep Research Enriched
 - **Specialty**: sandbox-infrastructure
+- **Focus**: Complete sandbox persistence system: world state, player, inventory, progression
+- **Complexity**: HIGH
+- **Key Technologies**: FileAccess, JSON, auto-save, multiple slots, backup rotation, corruption handling
 - **Research**: Save/load sandbox world state, structures, inventory across sessions
 - **Technical**: JSON serialization, FileSystem, auto-save, save slots, backup system
-- **Deep Research**: ✅ COMPLETE - 28KB comprehensive document with code samples
+- **Deep Research**: ✅ COMPLETE - 28KB + 34KB deep enrichment = ~62KB total with +500 links
 - **Implementation Notes**:
-  - WorldStateSerializer: Handles scene tree serialization
-  - AutoSaveManager: Periodic saves with config
-  - SaveSlotManager: Multiple save slots
-  - BackupSystem: Rotating backups
+  - SaveManager: Central coordinator for all save operations
+  - WorldStateSerializer: Handles terrain, blocks, environmental objects
+  - PlayerStateSerializer: Position, stats, equipment, appearance
+  - InventorySerializer: Items, stacks, metadata
+  - ProgressionSerializer: VS-025 integration (nutrition, training, body level)
+  - FileIOManager: JSON with compression/encryption options
+  - BackupSystem: Rotating backups (max 5)
+  - CorruptionHandler: Validation, repair, fallback
+  - AutoSave: Non-blocking 5-minute interval
+  - SaveMenu: Slot management with confirmation dialogs
+- **Child-Safety**: NO data loss without explicit action, clear New Game confirmation, BACKROOMS MONSTERS persistence optional (parent-gated)
 - **Acceptance Criteria**:
   - Round-trip save/load preserves structures, transforms, inventory
   - Auto-save works with configurable interval
@@ -1182,7 +1193,7 @@ The following tasks will receive full research documents based on priority:
 9. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
 10. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
 11. **VS-025**: Nutrition/Training - Child-safe progression, BlendShapes, HUD, save/load - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~52KB total** with +14KB deep enrichment, +500 links, BlendShape progression, child-safety constraints, BACKROOMS MONSTERS safe zone integration
-12. **VS-026**: Sandbox Persistence - Save/load world state, structures, inventory - ✅ DONE - 28KB comprehensive compendium
+12. **VS-026**: Sandbox Persistence - Save/load world state, structures, inventory - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~62KB total** with +34KB deep enrichment, +500 links, SaveManager, serialization, FileAccess, JSON, auto-save, backup rotation, corruption handling, VS-025 integration, child-safety constraints, BACKROOMS MONSTERS optional persistence
 13. **VS-027**: Creative Block Placement - Place, rotate, delete, undo blocks - ✅ DONE - 22KB comprehensive compendium
 14. **VS-028**: Environment Addons Integration - 8 runtime addons + streaming integration - ✅ DONE - Loop 14 - **~90KB with +400 links, 20+ code samples, compatibility matrix, licensing compliance, performance benchmarks** - All addons MIT/CC0 licensed, Terrain3D/gdTree3D/Sky3D/3D-SimpleWater approved as primary stack
 15. **VS-029**: Terrain3D Integration - Replace HeightMap with Terrain3D - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~94KB total** with +62KB deep enrichment, +500 links, 40+ code samples, geometric clipmap theory, macOS quarantine solutions, Jolt Physics integration, child-safety constraints

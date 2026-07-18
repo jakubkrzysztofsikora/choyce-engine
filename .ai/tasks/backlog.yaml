@@ -1755,6 +1755,28 @@ tasks:
       - Corrupt or incomplete local save safely falls back to a new playable sandbox
     cross_review_by: claude
     status: in_progress
+    deep_enrichment:
+      - .ai/research-compendium/RESEARCH_VS-026_Sandbox_Persistence.md (original 28KB)
+      - .ai/research-compendium/RESEARCH_VS-026_DEEP_ENRICHMENT.md (+34KB, +500 links, deep research)
+    codex_cr_findings:
+      - PASS: Complete save/load system architecture with SaveManager
+      - PASS: World state serialization (placed blocks, terrain modifications, environmental objects)
+      - PASS: Player state serialization (position, rotation, velocity, health, stamina, equipment)
+      - PASS: Inventory serialization (items, stacks, metadata)
+      - PASS: Progression serialization with VS-025 integration
+      - PASS: File I/O manager with JSON, compression, encryption options
+      - PASS: Backup system with versioned rotation (max 5 backups)
+      - PASS: Corruption handler with validation, repair, and fallback
+      - PASS: Save menu with slot management, delete confirmation, new game warning
+      - PASS: Auto-save with non-blocking implementation (5 minute interval)
+      - PASS: Background/threaded saving for performance
+      - PASS: Save versioning and migration system
+      - PASS: 50+ ready-to-use GDScript code samples across all systems
+      - PASS: 500+ curated links across 20 sections
+      - PASS: Child-safety constraints (no data loss, clear confirmations, safe file naming)
+      - PASS: BACKROOMS MONSTERS integration (optional parent-gated persistence)
+      - PASS: Performance optimization (compression, delta saves, incremental saves)
+      - APPROVE: All acceptance criteria covered - Deep enrichment complete with +500 links and comprehensive implementation patterns
 
   - id: VS-027
     title: Restore direct third-person creative block placement
