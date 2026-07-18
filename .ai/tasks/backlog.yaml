@@ -1183,6 +1183,11 @@ tasks:
       - Procedural dressing remains deterministic and does not replace curated discovery beats
     cross_review_by: claude
     status: in_progress
+    evidence:
+      - src/adapters/inbound/gameplay/world_renderer.gd (_build_opening_grove, _build_starter_homestead, _build_horizon_dressing)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (_spawn_npcs with guide character)
+      - src/adapters/inbound/gameplay/world_renderer.gd:1201-1240 (_add_water_crossing with bridge)
+      - .ai/validation/VS-013_validation.md (comprehensive validation checklist)
 
   - id: VS-014
     title: Replace debug HUD onboarding and launcher presentation with modern game UI
