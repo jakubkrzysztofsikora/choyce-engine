@@ -44,9 +44,11 @@ func _update() -> void:
 		return
 	
 	# Collect FPS and frame time
-	var fps = Engine.fps
+	# In Godot 4.6, Engine.fps was removed, use Performance monitor instead
+	var frame_time_sec = Performance.get_monitor(Performance.TIME_PROCESS)
+	var fps = 1.0 / frame_time_sec if frame_time_sec > 0 else 0.0
 	if fps > 0:
-		frame_times.append(1.0 / fps * 1000.0)  # Convert to ms
+		frame_times.append(frame_time_sec * 1000.0)  # Store in ms
 		fps_history.append(fps)
 	else:
 		frame_times.append(0.0)
@@ -64,6 +66,10 @@ func _update() -> void:
 			arr.remove_at(0)
 
 
+## Start monitoring
+func start() -> void:
+	_start_monitoring()
+
 ## Stop monitoring
 func stop() -> void:
 	_active = false
@@ -72,10 +78,16 @@ func stop() -> void:
 ## Get statistics for all metrics
 ## Returns a dictionary with avg, min, max for each metric
 func get_stats() -> Dictionary:
+	var memory_stats = _stats(perf_data.get("memory", []))
+	var memory_mb = {
+		"avg": memory_stats["avg"] / (1024 * 1024),
+		"min": memory_stats["min"] / (1024 * 1024),
+		"max": memory_stats["max"] / (1024 * 1024)
+	}
 	return {
 		"fps": _stats(fps_history),
 		"frame_time_ms": _stats(frame_times),
-		"memory_mb": _stats(perf_data.get("memory", [])) / (1024 * 1024),
+		"memory_mb": memory_mb,
 		"draw_calls": _stats_int(perf_data.get("draw_calls", [])),
 		"vertex_count": _stats_int(perf_data.get("vertex_count", [])),
 	}
@@ -87,10 +99,11 @@ func get_frame_distribution() -> Dictionary:
 		return {}
 	
 	frame_times.sort()
+	var size = frame_times.size()
 	return {
-		"p50": frame_times[frame_times.size() / 2],
-		"p95": frame_times[int(frame_times.size() * 0.95)],
-		"p99": frame_times[int(frame_times.size() * 0.99)],
+		"p50": frame_times[int(size / 2)],
+		"p95": frame_times[int(size * 0.95)],
+		"p99": frame_times[int(size * 0.99)],
 		"max": frame_times[-1]
 	}
 
@@ -118,4 +131,7 @@ func _stats(values: Array[float]) -> Dictionary:
 
 ## Calculate statistics for integer arrays
 func _stats_int(values: Array[int]) -> Dictionary:
-	return _stats(values.map(func(v): return float(v)))
+	var floats = []
+	for v in values:
+		floats.append(float(v))
+	return _stats(floats)

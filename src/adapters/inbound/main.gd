@@ -95,6 +95,12 @@ var _shell_transition: ShellTransition
 var _nav_buttons: Dictionary = {}
 var _accent_color := Color8(120, 210, 255)
 
+## VS-016: Evidence capture components
+var _evidence_manager: EvidenceManager
+var _screenshot_capture: ScreenshotCapture
+var _performance_monitor: PerformanceMonitor
+var _hardware_tier: HardwareTier
+
 
 func _process(delta: float) -> void:
 	# Drive debounced filesystem stores. Adapters that don't implement
@@ -160,8 +166,68 @@ func _ensure_voxel_body_bg() -> void:
 	move_child(scan, 1)  # just above bg, below Layout
 
 
+## VS-016: Evidence capture component setup
+func _setup_evidence_components() -> void:
+	# Add HardwareTier for startup detection
+	var hardware_tier = HardwareTier.new()
+	add_child(hardware_tier)
+	hardware_tier.detect_tier()
+	
+	# Add PerformanceMonitor for game loop monitoring
+	var perf_monitor = PerformanceMonitor.new()
+	add_child(perf_monitor)
+	perf_monitor.start()
+	
+	# Add ScreenshotCapture for capture events
+	var screenshot_capture = ScreenshotCapture.new()
+	add_child(screenshot_capture)
+	
+	# Add EvidenceManager to coordinate everything
+	var evidence_manager = EvidenceManager.new()
+	add_child(evidence_manager)
+	
+	# Wire up evidence manager with its components
+	evidence_manager.screenshot_capture = screenshot_capture
+	evidence_manager.performance_monitor = perf_monitor
+	
+	# Connect screenshot capture to evidence manager
+	screenshot_capture.screenshot_captured.connect(evidence_manager._on_screenshot)
+	
+	# Connect to shell navigator for capture triggers
+	if _navigator != null:
+		_navigator.shell_changed.connect(_on_shell_changed.bind(evidence_manager, screenshot_capture))
+	
+	# Store references for later use
+	_evidence_manager = evidence_manager
+	_screenshot_capture = screenshot_capture
+	_performance_monitor = perf_monitor
+	_hardware_tier = hardware_tier
+
+
+## VS-016: Handle shell changes for evidence capture
+func _on_shell_changed(shell_id: String, evidence_manager: EvidenceManager, screenshot_capture: ScreenshotCapture) -> void:
+	# Map shell IDs to capture points
+	var capture_point_map = {
+		"play": ScreenshotCapture.CapturePoint.SPAWN,
+		"create": ScreenshotCapture.CapturePoint.REGION_TRANSITION,
+		"library": ScreenshotCapture.CapturePoint.COMBAT,
+		"parent": ScreenshotCapture.CapturePoint.GUIDE_INTERACTION
+	}
+	
+	if shell_id in capture_point_map:
+		var point = capture_point_map[shell_id]
+		screenshot_capture.capture(point, {"trigger": "shell_change", "shell": shell_id})
+	
+	# Start evidence collection when entering Play shell
+	if shell_id == "play":
+		evidence_manager.start_collection()
+
+
 func _ready() -> void:
 	_ensure_voxel_body_bg()
+	# VS-016: Initialize evidence capture components
+	_setup_evidence_components()
+	
 	# Apply ultra-wide responsive constraint to the root Layout so
 	# NavBar + shells don't stretch edge-to-edge on 3440×1440 screens.
 	# Helper preserves the $Layout node identity → @onready paths
@@ -960,6 +1026,10 @@ func _show_launcher() -> void:
 
 
 func _on_launcher_play() -> void:
+	# VS-016: Capture launcher screenshot before removing launcher
+	if _screenshot_capture != null:
+		_screenshot_capture.capture(ScreenshotCapture.CapturePoint.LAUNCHER, {"trigger": "launcher_play"})
+	
 	_launcher = null
 	var kid_id := _profile.profile_id if _profile != null else "local_kid_1"
 	_on_world_card_pressed("%s_starter_adventure" % kid_id, "")

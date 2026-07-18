@@ -41,10 +41,15 @@ var _rules_active: bool = false
 # Combat HUD references — built lazily in _build_hud.
 var _hp_bar: ProgressBar
 var _score_label: Label
+var _stats_panel: PanelContainer
 var _enemy_root: Node3D
 var _loot_root: Node3D
 var _build_grid: BuildGrid
 var _hotbar_panel: HBoxContainer
+## The undo control is contextual: it only appears after the child has made a
+## build edit. Keeping it visible from the first frame made the opening read as
+## an editor rather than an adventure.
+var _undo_button: Button
 var _inventory_panel: Container
 var _inventory_labels: Dictionary = {}  ## item_id -> Label
 var _weapon_tiers := [
@@ -790,12 +795,14 @@ func _on_block_place_failed(reason: String) -> void:
 
 
 func _on_block_placed(cell: Vector3i, kind_id: String) -> void:
+	_set_undo_button_visible(true)
 	if _rules_runtime != null:
 		_rules_runtime.set_context_value("blocks_placed", _build_grid.block_count())
 		_rules_runtime.on_event("place_block", {"kind": kind_id, "cell": cell})
 
 
 func _on_block_removed(cell: Vector3i, kind_id: String) -> void:
+	_set_undo_button_visible(true)
 	if _rules_runtime != null:
 		_rules_runtime.set_context_value("blocks_placed", _build_grid.block_count())
 		_rules_runtime.on_event("break_block", {"kind": kind_id, "cell": cell})
@@ -807,6 +814,13 @@ func _on_hud_undo_pressed() -> void:
 			_interaction_feedback("Cofnięto!")
 			if _audio_bus != null:
 				_audio_bus.emit_sfx("collect", _player_controller.global_position if _player_controller != null else Vector3.ZERO)
+		else:
+			_set_undo_button_visible(false)
+
+
+func _set_undo_button_visible(should_show: bool) -> void:
+	if _undo_button != null and is_instance_valid(_undo_button):
+		_undo_button.visible = should_show
 
 
 ## MVP: spawn a small kid-safe enemy pack beyond the opening guide and
@@ -1745,6 +1759,10 @@ func _on_hotbar_changed(active_slot: int, _block_id: String) -> void:
 func _on_player_hp_changed(current: int, max_hp: int) -> void:
 	if _hp_bar == null:
 		return
+	if _stats_panel != null:
+		# Do not occupy the opening with an unexplained empty dashboard. Health
+		# appears when it matters—after an encounter has actually hurt the child.
+		_stats_panel.visible = current < max_hp
 	_hp_bar.max_value = max_hp
 	_hp_bar.value = current
 	# Adv W #3 — color ramp + low-HP panic cue. Default ProgressBar
@@ -1810,35 +1828,45 @@ func _build_hud() -> void:
 	hud.layer = 5
 	add_child(hud)
 
-	var back := _make_hud_icon_button("BackBtn", HUD_ICON_RETURN, "Wróć do menu", Color(0.32, 0.72, 0.92))
-	back.name = "BackBtn"
-	back.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	back.offset_left = 32
-	back.offset_top = 32
-	back.offset_right = 96
-	back.offset_bottom = 96
-	back.pressed.connect(end_session)
-	hud.add_child(back)
+	# Keep the first scenic frame free of a row of unexplained editor buttons.
+	# A single compact menu preserves the two infrequent actions (customization
+	# and safe return) without competing with the character, guide or world.
+	var menu := MenuButton.new()
+	menu.name = "AdventureMenuBtn"
+	menu.tooltip_text = "Menu gry"
+	menu.icon = HUD_ICON_RETURN
+	menu.expand_icon = true
+	menu.focus_mode = Control.FOCUS_ALL
+	menu.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	menu.offset_left = 28
+	menu.offset_top = 28
+	menu.offset_right = 80
+	menu.offset_bottom = 80
+	menu.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.38, 0.62, 0.76), 0.82))
+	menu.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.50, 0.74, 0.88), 0.96))
+	menu.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.24, 0.46, 0.62), 0.96))
+	menu.add_theme_stylebox_override("focus", _hud_panel_style(Color(1.0, 0.86, 0.38), 0.96))
+	var menu_popup := menu.get_popup()
+	menu_popup.add_icon_item(HUD_ICON_STAR, "Wygląd postaci", 1)
+	menu_popup.add_icon_item(HUD_ICON_RETURN, "Wróć do menu", 2)
+	menu_popup.id_pressed.connect(func(id: int) -> void:
+		if id == 1:
+			_on_customize_pressed()
+		elif id == 2:
+			end_session())
+	hud.add_child(menu)
 
 	var undo_btn := _make_hud_icon_button("UndoBtn", HUD_ICON_UNDO, "Cofnij ostatnią zmianę", Color(0.92, 0.72, 0.30))
 	undo_btn.name = "UndoBtn"
 	undo_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	undo_btn.offset_left = 108
-	undo_btn.offset_top = 32
-	undo_btn.offset_right = 172
-	undo_btn.offset_bottom = 96
+	undo_btn.offset_left = 88
+	undo_btn.offset_top = 28
+	undo_btn.offset_right = 140
+	undo_btn.offset_bottom = 80
 	undo_btn.pressed.connect(_on_hud_undo_pressed)
+	undo_btn.visible = false
+	_undo_button = undo_btn
 	hud.add_child(undo_btn)
-
-	var customize_btn := _make_hud_icon_button("CustomizeBtn", HUD_ICON_STAR, "Zmień wygląd bohatera", Color(0.62, 0.46, 0.78))
-	customize_btn.name = "CustomizeBtn"
-	customize_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	customize_btn.offset_left = 184
-	customize_btn.offset_top = 32
-	customize_btn.offset_right = 248
-	customize_btn.offset_bottom = 96
-	customize_btn.pressed.connect(_on_customize_pressed)
-	hud.add_child(customize_btn)
 
 	# VS-025: Nutrition/Training panel (bottom-right)
 	_nutrition_panel = PanelContainer.new()
@@ -1904,12 +1932,14 @@ func _build_hud() -> void:
 	# HP bar + score panel (top-right). 7yo combat HUD.
 	var stats_panel := PanelContainer.new()
 	stats_panel.name = "StatsPanel"
+	_stats_panel = stats_panel
 	stats_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	stats_panel.offset_left = -240
 	stats_panel.offset_top = 32
 	stats_panel.offset_right = -32
 	stats_panel.offset_bottom = 132
 	stats_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.32, 0.72, 0.92), 0.84))
+	stats_panel.visible = false
 	hud.add_child(stats_panel)
 
 	var stats_vbox := VBoxContainer.new()

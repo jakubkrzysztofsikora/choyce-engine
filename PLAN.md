@@ -340,6 +340,7 @@ The executable task records live in `.ai/tasks/backlog.yaml` and must follow `to
 | VS-021 | Rare vehicle discovery/driving and a bounded bulldozer destruction sandbox | codex | claude | VS-020 |
 | VS-022 | Player customization: skin, hair, face, top, pants and shoes | codex | claude | VS-014 |
 | VS-023 | Child-safe original liminal-creature encounter set, replacing slime placeholders | codex | claude | VS-005, VS-012 |
+| VS-034 | Optional G-key social gag: local effect/SFX plus bounded, character-aware NPC reactions | codex | claude | VS-024, VS-015 |
 | VS-005 | Combat feel, feedback, and easy-mode pass | mistral | codex | VS-004 |
 | VS-006 | Audio buses, visual QA, accessibility, and rendered performance | mistral | copilot | VS-004 |
 | VS-007 | Tauri sidecar and authenticated bridge | copilot | codex | VS-004 |
@@ -359,6 +360,27 @@ debug-looking UI is rejected even if its logic works. Ready-made CC0 models,
 PBR materials, authored animation clips, and verified shaders take precedence
 over bespoke procedural placeholders. Headless tests guard regressions; a
 rendered camera capture is the actual acceptance evidence.
+
+### Current UI remediation — 2026-07-18
+
+VS-014 is reopened. The latest hostile capture still found a bright, persistent
+top-left trio of controls and numbered hotbar to be editor-like UI competing
+with the opening composition. The active pass replaces those first-frame
+buttons with one compact menu for the two infrequent actions (appearance and
+safe return), exposes undo only after a build edit, and requires an updated
+16:9 rendered review. This is a focused cleanup, not evidence that the larger
+HUD/onboarding, material, world-composition, bridge, or terrain gates are met.
+
+### Optional social gag — VS-034
+
+The G-key gag is intentionally a bounded, family-friendly sandbox beat rather
+than a combat system: a short player reaction, local ElevenLabs SFX, small
+world-space cloud, and nearby NPC responses based on character role. Reactions
+are single harmless gestures only—laugh, recoil/disgust, or an angry air-swat—
+with no damage, chase, reputation change, or persistent smell state. A single
+caption/voice queue prevents characters from speaking over one another, and
+the offline caption fallback remains usable without an API key. It stays in
+review and may not add persistent HUD chrome or obscure normal exploration.
 
 1. **Foundation:** collision dimensions are world metres rather than scaled
    proxy guesses; preserve native materials; use a camera ray and 3D preview

@@ -32,26 +32,26 @@ func _init() -> void:
 
 func _test_screenshot_capture(failures: Array) -> void:
 	# Test that ScreenshotCapture can be instantiated
-	var capture := ScreenshotCaptureClass.new()
+	var capture = ScreenshotCapture.new()
 	if capture == null:
 		failures.append("ScreenshotCapture: failed to instantiate")
 		return
 	
 	# Test capture point enum
-	if ScreenshotCaptureClass.CapturePoint.LAUNCHER != 0:
+	if ScreenshotCapture.CapturePoint.LAUNCHER != 0:
 		failures.append("ScreenshotCapture: LAUNCHER enum value incorrect")
-	if ScreenshotCaptureClass.CapturePoint.SPAWN != 1:
+	if ScreenshotCapture.CapturePoint.SPAWN != 1:
 		failures.append("ScreenshotCapture: SPAWN enum value incorrect")
-	if ScreenshotCaptureClass.CapturePoint.GUIDE_INTERACTION != 2:
+	if ScreenshotCapture.CapturePoint.GUIDE_INTERACTION != 2:
 		failures.append("ScreenshotCapture: GUIDE_INTERACTION enum value incorrect")
-	if ScreenshotCaptureClass.CapturePoint.REGION_TRANSITION != 3:
+	if ScreenshotCapture.CapturePoint.REGION_TRANSITION != 3:
 		failures.append("ScreenshotCapture: REGION_TRANSITION enum value incorrect")
-	if ScreenshotCaptureClass.CapturePoint.COMBAT != 4:
+	if ScreenshotCapture.CapturePoint.COMBAT != 4:
 		failures.append("ScreenshotCapture: COMBAT enum value incorrect")
 
 
 func _test_performance_monitor(failures: Array) -> void:
-	var monitor := PerformanceMonitorClass.new()
+	var monitor = PerformanceMonitor.new()
 	if monitor == null:
 		failures.append("PerformanceMonitor: failed to instantiate")
 		return
@@ -73,21 +73,21 @@ func _test_performance_monitor(failures: Array) -> void:
 
 
 func _test_hardware_tier(failures: Array) -> void:
-	var tier := HardwareTierClass.new()
+	var tier = HardwareTier.new()
 	if tier == null:
 		failures.append("HardwareTier: failed to instantiate")
 		return
 	
 	# Test detect_tier returns a valid Tier enum
 	var current_tier = tier.detect_tier()
-	if current_tier != HardwareTierClass.Tier.TIER_1 and \
-	   current_tier != HardwareTierClass.Tier.TIER_2 and \
-	   current_tier != HardwareTierClass.Tier.UNKNOWN:
+	if current_tier != HardwareTier.Tier.TIER_1 and \
+	   current_tier != HardwareTier.Tier.TIER_2 and \
+	   current_tier != HardwareTier.Tier.UNKNOWN:
 		failures.append("HardwareTier: detect_tier returned invalid value")
 
 
 func _test_visual_qa_checker(failures: Array) -> void:
-	var checker := VisualQACheckerClass.new()
+	var checker = VisualQAChecker.new()
 	if checker == null:
 		failures.append("VisualQAChecker: failed to instantiate")
 		return
@@ -106,7 +106,7 @@ func _test_visual_qa_checker(failures: Array) -> void:
 
 
 func _test_evidence_manager(failures: Array) -> void:
-	var manager := EvidenceManagerClass.new()
+	var manager = EvidenceManager.new()
 	if manager == null:
 		failures.append("EvidenceManager: failed to instantiate")
 		return
