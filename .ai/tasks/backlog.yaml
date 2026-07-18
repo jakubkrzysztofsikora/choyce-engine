@@ -46,7 +46,11 @@ tasks:
       - A restrained vignette gives the title and Play control contrast without reverting to gradient/shape placeholder art
       - Automated handoff coverage and a clean live capture verify child-facing layering at laptop resolution
     cross_review_by: claude
-    status: in_progress
+    status: done
+    evidence:
+      - src/adapters/inbound/scenes/launcher/launcher_overlay.gd (SubViewport-based 7.2s cinematic, _reveal_menu preserves final frame as background)
+      - tests/adapters/inbound/test_launcher_cinematic_handoff.gd (automated handoff coverage: cinematic retained, vignette layered, controls elevated)
+      - /tmp/choyce-live-launcher-keyart.png (clean live capture at laptop resolution: cinematic backdrop visible, menu controls prominent)
 
   - id: VS-047
     title: Stop vehicle input-event error flood and restore drivable-vehicle validation
@@ -112,8 +116,13 @@ tasks:
       - LOW: Headless exits report resource leaks; improve isolated teardown before using tests as clean runtime-safety evidence.
       - HIGH: The initial black-crown failure is fixed, but the forest still needs deeper material variation and stronger environmental integration to stop reading as a uniform tree wall.
       - HIGH: The white shoreline cube is removed, but the opening remains a broad bare lawn with a flat water band and sparse foreground. Add terrain-conforming bank and layered low/mid vegetation, then retain a bridge-to-forest child-height traversal capture.
+      - HIGH: Visual-only riverbank props must terrain-ground independently of collision and be tested against the imported terrain height and swim channel.
+      - HIGH: Visual gate remains open: water, foreground lawn, and mixed toy-scale assets do not yet deliver the required natural opening composition.
+      - MEDIUM: Use a session/generation token and exact adapter reference so stale collision probes cannot disable a later session's safety floor.
+      - MEDIUM: The compact menu should not compete visually with world discovery; inspect the full first frame, not hotbar slots alone.
       - MEDIUM: Scale the chosen trunk profile with each generated visual scale; fixed world-space contact was incorrect for 2.45-3.95x tree variation.
       - MEDIUM: Use instantiated material and collider assertions rather than text-only path checks; live rendered evidence remains the acceptance authority.
+      - HIGH: Cyan foliage artifacts, broad empty lawn, incompatible asset families and insufficient traversal evidence keep the visual gate open.
       - REQUEST_CHANGES: River-volume, foreground density/material cohesion, visual water depth and traversal evidence remain open. Floating wet banks, generic bridge colliders, prototype forest composition, hero direction and night proof remain open.
     evidence:
       - src/adapters/inbound/gameplay/world_renderer.gd (single-offset river transform, seeded colliding woodland clusters, calibrated named trunk/canopy materials)
@@ -140,6 +149,8 @@ tasks:
       - /tmp/choyce-opening-bank-props-grounded.jpg (clean direct-play opening capture; collision verified and water no longer pale cyan, but composition still fails the final visual gate)
       - .ai/reviews/VS-044-terrain-ui-rereview-2026-07-18.json (independent re-review: REQUEST_CHANGES; corrected visual-only bank grounding and stale collision probe lifecycle)
       - /tmp/choyce-opening-grounded-hud-v3.jpg (fresh unobstructed boot: Terrain3D collision verified and shader compiled; still explicit evidence that visual composition needs the next curated landmark/forest pass)
+      - .ai/reviews/VS-044-opening-adversarial-review-2026-07-18.json (request changes: runtime camera had overridden the composed lens and the bridge faced the house rear wall; both implementation defects are addressed, while the visual gate remains open)
+      - /tmp/choyce-opening-door-facing-v10.jpg (fresh live boot after runtime 55-degree lens and bridge-facing usable facade; diagnostic evidence only, not visual-gate acceptance)
 
   - id: VS-046
     title: Translate the Ziemek and Gniewko concept references into distinct playable hero looks
