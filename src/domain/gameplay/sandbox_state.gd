@@ -9,8 +9,6 @@
 class_name SandboxState
 extends RefCounted
 
-static var PERSIST_PATH: String = "user://sandbox_state.json"
-
 var world_id: String = ""
 var player_position: Vector3 = Vector3.ZERO
 var inventory: Dictionary = {}            ## item_id -> count
@@ -55,20 +53,6 @@ func to_dict() -> Dictionary:
 		"progression": prog,
 		"saved_at_unix": saved_at_unix,
 	}
-
-
-static func _effective_path(path: String) -> String:
-	return PERSIST_PATH if path.strip_edges().is_empty() else path
-
-
-static func _ensure_parent_dir(path: String) -> bool:
-	var dir_path := path.get_base_dir()
-	if dir_path.is_empty():
-		return true
-	var absolute_dir := ProjectSettings.globalize_path(dir_path)
-	if DirAccess.dir_exists_absolute(absolute_dir):
-		return true
-	return DirAccess.make_dir_recursive_absolute(absolute_dir) == OK
 
 
 static func from_dict(d: Dictionary) -> SandboxState:
@@ -127,51 +111,3 @@ func is_empty() -> bool:
 		and progression.quest_progress.is_empty()
 		and progression.score == 0
 	)
-
-
-static func load_from_disk(path: String = "") -> SandboxState:
-	var resolved_path := _effective_path(path)
-	if not FileAccess.file_exists(resolved_path):
-		return SandboxState.new()
-	var file := FileAccess.open(resolved_path, FileAccess.READ)
-	if file == null:
-		return SandboxState.new()
-	var raw := file.get_as_text()
-	file.close()
-	var json := JSON.new()
-	if json.parse(raw) != OK:
-		return SandboxState.new()
-	var parsed: Variant = json.data
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return SandboxState.new()
-	var s := from_dict(parsed as Dictionary)
-	if s.is_empty():
-		return SandboxState.new()
-	return s
-
-
-func save_to_disk(path: String = "") -> bool:
-	if world_id.is_empty():
-		return false
-	if saved_at_unix == 0:
-		saved_at_unix = int(Time.get_unix_time_from_system())
-	var resolved_path := _effective_path(path)
-	if not _ensure_parent_dir(resolved_path):
-		return false
-	var file := FileAccess.open(resolved_path, FileAccess.WRITE)
-	if file == null:
-		return false
-	file.store_string(JSON.stringify(to_dict(), "  "))
-	file.close()
-	return true
-
-
-static func clear_disk(path: String = "") -> bool:
-	var resolved_path := _effective_path(path)
-	if not FileAccess.file_exists(resolved_path):
-		return true
-	return DirAccess.remove_absolute(ProjectSettings.globalize_path(resolved_path)) == OK
-
-
-static func disk_exists(path: String = "") -> bool:
-	return FileAccess.file_exists(_effective_path(path))

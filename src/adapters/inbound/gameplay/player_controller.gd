@@ -31,6 +31,9 @@ signal attacked(damage: int, hit_position: Vector3)
 signal swing_missed(attack_origin: Vector3)
 ## Optional sandbox gag. The runtime owns its VFX, SFX and NPC social response.
 signal farted(effect_origin: Vector3)
+## Tool use stays distinct from bare-hand combat. Runtime resolves the resource
+## hit/reward; this controller owns the input, aim and visible swing.
+signal tool_used(tool_id: String, effect_origin: Vector3, forward: Vector3)
 signal hp_changed(current: int, max_hp: int)
 signal player_defeated
 
@@ -129,12 +132,20 @@ var _anim_player: AnimationPlayer
 var _current_anim: String = ""
 var _world_interaction_lock: float = 0.0
 var _in_water: bool = false
+var _sit_collision_layer: int = 0
+var _sit_collision_mask: int = 0
+var _sitting_collision_disabled := false
 ## Optional runtime cache used by the nutrition/training extension. Keep the
 ## controller independent from GameplayRuntime at compile time.
 var _gameplay_runtime: Object = null
 const WALK_VELOCITY_THRESHOLD := 0.5
 
 func _ready() -> void:
+	# Gentle ground snap makes authored stair wedges and terrain seams feel like
+	# a continuous walkable surface instead of a sequence of tiny collision lips.
+	floor_max_angle = deg_to_rad(52.0)
+	floor_snap_length = 0.34
+	safe_margin = 0.025
 	_health = HealthState.new(PLAYER_MAX_HP)
 	hp_changed.emit(_health.current_hp, _health.max_hp)
 	_build_ghost_preview()
@@ -506,20 +517,37 @@ func spawn_at(pos: Vector3) -> void:
 
 
 func play_sit_at(pos: Vector3) -> void:
-	# Small authored interaction pose for the home loop. Input is locked for a
-	# moment so the kid sees the action complete instead of cancelling it with
-	# the next movement tick.
-	global_position = Vector3(pos.x, global_position.y, pos.z)
+	# The seat target is authored at the chair's actual seat height. Temporarily
+	# opt out of collision while the fixed pose occupies that furniture volume;
+	# otherwise CharacterBody3D resolves the overlap by pushing the avatar into
+	# the chair or table on the next physics tick.
+	_sit_collision_layer = collision_layer
+	_sit_collision_mask = collision_mask
+	collision_layer = 0
+	collision_mask = 0
+	_sitting_collision_disabled = true
+	global_position = pos
 	velocity = Vector3.ZERO
 	_world_interaction_lock = 1.7
 	if _character_mesh == null:
+		_restore_sit_collision()
 		return
+	var standing_mesh_y := _character_mesh.position.y
 	var tween := create_tween()
-	tween.tween_property(_character_mesh, "position:y", -0.28, 0.18)
+	tween.tween_property(_character_mesh, "position:y", standing_mesh_y - 0.32, 0.18)
 	tween.parallel().tween_property(_character_mesh, "rotation:x", -0.35, 0.18)
 	tween.tween_interval(1.15)
-	tween.tween_property(_character_mesh, "position:y", 0.0, 0.22)
+	tween.tween_property(_character_mesh, "position:y", standing_mesh_y, 0.22)
 	tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.22)
+	tween.tween_callback(_restore_sit_collision)
+
+
+func _restore_sit_collision() -> void:
+	if not _sitting_collision_disabled:
+		return
+	collision_layer = _sit_collision_layer
+	collision_mask = _sit_collision_mask
+	_sitting_collision_disabled = false
 
 
 ## A short, optional G-key gag with a clear cooldown. This deliberately only
@@ -535,9 +563,11 @@ func _perform_silly_fart() -> void:
 		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.10, 0.07)
 		tween.tween_property(_character_mesh, "position:y", 0.0, 0.16)
 		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.16)
-	# The character faces -Z, so +Z is safely behind them where the cloud reads
-	# clearly in third person instead of covering the camera-facing body.
-	var effect_origin := global_position + global_transform.basis.z * 0.28 + Vector3(0.0, 0.42, 0.0)
+	# The third-person camera sits on the avatar's local +Z side. A literal
+	# behind-the-back puff therefore rose between camera and player, obscuring the
+	# body. Keep the playful effect in front-and-to-the-side of the avatar where
+	# it remains readable without taking over the camera composition.
+	var effect_origin := global_position - global_transform.basis.z * 0.68 + global_transform.basis.x * 0.24 + Vector3(0.0, 0.28, 0.0)
 	farted.emit(effect_origin)
 
 
@@ -792,6 +822,7 @@ const _SWORD_2H := "res://data/models/kaykit/adventurers/assets/sword_2handed.gl
 const _AXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-axe.glb"
 const _PICKAXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-pickaxe.glb"
 var _held_weapon: Node3D = null
+var _held_item_anchor: BoneAttachment3D = null
 
 ## Show a real weapon model in the kid's hand for sword tiers. Bare hand
 ## (fist/stick) keeps the Muay Thai animation with nothing held. The 2-handed
@@ -816,29 +847,69 @@ func set_weapon_visual(tier_id: String) -> void:
 	if packed == null:
 		return
 	_held_weapon = packed.instantiate()
-	_character_mesh.add_child(_held_weapon)
-	# Right-hand offset + upright grip. Tuned to the Kenney rig's scale so the
-	# blade sits in the fist and points up-forward.
-	_held_weapon.position = Vector3(0.28, 0.55, 0.15)
-	_held_weapon.rotation_degrees = Vector3(0, 0, -20)
-	_held_weapon.scale = Vector3.ONE * (1.4 if tier_id == "sword_epic" else 1.1)
+	var anchor := _ensure_held_item_anchor()
+	(anchor if anchor != null else _character_mesh).add_child(_held_weapon)
+	# The Kenney player is a compact 30cm rig. The old half-metre root offset
+	# placed a tool in empty air beside the avatar. Bind to arm-right and keep a
+	# hand-scale grip offset so every animation carries the item with the arm.
+	_held_weapon.position = Vector3(0.0, -0.115, 0.018)
+	_held_weapon.rotation_degrees = Vector3(0.0, 0.0, -12.0)
+	_held_weapon.scale = Vector3.ONE * (0.88 if tier_id.begins_with("tool_") else 1.0)
+
+
+func _ensure_held_item_anchor() -> BoneAttachment3D:
+	if _held_item_anchor != null and is_instance_valid(_held_item_anchor):
+		return _held_item_anchor
+	if _character_mesh == null:
+		return null
+	var skeleton := _character_mesh.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton == null or skeleton.find_bone("arm-right") < 0:
+		return null
+	_held_item_anchor = BoneAttachment3D.new()
+	_held_item_anchor.name = "HeldItemArmRightAnchor"
+	_held_item_anchor.bone_name = "arm-right"
+	skeleton.add_child(_held_item_anchor)
+	return _held_item_anchor
 
 
 func equip_tool(tool_id: String) -> void:
 	if tool_id not in ["tool_axe", "tool_pickaxe"]:
 		return
-	_equipped_tool_id = tool_id
-	set_weapon_visual(tool_id)
-	if _hotbar.is_empty():
-		_hotbar.append(tool_id)
-	else:
-		_hotbar[0] = tool_id
-	_active_slot = 0
-	hotbar_changed.emit(_active_slot, tool_id)
+	var slot := _hotbar.find(tool_id)
+	if slot < 0:
+		if _hotbar.is_empty():
+			_hotbar.append(tool_id)
+			slot = 0
+		else:
+			_hotbar[0] = tool_id
+			slot = 0
+	_select_hotbar_slot(slot)
 
 
 func has_equipped_tool(tool_id: String) -> bool:
 	return _equipped_tool_id == tool_id
+
+
+func get_hotbar_items() -> Array:
+	return _hotbar.duplicate()
+
+
+func get_active_hotbar_item() -> String:
+	return String(_hotbar[_active_slot]) if _active_slot >= 0 and _active_slot < _hotbar.size() else ""
+
+
+func _select_hotbar_slot(slot: int) -> void:
+	if slot < 0 or slot >= _hotbar.size():
+		return
+	_active_slot = slot
+	var item := String(_hotbar[_active_slot])
+	if item in ["tool_axe", "tool_pickaxe"]:
+		_equipped_tool_id = item
+		set_weapon_visual(item)
+	else:
+		_equipped_tool_id = ""
+		set_weapon_visual("")
+	hotbar_changed.emit(_active_slot, item)
 
 
 func select_creative_build_item(item_id: String) -> void:
@@ -854,8 +925,7 @@ func select_creative_build_item(item_id: String) -> void:
 		_hotbar.append(item_id)
 	else:
 		_hotbar[1] = item_id
-	_active_slot = 1
-	hotbar_changed.emit(_active_slot, item_id)
+	_select_hotbar_slot(1)
 
 
 ## Build a translucent BoxMesh that shows where the next block will
@@ -930,8 +1000,52 @@ func _dispatch_lmb() -> void:
 		GameModeService.Mode.BUILD:
 			_try_break_block()
 			_attack_cooldown = ATTACK_COOLDOWN * 0.5  ## faster mining than swinging
+		GameModeService.Mode.TOOL:
+			_perform_tool_action(active_kind)
 		_:
 			_perform_attack()
+
+
+func _perform_tool_action(tool_id: String) -> void:
+	_attack_cooldown = ATTACK_COOLDOWN
+	_last_attack_style = "axe" if tool_id == "tool_axe" else "pickaxe"
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.FOCUSED, 0.35)
+	_trigger_tool_animation(tool_id)
+	var forward := -transform.basis.z
+	if _camera != null:
+		forward = -_camera.global_transform.basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.0001:
+		forward = -transform.basis.z
+	forward = forward.normalized()
+	tool_used.emit(tool_id, global_position + Vector3.UP * 0.85 + forward * 0.9, forward)
+
+
+func _trigger_tool_animation(tool_id: String = "") -> void:
+	# Do not play the bare-hand combo while an axe/pick is equipped. The held
+	# ready-made mesh is the visible swing, returning quickly to its grip.
+	if _held_weapon == null or not is_instance_valid(_held_weapon):
+		return
+	var base_rotation := _held_weapon.rotation
+	var tween := create_tween()
+	# Tool-specific swing animations: axe has a broader horizontal arc,
+	# pickaxe has a more vertical chopping motion.
+	if tool_id == "tool_axe":
+		# Axe: wide horizontal swing
+		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(-1.1, 0.25, 0.9), 0.12)
+		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(0.4, -0.15, -0.3), 0.14)
+		tween.tween_property(_held_weapon, "rotation", base_rotation, 0.12)
+	elif tool_id == "tool_pickaxe":
+		# Pickaxe: vertical chopping motion
+		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(-0.8, 0.35, 0.6), 0.10)
+		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(0.2, -0.25, -0.2), 0.12)
+		tween.tween_property(_held_weapon, "rotation", base_rotation, 0.10)
+	else:
+		# Generic tool swing
+		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(-0.95, 0.18, 0.82), 0.11)
+		tween.tween_property(_held_weapon, "rotation", base_rotation + Vector3(0.32, -0.12, -0.28), 0.13)
+		tween.tween_property(_held_weapon, "rotation", base_rotation, 0.12)
 
 
 func _ensure_game_mode_service() -> GameModeService:
@@ -947,9 +1061,10 @@ func _ensure_game_mode_service() -> GameModeService:
 ## 4 blocks from the catalog. Number keys 1..5 cycle.
 func setup_build_grid(grid: BuildGrid) -> void:
 	_build_grid = grid
-	_hotbar = ["fist", "grass", "wood_oak", "glow", "spring"]
-	_active_slot = 0
-	hotbar_changed.emit(_active_slot, _hotbar[_active_slot])
+	# Creative starts with real tools and materials. Selecting a material stows
+	# the tool without deleting it, so the five slots always remain dependable.
+	_hotbar = ["tool_axe", "tool_pickaxe", "grass", "wood_oak", "stone"]
+	_select_hotbar_slot(0)
 
 
 func _process_build_input() -> void:
@@ -958,8 +1073,7 @@ func _process_build_input() -> void:
 	# Hotbar slot selection.
 	for i in range(_hotbar.size()):
 		if Input.is_action_just_pressed(_act("hotbar_%d" % (i + 1))):
-			_active_slot = i
-			hotbar_changed.emit(_active_slot, _hotbar[i])
+			_select_hotbar_slot(i)
 	# Place or break — raycast 6m ahead.
 	if Input.is_action_just_pressed(_act("place_block")):
 		_try_place_block()
@@ -994,6 +1108,20 @@ func _build_raycast() -> Dictionary:
 	var hit := space.intersect_ray(params)
 	if not hit.is_empty():
 		return hit
+	# Terrain3D can be briefly absent from a forward ray while a tile streams in.
+	# Resolve the same camera aim against a vertical ground probe before using the
+	# old y=0 fallback; otherwise every creative block silently appeared buried
+	# whenever the surrounding terrain was raised above the global origin.
+	var probe_distance := BUILD_RAY_RANGE * 0.72
+	if absf(forward.y) > 0.01:
+		probe_distance = clampf(absf(origin.y / forward.y), 2.0, BUILD_RAY_RANGE)
+	var probe_center := origin + forward * probe_distance
+	var probe_top := Vector3(probe_center.x, maxf(origin.y + 18.0, probe_center.y + 18.0), probe_center.z)
+	var probe_bottom := probe_top + Vector3.DOWN * 140.0
+	var probe_params := PhysicsRayQueryParameters3D.create(probe_top, probe_bottom, 1, [self])
+	var ground_hit := space.intersect_ray(probe_params)
+	if not ground_hit.is_empty():
+		return ground_hit
 	# When the camera looks over empty ground, retain an intuitive TPP target
 	# rather than falling back to a body-relative guess. The visual ghost makes
 	# the exact snapped cell explicit before the child clicks.
@@ -1005,6 +1133,9 @@ func _build_raycast() -> Dictionary:
 
 
 func _try_place_block() -> void:
+	var active_kind := get_active_hotbar_item()
+	if _ensure_game_mode_service().current_mode(active_kind) != GameModeService.Mode.BUILD:
+		return
 	var hit := _build_raycast()
 	var cell: Vector3i
 	if hit.is_empty():
@@ -1014,7 +1145,7 @@ func _try_place_block() -> void:
 		var hit_pos: Vector3 = hit.get("position", global_position)
 		var normal: Vector3 = hit.get("normal", Vector3.UP)
 		cell = _build_grid.world_to_cell(hit_pos + normal * 0.5)
-	_build_grid.place_block(cell, _hotbar[_active_slot])
+	_build_grid.place_block(cell, active_kind)
 
 
 ## On landing, check whether the cell directly below the player is a

@@ -1,7 +1,8 @@
 class_name SFXPlayer extends Node3D
 
 # SFX dispatcher — routes gameplay audio events to AudioBank-loaded streams.
-# Previously used synthesized tones (AudioStreamGenerator); now uses real assets.
+# Physical action cues are generated dry at runtime so they never inherit a
+# musical/spell-like tail from a generic ability or UI asset.
 
 var _audio_bus: AudioEventBus
 
@@ -35,6 +36,9 @@ func play(event_name: String, _position: Vector3 = Vector3.ZERO) -> void:
 				bank.play_melee_impact("kick")
 			else:
 				bank.play_sfx("kick_impact")
+		"physical_swing_punch", "physical_swing_kick", "tool_axe_wood", "tool_pickaxe_stone":
+			if bank.has_method("play_physical_action"):
+				bank.play_physical_action(event_name)
 		"jump":     bank.play_sfx("jump_up")
 		"land":     bank.play_sfx("land_soft")
 		"collect":  bank.play_sfx("collect_coin")

@@ -48,6 +48,43 @@ func _test_screenshot_capture(failures: Array) -> void:
 		failures.append("ScreenshotCapture: REGION_TRANSITION enum value incorrect")
 	if ScreenshotCaptureClass.CapturePoint.COMBAT != 4:
 		failures.append("ScreenshotCapture: COMBAT enum value incorrect")
+	# The live Adventure boot used to schedule a repeating timer and then index
+	# Godot's datetime dictionary with nonexistent min/sec keys. Pin both parts
+	# of that regression here; otherwise the evidence service can flood runtime
+	# errors and visibly degrade an otherwise playable scene.
+	var source := FileAccess.get_file_as_string("res://src/adapters/outbound/evidence/screenshot_capture.gd")
+	if not source.contains("timer.one_shot = true"):
+		failures.append("ScreenshotCapture: capture timer must be one-shot")
+	if not source.contains('ts["minute"]') or not source.contains('ts["second"]'):
+		failures.append("ScreenshotCapture: must use Godot datetime minute/second keys")
+	# Paths must retain exactly one Godot user-space prefix; a duplicate prefix
+	# makes evidence saving silently fail on desktop runs.
+	capture._hardware_tier = 2
+	var capture_path := capture._capture_file_base_path({"capture_point": ScreenshotCaptureClass.CapturePoint.SPAWN})
+	if not capture_path.begins_with("user://evidence/visual/tier_3/") or capture_path.contains("user://user://"):
+		failures.append("ScreenshotCapture: output path must be a single valid user:// URI")
+	var canopy_import := FileAccess.get_file_as_string("res://data/textures/generated/forest-canopy-leaves-v1.png.import")
+	if not canopy_import.contains("mipmaps/generate=true"):
+		failures.append("Foliage texture: mipmaps must be enabled for third-person camera stability")
+	var manager_source := FileAccess.get_file_as_string("res://src/adapters/outbound/evidence/evidence_manager.gd")
+	if manager_source.contains("for point in range(5)"):
+		failures.append("EvidenceManager: must not label one spawn frame as every gameplay capture point")
+	var main_source := FileAccess.get_file_as_string("res://src/adapters/inbound/main.gd")
+	var play_shell_source := FileAccess.get_file_as_string("res://src/adapters/inbound/scenes/play/play_shell.gd")
+	if not main_source.contains("gameplay_runtime_created.connect") or not play_shell_source.contains("signal gameplay_runtime_created"):
+		failures.append("Evidence wiring: delayed world launch must use PlayShell's explicit runtime-created handoff")
+	var runtime_source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/gameplay_runtime.gd")
+	if runtime_source.contains("attempts >= 32"):
+		failures.append("Evidence wiring: an unsettled opening must not be force-captured after a timeout")
+	if not runtime_source.contains("_cancel_opening_spawn_evidence") or not runtime_source.contains("_evidence_session_token"):
+		failures.append("Evidence wiring: a torn-down session must cancel its pending opening capture")
+	var manager = EvidenceManagerClass.new()
+	manager.output_root = "user://evidence/test/"
+	var session_path := manager._evidence_session_path({
+		"year": 2026, "month": 7, "day": 18, "hour": 12, "minute": 34, "second": 56
+	})
+	if session_path != "user://evidence/test/session_2026-07-18_12-34-56/" or session_path.contains("user://user://"):
+		failures.append("EvidenceManager: session save path must be a single valid user:// URI")
 
 
 func _test_performance_monitor(failures: Array) -> void:

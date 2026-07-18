@@ -40,7 +40,7 @@ func _run() -> void:
 	var grid := BuildGridScript.new()
 	get_root().add_child(grid)
 	player.setup_build_grid(grid)
-	player._active_slot = 1 # grass is a buildable hotbar entry
+	player._select_hotbar_slot(2) # grass follows axe + pickaxe in the creative hotbar
 	await physics_frame
 
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)

@@ -31,6 +31,22 @@ func _run() -> void:
 	_assert(adapter.terrain != null and adapter.terrain.name == "Terrain3DAdventureSurface", "Adventure owns an explicit Terrain3D surface")
 	_assert(adapter.terrain != null and is_equal_approx(float(adapter.terrain.get("vertex_spacing")) * TerrainAdapterScript.HEIGHTMAP_RESOLUTION, TerrainAdapterScript.WORLD_SIZE_M), "Terrain3D surface spans the full 2.4km world extent in collision-aware global metres")
 	_assert(adapter.terrain != null and adapter.terrain.get("assets") != null, "Terrain3D surface receives local PBR texture assets")
+	var controls := adapter._make_biome_control_map("terrain3d-regression")
+	var util: Object = ClassDB.instantiate(&"Terrain3DUtil") as Object
+	var overlay_layers: Dictionary = {}
+	var blend_levels: Dictionary = {}
+	for x in range(0, TerrainAdapterScript.HEIGHTMAP_RESOLUTION, 16):
+		for z in range(0, TerrainAdapterScript.HEIGHTMAP_RESOLUTION, 16):
+			var packed := int(util.call("as_uint", controls.get_pixel(x, z).r))
+			overlay_layers[int(util.call("get_overlay", packed))] = true
+			blend_levels[int(util.call("get_blend", packed))] = true
+	_assert(overlay_layers.size() >= 2 and blend_levels.size() >= 3,
+		"Terrain3D control map carries deterministic biome material variation beyond one olive layer")
+	var heightmap := adapter._make_open_world_heightmap("terrain3d-regression")
+	var opening_height := heightmap.get_pixel(256, 256).r
+	var mountain_height := heightmap.get_pixel(440, 143).r
+	_assert(mountain_height > opening_height + 0.30,
+		"Terrain3D heightmap contains a safe low opening and readable distant mountain relief")
 	_assert(adapter.has_dynamic_collision(), "Terrain3D dynamic collision is explicitly built for the playable surface")
 	camera.global_position = Vector3(300.0, 20.0, 300.0)
 	await physics_frame

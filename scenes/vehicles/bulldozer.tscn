@@ -93,11 +93,7 @@ size = Vector3(1.0, 1.9, 1.45)
 [sub_resource type="BoxShape3D" id="Shape_destroyer"]
 size = Vector3(2.7, 0.76, 0.54)
 
-[node name="Bulldozer" type="VehicleBody3D"]
-mass = 2950.0
-continuous_cd = 1
-contact_monitor = true
-max_contacts_reported = 12
+[node name="Bulldozer" type="CharacterBody3D"]
 script = ExtResource("1_script")
 camera_follow_distance = 6.2
 camera_follow_height = 3.0

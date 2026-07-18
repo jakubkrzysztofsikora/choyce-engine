@@ -46,31 +46,30 @@ func capture(capture_point: CapturePoint, custom_meta: Dictionary = {}) -> void:
 	# Delay and capture to allow UI to settle
 	var timer = Timer.new()
 	timer.wait_time = capture_delay
-	timer.timeout.connect(_perform_capture.bind(metadata))
+	timer.one_shot = true
+	timer.timeout.connect(_perform_capture.bind(metadata, timer))
 	add_child(timer)
 	timer.start()
 
 
-func _perform_capture(metadata: Dictionary) -> void:
+func _perform_capture(metadata: Dictionary, capture_timer: Timer = null) -> void:
 	var viewport = get_viewport()
 	if viewport == null:
 		push_error("ScreenshotCapture: No viewport available")
+		if capture_timer != null:
+			capture_timer.queue_free()
 		return
 	
 	var image = viewport.get_texture().get_image()
 	if image == null:
 		push_error("ScreenshotCapture: Failed to capture image")
+		if capture_timer != null:
+			capture_timer.queue_free()
 		return
 	
-	# Generate file path
-	var tier_str = "tier_%d" % (_hardware_tier + 1)
-	var ts = Time.get_datetime_dict_from_unix_time(Time.get_unix_time_from_system())
-	var date_str = "%04d-%02d-%02d" % [ts["year"], ts["month"], ts["day"]]
-	var time_str = "%02d-%02d-%02d" % [ts["hour"], ts["min"], ts["sec"]]
-	var point_str = _capture_point_to_string(metadata["capture_point"]).to_lower()
-	
-	var rel_path = "%s%s/%s/%s_%s" % [output_path, tier_str, date_str, time_str, point_str]
-	var full_path = "user://%s" % rel_path
+	# Generate a concrete user-space path. `output_path` itself is a Godot URI by
+	# default, so adding a second `user://` produced invalid evidence paths.
+	var full_path := _capture_file_base_path(metadata)
 	var dir_path = full_path.get_base_dir()
 	
 	# Create directory
@@ -89,9 +88,26 @@ func _perform_capture(metadata: Dictionary) -> void:
 			file.close()
 		
 		screenshot_captured.emit(metadata["capture_point"], image, metadata)
+		if capture_timer != null:
+			capture_timer.queue_free()
 		return
-	else:
-		push_error("ScreenshotCapture: Failed to save PNG: %s.png" % full_path)
+	push_error("ScreenshotCapture: Failed to save PNG: %s.png" % full_path)
+	if capture_timer != null:
+		capture_timer.queue_free()
+
+
+func _capture_file_base_path(metadata: Dictionary) -> String:
+	var root := output_path
+	if not root.begins_with("user://"):
+		root = "user://%s" % root.trim_prefix("/")
+	if not root.ends_with("/"):
+		root += "/"
+	var tier_str = "tier_%d" % (_hardware_tier + 1)
+	var ts = Time.get_datetime_dict_from_unix_time(Time.get_unix_time_from_system())
+	var date_str = "%04d-%02d-%02d" % [ts["year"], ts["month"], ts["day"]]
+	var time_str = "%02d-%02d-%02d" % [ts["hour"], ts["minute"], ts["second"]]
+	var point_str = _capture_point_to_string(int(metadata.get("capture_point", CapturePoint.LAUNCHER))).to_lower()
+	return "%s%s/%s/%s_%s" % [root, tier_str, date_str, time_str, point_str]
 
 
 ## Build metadata dictionary for the screenshot

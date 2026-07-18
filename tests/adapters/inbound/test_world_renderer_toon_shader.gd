@@ -67,6 +67,10 @@ func _run_tests() -> void:
 	_test_apply_toon_to_prop_preserves_standard_material_albedo()
 	_test_apply_toon_to_prop_defaults_to_white_when_no_standard_mat()
 	_test_environment_assets_get_pbr_detail_layer()
+	_test_procedural_tree_scale_and_palm_source_are_human_scale()
+	_test_opening_grove_has_a_dense_human_scale_frame()
+	_test_opening_forest_mass_is_a_real_colliding_volume()
+	_test_opening_is_not_polluted_by_nearby_biomes_or_river_fence()
 	_test_streamed_procedural_chunks_stay_bounded()
 	_test_world_boundary_has_visible_segmented_collision()
 	_test_outer_chunks_do_not_spill_past_world_floor()
@@ -318,6 +322,62 @@ func _test_environment_assets_get_pbr_detail_layer() -> void:
 	r.queue_free()
 
 
+func _test_procedural_tree_scale_and_palm_source_are_human_scale() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains('"palma":           "res://data/models/props/palm.gltf"'),
+		"beach palms use the coherent local palm model instead of the striped kit source")
+	_assert(source.contains("scale *= rng.randf_range(2.8, 4.4)")
+		and source.contains("return rng.randi_range(5, 7)"),
+		"procedural forest chunks use human-scale canopies and real canopy density")
+	_assert(source.contains("Vector3(-13.5, 0, -12), 1.95")
+		and source.contains("float(entry[1]) * 0.56")
+		and source.contains("backdrop_rng.randf_range(1.20, 1.90)"),
+		"opening forest uses adult-scale tree silhouettes rather than miniature props")
+
+
+## The curated spawn is a clearing framed by a layered grove, not a lawn with
+## a handful of evenly spaced tabletop trees.  Keep the centre and bridge lane
+## intentionally open, but require substantial close and middle-distance tree
+## silhouettes on both sides.
+func _test_opening_grove_has_a_dense_human_scale_frame() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains("Vector3(-20.5, 0, -5.5), 2.30")
+		and source.contains("Vector3(27.5, 0, -10.2), 2.48")
+		and source.contains("Vector3(-60, 0, -64), 3.25")
+		and source.contains("Vector3(58, 0, -68), 3.18"),
+		"opening uses a layered, human-scale tree frame rather than sparse prototype scatter")
+
+
+func _test_opening_forest_mass_is_a_real_colliding_volume() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains("const FOREST_MASS_CLUSTER_COUNT := 8")
+		and source.contains("const FOREST_MASS_TREES_PER_CLUSTER := 12")
+		and source.contains("Vector3(-46.0, 0.0, -90.0)")
+		and source.contains("Vector3(166.0, 0.0, -200.0)")
+		and source.contains('const OPENING_OAK_TREE := "res://data/models/props/oak_tree.gltf"')
+		and source.contains('var tree_paths := [OPENING_OAK_TREE]')
+		and source.contains("forest_rng.randf_range(1.45, 2.35)")
+		and source.contains("Vector3(1.65, 13.0, 1.65)")
+		and source.contains("_build_opening_forest_mass(seed_source)"),
+		"opening has deterministic, layered, human-scale colliding woodland beyond the bridge")
+
+
+## The starter composition may be dense, but every large biome must be an
+## actual exploration destination. Reintroducing the old 40m centres silently
+## turns the opening into a palette of unrelated props again.
+func _test_opening_is_not_polluted_by_nearby_biomes_or_river_fence() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains("var village_center := Vector3(300, 0, 250)")
+		and source.contains("var forest_center := Vector3(-400, 0, 250)")
+		and source.contains("var beach_center := Vector3(-320, 0, -350)")
+		and source.contains("var cave_center := Vector3(360, 0, -400)"),
+		"village, forest, beach and cave begin at meaningful exploration distances")
+	_assert(source.contains("const OPENING_COMPOSED_RADIUS_M := 380.0"),
+		"initial streaming holds generic scatter outside the composed opening horizon")
+	_assert(not source.contains('"river_bank_%s_%s"'),
+		"river has no repeated full-length collidable rock fence")
+
+
 ## Procedural large-world regression: only the nearby 5×5 chunk envelope is
 ## instantiated, and crossing macro cells keeps the retained set bounded.
 func _test_streamed_procedural_chunks_stay_bounded() -> void:
@@ -362,13 +422,14 @@ func _test_generation_is_queued_not_built_by_focus_request() -> void:
 
 
 func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
+	var water_shader_source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/shaders/adventure_water.gdshader")
 	var r := _make_renderer()
 	r._add_water_crossing()
 	r._build_opening_bridge()
 	var river := r.get_node_or_null("StarterRiver") as Area3D
 	var river_visual := river.get_node_or_null("WaterSurface") as MeshInstance3D if river != null else null
 	var river_collision := river.get_node_or_null("WaterVolumeShape") as CollisionShape3D if river != null else null
-	var river_mesh := river_visual.mesh as PlaneMesh if river_visual != null else null
+	var river_mesh := river_visual.mesh as ArrayMesh if river_visual != null else null
 	var deck := r.get_node_or_null("OpeningBridgeDeck") as StaticBody3D
 	var deck_collision := r._first_collision_shape(deck) if deck != null else null
 	var south_ramp := r.get_node_or_null("OpeningBridgeRampSouth") as StaticBody3D
@@ -376,8 +437,21 @@ func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 	var left_rail := r.get_node_or_null("OpeningBridgeRail_L") as StaticBody3D
 	var right_rail := r.get_node_or_null("OpeningBridgeRail_R") as StaticBody3D
 	_assert(river != null and river_visual != null and river.position.y > 0.0 \
-		and river_collision != null and river_mesh != null and river_mesh.size.y >= 18.0,
-		"river keeps its raised animated-surface and physical-volume contract")
+		and river_collision != null and river_mesh != null and river_mesh.get_surface_count() > 0,
+		"river keeps its raised curved-surface and physical-volume contract")
+	_assert(is_zero_approx(river.position.z) and is_equal_approx(river_collision.position.z, -24.0),
+		"river ribbon and swimming volume share the authored bridge crossing instead of applying the Z offset twice")
+	_assert(water_shader_source.contains("depth_draw_opaque, unshaded, fog_disabled")
+		and water_shader_source.contains("float foam = crest_foam + bank_foam;")
+		and water_shader_source.contains("varying float river_depth;")
+		and water_shader_source.contains("uniform sampler2D dudv_map")
+		and water_shader_source.contains("float channel_depth = smoothstep")
+		and water_shader_source.contains("float fresnel = pow")
+		and water_shader_source.contains("ALPHA = 1.0"),
+		"river stays opaque, animated, depth-graded and sky-reflective without extra viewports")
+	_assert(WorldRenderer.CHOYCE_WATER_SHALLOW.get_luminance() < 0.25
+		and WorldRenderer.CHOYCE_WATER_DEEP.get_luminance() < 0.18,
+		"river palette is materially darker than the sky instead of a white floor")
 	_assert(deck != null and deck_collision != null,
 		"bridge exposes one continuous deck collision beneath its visual tile assembly")
 	_assert(south_ramp != null and north_ramp != null,

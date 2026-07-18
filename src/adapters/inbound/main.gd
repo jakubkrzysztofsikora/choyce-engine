@@ -78,6 +78,7 @@ var _phase1_tool_gateway: DeterministicToolExecutionGateway
 ## filesystem-backed implementations.
 var _phase1_audit_ledger: AuditLedgerPort
 var _phase1_policy_store: ParentalPolicyStorePort
+var _phase1_sandbox_persistence: SandboxPersistenceService
 
 @onready var _nav_bar: PanelContainer = $Layout/NavBar
 @onready var _nav_pill: HBoxContainer = $Layout/NavBar/NavPill
@@ -113,6 +114,9 @@ var _evidence_manager: EvidenceManager
 var _screenshot_capture: ScreenshotCapture
 var _performance_monitor: PerformanceMonitor
 var _hardware_tier: HardwareTier
+# The Play shell can appear before a world is selected; retain the specific
+# runtime we wired so the delayed world launch connects exactly once.
+var _evidence_runtime_listener: Node = null
 
 
 func _process(delta: float) -> void:
@@ -219,27 +223,42 @@ func _setup_evidence_components() -> void:
 
 ## VS-016: Handle shell changes for evidence capture
 func _capture_shell_evidence(shell_id: String, evidence_manager: EvidenceManager, screenshot_capture: ScreenshotCapture) -> void:
-	# Map shell IDs to capture points
-	var capture_point_map = {
-		"play": ScreenshotCaptureClass.CapturePoint.SPAWN,
-		"create": ScreenshotCaptureClass.CapturePoint.REGION_TRANSITION,
-		"library": ScreenshotCaptureClass.CapturePoint.COMBAT,
-		"parent": ScreenshotCaptureClass.CapturePoint.GUIDE_INTERACTION
-	}
-	
-	if shell_id in capture_point_map:
-		var point = capture_point_map[shell_id]
-		screenshot_capture.capture(point, {"trigger": "shell_change", "shell": shell_id})
-	
+	# Only the Play shell is an honest shell-level capture point. Guide,
+	# transition and combat evidence must come from the corresponding gameplay
+	# events after the streamed opening has settled.
 	# Start evidence collection when entering Play shell
 	if shell_id == "play":
 		evidence_manager.start_collection()
-		# Connect to gameplay runtime for in-shell capture requests
-		var gameplay_runtime = get_node_or_null("/root/GameplayRuntime")
-		if gameplay_runtime != null and gameplay_runtime.has_signal("evidence_capture_requested"):
-			gameplay_runtime.evidence_capture_requested.connect(func(capture_point: int) -> void:
-				screenshot_capture.capture(capture_point, {"trigger": "gameplay_event"})
-			)
+		# A runtime may already be present when returning to the Play shell. New
+		# launches are wired by PlayShell.gameplay_runtime_created below.
+		_connect_gameplay_evidence_after_play_launch(evidence_manager, screenshot_capture)
+
+
+func _connect_gameplay_evidence_after_play_launch(
+		evidence_manager: EvidenceManager,
+		screenshot_capture: ScreenshotCapture
+	) -> void:
+	var gameplay_runtime = get_node_or_null("/root/GameplayRuntime")
+	if gameplay_runtime == null or not gameplay_runtime.has_signal("evidence_capture_requested"):
+		return
+	_connect_gameplay_evidence_runtime(gameplay_runtime, screenshot_capture)
+
+
+func _on_play_shell_gameplay_runtime_created(gameplay_runtime: GameplayRuntime) -> void:
+	if gameplay_runtime == null or _screenshot_capture == null:
+		return
+	_connect_gameplay_evidence_runtime(gameplay_runtime, _screenshot_capture)
+
+
+func _connect_gameplay_evidence_runtime(gameplay_runtime: Node, screenshot_capture: ScreenshotCapture) -> void:
+	if gameplay_runtime == null or not gameplay_runtime.has_signal("evidence_capture_requested"):
+		return
+	if gameplay_runtime == _evidence_runtime_listener:
+		return
+	var on_capture := func(capture_point: int) -> void:
+		screenshot_capture.capture(capture_point, {"trigger": "gameplay_event"})
+	gameplay_runtime.evidence_capture_requested.connect(on_capture)
+	_evidence_runtime_listener = gameplay_runtime
 
 
 func _ready() -> void:
@@ -417,6 +436,7 @@ func _build_default_ports() -> Dictionary:
 	_phase1_tool_gateway = tool_gateway
 	_phase1_audit_ledger = audit_ledger_stub
 	_phase1_policy_store = policy_store_stub
+	_phase1_sandbox_persistence = sandbox_persistence
 
 	return {
 		KEY_CREATE_PORT: CreateProjectService.new().setup(project_store, clock),
@@ -622,6 +642,11 @@ func _build_default_ports_phase_2() -> void:
 	# Re-wire shells with the persistent adapters.
 	if is_node_ready():
 		_wire_shell_dependencies()
+
+	# VS-026: Sandbox persistence — swap the Phase 1 stub (if it was in-memory)
+	# with a filesystem-backed store so saves survive app restarts.
+	var sandbox_store := FilesystemSandboxStore.new().setup("user://sandbox_saves")
+	_phase1_sandbox_persistence = SandboxPersistenceService.new().setup(sandbox_store, clock)
 
 	_ports_phase_2_done = true
 
@@ -1055,8 +1080,42 @@ func _on_launcher_play() -> void:
 		_screenshot_capture.capture(ScreenshotCaptureClass.CapturePoint.LAUNCHER, {"trigger": "launcher_play"})
 	
 	_launcher = null
+	# The launcher must be a reliable one-press route into the demo, even when
+	# it is tapped during startup before the deferred persistence pass has seeded
+	# its starter projects. Resolve (and if required seed) the Adventure project
+	# immediately instead of assuming a stale hard-coded id already exists.
+	var adventure_project_id := _resolve_launcher_adventure_project_id()
+	if adventure_project_id.is_empty():
+		push_error("Launcher could not resolve the Adventure demo project")
+		return
+	_on_world_card_pressed(adventure_project_id, "")
+
+
+func _resolve_launcher_adventure_project_id() -> String:
+	if _phase1_project_store == null:
+		return ""
 	var kid_id := _profile.profile_id if _profile != null else "local_kid_1"
-	_on_world_card_pressed("%s_starter_adventure" % kid_id, "")
+	var expected_id := "%s_starter_adventure" % kid_id
+	var expected: Project = _phase1_project_store.load_project(expected_id)
+	if expected != null and not expected.worlds.is_empty():
+		return expected.project_id
+	# Safe and idempotent: this creates only missing starter ids and never
+	# overwrites a child-authored project. It closes the race with Phase 2 and
+	# repairs a missing demo folder without clearing saved sandbox progress.
+	if _phase1_clock != null:
+		_seed_starter_content_from_templates(_phase1_project_store, _phase1_clock)
+		expected = _phase1_project_store.load_project(expected_id)
+		if expected != null and not expected.worlds.is_empty():
+			return expected.project_id
+	# A parent or test profile may already own a valid Adventure project under a
+	# non-standard id. Prefer that playable world over an empty generic Play tab.
+	for project_variant in _phase1_project_store.list_projects():
+		if not (project_variant is Project):
+			continue
+		var project := project_variant as Project
+		if project.owner_profile_id == kid_id and project.template_id == "adventure" and not project.worlds.is_empty():
+			return project.project_id
+	return ""
 
 
 func _on_world_card_pressed(project_id: String, world_id: String) -> void:
@@ -1102,6 +1161,8 @@ func _wire_shell_dependencies() -> void:
 				return _create_shell.get_active_world()
 			return null
 	)
+	if not _play_shell.gameplay_runtime_created.is_connected(_on_play_shell_gameplay_runtime_created):
+		_play_shell.gameplay_runtime_created.connect(_on_play_shell_gameplay_runtime_created)
 	# Wire project_store so LandingScreen world-card clicks can resolve the
 	# project + launch directly via PlayShell.launch_world_by_id. Without
 	# this _on_world_card_pressed silently no-ops.
@@ -1137,6 +1198,9 @@ func _wire_shell_dependencies() -> void:
 	# Wave 3 W3-A3: NPC roster per template.
 	if _play_shell.has_method("setup_npc_pipeline"):
 		_play_shell.setup_npc_pipeline(NPCDialogueLoader.new())
+	# VS-026: Inject sandbox persistence for auto-save/load
+	if _play_shell.has_method("setup_sandbox_persistence"):
+		_play_shell.setup_sandbox_persistence(_phase1_sandbox_persistence)
 	_library_shell.setup(
 		_navigator,
 		_profile,

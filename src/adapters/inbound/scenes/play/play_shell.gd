@@ -4,6 +4,12 @@ extends Control
 const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const SHELL_CREATE := "create"
 const SHELL_LIBRARY := "library"
+const DEFAULT_SANDBOX_SLOT := "adventure"
+
+## Emitted immediately after the root runtime exists and before its world is
+## started. Adapters such as acceptance evidence can subscribe without guessing
+## when a kid will select a world after opening the Play shell.
+signal gameplay_runtime_created(runtime: GameplayRuntime)
 
 var _navigator: ShellNavigator
 var _profile: PlayerProfile
@@ -36,6 +42,7 @@ var _template_loader: TemplateLoader = null
 var _goal_evaluator: EvaluateGoalService = null
 var _active_template_id: String = ""
 var _npc_loader: NPCDialogueLoader = null
+var _sandbox_persistence: SandboxPersistenceService = null
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -63,6 +70,7 @@ var _npc_loader: NPCDialogueLoader = null
 @onready var _safe_restore_button: Button = $Layout/Actions/SafeRestoreButton
 @onready var _go_create_button: Button = $Layout/Actions/GoCreateButton
 @onready var _go_library_button: Button = $Layout/Actions/GoLibraryButton
+@onready var _new_game_button: Button = $Layout/Actions/NewGameButton
 
 
 func _ready() -> void:
@@ -73,6 +81,8 @@ func _ready() -> void:
 	_apply_theme()
 	_session_end_panel.visible = false
 	_celebration_layer.visible = false
+	# VS-026: Try to auto-resume sandbox on startup
+	_try_auto_resume_sandbox()
 
 
 func setup(
@@ -117,6 +127,10 @@ func setup_goal_pipeline(
 ## fetched per template and forwarded to GameplayRuntime.setup_npcs().
 func setup_npc_pipeline(loader: NPCDialogueLoader) -> void:
 	_npc_loader = loader
+
+
+func setup_sandbox_persistence(persistence: SandboxPersistenceService) -> void:
+	_sandbox_persistence = persistence
 
 
 func setup_for_direct_launch(project_store: ProjectStorePort) -> void:
@@ -320,6 +334,7 @@ func _wire_actions() -> void:
 		if _navigator != null:
 			_navigator.show_shell(SHELL_LIBRARY)
 	)
+	_new_game_button.pressed.connect(_on_new_game_requested)
 	_session_end_close.pressed.connect(_on_session_end_close)
 	_celebration_close.pressed.connect(hide_celebration)
 
@@ -338,6 +353,115 @@ func _refresh_labels() -> void:
 	_session_end_close.text = "%s %s" % [IconFont.get_icon("check"), _t("play.session.close")]
 	_refresh_kid_status_summary()
 	_refresh_quest_tracker()
+
+
+## VS-026: Sandbox persistence helpers
+
+## Try to load saved sandbox state and auto-resume if valid
+func _try_auto_resume_sandbox() -> bool:
+	if _sandbox_persistence == null or _profile == null:
+		return false
+	if not _sandbox_persistence.has_saved_sandbox():
+		return false
+	var saved_state := _sandbox_persistence.load_sandbox()
+	if saved_state == null or saved_state.is_empty():
+		return false
+	# Auto-set the world ID from saved state if we don't have one selected
+	if _active_world_id.is_empty() and not saved_state.world_id.is_empty():
+		_active_world_id = saved_state.world_id
+		_refresh_labels()
+		return true
+	return false
+
+
+## Save current sandbox state when session ends
+func _save_sandbox_state() -> bool:
+	if _sandbox_persistence == null or _gameplay_runtime == null:
+		return false
+	# Extract sandbox state from gameplay runtime
+	var state := _extract_sandbox_state_from_runtime()
+	if state == null:
+		return false
+	return _sandbox_persistence.save_sandbox(state)
+
+
+## Extract SandboxState from running GameplayRuntime
+func _extract_sandbox_state_from_runtime() -> SandboxState:
+	if _gameplay_runtime == null:
+		return null
+	# Use the runtime's get_sandbox_state() method if available
+	if _gameplay_runtime.has_method("get_sandbox_state"):
+		var state := _gameplay_runtime.get_sandbox_state()
+		if state != null and not state.is_empty():
+			return state
+	# Fallback to manual extraction for backwards compatibility
+	var state := SandboxState.new()
+	# Get world ID
+	if _gameplay_runtime.has_method("get_world_id"):
+		state.world_id = _gameplay_runtime.get_world_id()
+	elif not _active_world_id.is_empty():
+		state.world_id = _active_world_id
+	# Get player position
+	if _gameplay_runtime.has_method("get_player_position"):
+		state.player_position = _gameplay_runtime.get_player_position()
+	# Get inventory
+	if _gameplay_runtime.has_method("get_inventory"):
+		state.inventory = _gameplay_runtime.get_inventory()
+	# Get placed blocks
+	if _gameplay_runtime.has_method("get_placed_blocks"):
+		state.placed_blocks = _gameplay_runtime.get_placed_blocks()
+	# Get progression
+	if _gameplay_runtime.has_method("get_progression"):
+		state.progression = _gameplay_runtime.get_progression()
+	# Only save if we have meaningful state
+	if state.world_id.is_empty():
+		return null
+	return state
+
+
+## Clear sandbox save (New Game action)
+func clear_sandbox_save() -> bool:
+	if _sandbox_persistence == null:
+		return false
+	return _sandbox_persistence.clear_sandbox()
+
+
+## Handle New Game button press - show confirmation dialog
+func _on_new_game_requested() -> void:
+	# VS-026: Show confirmation before clearing sandbox save
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "New Game"
+	dialog.dialog_text = "Are you sure you want to start a new game? Your current progress will be lost."
+	dialog.ok_button_text = "Yes, Start New Game"
+	dialog.cancel_button_text = "Cancel"
+	dialog.confirmed.connect(_on_new_game_confirmed)
+	add_child(dialog)
+	dialog.popup_centered()
+
+
+## Handle confirmed New Game action
+func _on_new_game_confirmed() -> void:
+	if clear_sandbox_save():
+		_info.text = "Sandbox cleared. Starting fresh."
+		# Clear the active world to start fresh
+		_active_world_id = ""
+		_refresh_labels()
+	else:
+		_info.text = "Failed to clear sandbox."
+
+
+## Load sandbox state for a specific world
+func _load_sandbox_state_for_world(world_id: String) -> SandboxState:
+	if _sandbox_persistence == null:
+		return null
+	if not _sandbox_persistence.has_saved_sandbox():
+		return null
+	var saved_state := _sandbox_persistence.load_sandbox()
+	# Check if the saved state matches the world we're loading
+	if saved_state != null and not saved_state.is_empty() and saved_state.world_id == world_id:
+		return saved_state
+	# World doesn't match, return null to start fresh
+	return null
 
 
 func _launch_playtest(local_coop: bool) -> Session:
@@ -378,6 +502,9 @@ func _launch_playtest(local_coop: bool) -> Session:
 
 
 func _start_gameplay(world: World, session: Session, local_coop: bool = false) -> void:
+	# VS-026: Load sandbox state for this world if available
+	var sandbox_state := _load_sandbox_state_for_world(world.world_id)
+	
 	# H5: Stop world music before starting gameplay to prevent stacking
 	var bank := _audio_bank()
 	if bank != null and bank.has_method("stop_music"):
@@ -395,6 +522,7 @@ func _start_gameplay(world: World, session: Session, local_coop: bool = false) -
 	# saw a blank screen with HUD only. Root attach uses the project's
 	# default World3D + Camera3D from the gameplay_runtime scene.
 	get_tree().root.add_child(_gameplay_runtime)
+	gameplay_runtime_created.emit(_gameplay_runtime)
 	if _rules_runtime != null and _rule_compiler != null \
 			and _gameplay_runtime.has_method("setup_rules"):
 		_gameplay_runtime.setup_rules(_rules_runtime, _rule_compiler)
@@ -433,9 +561,22 @@ func _start_gameplay(world: World, session: Session, local_coop: bool = false) -
 		var combat_on: bool = policy != null and policy.combat_enabled
 		var filtered := _npc_loader.filtered_for_policy(raw_npcs, combat_on)
 		_gameplay_runtime.setup_npcs(filtered)
-	_gameplay_runtime.start_session(world, session)
+	# VS-026: Connect save signal so sandbox state persists on session end.
+	if _gameplay_runtime.has_signal("session_save_requested") \
+			and not _gameplay_runtime.is_connected("session_save_requested", _on_session_save_requested):
+		_gameplay_runtime.session_save_requested.connect(_on_session_save_requested)
+	# VS-026: Pass sandbox state to restore player position, inventory, etc.
+	_gameplay_runtime.start_session(world, session, sandbox_state)
 	if local_coop:
 		_spawn_split_screen()
+
+
+## GameplayRuntime emits its final state before teardown so the save contains
+## the real player position and placed objects, not a half-freed fallback.
+func _on_session_save_requested(state: SandboxState) -> void:
+	if _sandbox_persistence == null or state == null or state.is_empty():
+		return
+	_sandbox_persistence.save_sandbox(state)
 
 
 ## Wave 3 W3-A/B: terminal-state handler — branches the celebration UI
@@ -514,6 +655,8 @@ func _spawn_split_screen() -> void:
 
 
 func _on_session_ended() -> void:
+	# VS-026: Save sandbox state before tearing down
+	_save_sandbox_state()
 	if _split_screen != null:
 		_split_screen.teardown()
 		_split_screen = null

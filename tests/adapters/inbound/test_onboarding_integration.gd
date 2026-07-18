@@ -26,7 +26,7 @@ func _setup() -> void:
     root.add_child(_test_scene)
 
     # Create event bus for onboarding service
-    var event_bus = load("res://src/domain/events/domain_event_bus.gd").new()
+    var event_bus = load("res://src/domain/events/event_bus.gd").new()
 
     # Inject mock ports and event bus - using dynamic mocks below
     _test_scene.setup(

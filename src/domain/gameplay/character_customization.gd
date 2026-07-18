@@ -7,7 +7,6 @@
 class_name CharacterCustomization
 extends RefCounted
 
-static var PERSIST_PATH := "user://character_customization.json"
 const FACE_VARIANTS := ["a", "b", "c", "d", "e", "f"]
 const SKIN_PALETTE := [
 	Color(0.99, 0.84, 0.69),  ## light
@@ -78,26 +77,3 @@ static func from_dict(d: Dictionary) -> CharacterCustomization:
 	c.pants = int(d.get("pants", 0))
 	c.shoes = int(d.get("shoes", 0))
 	return c.clamp_in_place()
-
-
-static func load_from_disk() -> CharacterCustomization:
-	if not FileAccess.file_exists(PERSIST_PATH):
-		return CharacterCustomization.new().clamp_in_place()
-	var file := FileAccess.open(PERSIST_PATH, FileAccess.READ)
-	if file == null:
-		return CharacterCustomization.new().clamp_in_place()
-	var raw := file.get_as_text()
-	file.close()
-	var parsed: Variant = JSON.parse_string(raw)
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return CharacterCustomization.new().clamp_in_place()
-	return from_dict(parsed as Dictionary)
-
-
-func save_to_disk() -> bool:
-	var file := FileAccess.open(PERSIST_PATH, FileAccess.WRITE)
-	if file == null:
-		return false
-	file.store_string(JSON.stringify(to_dict(), "  "))
-	file.close()
-	return true

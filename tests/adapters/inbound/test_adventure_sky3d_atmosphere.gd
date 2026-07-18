@@ -37,6 +37,10 @@ func _run() -> void:
 	var dome := sky.get_node_or_null("SkyDome")
 	_assert(dome != null and dome.get("sky_material") == sky.environment.sky.sky_material,
 		"SkyDome animates the same shader material the viewport renders")
+	var material := sky.environment.sky.sky_material as ShaderMaterial if sky != null and sky.environment != null and sky.environment.sky != null else null
+	_assert(material != null and material.get_shader_parameter("noise_tex") != null
+		and material.get_shader_parameter("cumulus_texture") != null,
+		"the transferred Sky3D material retains initialized atmosphere texture bindings")
 	_assert(sky != null and sky.get_node_or_null("SunLight") is DirectionalLight3D,
 		"Sky3D provides a real shadow-casting sun")
 	_assert(sky != null and sky.get_node_or_null("MoonLight") is DirectionalLight3D,

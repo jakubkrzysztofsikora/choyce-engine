@@ -1,6 +1,7 @@
-[gd_scene load_steps=19 format=3 uid="uid://new_tractor"]
+[gd_scene load_steps=20 format=3 uid="uid://new_tractor"]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/vehicles/simple_vehicle.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://data/models/vehicles/police_car.glb" id="2_police_car"]
 
 [sub_resource type="StandardMaterial3D" id="Mat_green"]
 albedo_color = Color(0.08, 0.42, 0.2, 1)
@@ -87,16 +88,19 @@ size = Vector3(1.68, 1.28, 2.72)
 [sub_resource type="BoxShape3D" id="Shape_interaction"]
 size = Vector3(0.95, 1.8, 1.35)
 
-[node name="Tractor" type="VehicleBody3D"]
-mass = 1450.0
-continuous_cd = 1
-contact_monitor = true
-max_contacts_reported = 8
+[node name="Tractor" type="CharacterBody3D"]
 script = ExtResource("1_script")
 max_speed_override = 10.0
 engine_force_override = 210.0
+vehicle_visual_profile = "car"
+use_authored_vehicle_visual = true
 camera_follow_distance = 5.4
 camera_follow_height = 2.65
+
+[node name="VehicleVisual" parent="." instance=ExtResource("2_police_car")]
+position = Vector3(0, 0.12, 0)
+rotation = Vector3(0, 3.14159, 0)
+scale = Vector3(0.82, 0.82, 0.82)
 
 [node name="Chassis" type="MeshInstance3D" parent="."]
 position = Vector3(0, 0.94, 0)

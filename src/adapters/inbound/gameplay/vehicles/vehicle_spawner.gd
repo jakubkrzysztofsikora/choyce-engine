@@ -73,25 +73,10 @@ func configure(runtime: Node, player_node: Node3D, tracker_node: Node = null) ->
 
 
 func _process(_delta: float) -> void:
-	if player == null:
-		return
-
-	# Manage vehicle activation based on distance
-	for vehicle in spawned_vehicles:
-		if vehicle == null or not is_instance_valid(vehicle):
-			continue
-
-		var distance := vehicle.global_position.distance_to(player.global_position)
-
-		# Wake nearby unoccupied vehicles so their suspension settles. Control
-		# remains disabled until VehicleBase.enter() receives the player.
-		if distance <= ACTIVATION_RADIUS and vehicle.sleeping:
-			_activate_vehicle(vehicle)
-
-		# Sleeping a distant unoccupied rigid body is enough; never evict a
-		# player who drives beyond the spawn activation radius.
-		elif distance >= DEACTIVATION_RADIUS and not vehicle.sleeping and not vehicle.is_active:
-			_deactivate_vehicle(vehicle)
+	# CharacterBody3D vehicles remain cheap while keeping their Terrain3D floor
+	# snap live. Parking them by distance was coupled to the old wheel solver and
+	# produced cars that accepted a rider but had no controllable motion.
+	pass
 
 
 func _spawn_configured_vehicles() -> void:
@@ -164,8 +149,7 @@ func _spawn_vehicle(spawn_data: Dictionary) -> VehicleBase:
 		return null
 	var vehicle: VehicleBase = vehicle_node as VehicleBase
 
-	# Attach before assigning global transforms. VehicleBody3D cannot resolve a
-	# global transform correctly until it belongs to a scene tree.
+	# Attach before assigning global transforms so the terrain ground ray has a world.
 	var vehicle_parent: Node = runtime_root if runtime_root != null else get_parent()
 	if vehicle_parent != null:
 		vehicle_parent.add_child(vehicle)
@@ -179,6 +163,10 @@ func _spawn_vehicle(spawn_data: Dictionary) -> VehicleBase:
 	vehicle.global_position = spawn_position as Vector3 if spawn_position is Vector3 else Vector3.ZERO
 	if spawn_data.has("rotation"):
 		vehicle.rotation.y = float(spawn_data["rotation"])
+	# The streamed world carries its own relief. Spawn data supplies x/z only,
+	# so settle against the actual terrain once the body is inside the scene
+	# instead of leaving a vehicle suspended at the global y=0 plane.
+	vehicle.call_deferred("snap_to_surface")
 
 	# Apply config overrides.
 	if config.has("max_speed"):
@@ -186,8 +174,6 @@ func _spawn_vehicle(spawn_data: Dictionary) -> VehicleBase:
 	_configure_vehicle_dependencies(vehicle)
 
 	spawned_vehicles.append(vehicle)
-	# Deactivate initially (will be activated when the injected player is nearby).
-	_deactivate_vehicle(vehicle)
 	return vehicle
 
 
@@ -199,16 +185,11 @@ func _configure_vehicle_dependencies(vehicle: VehicleBase) -> void:
 
 
 func _activate_vehicle(vehicle: VehicleBase) -> void:
-	if vehicle == null:
-		return
-	vehicle.sleeping = false
+	pass
 
 
 func _deactivate_vehicle(vehicle: VehicleBase) -> void:
-	if vehicle == null:
-		return
-	if not vehicle.is_active:
-		vehicle.sleeping = true
+	pass
 
 
 func get_nearest_vehicle(position: Vector3, radius: float = 5.0) -> VehicleBase:

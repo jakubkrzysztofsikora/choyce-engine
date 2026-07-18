@@ -5,6 +5,7 @@
 ## allowed to emit a runtime error from the shared gameplay composition root.
 extends SceneTree
 
+const GameplayRuntimeScript = preload("res://src/adapters/inbound/gameplay/gameplay_runtime.gd")
 
 const VEHICLE_SCENES := [
 	"res://scenes/vehicles/tractor.tscn",
@@ -40,6 +41,12 @@ func _assert_vehicle_resources(vehicle: VehicleBase, scene_path: String) -> void
 	if chassis != null and chassis.mesh != null:
 		_assert(chassis.mesh.get_aabb().size.length() > 1.0,
 			"%s chassis mesh has vehicle-scale dimensions" % scene_path)
+	if scene_path.ends_with("tractor.tscn"):
+		var authored_visual := vehicle.get_node_or_null("VehicleVisual") as Node3D
+		_assert(authored_visual != null and authored_visual.get_child_count() > 0,
+			"tractor spawn uses one supplied coherent vehicle visual")
+		_assert(chassis != null and not chassis.visible,
+			"tractor hides the old primitive chassis instead of layering it over the ready-made car")
 
 	var body_shape := _first_shape(vehicle)
 	_assert(body_shape != null and body_shape.shape != null,
@@ -62,20 +69,12 @@ func _assert_vehicle_resources(vehicle: VehicleBase, scene_path: String) -> void
 	_assert(visual_count >= 10,
 		"%s is a visible assembled model, not a null placeholder" % scene_path)
 
-	var wheels := vehicle.find_children("*", "VehicleWheel3D", true, false)
-	_assert(wheels.size() == 4, "%s creates four VehicleWheel3D wheels" % scene_path)
-	var steering_wheels := 0
-	for wheel_variant in wheels:
-		var wheel := wheel_variant as VehicleWheel3D
-		var tire := wheel.get_node_or_null("Tire") as MeshInstance3D
-		_assert(wheel.wheel_radius > 0.4 and tire != null and tire.mesh != null,
-			"%s wheel has physics dimensions and a visible tire" % scene_path)
-		_assert(wheel.use_as_traction,
-			"%s wheel receives bounded engine force" % scene_path)
-		if wheel.use_as_steering:
-			steering_wheels += 1
-	_assert(steering_wheels == 2,
-		"%s uses one steering axle" % scene_path)
+	_assert(vehicle is CharacterBody3D,
+		"%s uses grounded CharacterBody3D movement rather than streamed wheel contacts" % scene_path)
+	var engine_loop := vehicle.get_node_or_null("VehicleEngineIdle") as AudioStreamPlayer3D
+	var engine_one_shot := vehicle.get_node_or_null("VehicleEngineOneShot") as AudioStreamPlayer3D
+	_assert(engine_loop != null and engine_loop.stream != null and engine_one_shot != null,
+		"%s carries local engine loop/start-brake audio nodes" % scene_path)
 
 
 func _assert_vehicle_controls(vehicle: VehicleBase, scene_path: String) -> void:
@@ -91,33 +90,58 @@ func _assert_vehicle_controls(vehicle: VehicleBase, scene_path: String) -> void:
 		"%s can be entered" % scene_path)
 	_assert(vehicle.vehicle_camera != null and vehicle.vehicle_camera.current,
 		"%s hands camera control to the vehicle" % scene_path)
+	var engine_loop := vehicle.get_node_or_null("VehicleEngineIdle") as AudioStreamPlayer3D
+	_assert(engine_loop != null and engine_loop.playing,
+		"%s starts its local engine loop on entry" % scene_path)
 
 	Input.action_press("accelerate")
 	var drive_start := vehicle.global_position
 	for _frame in 45:
 		vehicle._physics_process(1.0 / 60.0)
 		await physics_frame
-	var driven_wheels := 0
-	for wheel in vehicle.find_children("*", "VehicleWheel3D", true, false):
-		if absf((wheel as VehicleWheel3D).engine_force) > 0.01:
-			driven_wheels += 1
-	_assert(driven_wheels == 4,
-		"%s acceleration reaches real VehicleWheel3D children" % scene_path)
+	_assert(absf(vehicle.current_engine_force) > 0.01,
+		"%s accepts acceleration without waiting for wheel contacts" % scene_path)
 	Input.action_release("accelerate")
 	vehicle._physics_process(1.0 / 60.0)
 	var horizontal_travel := Vector2(
 		vehicle.global_position.x - drive_start.x,
 		vehicle.global_position.z - drive_start.z).length()
 	_assert(horizontal_travel > 0.08,
-		"%s moves through VehicleWheel3D physics" % scene_path)
-	_assert(vehicle.global_position.y > -0.25,
-		"%s collision and suspension hold the body above the ground" % scene_path)
+		"%s moves with grounded arcade vehicle physics" % scene_path)
+	var yaw_before_right := vehicle.rotation.y
+	Input.action_press("steer_right")
+	vehicle._physics_process(1.0 / 30.0)
+	Input.action_release("steer_right")
+	_assert(vehicle.rotation.y < yaw_before_right,
+		"%s right steering produces rightward (-Y) yaw for a -Z-facing vehicle" % scene_path)
+	var chassis_collision := _first_shape(vehicle)
+	var collision_floor_y := vehicle.global_position.y
+	if chassis_collision != null and chassis_collision.shape is BoxShape3D:
+		collision_floor_y += chassis_collision.position.y - (chassis_collision.shape as BoxShape3D).size.y * 0.5
+	_assert(collision_floor_y > -0.08,
+		"%s collision footprint stays on the ground rather than falling or floating" % scene_path)
 
-	vehicle.exit_vehicle()
+	# GameplayRuntime receives E before dynamically spawned vehicles. Exercise
+	# that exact route so the generic interaction handler cannot trap a driver.
+	var runtime := GameplayRuntimeScript.new()
+	runtime._interaction_prompt_panel = PanelContainer.new()
+	runtime._interaction_prompt_label = Label.new()
+	runtime._interaction_prompt_panel.add_child(runtime._interaction_prompt_label)
+	runtime._active_vehicle = vehicle
+	runtime._interaction_feedback_until = 0.0
+	runtime._tick_world_interactions()
+	_assert(runtime._interaction_prompt_panel.visible \
+		and runtime._interaction_prompt_label.text == "E / Esc  Wyjdź z pojazdu",
+		"%s keeps an exit prompt visible after ordinary interaction feedback expires" % scene_path)
+	var exit_event := InputEventAction.new()
+	exit_event.action = "exit_vehicle"
+	exit_event.pressed = true
+	runtime._input(exit_event)
 	_assert(not vehicle.is_active and player.visible,
-		"%s can be exited and restores the player" % scene_path)
+		"%s exits through the runtime E/Escape routing and restores the player" % scene_path)
 	_assert(player_camera.current,
 		"%s restores the previous player camera on exit" % scene_path)
+	runtime.free()
 	player.queue_free()
 
 
@@ -183,7 +207,7 @@ func _run() -> void:
 		"embedded runtime spawns only valid VehicleBase vehicles")
 	for vehicle in spawner.spawned_vehicles:
 		_assert(is_instance_valid(vehicle) and vehicle.is_inside_tree(),
-			"spawned vehicle is attached before its global transform is assigned")
+		"spawned vehicle is attached before its global transform is assigned")
 		_assert(not vehicle.is_active,
 			"proximity does not activate controls before entry")
 		_assert(_first_shape(vehicle) != null and _first_shape(vehicle).shape != null,

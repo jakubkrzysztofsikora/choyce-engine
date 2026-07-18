@@ -14,7 +14,7 @@ class_name SplitScreenRuntime
 extends Control
 
 const PlayerScript := preload("res://src/adapters/inbound/gameplay/player_controller.gd")
-const CHARACTER_MESH := "res://data/models/kenney/toon_characters/Models/GLB format/character-male-a.glb"
+const CHARACTER_MESH_P2 := "res://data/models/kenney/toon_characters/Models/GLB format/character-male-b.glb"
 
 signal session_ended
 
@@ -116,8 +116,8 @@ func _build_player() -> PlayerController:
 	col.shape = shape
 	body.add_child(col)
 
-	if ResourceLoader.exists(CHARACTER_MESH):
-		var mesh_scene: PackedScene = load(CHARACTER_MESH)
+	if ResourceLoader.exists(CHARACTER_MESH_P2):
+		var mesh_scene: PackedScene = load(CHARACTER_MESH_P2)
 		if mesh_scene != null:
 			var mesh := mesh_scene.instantiate()
 			mesh.name = "CharacterMesh"

@@ -64,19 +64,34 @@
   },
   "adventure": {
     "npc_explorer": {
-      "greeting_pl": "Ahoj, odkrywco! Wyspa skrywa wiele tajemnic.",
-      "hint_pl": "Szukaj świecących wskazówek — prowadzą do skarbów.",
-      "celebration_pl": "Niesamowite! Odkryłeś wszystkie sekrety wyspy."
+      "greeting_pl": "Hej! Jestem Olek. Wybierz kierunek i zobaczmy, co odkryjemy.",
+      "hint_pl": "Nie ma pośpiechu — ciekawe miejsca znajdziesz też poza ścieżką.",
+      "celebration_pl": "Niesamowite! Znalazłeś własną drogę przez wyspę.",
+      "fart_reaction": {
+        "line_pl": "Ojej! Ten wiatr ma własny plan podróży!",
+        "emotion": "happy",
+        "action": "laugh"
+      }
     },
     "npc_pirate": {
-      "greeting_pl": "Arr! Wyspę nękają 3 potwory. Pokonaj je, a skarb będzie twój!",
-      "hint_pl": "Podejdź do potwora i klikaj, aż zniknie w chmurce. Pokonaj wszystkie 3!",
-      "celebration_pl": "Arr! Pokonałeś potwory! Jesteś godzien skarbu!"
+      "greeting_pl": "Arr! Jestem Pablo. Nie dotykaj mojego kompasu, ale rozejrzyj się do woli.",
+      "hint_pl": "Dobra wyprawa zaczyna się od ciekawości, nie od listy rozkazów.",
+      "celebration_pl": "Arr! To była prawdziwa wyprawa, nie wyścig!",
+      "fart_reaction": {
+        "line_pl": "Arrr! Jeszcze jeden taki podmuch i wymachnę szablą w powietrzu!",
+        "emotion": "angry",
+        "action": "swat"
+      }
     },
     "npc_parrot": {
-      "greeting_pl": "Ćwir-ćwir! Witaj na wyspie przygód!",
-      "hint_pl": "Skacz po palmach, aby znaleźć ukryte monety.",
-      "celebration_pl": "Ćwir! Jesteś najlepszym odkrywcą!"
+      "greeting_pl": "Ćwir-ćwir! Jestem Pestka. Lubię śmiech, fale i błyszczące kamyki!",
+      "hint_pl": "Ćwir! Zajrzyj nad rzekę, pod drzewa albo do środka domu.",
+      "celebration_pl": "Ćwir! Właśnie tak wygląda dobra przygoda!",
+      "fart_reaction": {
+        "line_pl": "Ćwir-haha! Pestka słyszała głośniejsze fale!",
+        "emotion": "happy",
+        "action": "laugh"
+      }
     }
   }
 }

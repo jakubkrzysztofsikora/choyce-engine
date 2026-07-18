@@ -68,6 +68,7 @@ var _cinematic_time: float = 0.0
 var _flash: ColorRect = null
 var _cinematic_caption: Label = null
 var _menu_revealed: bool = false
+var _menu_vignette: ColorRect = null
 
 
 func setup(localization = null) -> LauncherOverlay:
@@ -504,18 +505,21 @@ func _camera_rotation(position: Vector3, target: Vector3) -> Vector3:
 
 
 func _cinematic_voice(voice_name: String, pitch_scale: float) -> void:
-	if AudioBank != null and AudioBank.has_method("play_voice_variant"):
-		AudioBank.play_voice_variant(voice_name, pitch_scale)
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank != null and bank.has_method("play_voice_variant"):
+		bank.call("play_voice_variant", voice_name, pitch_scale)
 
 
 func _cinematic_sfx(sfx_name: String) -> void:
-	if AudioBank != null and AudioBank.has_method("play_sfx"):
-		AudioBank.play_sfx(sfx_name)
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank != null and bank.has_method("play_sfx"):
+		bank.call("play_sfx", sfx_name)
 
 
 func _cinematic_melee(style: String) -> void:
-	if AudioBank != null and AudioBank.has_method("play_melee_impact"):
-		AudioBank.play_melee_impact(style)
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank != null and bank.has_method("play_melee_impact"):
+		bank.call("play_melee_impact", style)
 
 
 func _show_cinematic_line(speaker: String, line: String, voice_name: String, pitch_scale: float) -> void:
@@ -696,10 +700,38 @@ func _reveal_menu() -> void:
 		ftw.tween_property(_flash, "color:a", 0.85, 0.06)
 		ftw.tween_property(_flash, "color:a", 0.0, 0.45)
 
-	# Let the actual 3D frame dissolve rather than snapping to a 2D card.
+	# Keep the final rendered 3D action frame as the launcher backdrop. The
+	# previous full fade exposed the debug-like gradient and erased the promise
+	# made by the trailer at precisely the moment the child chooses to play.
 	if _cinematic_container != null and is_instance_valid(_cinematic_container):
-		var cinematic_fade := create_tween()
-		cinematic_fade.tween_property(_cinematic_container, "modulate:a", 0.0, 0.45)
+		_cinematic_container.modulate.a = 1.0
+	if _cinematic_viewport != null:
+		# One final frame is enough for a living key art background. Freezing it
+		# avoids paying to animate a hidden attract-mode scene while the launcher
+		# waits for the child.
+		_cinematic_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	if _cutscene != null:
+		# Trailer-specific bars, hype text and captions should not compete with
+		# the menu, but the rendered 3D image remains deliberately present.
+		for child in _cutscene.get_children():
+			if child != _cinematic_container:
+				child.visible = false
+
+	if _menu_vignette == null:
+		_menu_vignette = ColorRect.new()
+		_menu_vignette.name = "CinematicMenuVignette"
+		_menu_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_menu_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_menu_vignette.color = Color(0.008, 0.018, 0.05, 0.0)
+		_root.add_child(_menu_vignette)
+		var vignette_fade := create_tween()
+		vignette_fade.tween_property(_menu_vignette, "color:a", 0.52, 0.42)
+
+	# The cutscene was constructed after the menu, so promote the launcher
+	# controls above the held frame rather than depending on a transparent fade.
+	var menu_column := _root.get_node_or_null("CenterColumn") as Control
+	if menu_column != null:
+		_root.move_child(menu_column, _root.get_child_count() - 1)
 
 	# Menu pops in (title, subtitle, GRAJ).
 	_title.pivot_offset = Vector2(_title.size.x * 0.5, _title.size.y * 0.5)
@@ -714,12 +746,8 @@ func _reveal_menu() -> void:
 	_play_btn.disabled = false
 	_play_btn.grab_focus()
 
-	# Fade + free the cutscene layer shortly after.
-	var ct := get_tree().create_timer(0.6)
-	ct.timeout.connect(func() -> void:
-		if _cutscene != null and is_instance_valid(_cutscene):
-			_cutscene.queue_free()
-			_cutscene = null)
+	# Keep the frozen cutscene as the static menu key art until the child presses
+	# Play. It is owned by this overlay and is released normally with it.
 
 
 ## Animated sky: vertical gradient + a soft radial sun glow that breathes +

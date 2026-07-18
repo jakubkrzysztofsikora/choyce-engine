@@ -50,6 +50,27 @@ func _run() -> void:
 	_assert_lines(failing_queue.queued_lines(), PackedStringArray(["next-line"]), "failure advances to the next queued line")
 	_assert(failing_queue.next_action(false) == failing_queue.NextAction.SYNTHESIZE, "next queued line can synthesize after failure")
 
+	# A cancelled HTTPRequest can still finish in a later frame. Its callback
+	# must not consume or corrupt a replacement line that has already started.
+	var gate := AdapterScript.RequestGenerationGate.new()
+	var stale_generation := gate.begin()
+	gate.invalidate()
+	var current_generation := gate.begin()
+	_assert(not gate.accepts(stale_generation) and gate.accepts(current_generation),
+		"cancelled transport generation cannot be mistaken for the replacement request")
+	var callback_adapter := AdapterScript.new()
+	callback_adapter._request_generation = gate
+	var active_request := HTTPRequest.new()
+	callback_adapter._active_http = active_request
+	callback_adapter._queue.enqueue("replacement-line", 42)
+	callback_adapter._queue.next_action(false)
+	callback_adapter._on_request_completed(
+		HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), PackedByteArray(), stale_generation, HTTPRequest.new())
+	_assert(callback_adapter._active_http == active_request \
+		and callback_adapter._queue.queued_lines() == PackedStringArray(["replacement-line"]),
+		"late cancelled callback leaves the replacement dialogue queue untouched")
+	active_request.free()
+
 	var unavailable := AdapterScript.new()
 	unavailable.speak("offline no-op")
 	_assert_lines(unavailable._queue.queued_lines(), PackedStringArray(), "unavailable adapter remains a silent no-op")

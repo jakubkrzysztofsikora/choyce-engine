@@ -104,11 +104,15 @@ func play_sfx(sfx_name: String) -> void:
 		_sfx_pool[0].play()
 
 
-## Short, dry physical impact. The imported punch assets were too tonal for
-## contact combat and read like magic/UI audio in-game. This deliberately
-## synthesizes a low body thump plus a brief knuckle crack, with no melody,
-## reverb, or pitched tail.
+## Short physical contact. Prefer the locally bundled ElevenLabs punch/kick
+## clips; their use keeps audible impact grounded in a real recorded-style SFX
+## rather than a tone generator. The dry synthesis below is only a resilient
+## fallback if a local clip is missing or fails to import.
 func play_melee_impact(style: String = "punch") -> void:
+	var asset_key := "kick_impact" if style == "kick" else "punch_thud"
+	if _load_sfx(asset_key) != null:
+		play_sfx(asset_key)
+		return
 	var player: AudioStreamPlayer = null
 	for candidate in _melee_pool:
 		if not candidate.playing:
@@ -139,6 +143,42 @@ func play_melee_impact(style: String = "punch") -> void:
 		var crack := randf_range(-1.0, 1.0) * crack_env * crack_gain
 		var sample := clampf(body + crack, -1.0, 1.0)
 		playback.push_frame(Vector2(sample, sample))
+
+
+## Dry contact cues for an action before/without a hit. These intentionally
+## avoid the old tonal imported whoosh: an arm moving through air should read
+## as cloth/air, while axe and pickaxe work should read as wood and stone.
+func play_physical_action(action: String) -> void:
+	var player: AudioStreamPlayer = null
+	for candidate in _melee_pool:
+		if not candidate.playing:
+			player = candidate
+			break
+	if player == null and not _melee_pool.is_empty():
+		player = _melee_pool[0]
+	if player == null:
+		return
+	var is_pickaxe := action.contains("pickaxe")
+	var is_axe := action.contains("axe")
+	var duration := 0.12 if is_pickaxe or is_axe else 0.075
+	var generator := AudioStreamGenerator.new()
+	generator.mix_rate = 44100.0
+	generator.buffer_length = duration
+	player.stream = generator
+	player.play()
+	var playback := player.get_stream_playback() as AudioStreamGeneratorPlayback
+	if playback == null:
+		return
+	var frames := int(generator.mix_rate * duration)
+	for i in frames:
+		var t := float(i) / generator.mix_rate
+		var impact_env := exp(-t * (42.0 if is_axe else (58.0 if is_pickaxe else 70.0)))
+		var noise_gain := 0.30 if is_axe else (0.18 if is_pickaxe else 0.10)
+		var tone_hz := 118.0 if is_axe else (235.0 if is_pickaxe else 85.0)
+		var tone_gain := 0.34 if is_axe else (0.24 if is_pickaxe else 0.045)
+		var sample := randf_range(-1.0, 1.0) * impact_env * noise_gain
+		sample += sin(TAU * tone_hz * t) * impact_env * tone_gain
+		playback.push_frame(Vector2(clampf(sample, -1.0, 1.0), clampf(sample, -1.0, 1.0)))
 
 
 func play_hover_sfx() -> void:

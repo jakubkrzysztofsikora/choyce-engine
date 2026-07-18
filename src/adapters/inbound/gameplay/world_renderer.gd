@@ -6,12 +6,17 @@ extends Node3D
 const TOON_CEL_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/toon_cel.gdshader")
 const ENVIRONMENT_DETAIL_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/environment_detail.gdshader")
 const ADVENTURE_WATER_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/adventure_water.gdshader")
+const SIMPLE_WATER_DUDV: Texture2D = preload("res://data/textures/water/simplewater_dudv.png")
 const ADVENTURE_PATH_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/adventure_path.gdshader")
 const PBR_DETAIL_ALBEDO: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Color.jpg")
 const PBR_DETAIL_NORMAL: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_NormalGL.jpg")
 const PBR_DETAIL_ROUGHNESS: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Roughness.jpg")
+const FOREST_CANOPY_LEAVES: Texture2D = preload("res://data/textures/generated/forest-canopy-leaves-v1.png")
+const FOREST_BARK_ALBEDO: Texture2D = preload("res://data/models/quaternius/medieval_village/T_WoodTrim_BaseColor.png")
+const OPENING_OAK_TREE := "res://data/models/props/oak_tree.gltf"
 const TERRAIN3D_WORLD_ADAPTER := preload("res://src/adapters/inbound/gameplay/terrain3d_world_adapter.gd")
 const WORLD_HALF_EXTENT_M := 1200.0 # 2.4km × 2.4km = 5.76km² playable sandbox.
+const OPENING_COMPOSED_RADIUS_M := 380.0
 const PROCEDURAL_CHUNK_SIZE_M := 160.0
 const PROCEDURAL_ACTIVE_RADIUS := 2
 const PROCEDURAL_UNLOAD_RADIUS := 3
@@ -21,6 +26,25 @@ const PROCEDURAL_GENERATOR_VERSION := "adventure_sandbox_v2"
 const PROCEDURAL_BUILD_CELLS_PER_FRAME := 3
 const PROCEDURAL_BUILD_BUDGET_USEC := 3500
 const PROCEDURAL_DISPOSALS_PER_FRAME := 1
+
+# Choyce unified color palette (Visual Art Direction - VS-012)
+# Warm Beige: Ground, stone
+const CHOYCE_WARM_BEIGE := Color(0xD4C4A8FF)
+# Soft Green: Grass, foliage
+const CHOYCE_SOFT_GREEN := Color(0x8FA68AFF)
+# Sky Blue: Water, sky
+const CHOYCE_SKY_BLUE := Color(0xB8D8D8FF)
+# Wood Brown: Trees, furniture
+const CHOYCE_WOOD_BROWN := Color(0x8B6B51FF)
+# Roof Red: Architecture accents
+const CHOYCE_ROOF_RED := Color(0xA66B5AFF)
+# Accent Orange: Interactive elements
+const CHOYCE_ACCENT_ORANGE := Color(0xE8A862FF)
+# Water shore gradient colors. These must stay materially darker than the sky;
+# the former pale palette made the river render as a white floor in direct play.
+const CHOYCE_WATER_SHALLOW := Color(0.025, 0.22, 0.29, 1.0)
+const CHOYCE_WATER_MEDIUM := Color(0.035, 0.28, 0.38, 1.0)
+const CHOYCE_WATER_DEEP := Color(0.004, 0.075, 0.14, 1.0)
 
 var _spawn_points: Array[Vector3] = []
 var _procedural_seed_source := ""
@@ -32,6 +56,9 @@ var _procedural_disposal_queue: Array[Node3D] = []
 var _last_streamed_chunk := Vector2i(999999, 999999)
 var _has_runtime_terrain_surface := false
 var _has_runtime_terrain_collision := false
+
+# VS-025: Food database for foraging
+@export var food_database: FoodDatabase = null
 
 func render_world(world: World) -> void:
 	clear_world()
@@ -208,7 +235,11 @@ const PROP_GLTF_MAP: Dictionary = {
 	"znajdźka":        KENNEY_FK + "apple.glb",  # collectible apple
 	# --- adventure / island world ---
 	"skrzynia":        KENNEY_SK + "chest.glb",
-	"palma":           KENNEY_NK + "tree_palmTall.glb",
+	# The Nature Kit palm's banded trunk reads as a broken UV sheet at third-
+	# person distance. This locally supplied compact palm has a coherent trunk
+	# and leaf silhouette at human scale; beach size now comes from clusters,
+	# not a single oversized prop.
+	"palma":           "res://data/models/props/palm.gltf",
 	"łódka":           KENNEY_PK + "boat-row-small.glb",
 	"flaga":           KENNEY_PK + "flag-pirate-high.glb",
 	"most":            KENNEY_NK + "bridge_woodRoundNarrow.glb",
@@ -276,9 +307,34 @@ func _make_toon_material(base_color: Color, tex: Texture2D = null) -> ShaderMate
 	mat.set_shader_parameter("light_steps", 2.0)
 	# Shadow band derived from the effective look: for textured props a light
 	# cool shadow reads better than a darkened flat tint.
-	var shadow := Color(0.72, 0.74, 0.82) if tex != null else base_color.darkened(0.35)
+	var shadow := CHOYCE_SKY_BLUE if tex != null else base_color.darkened(0.35)
 	mat.set_shader_parameter("shadow_color", shadow)
 	return mat
+
+
+## Keep leaf and bark surfaces distinct for reusable foliage models.  A
+## MeshInstance material override would flatten a multi-surface tree into one
+## colour, which is why the earlier procedural forest lost its trunk/foliage
+## separation.  Source meshes that name their material slots retain their
+## silhouette while sharing our local leaf and bark texture language.
+func _apply_named_foliage_surface_materials(mi: MeshInstance3D) -> bool:
+	if mi.mesh == null:
+		return false
+	var applied := false
+	for surface_index in mi.mesh.get_surface_count():
+		var source_mat := mi.get_surface_override_material(surface_index)
+		if source_mat == null:
+			source_mat = mi.get_active_material(surface_index)
+		var material_key := ""
+		if source_mat != null:
+			material_key = source_mat.resource_name.to_lower()
+		if material_key.contains("leaf") or material_key.contains("foliage") or material_key.contains("canopy"):
+			mi.set_surface_override_material(surface_index, _make_toon_material(Color.WHITE, FOREST_CANOPY_LEAVES))
+			applied = true
+		elif material_key.contains("bark") or material_key.contains("wood") or material_key.contains("trunk"):
+			mi.set_surface_override_material(surface_index, _make_toon_material(Color.WHITE, FOREST_BARK_ALBEDO))
+			applied = true
+	return applied
 
 
 func _make_environment_detail_material(base_color: Color, profile: Dictionary) -> ShaderMaterial:
@@ -301,8 +357,6 @@ func _environment_detail_profile(name_key: String) -> Dictionary:
 		return {"scale": 2.8, "strength": 0.52, "normal": 0.52, "roughness": 0.82}
 	if key.contains("house") or key.contains("dom") or key.contains("mill") or key.contains("młyn") or key.contains("tartak") or key.contains("market") or key.contains("bridge") or key.contains("most"):
 		return {"scale": 3.8, "strength": 0.34, "normal": 0.26, "roughness": 0.70}
-	if key.contains("tree") or key.contains("dąb") or key.contains("palm") or key.contains("palma") or key.contains("bush") or key.contains("las") or key.contains("trawa") or key.contains("flower") or key.contains("kwiat"):
-		return {"scale": 5.6, "strength": 0.12, "normal": 0.12, "roughness": 0.58}
 	if key.contains("path") or key.contains("ground") or key.contains("terrain"):
 		return {"scale": 4.4, "strength": 0.58, "normal": 0.40, "roughness": 0.82}
 	return {"scale": 2.2, "strength": 0.24, "normal": 0.20, "roughness": 0.66}
@@ -310,8 +364,7 @@ func _environment_detail_profile(name_key: String) -> Dictionary:
 
 func _uses_environment_detail(name_key: String) -> bool:
 	var key := name_key.to_lower()
-	return key.contains("tree") or key.contains("dąb") or key.contains("palm") or key.contains("palma") \
-		or key.contains("bush") or key.contains("las") or key.contains("rock") or key.contains("skał") \
+	return key.contains("rock") or key.contains("skał") \
 		or key.contains("kamień") or key.contains("hill") or key.contains("mountain") or key.contains("gór") or key.contains("klif") \
 		or key.contains("cliff") or key.contains("house") or key.contains("dom") or key.contains("mill") \
 		or key.contains("młyn") or key.contains("tartak") or key.contains("market") or key.contains("bridge") \
@@ -323,37 +376,38 @@ func _uses_environment_detail(name_key: String) -> bool:
 ## baseColorFactor [0.8, 0.8, 0.8, 1]). W2.2 will fix Blender materials at
 ## source; until then kids see colored props instead of monochrome blobs.
 const PROP_TINT_BY_NAME: Dictionary = {
-	"palma": Color(0.32, 0.62, 0.25),       # palm leaves green
-	"skała": Color(0.55, 0.55, 0.58),       # rock gray
-	"skała z mchem": Color(0.40, 0.55, 0.30),
-	"kamień z mchem": Color(0.42, 0.55, 0.30),
-	"skrzynia": Color(0.55, 0.35, 0.18),    # chest wood brown
-	"moneta": Color(0.95, 0.75, 0.20),      # coin gold
-	"znajdźka": Color(0.95, 0.75, 0.20),
-	"perła": Color(0.92, 0.92, 0.96),       # pearl white-blue
-	"rozgwiazda": Color(0.95, 0.55, 0.30),  # starfish orange
-	"łódka": Color(0.45, 0.30, 0.18),       # boat wood
-	"flaga": Color(0.85, 0.20, 0.20),       # flag red
-	"most": Color(0.55, 0.40, 0.25),        # bridge wood
-	"trawa": Color(0.45, 0.75, 0.30),       # grass green
-	"płot": Color(0.65, 0.50, 0.30),        # fence wood
-	"stodoła": Color(0.75, 0.25, 0.20),     # barn red
-	"jabłoń": Color(0.30, 0.55, 0.25),      # apple tree green
-	"jabłko": Color(0.85, 0.20, 0.20),      # apple red
-	"jajko": Color(0.95, 0.92, 0.80),       # egg cream
-	"kura": Color(0.95, 0.92, 0.85),        # chicken white
-	"beli siana": Color(0.85, 0.70, 0.30),  # hay gold
-	"wiatrak": Color(0.85, 0.85, 0.85),     # windmill white
-	"koryto": Color(0.55, 0.42, 0.28),      # trough wood
-	"dąb": Color(0.30, 0.50, 0.22),         # oak green
-	"grzyb": Color(0.80, 0.20, 0.20),       # mushroom red cap
-	"grzyb mały": Color(0.85, 0.45, 0.20),
-	"kłoda": Color(0.50, 0.35, 0.22),       # log brown
-	"kwiaty": Color(0.95, 0.55, 0.85),      # flowers pink
+	"palma": CHOYCE_SOFT_GREEN,              # palm leaves green -> foliage
+	"skała": CHOYCE_WARM_BEIGE,              # rock gray -> ground/stone
+	"skała z mchem": CHOYCE_SOFT_GREEN,      # rock with moss -> foliage
+	"kamień z mchem": CHOYCE_SOFT_GREEN,     # stone with moss -> foliage
+	"skrzynia": CHOYCE_WOOD_BROWN,           # chest wood brown
+	"moneta": CHOYCE_ACCENT_ORANGE,          # coin gold -> interactive accent
+	"znajdźka": CHOYCE_ACCENT_ORANGE,        # find/treasure -> interactive accent
+	"perła": Color(0.92, 0.92, 0.96),        # pearl white-blue (keep - special item)
+	"rozgwiazda": CHOYCE_ACCENT_ORANGE,      # starfish orange -> accent
+	"łódka": CHOYCE_WOOD_BROWN,             # boat wood
+	"flaga": CHOYCE_ROOF_RED,                # flag red -> architecture accent
+	"most": CHOYCE_WOOD_BROWN,               # bridge wood
+	"trawa": CHOYCE_SOFT_GREEN,              # grass green -> foliage
+	"płot": CHOYCE_WOOD_BROWN,              # fence wood
+	"stodoła": CHOYCE_ROOF_RED,              # barn red -> architecture accent
+	"jabłoń": CHOYCE_SOFT_GREEN,             # apple tree green -> foliage
+	"jabłko": CHOYCE_ACCENT_ORANGE,         # apple red -> accent (more vibrant)
+	"jajko": Color(0.95, 0.92, 0.80),        # egg cream (keep - food item)
+	"kura": Color(0.95, 0.92, 0.85),         # chicken white (keep - animal)
+	"beli siana": CHOYCE_ACCENT_ORANGE,      # hay gold -> accent
+	"wiatrak": CHOYCE_WARM_BEIGE,            # windmill white -> neutral/warm
+	"koryto": CHOYCE_WOOD_BROWN,             # trough wood
+	"dąb": CHOYCE_SOFT_GREEN,                # oak green -> foliage
+	"grzyb": CHOYCE_SOFT_GREEN,              # mushroom red cap -> foliage (less scary)
+	"grzyb mały": CHOYCE_SOFT_GREEN,         # small mushroom -> foliage
+	"kłoda": CHOYCE_WOOD_BROWN,              # log brown
+	"kwiaty": CHOYCE_SOFT_GREEN,
+	"OpeningBridge": CHOYCE_WOOD_BROWN,      # bridge wood
 	"świetlik": Color(0.95, 0.95, 0.55),    # firefly yellow
 	"słoik świetlików": Color(0.95, 0.95, 0.55),
 	"żołądź": Color(0.85, 0.65, 0.30),      # acorn brown-gold
-	"start": Color(0.40, 0.85, 0.95),       # spawn crystal cyan
+	"start": CHOYCE_ACCENT_ORANGE,       # spawn crystal -> accent orange
 }
 
 
@@ -367,38 +421,68 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 	var force_opening_palette := false
 	var force_farm_animal_palette := false
 	var force_bridge_stair_palette := false
+	var is_opening_tree := false
+	var is_foliage_asset := name_key.contains("tree") or name_key.contains("bush") \
+		or name_key.contains("palm") or name_key.contains("grass") or name_key.contains("flower")
 	# Curated opening assets are loaded by their concrete kit paths rather than
 	# generic display names. The Nature Kit source uses near-white palette
 	# swatches for several of these meshes, so give those known prefixes the
 	# same restrained material language as their mapped world counterparts.
-	if name_key.begins_with("opening_grove_tree"):
-		fallback_tint = Color(0.20, 0.38, 0.22)
-		force_opening_palette = true
+	if name_key.begins_with("opening_grove_tree") \
+		or name_key.begins_with("openingforestmass") \
+		or name_key.begins_with("opening_backdrop_tree"):
+		fallback_tint = CHOYCE_SOFT_GREEN
+		is_opening_tree = true
+		# Preserve the authored leaf/trunk palette on the higher-fidelity Nature
+		# MegaKit trees. Only genuinely near-white source meshes receive a tint.
+		# Flattening every subtree to one green material made the forest look like
+		# dark plastic blocks in the opening screenshot.
 	elif name_key.begins_with("opening_grove_bush"):
-		fallback_tint = Color(0.27, 0.48, 0.24)
+		fallback_tint = CHOYCE_SOFT_GREEN
 		force_opening_palette = true
 	elif name_key.begins_with("opening_grove_flower"):
-		fallback_tint = Color(0.92, 0.70, 0.20)
+		fallback_tint = CHOYCE_ACCENT_ORANGE
+		force_opening_palette = true
+	elif name_key.begins_with("opening_fence"):
+		# The supplied fence ships with a chalk-white palette swatch.  It was
+		# reading as an unlit editor primitive at the edge of the opening.
+		fallback_tint = CHOYCE_WOOD_BROWN
+		force_opening_palette = true
+	elif name_key.begins_with("opening_campfire"):
+		fallback_tint = CHOYCE_WARM_BEIGE
 		force_opening_palette = true
 	elif name_key.begins_with("opening_path"):
-		fallback_tint = Color(0.49, 0.34, 0.18)
+		fallback_tint = CHOYCE_WARM_BEIGE
 		force_opening_palette = true
 	elif name_key.contains("chicken") or name_key.contains("kura"):
 		# The supplied low-poly chicken has a near-white flat material and no
 		# texture. Against the grass it read as a glowing broken pickup rather
 		# than wildlife, especially around the opening fence. Give every reuse of
 		# this source a restrained brown-and-cream farm-animal palette.
-		fallback_tint = Color(0.54, 0.31, 0.15)
+		fallback_tint = CHOYCE_WOOD_BROWN
 		force_farm_animal_palette = true
 	elif name_key.contains("openingbridge") and name_key.contains("stair"):
 		# The otherwise useful modular stair source imports as chalk-white here.
 		# Lock it to the bridge's dark weathered wood family rather than leaving a
 		# bright prefab fragment in the centre of the opening composition.
-		fallback_tint = Color(0.34, 0.20, 0.095)
+		fallback_tint = CHOYCE_WOOD_BROWN
 		force_bridge_stair_palette = true
 	# owned=false so programmatically-instanced glTF nodes (no SceneTree owner) are found.
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = node
+		var mesh_key := String(node.name).to_lower()
+		# The focal grove uses a separate oak trunk/canopy scene.  Keep the wood
+		# as wood, but give only canopy meshes a dense leaf material instead of
+		# tinting the whole tree dark brown.  This keeps the forest legible at
+		# third-person distance without changing shared source assets.
+		if is_opening_tree and (mesh_key.contains("canopy") or mesh_key.contains("leaf")):
+			mi.material_override = _make_toon_material(Color.WHITE, FOREST_CANOPY_LEAVES)
+			continue
+		if is_opening_tree and mesh_key.contains("trunk"):
+			mi.material_override = _make_toon_material(Color.WHITE, FOREST_BARK_ALBEDO)
+			continue
+		if is_foliage_asset and _apply_named_foliage_surface_materials(mi):
+			continue
 		var color := Color.WHITE
 		var tex: Texture2D = null
 		var existing_mat := mi.get_surface_override_material(0)
@@ -418,6 +502,16 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 		# placeholder props (near-white baseColorFactor, no texture).
 		if fallback_tint != null and (force_opening_palette or force_farm_animal_palette or force_bridge_stair_palette or (color.r >= 0.7 and color.g >= 0.7 and color.b >= 0.7)):
 			color = fallback_tint
+		if is_opening_tree:
+			# Nature MegaKit gives foliage and wood separate material slots, but
+			# their source Kd values are nearly black. Lift each into a readable,
+			# natural leaf/trunk family without painting the entire tree one colour.
+			if color.g >= color.r * 0.82 and color.g >= color.b * 0.92:
+				# Foliage - use softer green from Choyce palette
+				color = CHOYCE_SOFT_GREEN.darkened(0.3)
+			else:
+				# Trunk - use wood brown from Choyce palette
+				color = CHOYCE_WOOD_BROWN
 		if force_farm_animal_palette or force_bridge_stair_palette:
 			# The source's white texture is what made the chicken read as a broken
 			# glowing pickup at normal third-person distance; the stair has the same
@@ -436,6 +530,8 @@ func _apply_toon_tint(root: Node, color: Color) -> void:
 	# the horizon.
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = node
+		if _apply_named_foliage_surface_materials(mi):
+			continue
 		mi.material_override = _make_toon_material(color)
 
 
@@ -520,6 +616,7 @@ func _build_adventure_dressing(seed_source: String = "adventure") -> void:
 	# Use a visible house, yard, well, crops and a physical sign for the guide.
 	_build_starter_homestead()
 	_build_opening_sightline_layer()
+	_build_opening_forest_mass(seed_source)
 	_add_visual_asset("drogowskaz", Vector3(5.5, 0, -5.5), Vector3.ONE * 0.9, 0.0)
 	var opening_fence := SceneNode.new("adventure_opening_fence", SceneNode.NodeType.DECORATION)
 	opening_fence.display_name = "Płot"
@@ -563,8 +660,8 @@ func _build_opening_grove() -> void:
 	# each route read as ground rather than as a row of tabletop props.
 	# The river occupies z=-33..-15, so the trails stop at each bank and the
 	# bridge remains the only crossing cue.
-	_add_opening_dirt_trail("OpeningTrailBridgeNear", Vector3(0.0, 0.035, -10.0), 2.8, 11.0)
-	_add_opening_dirt_trail("OpeningTrailBridgeFar", Vector3(0.0, 0.035, -42.0), 2.8, 13.0)
+	# The bridge itself is the clear crossing landmark. Its former long flat
+	# decals read as brown runway rectangles in the third-person opening shot.
 	# Reach the door on the south facade, never the colliding left wall. The path
 	# first turns outside the home footprint, then approaches the real doorway.
 	_add_opening_dirt_trail("OpeningTrailHomeApproach", Vector3(4.4, 0.035, -51.0), 2.7, 10.5, 2.09)
@@ -577,21 +674,40 @@ func _build_opening_grove() -> void:
 	_add_opening_dirt_trail("OpeningTrailForest", Vector3(-14.0, 0.035, -13.2), 2.35, 10.0, -1.85)
 	_add_opening_dirt_trail("OpeningTrailVillage", Vector3(14.0, 0.035, -7.0), 2.35, 8.0, 1.30)
 
-	var tree_path := KENNEY_NK + "tree_default.glb"
-	var pine_path := KENNEY_NK + "tree_pineRoundA.glb"
-	var bush_path := KENNEY_NK + "plant_bushLarge.glb"
+	# The local authored oak exposes named trunk and canopy meshes.  It lets the
+	# renderer apply the real leaf/bark texture pair per surface. The Nature Kit
+	# pines use untextured palette swatches here and rendered as black cones with
+	# striped trunks in the live Adventure scene.
+	var tree_path := OPENING_OAK_TREE
+	var pine_path := OPENING_OAK_TREE
+	# The original FBX bush imported with a flat, almost unlit material.  This
+	# Kenney mesh carries a complete authored plant silhouette and belongs to the
+	# same kit as the surrounding flowers and river stones.
+	var bush_path := KENNEY_NK + "plant_bushDetailed.glb"
 	var flower_path := KENNEY_NK + "flower_yellowA.glb"
 	var tree_positions := [
-		[Vector3(-7.5, 0, -5), 2.15, tree_path], [Vector3(7.5, 0, -6), 2.25, pine_path],
+		# Near frame: the player starts in a protected clearing, not in the
+		# middle of a lawn.  These are deliberately asymmetrical so they read as
+		# a grove opening around the routes instead of a fence of identical trees.
+		[Vector3(-13.5, 0, -12), 1.95, tree_path], [Vector3(13.5, 0, -13), 2.05, pine_path],
+		[Vector3(-20.5, 0, -5.5), 2.30, pine_path], [Vector3(20.0, 0, -6.0), 2.18, tree_path],
+		[Vector3(-26.5, 0, -8.5), 2.62, tree_path], [Vector3(27.5, 0, -10.2), 2.48, pine_path],
+		[Vector3(-31.5, 0, -15.0), 2.82, pine_path], [Vector3(32.5, 0, -17.0), 2.72, tree_path],
 		# Keep the forest-route corridor open; this tree previously sat inside it.
-		[Vector3(-20, 0, -7), 2.35, pine_path], [Vector3(15, 0, -13), 2.15, tree_path],
-		[Vector3(-22, 0, -25), 2.4, tree_path], [Vector3(22, 0, -27), 2.3, pine_path],
-		[Vector3(-31, 0, -39), 2.55, pine_path], [Vector3(31, 0, -42), 2.45, tree_path],
+		[Vector3(-27, 0, -22), 2.35, pine_path], [Vector3(24, 0, -25), 2.30, tree_path],
+		[Vector3(-38, 0, -29), 2.85, tree_path], [Vector3(38, 0, -32), 2.78, pine_path],
+		# Far frame: taller silhouettes create a middle ground on both banks,
+		# while the bridge centre remains a bright, clear destination.
+		[Vector3(-34, 0, -44), 2.80, tree_path], [Vector3(35, 0, -48), 2.75, pine_path],
+		[Vector3(-48, 0, -52), 3.05, pine_path], [Vector3(47, 0, -56), 3.12, tree_path],
+		[Vector3(-60, 0, -64), 3.25, tree_path], [Vector3(58, 0, -68), 3.18, pine_path],
 	]
 	for i in tree_positions.size():
 		var entry: Array = tree_positions[i]
-		_add_visual_asset("opening_grove_tree_%d" % i, entry[0], Vector3.ONE * float(entry[1]),
-			float(i) * 0.71, String(entry[2]), true, Vector3(1.45, 3.6, 1.45))
+		# The authored oak is approximately 4m tall at unit scale; the old values
+		# targeted the much smaller Nature Kit pine and made it a giant canopy.
+		_add_visual_asset("opening_grove_tree_%d" % i, entry[0], Vector3.ONE * float(entry[1]) * 0.56,
+			float(i) * 0.71, String(entry[2]), true, Vector3(1.8, 8.5, 1.8))
 	var bush_positions := [
 		Vector3(-5.5, 0, -5), Vector3(5.5, 0, -6), Vector3(-9, 0, -18), Vector3(9, 0, -15),
 		Vector3(-18, 0, -20), Vector3(18, 0, -22), Vector3(-26, 0, -35), Vector3(25, 0, -36),
@@ -631,7 +747,7 @@ func _add_opening_dirt_trail(node_name: String, trail_position: Vector3, width: 
 	material.set_shader_parameter("detail_albedo", PBR_DETAIL_ALBEDO)
 	material.set_shader_parameter("detail_normal", PBR_DETAIL_NORMAL)
 	material.set_shader_parameter("detail_roughness", PBR_DETAIL_ROUGHNESS)
-	material.set_shader_parameter("earth_color", Color(0.43, 0.30, 0.17))
+	material.set_shader_parameter("earth_color", CHOYCE_WARM_BEIGE)
 	material.set_shader_parameter("detail_scale", 3.2)
 	trail.material_override = material
 	add_child(trail)
@@ -656,25 +772,16 @@ func _build_opening_sightline_layer() -> void:
 	# traversable forest farther out, not to a distant backdrop.  They are placed
 	# as irregular masses rather than a ruler-straight tree grid, which was making
 	# the large island read like a miniature test board from the opening camera.
-	var backdrop_tree_paths := [
-		KENNEY_NK + "tree_default.glb",
-		KENNEY_NK + "tree_pineRoundA.glb",
-		KENNEY_NK + "tree_pineRoundC.glb",
-		KENNEY_NK + "tree_oak.glb",
-	]
+	var backdrop_tree_paths := [OPENING_OAK_TREE]
 	var backdrop_clusters := [
-		Vector3(-104.0, 0.0, -72.0), Vector3(-68.0, 0.0, -84.0),
-		Vector3(-35.0, 0.0, -76.0), Vector3(33.0, 0.0, -76.0),
-		Vector3(72.0, 0.0, -83.0), Vector3(108.0, 0.0, -94.0),
-		Vector3(-118.0, 0.0, -119.0), Vector3(-75.0, 0.0, -116.0),
-		Vector3(-27.0, 0.0, -106.0), Vector3(24.0, 0.0, -111.0),
-		Vector3(67.0, 0.0, -126.0), Vector3(111.0, 0.0, -113.0),
+		Vector3(-118.0, 0.0, -118.0), Vector3(-72.0, 0.0, -126.0),
+		Vector3(42.0, 0.0, -126.0), Vector3(104.0, 0.0, -120.0),
 	]
 	var backdrop_rng := RandomNumberGenerator.new()
 	backdrop_rng.seed = hash("%s_opening_backdrop_clusters" % PROCEDURAL_GENERATOR_VERSION)
 	for cluster_index in backdrop_clusters.size():
 		var cluster_center: Vector3 = backdrop_clusters[cluster_index]
-		var tree_count := 3 + cluster_index % 3
+		var tree_count := 2 + cluster_index % 2
 		for tree_index in tree_count:
 			var position := cluster_center + Vector3(
 				backdrop_rng.randf_range(-12.0, 12.0), 0.0,
@@ -683,37 +790,119 @@ func _build_opening_sightline_layer() -> void:
 			# it must not create a wall directly in front of the child.
 			if absf(position.x) < 12.0 and position.z > -96.0:
 				continue
-			var scale := backdrop_rng.randf_range(3.6, 6.2)
+			# These are a distant forest mass, not toy trees standing on the
+			# horizon. Their true 12–20m silhouette supplies travel scale without
+			# colliding with the bridge route.
+			var scale := backdrop_rng.randf_range(1.20, 1.90)
 			var backdrop_tree := _add_visual_asset(
 				"opening_backdrop_tree_%d_%d" % [cluster_index, tree_index], position,
 				Vector3.ONE * scale, backdrop_rng.randf_range(0.0, TAU),
 				String(backdrop_tree_paths[backdrop_rng.randi_range(0, backdrop_tree_paths.size() - 1)]), false)
 			if backdrop_tree != null:
-				var green := Color(0.15, 0.28, 0.16) if position.z < -100.0 else Color(0.19, 0.38, 0.21)
+				var green := CHOYCE_SOFT_GREEN.darkened(0.4) if position.z < -100.0 else CHOYCE_SOFT_GREEN.darkened(0.2)
 				_apply_toon_tint(backdrop_tree, green)
 
-	# A high, warm landmark gives the eye a destination across the water without
-	# resorting to UI arrows or text. It is far enough not to compete with the
-	# home, but big enough to survive the camera's atmospheric depth.
+	# The physical Terrain3D mountains now provide the distant silhouette. Keep
+	# one human-scale windmill destination instead of a giant floating kit prop.
 	_add_visual_asset("OpeningDistantWindmill", Vector3(78.0, 0.0, -118.0),
-		Vector3.ONE * 4.1, -0.18, KAYKIT_BUILDER + "mill.gltf.glb", false)
-	_add_visual_asset("OpeningDistantHill", Vector3(-72.0, 0.0, -126.0),
-		Vector3.ONE * 5.0, 0.25, KAYKIT_BUILDER + "detail_hill.gltf.glb", false)
+		Vector3.ONE * 1.25, -0.18, KAYKIT_BUILDER + "mill.gltf.glb", false)
+	_add_route_lantern("BridgeSouthLantern", Vector3(-3.25, 0.0, -14.5))
+	_add_route_lantern("BridgeNorthLantern", Vector3(3.25, 0.0, -33.5))
+	_add_route_lantern("HomeLantern", Vector3(15.0, 0.0, -52.0))
+
+
+## The opening needs a real forest volume behind the curated bridge, not a few
+## decorative tree silhouettes on a flat horizon.  This deterministic mass is
+## deliberately wide and deep (rather than a narrow hedge): it gives the
+## player a believable woodland edge to walk into after reaching the north
+## bank, provides scale for the 5.76km² terrain, and hides the technical map
+## boundary from the first third-person frame.  The central 36m route remains
+## open for the house/bridge composition.
+func _build_opening_forest_mass(seed_source: String) -> void:
+	# A forest is read through overlapping canopy layers and irregular edges, not
+	# a uniform scatter across a huge rectangle.  The previous 54 trees were
+	# technically broad, but far enough apart that the live camera still saw a
+	# lawn with isolated props.  These eight seeded groves make a continuous
+	# woodland that starts just beyond the homestead, widens into the horizon,
+	# and leaves the bridge / two paths as intentional discovery corridors.
+	const FOREST_MASS_CLUSTER_COUNT := 8
+	const FOREST_MASS_TREES_PER_CLUSTER := 12
+	var forest_rng := RandomNumberGenerator.new()
+	forest_rng.seed = hash("%s_opening_forest_mass_v3" % seed_source)
+	var tree_paths := [OPENING_OAK_TREE]
+	var forest_clusters: Array[Vector3] = [
+		Vector3(-46.0, 0.0, -90.0), Vector3(46.0, 0.0, -90.0),
+		Vector3(-80.0, 0.0, -124.0), Vector3(80.0, 0.0, -124.0),
+		Vector3(-122.0, 0.0, -164.0), Vector3(122.0, 0.0, -164.0),
+		Vector3(-166.0, 0.0, -200.0), Vector3(166.0, 0.0, -200.0),
+	]
+	for cluster_index in range(FOREST_MASS_CLUSTER_COUNT):
+		var cluster_center := forest_clusters[cluster_index]
+		for tree_index in range(FOREST_MASS_TREES_PER_CLUSTER):
+			# The more distant groves have a larger footprint.  That creates a
+			# believable woodland boundary instead of identical circular clumps.
+			var spread_x := forest_rng.randf_range(10.0, 22.0 + cluster_index * 1.8)
+			var spread_z := forest_rng.randf_range(7.0, 17.0 + cluster_index * 1.25)
+			var position := cluster_center + Vector3(
+				forest_rng.randf_range(-spread_x, spread_x), 0.0,
+				forest_rng.randf_range(-spread_z, spread_z))
+			# Never close the child-scale 20m bridge approach; the deeper silhouette
+			# can connect behind it without becoming an invisible collision wall.
+			if absf(position.x) < 18.0 and position.z > -132.0:
+				continue
+			# 1.45–2.35 maps to approximately 6–10m with the named oak source:
+			# adult-scale woodland, without canopies swallowing the camera or bridge.
+			var scale := forest_rng.randf_range(1.45, 2.35)
+			var tree := _add_visual_asset(
+				"OpeningForestMass_%02d_%02d" % [cluster_index, tree_index],
+				position,
+				Vector3.ONE * scale,
+				forest_rng.randf_range(0.0, TAU),
+				String(tree_paths[forest_rng.randi_range(0, tree_paths.size() - 1)]),
+				true,
+				Vector3(1.65, 13.0, 1.65))
+			if tree != null:
+				# Dense trunks stay physically honest for gathering/navigation while
+				# foliage remains an authored visual layer on the ready-made model.
+				tree.set_meta("forest_mass", true)
+
+
+## Small warm pools make the route readable during the Sky3D night without
+## turning daytime into a flat over-lit scene. They also make the bridge, home
+## and cave recognizable landmarks from a child-height third-person camera.
+func _add_route_lantern(node_name: String, position: Vector3) -> void:
+	var light := OmniLight3D.new()
+	light.name = node_name
+	light.position = _terrain_grounded_position(position) + Vector3(0.0, 2.1, 0.0)
+	light.light_color = Color(1.0, 0.62, 0.32)
+	light.light_energy = 1.35
+	light.omni_range = 8.5
+	light.shadow_enabled = false
+	add_child(light)
 
 
 func _build_adventure_regions(seed_source: String) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(seed_source)
 
+	# These are actual regional destinations, not the first-frame prop palette.
+	# The old 40 m placements overlaid every biome in one sightline and made the
+	# 5.76 km² island look like a tiny test board.  Each region is now a real
+	# walk/ride away, while the composed bridge + starter home remain readable.
+	var village_center := Vector3(300, 0, 250)
+	var forest_center := Vector3(-400, 0, 250)
+	var beach_center := Vector3(-320, 0, -350)
+	var cave_center := Vector3(360, 0, -400)
+
 	# Houses and a little village — destination geometry first, then props.
-	_add_visual_asset("dom", Vector3(39, 0, 37), Vector3.ONE * 1.95, 0.2)
-	_add_visual_asset("młyn", Vector3(51, 0, 45), Vector3.ONE * 1.7, -0.45)
-	_add_visual_asset("studnia", Vector3(45, 0, 44), Vector3.ONE * 1.3, 0.0)
-	_add_visual_asset("gospodarstwo", Vector3(50, 0, 36), Vector3.ONE * 1.35, 0.0)
-	_spawn_region_props("village", Vector3(44, 0, 42), 14.0,
-		["Stodoła", "Wiatrak", "Płot", "Koryto", "Skrzynia", "Trawa duża"], 22, rng)
-	_spawn_region_props("village_animals", Vector3(44, 0, 42), 10.0, ["Kura"], 6, rng, true)
-	_add_visual_asset("drogowskaz", Vector3(35, 0, 42), Vector3.ONE * 0.9, 1.2)
+	_add_visual_asset("dom", village_center + Vector3(-5, 0, -5), Vector3.ONE * 1.95, 0.2)
+	_add_visual_asset("młyn", village_center + Vector3(7, 0, 3), Vector3.ONE * 1.7, -0.45)
+	_add_visual_asset("studnia", village_center + Vector3(1, 0, 2), Vector3.ONE * 1.3, 0.0)
+	_add_visual_asset("gospodarstwo", village_center + Vector3(6, 0, -6), Vector3.ONE * 1.35, 0.0)
+	_spawn_region_props("village", village_center, 22.0,
+		["Stodoła", "Wiatrak", "Płot", "Koryto", "Skrzynia", "Trawa duża"], 16, rng)
+	_spawn_region_props("village_animals", village_center, 17.0, ["Kura"], 5, rng, true)
+	_add_visual_asset("drogowskaz", village_center + Vector3(-12, 0, 2), Vector3.ONE * 0.9, 1.2)
 	
 	# VS-025: Add training equipment interaction areas
 	_build_training_equipment()
@@ -726,31 +915,52 @@ func _build_adventure_regions(seed_source: String) -> void:
 	# the actual woods stretch hundreds of metres north-west instead of ending
 	# after one decorative grove.
 	_add_visual_asset("las", Vector3(-82, 0, 62), Vector3.ONE * 2.8, 0.0)
-	_build_dense_forest_region(seed_source, Vector3(-220, 0, 120))
-	_spawn_region_props("forest", Vector3(-44, 0, 38), 15.0,
-		["Dąb", "Dąb", "Kłoda", "Skała", "Grzyb", "Kwiaty", "Trawa duża"], 36, rng)
-	_add_gatherable_resource("forest_wood_1", "wood_oak", Vector3(-55, 0, 46), "Kłoda", "Zbierz drewno", "gather_wood")
-	_add_gatherable_resource("forest_wood_2", "wood_oak", Vector3(-49, 0, 55), "Kłoda", "Zbierz drewno", "gather_wood")
-	_add_gatherable_resource("forest_wood_3", "wood_oak", Vector3(-62, 0, 35), "Dąb", "Zetnij drzewo", "gather_wood")
-	_add_visual_asset("drogowskaz", Vector3(-34, 0, 38), Vector3.ONE * 0.9, -1.2)
+	_build_dense_forest_region(seed_source, forest_center)
+	_spawn_region_props("forest", forest_center + Vector3(125, 0, -40), 22.0,
+		["Dąb", "Dąb", "Kłoda", "Skała", "Grzyb", "Kwiaty", "Trawa duża"], 20, rng)
+	_add_gatherable_resource("forest_wood_1", "wood_oak", forest_center + Vector3(24, 0, -14), "Kłoda", "Zbierz drewno", "gather_wood")
+	_add_gatherable_resource("forest_wood_2", "wood_oak", forest_center + Vector3(32, 0, -2), "Kłoda", "Zbierz drewno", "gather_wood")
+	_add_gatherable_resource("forest_wood_3", "wood_oak", forest_center + Vector3(18, 0, -25), "Dąb", "Zetnij drzewo", "gather_wood")
+	_add_visual_asset("drogowskaz", forest_center + Vector3(110, 0, -38), Vector3.ONE * 0.9, -1.2)
 
 	# A bright beach/lagoon region with authored sand/water tiles, boats,
 	# shells, and palms.
-	_add_visual_asset("łódka", Vector3(-54, 0.15, -27), Vector3.ONE * 1.25, 0.4)
-	_spawn_region_props("beach", Vector3(-44, 0, -28), 15.0,
-		["Palma", "Palma", "Rozgwiazda", "Perła", "Skała", "Skały piaskowe", "Trawa duża"], 30, rng)
-	_add_visual_asset("drogowskaz", Vector3(-34, 0, -28), Vector3.ONE * 0.9, 0.0)
+	_add_visual_asset("łódka", beach_center + Vector3(-10, 0.15, 0), Vector3.ONE * 1.25, 0.4)
+	_spawn_region_props("beach", beach_center, 24.0,
+		["Palma", "Palma", "Rozgwiazda", "Perła", "Skała", "Skały piaskowe", "Trawa duża"], 18, rng)
+	_add_visual_asset("drogowskaz", beach_center + Vector3(12, 0, 0), Vector3.ONE * 0.9, 0.0)
 
-	# Cave entrance / ruins region. The dark props and cliff pieces create a
-	# clear visual promise of something hidden without a new cave system.
-	_add_visual_asset("klif", Vector3(42, 0, -42), Vector3.ONE * 2.8, 0.0)
-	_add_visual_asset("klif", Vector3(51, 0, -39), Vector3.ONE * 2.1, -0.5)
-	_spawn_region_props("cave", Vector3(42, 0, -36), 10.0,
-		["Mur", "Mur", "Kolumna", "Pochodnia", "Beczka", "Pajęczyna", "Skrzynia Skarbów", "Skała"], 24, rng)
-	_add_gatherable_resource("cave_iron_1", "ore_iron", Vector3(36, 0, -48), "Skała z mchem", "Wydobądź kamień", "gather_stone")
-	_add_gatherable_resource("cave_iron_2", "ore_iron", Vector3(50, 0, -48), "Skała z mchem", "Wydobądź kamień", "gather_stone")
-	_add_gatherable_resource("cave_iron_3", "ore_iron", Vector3(55, 0, -34), "Skała z mchem", "Wydobądź kamień", "gather_stone")
-	_add_visual_asset("drogowskaz", Vector3(32, 0, -36), Vector3.ONE * 0.9, 0.0)
+	# Cave entrance / ruins region. Use the Nature Kit's actual cave arch and a
+	# side-bounded approach rather than calling a couple of rocks a cave. The
+	# mouth stays physically open, leading into a small sheltered ore chamber.
+	_build_cave_approach(cave_center)
+	_spawn_region_props("cave", cave_center + Vector3(0, 0, 6), 16.0,
+		["Mur", "Mur", "Kolumna", "Pochodnia", "Beczka", "Pajęczyna", "Skrzynia Skarbów", "Skała"], 16, rng)
+	_add_gatherable_resource("cave_iron_1", "ore_iron", cave_center + Vector3(-6, 0, -6), "Skała z mchem", "Wydobądź kamień", "gather_stone")
+	_add_gatherable_resource("cave_iron_2", "ore_iron", cave_center + Vector3(8, 0, -6), "Skała z mchem", "Wydobądź kamień", "gather_stone")
+	_add_gatherable_resource("cave_iron_3", "ore_iron", cave_center + Vector3(13, 0, 8), "Skała z mchem", "Wydobądź kamień", "gather_stone")
+	_add_visual_asset("drogowskaz", cave_center + Vector3(-12, 0, 6), Vector3.ONE * 0.9, 0.0)
+
+
+func _build_cave_approach(center: Vector3) -> void:
+	var cave_arch := KENNEY_NK + "cliff_cave_rock.glb"
+	var cave_wall := KENNEY_NK + "cliff_blockCave_rock.glb"
+	# The front arch is visual-only: its source mesh contains the opening. Narrow
+	# side collisions preserve the walkable mouth instead of an invisible box
+	# blocking a prop that visibly invites the player inside.
+	_add_visual_asset("CaveEntranceArch", center, Vector3.ONE * 3.5, PI,
+		cave_arch, false)
+	_add_visual_asset("CaveApproachLeft", center + Vector3(-6.2, 0.0, 2.0), Vector3.ONE * 2.8,
+		PI * 0.5, cave_wall, true, Vector3(2.0, 5.2, 5.0))
+	_add_visual_asset("CaveApproachRight", center + Vector3(6.2, 0.0, 2.0), Vector3.ONE * 2.8,
+		-PI * 0.5, cave_wall, true, Vector3(2.0, 5.2, 5.0))
+	_add_visual_asset("CaveRearWall", center + Vector3(0.0, 0.0, 7.4), Vector3.ONE * 2.4,
+		0.0, cave_wall, true, Vector3(10.0, 5.0, 1.2))
+	# A low roof completes an immediately explorable chamber behind the opening.
+	# Side/rear bodies above remain the authoritative collision contract.
+	_add_visual_asset("CaveChamberRoof", center + Vector3(0.0, 4.0, 4.0), Vector3(4.6, 1.8, 3.6),
+		0.0, KENNEY_NK + "cliff_top_rock.glb", false)
+	_add_route_lantern("CaveLantern", center + Vector3(0.0, 0.0, 3.8))
 
 
 func _add_gatherable_resource(id: String, item_id: String, position: Vector3, prop_name: String, prompt: String, action: String) -> void:
@@ -793,23 +1003,25 @@ func _build_dense_forest_region(seed_source: String, center: Vector3) -> void:
 	# few seconds or see straight through it from the starter yard.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("%s_dense_forest" % seed_source)
-	for gx in range(-12, 13):
-		for gz in range(-9, 10):
+	for gx in range(-16, 17):
+		for gz in range(-12, 13):
 			var fx := float(gx)
 			var fz := float(gz)
 			# Keep one generous diagonal trail plus irregular clearings. This is
 			# dense enough to feel like a forest, but never a collision maze.
-			if absf(fz - fx * 0.42) < 1.0 or (gx * 13 + gz * 7) % 23 == 0:
+			if absf(fz - fx * 0.42) < 1.25 or (gx * 13 + gz * 7) % 29 == 0:
 				continue
 			var tree_position := center + Vector3(
-				fx * 16.0 + rng.randf_range(-4.0, 4.0),
+				fx * 16.0 + rng.randf_range(-5.5, 5.5),
 				0.0,
-				fz * 16.0 + rng.randf_range(-4.0, 4.0))
-			var tree_scale := rng.randf_range(1.45, 2.15)
+				fz * 16.0 + rng.randf_range(-5.5, 5.5))
+			# Forest-region trees must dwarf the 1.8m player and overlap into a real
+			# canopy. Their collision remains trunk-sized via _add_visual_asset.
+			var tree_scale := rng.randf_range(3.2, 4.8)
 			_add_visual_asset("dense_forest_tree_%d_%d" % [gx, gz], tree_position,
 				Vector3.ONE * tree_scale, rng.randf_range(0.0, TAU),
-				_prop_path_for_name("Dąb"), true, Vector3(1.55, 3.8, 1.55))
-			if (gx + gz) % 3 == 0:
+				_prop_path_for_name("Dąb"), true, Vector3(1.55, 4.2, 1.55))
+			if (gx + gz) % 2 == 0:
 				_add_visual_asset("dense_forest_understory_%d_%d" % [gx, gz],
 					tree_position + Vector3(3.0, 0.0, -2.5),
 					Vector3.ONE * rng.randf_range(0.7, 1.1), rng.randf_range(0.0, TAU),
@@ -821,21 +1033,21 @@ func _build_food_spawn_points() -> void:
 	# spawn were reading as random bright render artefacts in the composition.
 	# Keep the first discoveries a short walk down each route, not in the opening
 	# hero frame or beside the wildlife/fence silhouette.
-	_add_gatherable_resource("food_apple_1", "food_apple", Vector3(-18.0, 0, -24.0),
+	_add_gatherable_resource("food_apple_1", "food_apple", Vector3(-360.0, 0, 212.0),
 		"Jabłko", "Znajdź jabłko", "find_food")
-	_add_gatherable_resource("food_apple_2", "food_apple", Vector3(18.0, 0, -27.0),
+	_add_gatherable_resource("food_apple_2", "food_apple", Vector3(-340.0, 0, 236.0),
 		"Jabłko", "Znajdź jabłko", "find_food")
-	_add_gatherable_resource("food_egg_1", "food_egg", Vector3(24.0, 0, -43.0),
+	_add_gatherable_resource("food_egg_1", "food_egg", Vector3(292.0, 0, 258.0),
 		"Jajko", "Znajdź jajko", "find_food")
 	
 	# More food in the village area
-	_add_gatherable_resource("food_apple_3", "food_apple", Vector3(40.0, 0, 38.0),
+	_add_gatherable_resource("food_apple_3", "food_apple", Vector3(292.0, 0, 244.0),
 		"Jabłko", "Znajdź jabłko", "find_food")
 	
-	_add_gatherable_resource("food_egg_2", "food_egg", Vector3(45.0, 0, 40.0),
+	_add_gatherable_resource("food_egg_2", "food_egg", Vector3(302.0, 0, 252.0),
 		"Jajko", "Znajdź jajko", "find_food")
 	
-	_add_gatherable_resource("food_apple_4", "food_apple", Vector3(35.0, 0, 42.0),
+	_add_gatherable_resource("food_apple_4", "food_apple", Vector3(310.0, 0, 242.0),
 		"Jabłko", "Znajdź jabłko", "find_food")
 
 
@@ -868,10 +1080,10 @@ func _build_procedural_food(rng: RandomNumberGenerator) -> void:
 	# Spawns additional food items procedurally
 	
 	var food_positions := [
-		Vector3(-30.0, 0, 30.0),
-		Vector3(-40.0, 0, 20.0),
-		Vector3(-25.0, 0, 15.0),
-		Vector3(-35.0, 0, 25.0)
+		Vector3(-370.0, 0, 220.0),
+		Vector3(-380.0, 0, 240.0),
+		Vector3(-365.0, 0, 205.0),
+		Vector3(-390.0, 0, 225.0)
 	]
 	
 	var food_types := ["Jabłko", "Jajko"]
@@ -900,9 +1112,10 @@ func _build_adventure_route() -> void:
 ## mesh is a tiny decorative prop whose stretched roof read as a grey block;
 ## this has an actual 20m deck, planks and rails at child walking scale.
 func _build_opening_bridge() -> void:
-	# A 4m × 20m authored Quaternius assembly matches the PBR starter house.
-	# It replaces the old exposed BoxMesh deck, rails and stretched stair prop,
-	# while the simple invisible bodies below remain the collision authority.
+	# The single ready-made bridge model is a tiny decorative asset and failed to
+	# render reliably at this river span.  Build a physical, PBR modular bridge
+	# from the same supplied Quaternius kit as the starter home instead: every
+	# deck tile and rail is visible at child walking scale and matches collision.
 	var floor_tile := QUATERNIUS_VILLAGE + "Floor_WoodLight.gltf"
 	var fence_segment := QUATERNIUS_VILLAGE + "Prop_WoodenFence_Extension2.gltf"
 	var approach_stair := QUATERNIUS_VILLAGE + "Stairs_Exterior_NoFirstStep.gltf"
@@ -912,17 +1125,11 @@ func _build_opening_bridge() -> void:
 		for z in range(-33, -13, 2):
 			_add_visual_asset("OpeningBridgeDeckTile_%d_%d" % [int(x), abs(z)],
 				Vector3(x, 0.69, float(z)), Vector3.ONE, 0.0, floor_tile, false)
-	# The deck is raised above the river banks, so make the approach a genuine
-	# physical slope. A child should be able to walk onto it without jumping
-	# into a vertical collision face.
-	# The ramps sit *outside* the deck: their high edges meet its two end faces
-	# exactly. Keeping them underneath the deck leaves the deck's vertical wall
-	# exposed and makes the route look traversable while physics blocks it.
+	# Smooth collision ramps prevent a child colliding with a vertical deck lip.
 	_add_opening_bridge_ramp("OpeningBridgeRampSouth", Vector3(0.0, 0.0, -11.9), true)
 	_add_opening_bridge_ramp("OpeningBridgeRampNorth", Vector3(0.0, 0.0, -36.1), false)
-	# Two full-width visual bays sit over each smooth physics approach. Their
-	# low ends are buried into the bank; their 1m top is aligned to the 0.69m
-	# deck rather than leaving a visible raised primitive wedge.
+	# Cover the collision wedges with the matching wood stairs rather than a
+	# stretched primitive so the path reads as a believable bridge approach.
 	for x in [-1.1, 1.1]:
 		_add_visual_asset("OpeningBridgeSouthApproach_%s" % str(x), Vector3(x, -0.31, -11.9),
 			Vector3(1.0, 1.0, 1.8), 0.0, approach_stair, false)
@@ -934,6 +1141,88 @@ func _build_opening_bridge() -> void:
 		for z in [-32.0, -28.0, -24.0, -20.0, -16.0]:
 			_add_visual_asset("OpeningBridgeRail_%s_%d" % ["L" if side < 0.0 else "R", abs(int(z))],
 				Vector3(side * 1.92, 0.69, z), Vector3.ONE, PI * 0.5, fence_segment, false)
+	_build_opening_bridge_shoreline()
+
+
+## The opening river is intentionally straight for streamed-world simplicity,
+## but the bridge view must not expose two bare rectangular banks. These few
+## asymmetric clusters are curated local shoreline dressing; the long-distance
+## river bank remains a low-cost procedural system outside the hero frame.
+func _build_opening_bridge_shoreline() -> void:
+	var stone_paths := [
+		KENNEY_NK + "cliff_blockSlope_stone.glb",
+		KENNEY_NK + "cliff_blockHalf_stone.glb",
+		KENNEY_NK + "rock_largeF.glb",
+	]
+	var clusters := [
+		[Vector3(-4.5, -0.10, -13.7), 1.05, 0.30, 0],
+		[Vector3(4.8, -0.08, -14.3), 0.82, -1.05, 2],
+		[Vector3(-5.2, -0.10, -35.0), 0.95, 2.20, 1],
+		[Vector3(4.6, -0.08, -34.7), 1.16, 0.72, 0],
+		[Vector3(-7.5, -0.10, -17.0), 0.64, 1.48, 2],
+		[Vector3(7.2, -0.10, -31.6), 0.70, -0.40, 2],
+	]
+	for index in clusters.size():
+		var entry: Array = clusters[index]
+		var position: Vector3 = entry[0]
+		var scale := float(entry[1])
+		var rotation := float(entry[2])
+		var path := String(stone_paths[int(entry[3])])
+		_add_visual_asset("OpeningBridgeShore_%d" % index, position,
+			Vector3.ONE * scale, rotation, path, true, Vector3(1.5 * scale, 1.1 * scale, 1.5 * scale))
+	_build_opening_riverbank_habitat()
+
+
+## Keep the bridge as a strong, readable route, but give both banks enough
+## irregular, tactile detail that the water reads as a place in the world rather
+## than a blue strip between two empty grass fields.  Positions deliberately
+## sit outside the 4.4m bridge/ramp corridor and all solid pieces use their
+## actual footprint rather than the old oversized generic collider.
+func _build_opening_riverbank_habitat() -> void:
+	var rock_path := KENNEY_NK + "rock_smallFlatC.glb"
+	var log_path := KENNEY_NK + "log_large.glb"
+	var bush_path := KENNEY_NK + "plant_bushLarge.glb"
+	var grass_path := KENNEY_NK + "grass_leafsLarge.glb"
+	var flower_paths := [
+		KENNEY_NK + "flower_purpleA.glb",
+		KENNEY_NK + "flower_yellowB.glb",
+		KENNEY_NK + "flower_redB.glb",
+	]
+	var solid_details := [
+		# south bank — framed on the outside of the player-to-bridge approach
+		["OpeningRiverbankRockSouthWest", Vector3(-7.4, -0.06, -13.1), 0.92, 0.42, rock_path, Vector3(1.15, 0.62, 0.92)],
+		["OpeningRiverbankLogSouthEast", Vector3(7.8, -0.05, -12.4), 0.95, -0.80, log_path, Vector3(1.55, 0.72, 0.72)],
+		["OpeningRiverbankRockSouthEast", Vector3(10.2, -0.08, -15.5), 0.76, 1.40, rock_path, Vector3(0.95, 0.52, 0.80)],
+		# north bank — placed beyond the ramp, leaving the house/yard route clear
+		["OpeningRiverbankLogNorthWest", Vector3(-8.4, -0.05, -36.5), 1.02, 0.86, log_path, Vector3(1.65, 0.72, 0.72)],
+		["OpeningRiverbankRockNorthEast", Vector3(7.9, -0.08, -36.9), 0.98, -0.36, rock_path, Vector3(1.18, 0.66, 0.95)],
+		["OpeningRiverbankRockNorthFar", Vector3(-13.2, -0.08, -39.5), 0.84, 2.08, rock_path, Vector3(1.0, 0.56, 0.86)],
+	]
+	for entry_variant in solid_details:
+		var entry: Array = entry_variant
+		_add_visual_asset(String(entry[0]), entry[1], Vector3.ONE * float(entry[2]),
+			float(entry[3]), String(entry[4]), true, entry[5])
+
+	var foliage_positions := [
+		Vector3(-10.1, 0.0, -14.8), Vector3(10.5, 0.0, -13.6),
+		Vector3(-12.7, 0.0, -18.5), Vector3(12.0, 0.0, -20.2),
+		Vector3(-11.2, 0.0, -34.7), Vector3(11.0, 0.0, -34.4),
+		Vector3(-15.5, 0.0, -39.0), Vector3(14.4, 0.0, -39.4),
+	]
+	for index in foliage_positions.size():
+		var position: Vector3 = foliage_positions[index]
+		# Dense bushes establish the bank edge; the surrounding cards add visual
+		# texture without producing a wall of physics around a child-scale path.
+		_add_visual_asset("OpeningRiverbankBush_%d" % index, position,
+			Vector3.ONE * (1.05 + float(index % 3) * 0.12), float(index) * 0.74,
+			bush_path, true, Vector3(1.10, 1.0, 1.10))
+		_add_visual_asset("OpeningRiverbankGrass_%d" % index,
+			position + Vector3(-0.92 if index % 2 == 0 else 0.92, 0.0, 0.58),
+			Vector3.ONE * (0.92 + float(index % 2) * 0.18), float(index) * 0.51,
+			grass_path, false)
+		_add_visual_asset("OpeningRiverbankFlower_%d" % index,
+			position + Vector3(0.68, 0.0, -0.56), Vector3.ONE * 0.75,
+			float(index) * 0.43, String(flower_paths[index % flower_paths.size()]), false)
 
 
 func _add_opening_bridge_ramp(node_name: String, ramp_position: Vector3, rises_toward_negative_z: bool) -> void:
@@ -1030,7 +1319,7 @@ func _add_outer_ocean() -> void:
 	mesh.size = Vector3(3000.0, 0.16, 3000.0)
 	ocean.mesh = mesh
 	ocean.position = Vector3(0.0, -0.42, 0.0)
-	ocean.material_override = _make_toon_material(Color(0.055, 0.19, 0.29))
+	ocean.material_override = _make_toon_material(CHOYCE_WATER_DEEP)
 	add_child(ocean)
 
 
@@ -1187,6 +1476,13 @@ func _advance_procedural_generation() -> void:
 			_procedural_build_jobs[chunk_key] = job
 
 
+## Evidence and cinematic hand-offs must wait until the opening's initially
+## streamed envelope is complete. A shell switch or fixed short timeout can
+## otherwise capture an empty field while its nearby cells still stream in.
+func is_opening_generation_settled() -> bool:
+	return _procedural_build_queue.is_empty() and _procedural_build_jobs.is_empty()
+
+
 func _spawn_procedural_cell(chunk_key: Vector2i, job: Dictionary) -> void:
 	var cell_index := int(job.get("cell_index", 0))
 	var gx := cell_index / 5
@@ -1208,9 +1504,14 @@ func _spawn_procedural_cell(chunk_key: Vector2i, job: Dictionary) -> void:
 		var prop_position := cell + Vector3(rng.randf_range(-12.0, 12.0), 0.0, rng.randf_range(-12.0, 12.0))
 		var scale := rng.randf_range(0.78, 1.35)
 		if prop_name == "Dąb" or prop_name == "Palma":
-			# Source trees are diorama pieces; calibrate to a walk-under canopy,
-			# not a garden shrub beside the 1.8m player.
-			scale *= rng.randf_range(2.25, 3.35)
+			# A large forest comes from broad irregular clusters, not 15m copies
+			# of a single diorama tree. The old 2.25–3.35 multiplier produced
+			# canopies above the camera and collision that felt disconnected from
+			# their trunk. Keep a readable 3–7m individual range instead.
+			# Calibrate the kit's diorama source to a real 8–14m tree canopy. The
+			# collider below stays trunk-sized, so density adds atmosphere rather
+			# than broad invisible walls.
+			scale *= rng.randf_range(2.8, 4.4)
 		# The parent StaticBody3D receives the visual scale, so this local shape
 		# stays at the unscaled trunk size and follows the rendered tree exactly.
 		var collision_size := Vector3(1.55, 3.8, 1.55) if prop_name == "Dąb" else Vector3(2.0, 5.5, 2.0)
@@ -1246,18 +1547,25 @@ func _procedural_candidates_for_biome(biome_value: float) -> Array:
 
 func _procedural_scatter_count(biome_value: float, detail_value: float, rng: RandomNumberGenerator) -> int:
 	if biome_value > 0.34:
-		return rng.randi_range(2, 4)
+		# A 32m cell needs a canopy cluster, not one decorative tree.
+		return rng.randi_range(5, 7)
 	if biome_value < -0.38:
-		return 1 if detail_value < 0.15 else 2
-	return rng.randi_range(1, 2)
+		return 2 if detail_value < 0.15 else 3
+	return rng.randi_range(3, 4)
 
 
 func _is_reserved_adventure_region(position: Vector3) -> bool:
+	# The first 380m is a deliberately authored journey. The initial streaming
+	# envelope is wider than the camera's immediate field; allowing generic
+	# chunks to decorate its outer cells covered the horizon in tiny unrelated
+	# props. Macro scatter begins only once the player has reached a real route.
+	if position.length() < OPENING_COMPOSED_RADIUS_M:
+		return true
 	for region in [
-		[Vector3(44, 0, 42), 25.0],
-		[Vector3(-44, 0, 38), 25.0],
-		[Vector3(-44, 0, -28), 27.0],
-		[Vector3(42, 0, -36), 23.0],
+		[Vector3(300, 0, 250), 62.0],
+		[Vector3(-400, 0, 250), 280.0],
+		[Vector3(-320, 0, -350), 62.0],
+		[Vector3(360, 0, -400), 58.0],
 	]:
 		if position.distance_to(region[0]) < float(region[1]):
 			return true
@@ -1330,7 +1638,12 @@ func _build_starter_homestead() -> void:
 	_add_visual_asset("HomeFloorLamp", center + Vector3(-0.15, 0.0, -3.35), Vector3.ONE,
 		0.0, POLY_PIZZA_ZSKY + "Floor Lamp.glb", true, Vector3(0.46, 1.72, 0.46))
 	_add_interaction_anchor("home_cook", center + Vector3(2.8, 0.0, 1.1), "E  Ugotuj posiłek", "cook")
-	_add_interaction_anchor("home_sit", center + Vector3(2.45, 0.0, 0.35), "E  Usiądź przy stole", "sit")
+	# The interaction volume is centered on the real north chair, while the
+	# explicit seat transform puts the character's capsule above the chair seat.
+	# The old generic +Z offset selected empty table-space and then lowered the
+	# character into the furniture collision.
+	var seat_anchor := _add_interaction_anchor("home_sit", center + Vector3(2.45, 0.45, 3.30), "E  Usiądź przy stole", "sit")
+	seat_anchor.set_meta("seat_position", center + Vector3(2.45, 0.82, 3.30))
 
 
 ## Assemble an actual 10m-class textured house from the Quaternius Village
@@ -1416,41 +1729,97 @@ func _add_water_crossing() -> void:
 	water.name = "StarterRiver"
 	water.add_to_group("water_volume")
 	water.monitoring = true
-	var mesh := PlaneMesh.new()
-	# A long, readable river continues beyond the opening bridge so it reads as
-	# geography rather than a blue test strip. The authored floor remains under
-	# it as a shallow safe-water bed for this kid-friendly prototype.
-	# Give the bridge a readable waterway in the opening frame. The previous
-	# 14m strip was so thin from the third-person camera that it read as a line.
-	mesh.size = Vector2(2300.0, 18.0)
-	# ~9m longitudinal cells keep the broad animated waves smooth without
-	# paying for a full high-density mesh across the 2.3km world river.
-	mesh.subdivide_width = 256
-	mesh.subdivide_depth = 8
+	# A straight PlaneMesh made the river a blue runway that visibly stopped in
+	# the middle of open terrain. This ribbon follows a gentle, deterministic
+	# meander from one outer-ocean edge to the other, while crossing the bridge
+	# exactly at x=0,z=-24. It has real bank variation without a costly fluid sim.
+	var mesh := _create_meandering_river_mesh()
 	var visual := MeshInstance3D.new()
 	visual.name = "WaterSurface"
 	visual.mesh = mesh
 	var water_material := ShaderMaterial.new()
 	water_material.shader = ADVENTURE_WATER_SHADER
+	# Apply Choyce water color palette: shallow -> medium -> deep
+	water_material.set_shader_parameter("shallow_color", CHOYCE_WATER_SHALLOW)
+	water_material.set_shader_parameter("deep_color", CHOYCE_WATER_DEEP)
+	water_material.set_shader_parameter("dudv_map", SIMPLE_WATER_DUDV)
+	water_material.set_shader_parameter("dudv_tiling", 0.22)
+	water_material.set_shader_parameter("dudv_strength", 0.028)
+	# Port the useful visual principle from the supplied MIT Simple Water asset:
+	# moving distortion plus restrained sky reflection. Keep it fully opaque so
+	# entering the volume cannot make the water disappear through sort artifacts.
+	water_material.set_shader_parameter("foam_color", Color(0.11, 0.34, 0.36, 1.0))
+	water_material.set_shader_parameter("sky_reflection_color", Color(0.16, 0.31, 0.36, 1.0))
 	visual.material_override = water_material
 	water.add_child(visual)
+	# The surface must be a render-only child. The Area3D below is exclusively
+	# for wading/swimming; it cannot hide, displace or otherwise own this mesh.
+	visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var water_collision := CollisionShape3D.new()
 	water_collision.name = "WaterVolumeShape"
 	var water_shape := BoxShape3D.new()
-	water_shape.size = Vector3(2300.0, 1.5, 18.0)
+	# Upper face sits just under the visible surface. This gives a stable shallow
+	# volume at every bank rather than a huge invisible wall above the river.
+	water_shape.size = Vector3(2400.0, 1.15, 22.0)
 	water_collision.shape = water_shape
-	water_collision.position.y = -0.62
+	# The generated ribbon already contains absolute world-space X/Z vertices.
+	# Keep the Area itself at world origin and move only its simple BoxShape
+	# volume to the crossing.  Previously the Area was also translated to
+	# z=-24, applying the crossing offset twice to the visual mesh: the player
+	# swam at the bridge while the rendered river cut through the north-bank
+	# homestead.  This made the opening look like disconnected props on a blue
+	# strip and was especially confusing at child camera height.
+	water_collision.position = Vector3(0.0, -0.47, -24.0)
 	water.add_child(water_collision)
-	water.position = Vector3(0, 0.10, -24)
+	# Keep the slight vertical lift used by the opaque water shader, but do not
+	# translate Z: `_create_meandering_river_mesh()` owns those coordinates.
+	water.position = Vector3(0, 0.10, 0)
+	water.collision_layer = 0
+	water.collision_mask = 1
 	water.body_entered.connect(_on_water_body_entered)
 	water.body_exited.connect(_on_water_body_exited)
 	add_child(water)
-	for x in range(-1120, 1121, 36):
-		for side in [-1.0, 1.0]:
-			_add_visual_asset("river_bank_%s_%s" % [str(x), str(side)],
-				Vector3(float(x), 0.0, -24.0 + side * 11.0),
-				Vector3.ONE * (1.05 + float(abs(x) % 3) * 0.08),
-				float(x) * 0.03, KENNEY_NK + "rock_tallH.glb", true, Vector3(2.0, 1.8, 2.0))
+	# Do not line the entire 2.3 km river with identical, collidable rocks.
+	# That was a visible picket fence in the opening shot and created dozens of
+	# false-looking collision obstacles. The composed bridge shoreline above is
+	# detailed by hand; streamed biomes supply their own local banks farther out.
+
+
+func _create_meandering_river_mesh() -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	const SEGMENTS := 96
+	const EXTENT := 1600.0
+	for segment in range(SEGMENTS):
+		var t0 := float(segment) / float(SEGMENTS)
+		var t1 := float(segment + 1) / float(SEGMENTS)
+		var pair0 := _river_bank_pair(lerpf(-EXTENT, EXTENT, t0))
+		var pair1 := _river_bank_pair(lerpf(-EXTENT, EXTENT, t1))
+		var left0: Vector3 = pair0[0]
+		var right0: Vector3 = pair0[1]
+		var left1: Vector3 = pair1[0]
+		var right1: Vector3 = pair1[1]
+		# Two consistently wound faces: the shader is cull-disabled, but stable
+		# normals help editor previews and any future reflective material.
+		surface.set_uv(Vector2(t0, 0.0)); surface.add_vertex(left0)
+		surface.set_uv(Vector2(t0, 1.0)); surface.add_vertex(right0)
+		surface.set_uv(Vector2(t1, 0.0)); surface.add_vertex(left1)
+		surface.set_uv(Vector2(t1, 0.0)); surface.add_vertex(left1)
+		surface.set_uv(Vector2(t0, 1.0)); surface.add_vertex(right0)
+		surface.set_uv(Vector2(t1, 1.0)); surface.add_vertex(right1)
+	return surface.commit()
+
+
+func _river_bank_pair(x: float) -> Array[Vector3]:
+	# sin(0)=0 keeps the authored bridge and crossing centred at z=-24. The
+	# secondary term breaks the ruler-straight silhouette without narrow turns.
+	var center_z := -24.0 + sin(x * 0.0031) * 18.0 + sin(x * 0.0087) * 5.0
+	var derivative := cos(x * 0.0031) * 18.0 * 0.0031 + cos(x * 0.0087) * 5.0 * 0.0087
+	var tangent := Vector3(1.0, 0.0, derivative).normalized()
+	var side := Vector3(-tangent.z, 0.0, tangent.x)
+	var half_width := 9.4 + sin(x * 0.0101) * 1.35 + sin(x * 0.0043 + 1.7) * 0.75
+	var center := Vector3(x, 0.10, center_z)
+	return [center + side * half_width, center - side * half_width]
 
 
 func _on_water_body_entered(body: Node3D) -> void:
@@ -1559,7 +1928,7 @@ func _add_visual_asset(
 	# applies the PBR detail layer above—important for KayKit Builder's flat
 	# palette hills/mountains/houses, which previously looked unrendered.
 	if node_name.begins_with("coast_cliff") or node_name.begins_with("coast_corner"):
-		_apply_toon_tint(instance, Color(0.33, 0.39, 0.35))
+		_apply_toon_tint(instance, CHOYCE_WARM_BEIGE)
 		_set_coast_visibility_range(instance)
 	else:
 		# Asset names supply the material class for procedural aliases such as
@@ -1831,7 +2200,7 @@ func _make_terrain_material(base_color: Color) -> ShaderMaterial:
 	"""
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
-	mat.set_shader_parameter("base_color", base_color.lerp(Color(0.48, 0.56, 0.42), 0.20))
+	mat.set_shader_parameter("base_color", base_color.lerp(CHOYCE_SOFT_GREEN, 0.20))
 	return mat
 
 func _create_light_node(node: SceneNode) -> Node3D:
@@ -1840,12 +2209,16 @@ func _create_light_node(node: SceneNode) -> Node3D:
 		var light := DirectionalLight3D.new()
 		light.shadow_enabled = true
 		light.shadow_blur = 1.5
+		# Enable contact shadows for better object grounding (VS-012 adversarial review)
+		light.contact_shadow_enabled = true
+		light.contact_shadow_length = 0.5
+		light.contact_shadow_bias = 0.1
 		return light
 	else:
 		var light := OmniLight3D.new()
 		light.omni_range = node.properties.get("range", 10.0)
 		light.light_energy = node.properties.get("energy", 1.0)
-		light.light_color = Color(1.0, 0.95, 0.85)
+		light.light_color = CHOYCE_ACCENT_ORANGE
 		return light
 
 func _create_spawn_point_node(node: SceneNode) -> Node3D:
@@ -1999,12 +2372,17 @@ func _setup_world_environment(mode: String = "combat") -> void:
 			env.ambient_light_energy = 0.6
 		else:
 			env.background_mode = Environment.BG_COLOR
-			env.background_color = Color(0.05, 0.02, 0.10)
+			env.background_color = CHOYCE_WATER_DEEP
 	else:
 		# Non-combat default: soft procedural sky already used elsewhere.
 		env.background_mode = Environment.BG_COLOR
-		env.background_color = Color(0.40, 0.55, 0.75)
+		env.background_color = CHOYCE_SKY_BLUE
 	var we := WorldEnvironment.new()
 	we.environment = env
 	we.name = "VoxelWorldEnvironment"
 	add_child(we)
+
+
+# VS-025: Get the food database reference
+func get_food_database() -> FoodDatabase:
+	return food_database

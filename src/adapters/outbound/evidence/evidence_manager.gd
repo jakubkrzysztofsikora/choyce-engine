@@ -37,7 +37,9 @@ func _ready() -> void:
 		screenshot_capture.screenshot_captured.connect(_on_screenshot)
 
 
-## Start collecting evidence from all capture points
+## Start an evidence session. Capture points are intentionally requested by the
+## matching gameplay event, not all at once: a spawn screenshot is not valid
+## evidence for combat, guide interaction, or a region transition.
 func start_collection() -> void:
 	_captured_points.clear()
 	evidence = {
@@ -60,10 +62,6 @@ func start_collection() -> void:
 		performance_monitor.stop()  # Reset and restart
 		performance_monitor._start_monitoring()
 	
-	# Trigger all screenshot captures
-	if screenshot_capture != null:
-		for point in range(5):  # All 5 CapturePoint values
-			screenshot_capture.capture(point, {"evidence_session": evidence["timestamp"]})
 
 
 ## Handle screenshot captured from ScreenshotCapture
@@ -139,12 +137,7 @@ func _get_recommendation() -> String:
 
 ## Save evidence to disk
 func _save_evidence() -> void:
-	var ts = Time.get_datetime_dict_from_unix_time(Time.get_unix_time_from_system())
-	var dir = "%04d-%02d-%02d_%02d-%02d-%02d/" % [
-		ts["year"], ts["month"], ts["day"], ts["hour"], ts["min"], ts["sec"]
-	]
-	var rel_path = "session_" + dir
-	var full_path = "user://%s" % [output_root + rel_path]
+	var full_path := _evidence_session_path(Time.get_datetime_dict_from_unix_time(Time.get_unix_time_from_system()))
 	var dir_path = full_path.get_base_dir()
 	
 	# Create directory
@@ -158,6 +151,19 @@ func _save_evidence() -> void:
 		print("EvidenceManager: Saved evidence to %s" % full_path)
 	else:
 		push_error("EvidenceManager: Failed to save evidence file")
+
+
+func _evidence_session_path(timestamp: Dictionary) -> String:
+	var root := output_root
+	if not root.begins_with("user://"):
+		root = "user://%s" % root.trim_prefix("/")
+	if not root.ends_with("/"):
+		root += "/"
+	var dir := "%04d-%02d-%02d_%02d-%02d-%02d/" % [
+		int(timestamp["year"]), int(timestamp["month"]), int(timestamp["day"]),
+		int(timestamp["hour"]), int(timestamp["minute"]), int(timestamp["second"])
+	]
+	return "%ssession_%s" % [root, dir]
 
 
 ## Get current evidence status

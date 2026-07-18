@@ -123,6 +123,10 @@ func _test_homestead_has_complete_shell_and_playable_collision() -> void:
 			"%s visual rests on its floor surface" % furniture_name)
 		_assert(absf(_collision_bottom_y(renderer.get_node_or_null(furniture_name))) < 0.03,
 			"%s collision begins at the same floor surface" % furniture_name)
+	var seat_anchor := renderer.get_node_or_null("home_sit") as Area3D
+	var seat_position: Variant = seat_anchor.get_meta("seat_position", null) if seat_anchor != null else null
+	_assert(seat_position is Vector3 and (seat_position as Vector3).y > 0.70,
+		"sit interaction carries an explicit above-chair seat transform")
 
 	renderer.queue_free()
 

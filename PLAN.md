@@ -382,6 +382,84 @@ caption/voice queue prevents characters from speaking over one another, and
 the offline caption fallback remains usable without an API key. It stays in
 review and may not add persistent HUD chrome or obscure normal exploration.
 
+Hostile review returned **request changes**: the implementation must cap and
+advance unavailable voice turns quickly, correlate callbacks to a specific
+reaction request rather than only its text, keep the NPC root/feet planted
+during an angry swat, place the cloud and speech bubble safely for the active
+third-person camera and each character height, and prove the action cannot
+damage or alter combat state. VS-034 remains in progress; these fixes are
+secondary to the opening visual rescue unless they are needed for a safe demo.
+
+The second correction pass replaces the incorrect four-character drop with an
+immediate world-space line for every nearby NPC, while keeping the optional
+ElevenLabs/caption channel serialized. Reactions are authored next to each
+adventure NPC's dialogue data, rather than embedded as identity checks in the
+runtime. A normal greeting now owns that same channel until it finishes (or its
+bounded fallback expires), so a G-key reaction cannot overlap or cancel it.
+Combat-disabled characters may not perform an angry swat; the pirate instead
+recoils with a non-combat line. Focused coverage now includes five nearby NPCs,
+the combat-disabled pirate, stale callbacks, fallback, and a reaction during a
+held normal greeting. The independent adversarial follow-up shipped after
+VS-041 added cancellation-safe voice transport and visible child affordances;
+VS-034 remains secondary to the opening visual rescue.
+
+### Live capture reassessment — 2026-07-18
+
+The post-change gameplay capture (`/tmp/choyce-now/current-gameplay.png`) proves
+the main scene boots and the persistent top-left control strip has been reduced
+to one compact menu. It also reconfirms that the visual rescue gate is blocked:
+the current opening mixes photographic ground with toy-like low-poly trees and
+characters, a straight shallow river, bright ambiguous fence/marker props,
+flat sparse horizon dressing, and a small-scale bridge/house composition. The
+new bridge supports, shoreline clusters, and water surface are technical
+increments only. Do not represent the world as presentable until a fresh
+independent screenshot review accepts a coherent material/scale/world pass.
+
+### Terrain control-map correction — 2026-07-18
+
+The brown far-bank failure was traced to importing a height image without a
+Terrain3D control map and then writing only 25 individual control texels. The
+runtime now imports a full 512² manual meadow control map alongside the
+heightfield, so the complete 2.4km terrain begins with the intended texture
+layer. Headless Terrain3D collision/extent tests pass and the rendered capture
+`/tmp/choyce-now/terrain-full-control.png` confirms that the fallback brown is
+gone. This is a material-foundation correction only: the capture still rejects
+the sparse toy-like trees, rectangular trails, and uncomposed horizon.
+
+### Material and capture-stability follow-up — 2026-07-18
+
+The opening now uses the existing dense forest-floor terrain tile instead of
+the lime meadow tile, a separate generated leaf texture only on the curated
+oak canopy meshes, and the supplied wood material on their trunks. The live
+capture at `/tmp/choyce-now/opening-forest-floor-balanced.png` confirms the
+ground is no longer a flat saturated field and the foreground trees are not
+larger than the camera frame. The evidence-capture timer was also corrected to
+run once and to use Godot's `minute`/`second` dictionary keys; the previous
+repeating invalid-key error flood is gone in the following live boot.
+
+This is deliberately **not** visual-gate acceptance. The same capture still
+shows incompatible background prop packs, a sparse/regular horizon, a flat
+sky, a house/bridge focal composition that lacks lived-in detail, and an
+editor-like numbered hotbar. Keep VS-012, VS-013, VS-014 and VS-029 open until
+the independent review accepts a coherent rendered opening.
+
+VS-016 is also corrected to start an empty evidence session and accept each
+capture point only from its real gameplay event. It must not present the same
+spawn frame as evidence of combat, guide interaction, or a region transition.
+
+### Opening safety and evidence follow-up — 2026-07-18
+
+The live opening exposed the raw `szkielet.glb` encounter asset at an
+unacceptable giant scale. Normal watchers are now scaled to a little above the
+player rather than house height, and stay at their authored remote encounter
+locations. The matching visual regression test and editor parse scan pass.
+
+Evidence capture now waits for the runtime's opening-generation settle signal,
+instead of scheduling the spawn image from a shell change. Both screenshot and
+session-evidence output paths normalize their `user://` roots and use Godot's
+`minute`/`second` datetime keys. These are stability corrections only; they do
+not satisfy the larger VS-012/VS-013 art and composition gate.
+
 1. **Foundation:** collision dimensions are world metres rather than scaled
    proxy guesses; preserve native materials; use a camera ray and 3D preview
    for TPP building; real ground/dirt collision; a water volume with
@@ -408,6 +486,172 @@ Acceptance requires a rendered child flow: find an axe → cut a tree → receiv
 wood → find/make a pickaxe → mine stone; find, enter, drive and exit a rare
 vehicle; safely restore bulldozer changes; see a chosen character look after a
 full replay; and encounter an optional, readable, non-gory liminal creature.
+
+### Opening atmosphere, riverbank and evidence review repair — 2026-07-18
+
+The first curated river crossing has been extended with local Kenney riverbank
+habitat: irregular rocks and logs use narrow, world-metre colliders; bushes,
+grass and flowers frame both banks outside the bridge and ramp corridor. The
+foreground grove now uses the corresponding detailed Kenney bush rather than
+the old flat FBX plant. This is a density and contact-detail increment, not a
+claim that the opening is visually coherent.
+
+The Sky3D hand-off was repaired after rendered inspection showed that the
+runtime was replacing the addon's initialized atmosphere material with a blank
+one. The retained project environment now uses Sky3D's initialized material,
+including its noise and cumulus texture bindings. The fresh live capture at
+`/tmp/choyce-now/opening-sky-material-fixed.png` confirms clouds and daylight
+are visible. It also clearly confirms the visual gate remains blocked: terrain,
+character and architecture packs still lack a unified high-quality language;
+the immediate scene is sparse; and the numbered hotbar/compact arrow control
+still need VS-014 review.
+
+Hostile review then found two evidence correctness defects and both are fixed:
+the Play-shell listener now retries the separate saved-world launch path and
+connects once to the created runtime, while the spawn evidence timer never
+force-labels an unsettled opening as valid after eight seconds. The focused
+evidence test, Sky3D test, world-renderer test and editor parse scan pass.
+VS-016 remains in progress because policy-aware partial finalization and a
+real delayed-runtime integration test are still open review risks.
+
+### Current visual-world correction — 2026-07-18
+
+The user is correct that a large coordinate range plus scattered props is not a
+world: the current terrain remains too flat, the procedural forest reads as
+independent trees, caves and mountains do not yet establish a believable travel
+rhythm, and the existing night transition is too dark to navigate. **VS-035**
+is now the active visual gate inside VS-012/VS-013: use Terrain3D height and
+control maps for a safe opening basin, traversable relief, distant mountain
+silhouettes, forest volumes, and deliberate cave approaches. WorldRenderer may
+only dress those forms; it must not attempt to fake a forest or mountain with
+random prop scatter. Sky3D night needs a legible moon/ambient baseline with
+visible silhouette, trails and landmarks, then a rendered day/night traversal
+review.
+
+The supplied Ziemek and Gniewko references are also an explicit character
+quality requirement, not merely cinematic names. **VS-036** will make their
+in-game looks distinct and recognisable within the project’s stylised, safe
+character system and retain the face/body attachment contract. A partial local
+split-screen implementation already exists; it must be completed and tested
+before considering LAN networking. LAN remains a later transport/authority
+layer, so it cannot be used to excuse a broken local two-player experience.
+
+Immediate bug repairs made in parallel are not visual-gate acceptance: water is
+now rendered as an opaque depth-tested surface while wading, the rare parked
+vehicle uses the supplied coherent police-car model rather than an overlapping
+primitive tractor body, chair sitting uses an explicit elevated seat transform,
+and hit audio no longer stacks the spell-like imported whoosh over physical
+punch/kick impacts. Wood and stone gathering now emit dry axe/pickaxe action
+cues. The ElevenLabs asset-generation prompts were updated for future sourced
+replacement clips; the current environment does not expose an ElevenLabs key,
+so the runtime uses a deliberately non-tonal local fallback rather than
+silently attempting a network call.
+
+### Opening composition correction — 2026-07-18
+
+Rendered play evidence showed that the initial 5×5 streamed envelope and the
+static beach, cave, village and forest centres were all effectively visible
+from the spawn. This made the 5.76km² coordinate range read as a single noisy
+toy diorama. The four regional destinations now begin 300–580m away, the
+repeated full-river collidable rock fence has been removed, and generic
+procedural scatter is held outside the 380m composed opening radius. The
+starter bridge and livable home are therefore the only intended near-field
+destination geometry. This is an evidence-backed cleanup, not VS-035
+acceptance: the next review must verify a clean live screenshot, believable
+relief/material scale, and a forest/cave journey after travel.
+
+### Traversal-and-making regression gate — 2026-07-18
+
+The reported car, stair, water and tool failures are treated as one gameplay
+credibility gate, not four isolated polish issues. **VS-038** replaces the
+wheel-contact-dependent vehicle movement with a grounded `CharacterBody3D`
+arcade controller: ready-made car/dozer meshes stay visual, while entry,
+camera, exit, gravity and Terrain3D collision have one authoritative movement
+path. It must prove forward/reverse/turn movement on streamed terrain before
+the vehicle is shown as available.
+
+**VS-039** makes creative-mode selection authoritative: the five visible slots
+hold axe, pickaxe and blocks; selecting a material stows rather than destroys a
+tool; a tool swing is visibly distinct from bare-hand combat; and axe/pickaxe
+hits harvest only their matching grounded resources. Block placement must use a
+camera aim probe resolved against actual terrain, never a global-y fallback
+that silently buries a placed block.
+
+**VS-040** owns traversal contact and water. Player stair/slope snapping and
+object colliders must match rendered feet/footprints; the river remains an
+opaque, independent surface while its separate Area3D volume drives wading.
+Its shader needs an obvious shallow-bank to dark-channel gradient and animated
+foam, without transparency sorting or a 65k-vertex one-river performance
+spike. Completion requires a live walk/drive/build/harvest/wade pass plus a
+cross-agent adversarial review; source inspection and headless tests alone are
+not acceptance.
+
+### Interaction/audio reliability correction — 2026-07-18
+
+**VS-041** closes two regressions that break basic sandbox trust: the runtime
+must route E/Escape to an occupied vehicle before generic interactions, and
+its compact in-world prompt must make egress obvious without restoring the old
+debug control legend. Authored Adventure NPC greetings and the optional G-key
+fart reactions must ship as pre-generated ElevenLabs recordings on the Voice
+bus, so Finder/editor launches do not silently lose speech because they lack
+the developer shell's API key. The request-aware remote adapter remains for
+un-authored lines, with captions and a local fallback on failure.
+
+### Launcher key-art correction — 2026-07-18
+
+**VS-043** repairs the first-frame regression exposed in the live build: the
+realtime 3D intro may not dissolve into the old gradient-plus-squares screen.
+At the handoff, trailer chrome/captions disappear while its final rendered
+action frame freezes as the launcher background. A quiet vignette provides
+contrast and the title/Play affordance moves above the frame, so the child sees
+one coherent game image rather than a cinematic followed by a prototype card.
+
+### River and grove grounding correction — 2026-07-18
+
+The first new clean exploration capture exposed a concrete scene-transform
+defect: the generated river ribbon already stores world-space Z coordinates,
+yet its parent `Area3D` was translated by `z=-24` as well. The visual river
+therefore cut through the north-bank house while its swim volume remained at
+the bridge. **VS-044** keeps the visual at world origin and moves only the
+simple water volume to the crossing; focused coverage now guards that shared
+coordinate contract. The same live capture showed that the spawn was still a
+lawn, so the opening now uses an asymmetric layered tree frame that keeps the
+bridge and routes open. The river foam/emissive wash was restrained to teal so
+the supplied animated DUDV material reads as current rather than a pale road.
+
+The subsequent live pass found that the Nature Kit pine palette swatches were
+rendering as striped, broken trunks. VS-044 therefore uses the already-local
+named trunk/canopy oak model for the opening woodland, applies the local bark
+and leaf material per named mesh, and calibrates its source scale to a 5–10m
+adult-scale tree. The forest is seeded as eight clustered groves (twelve trees
+each), leaving the bridge corridor and two opening routes clear. The supplied
+MIT Simple Water package is Godot-3-only, so its DUDV/reflection principle was
+ported to the existing Godot-4 shader: the river now has fragment-level channel
+depth, moving flow streaks, restrained Fresnel sky reflection, and remains
+opaque to avoid the reported disappearing-water sort bug. Fresh direct-play
+evidence is `/tmp/choyce-world-audit-water-port.png`; independent visual review
+is pending. The scene is still a prototype-level composition and must not pass
+the visual gate on this work alone.
+
+This is a direct grounding/composition repair, not proof of the visual gate:
+the retained capture still shows a prototype HUD, overly sparse near-field
+details, disconnected source-asset language, and terrain forms that need a
+stronger art pass. Cross-agent visual/traversal review remains required before
+VS-044 can close.
+
+### Startup and HUD reliability correction — 2026-07-18
+
+Controlled autoplay uncovered two startup exceptions that headless renderer
+coverage did not exercise. The old Nutrition HUD scene had no root script, so
+its `CanvasLayer` failed a typed assignment in `GameplayRuntime._ready`; the
+next body-progression line also assumed the imported character root was a
+`MeshInstance3D`. Either exception skipped the remainder of startup, including
+the local authored voice setup. **VS-045** restores the Nutrition HUD script,
+keeps its obsolete text panel hidden, resolves the first actual mesh within an
+imported character hierarchy, and uses Godot 4's MeshInstance3D blend-shape
+API as a safe no-op for models that do not ship matching shapes. This removes
+the leaked English overlay and makes the visual/audio bootstrap trustworthy;
+it does not make the current world art acceptable.
 
 ## Explicit non-goals for the next implementation batch
 

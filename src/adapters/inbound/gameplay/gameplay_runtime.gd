@@ -17,6 +17,11 @@ signal rule_fired(rule_id: String, action_kind: int, params: Dictionary)
 ## VS-016: Evidence capture signals for visual acceptance testing
 signal evidence_capture_requested(capture_point: int)
 
+## VS-026: Emitted BEFORE end_session tears down state, carrying the
+## full SandboxState snapshot. PlayShell / main.gd connects this to
+## SandboxPersistenceService.save_sandbox() for automatic persistence.
+signal session_save_requested(state: SandboxState)
+
 var _world_renderer: WorldRenderer
 var _player_controller: PlayerController
 var _session: Session
@@ -24,10 +29,15 @@ var _session: Session
 ## VS-016: Track which evidence capture points have been triggered
 ## to ensure we only capture once per point
 var _captured_evidence_points: Array = []
+var _opening_evidence_timer: Timer = null
+var _evidence_session_token := 0
 var _audio_bus: AudioEventBus
 var _sfx_player: SFXPlayer
 ## Live NPC voice (ElevenLabs TTS). Silent no-op without ELEVENLABS_API_KEY.
 var _npc_voice: VoicePromptPort = null
+var _local_npc_voice: AudioStreamPlayer = null
+var _local_npc_voice_line := ""
+var _local_npc_voice_request_id := -1
 var _effect_spawner: EffectSpawner
 var _screen_feedback: ScreenFeedback
 var _victory_sequence: VictorySequence
@@ -37,6 +47,12 @@ var _adventure_sky: WorldEnvironment = null
 var _adventure_legacy_environment: WorldEnvironment = null
 var _adventure_legacy_environment_resource: Environment = null
 var _adventure_legacy_light_visibility: Dictionary = {}
+
+# VS-025: Nutrition, Training, and Body Progression
+var _nutrition_manager: NutritionManager = null
+var _training_manager: TrainingManager = null
+var _feedback_manager: FeedbackManager = null
+var _nutrition_hud: NutritionHUD = null
 
 # Rules engine — injected by main.gd via setup_rules() before start_session.
 # Optional: GameplayRuntime keeps working with null rules (legacy worlds).
@@ -90,6 +106,9 @@ var _xp_current: int = 0
 var _xp_bar: ProgressBar = null
 var _xp_label: Label = null
 
+# VS-026: Sandbox persistence - current sandbox state
+var _sandbox_state: SandboxState = null
+
 # VS-021: Vehicle system
 var _vehicle_spawner: VehicleSpawner = null
 var _destruction_tracker: DestructionTracker = null
@@ -102,6 +121,7 @@ const WAVE_RESPAWN_DELAY := 6.0
 const FALL_KILL_PLANE_Y := -50.0
 const HUD_ACTION_GREEN: Texture2D = preload("res://data/textures/ui/PNG/Green/Double/button_round_depth_gloss.png")
 const HUD_ICON_AXE: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-axe.png")
+const HUD_ICON_PICKAXE: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-pickaxe.png")
 const HUD_ICON_HAMMER: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-hammer.png")
 const HUD_ICON_GRASS: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/grass.png")
 const HUD_ICON_WOOD: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/resource-wood.png")
@@ -110,7 +130,20 @@ const HUD_ICON_WORKBENCH: Texture2D = preload("res://data/models/kenney/survival
 const HUD_ICON_BEDROLL: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/bedroll.png")
 const HUD_ICON_STAR: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/star.png")
 const HUD_ICON_RETURN: Texture2D = preload("res://data/textures/ui/PNG/Blue/Double/arrow_basic_w.png")
+const HUD_ICON_CAMP: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/campfire-pit.png")
 const HUD_ICON_UNDO: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/arrow_basic_w.png")
+
+# These core Adventure lines are generated with ElevenLabs at asset-prep time
+# and shipped with the game. Finder/editor runs do not inherit a developer
+# shell API key, so the cast must not go silent in those normal play paths.
+const LOCAL_NPC_VOICE_STREAMS := {
+	"Hej! Jestem Olek. Wybierz kierunek i zobaczmy, co odkryjemy.": preload("res://data/audio/voice/adventure_olek_greeting.mp3"),
+	"Arr! Jestem Pablo. Nie dotykaj mojego kompasu, ale rozejrzyj się do woli.": preload("res://data/audio/voice/adventure_pablo_greeting.mp3"),
+	"Ćwir-ćwir! Jestem Pestka. Lubię śmiech, fale i błyszczące kamyki!": preload("res://data/audio/voice/adventure_pestka_greeting.mp3"),
+	"Ojej! Ten wiatr ma własny plan podróży!": preload("res://data/audio/voice/adventure_olek_fart.mp3"),
+	"Arrr! Jeszcze jeden taki podmuch i wymachnę szablą w powietrzu!": preload("res://data/audio/voice/adventure_pablo_fart.mp3"),
+	"Ćwir-haha! Pestka słyszała głośniejsze fale!": preload("res://data/audio/voice/adventure_pestka_fart.mp3"),
+}
 
 # Goal + lose-condition injection (Wave 3 W3-A/B). Populated by
 # setup_goal() from main.gd composition root, sourced from the
@@ -146,17 +179,20 @@ var _timer_label: Label = null
 var _interaction_prompt_panel: PanelContainer = null
 var _interaction_prompt_label: Label = null
 var _interaction_prompt_icon: TextureRect = null
+var _sandbox_hint_panel: PanelContainer = null
 var _nearby_world_interactable: Node3D = null
 var _interaction_feedback_until: float = 0.0
 const SILLY_FART_REACTION_RANGE := 10.0
 ## A reaction is a tiny social beat, not a crowd of voices competing at once.
-## Every nearby NPC gets a turn, while new fart-triggered dialogue waits until
-## the current group has finished. Physical gags still happen immediately.
+## Every nearby NPC gets an immediate world-space response. Spoken turns then
+## use one channel, so a crowd never mutters over itself.
 const SILLY_FART_REACTION_GAP_SECONDS := 0.12
-## Four distinct nearby reactions are readable; a dozen turns made a small gag
-## monopolise the shared narration channel for minutes when TTS was slow.
-const SILLY_FART_MAX_QUEUED_REACTIONS := 4
+## Every nearby character gets its own visible bubble, but only a few close
+## voices use the shared caption/TTS channel. This keeps a crowded village
+## readable instead of letting an optional gag suppress normal conversation.
+const SILLY_FART_MAX_SPOKEN_REACTIONS := 3
 const SILLY_FART_VOICE_TIMEOUT_SECONDS := 3.0
+const NORMAL_NPC_VOICE_TIMEOUT_SECONDS := 5.0
 ## FIFO of nearby NPC reaction turns. Entries keep a WeakRef so streamed-out
 ## NPCs can disappear safely before their turn without holding their scene
 ## nodes alive.
@@ -169,6 +205,12 @@ var _active_npc_reaction_audio_finished := false
 var _active_npc_reaction_audio_skipped := false
 var _npc_reaction_request_sequence := 0
 var _active_npc_reaction_request_id := -1
+## Normal greetings share the same one ElevenLabs player as reactions. Track
+## their request separately so an optional gag waits rather than talking over
+## or cancelling an ordinary encounter.
+var _normal_npc_voice_active := false
+var _normal_npc_voice_request_id := -1
+var _normal_npc_voice_line := ""
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
@@ -216,6 +258,21 @@ func _notify_shell(method: String, args: Array) -> void:
 	_shell_bridge.callv(method, args)
 
 
+## Imported characters are normally a Node3D/armature wrapper around one or
+## more render meshes.  Keep systems such as body progression independent from
+## that importer detail by resolving the first actual MeshInstance3D safely.
+func _find_first_mesh_instance(root: Node) -> MeshInstance3D:
+	if root == null:
+		return null
+	if root is MeshInstance3D:
+		return root as MeshInstance3D
+	for child in root.get_children():
+		var found := _find_first_mesh_instance(child)
+		if found != null:
+			return found
+	return null
+
+
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
 	_player_controller = $PlayerController
@@ -226,7 +283,40 @@ func _ready() -> void:
 	_victory_sequence = $VictorySequence
 	_ambient_player = $AmbientPlayer
 	_ambient_particles = $AmbientParticles if has_node("AmbientParticles") else null
+	# VS-025: Initialize nutrition and training managers
+	_nutrition_manager = $NutritionManager if has_node("NutritionManager") else null
+	_training_manager = $TrainingManager if has_node("TrainingManager") else null
+	_feedback_manager = $FeedbackManager if has_node("FeedbackManager") else null
+	_nutrition_hud = $NutritionHUD if has_node("NutritionHUD") else null
+	# The standalone NutritionHUD predates the Adventure image-first HUD and is
+	# a separate CanvasLayer at layer 100.  Merely hiding the later in-code
+	# nutrition panel did not affect it, leaving the old English Energy /
+	# Nutrition / Training text floating over the first scenic frame.  Nutrition
+	# still runs in the sandbox; detailed state belongs in the future inventory
+	# or character screen, not in a permanent launch overlay.
+	if _nutrition_hud != null:
+		var legacy_nutrition_panel := _nutrition_hud.get_node_or_null("Panel") as CanvasItem
+		if legacy_nutrition_panel != null:
+			legacy_nutrition_panel.hide()
+
+	# VS-025: Set up player mesh reference for BlendShape body progression
+	if _training_manager != null and has_node("PlayerController/CharacterMesh"):
+		# Imported GLB characters use a Node3D/armature root, rather than a
+		# MeshInstance3D root.  The old typed assignment raised at startup and
+		# aborted _ready before voice, vehicle and accessibility setup could run.
+		# Resolve the first render mesh inside the actual character hierarchy.
+		var player_mesh_node := _find_first_mesh_instance($PlayerController/CharacterMesh)
+		if player_mesh_node != null:
+			_training_manager.set_player_mesh(player_mesh_node)
 	
+	# VS-025: Wire up manager signals
+	if _nutrition_manager != null and _feedback_manager != null:
+		_nutrition_manager.caption_requested.connect(_feedback_manager.show_caption)
+		_nutrition_manager.voice_requested.connect(_feedback_manager.play_voice)
+	if _training_manager != null and _feedback_manager != null:
+		_training_manager.caption_requested.connect(_feedback_manager.show_caption)
+		_training_manager.voice_requested.connect(_feedback_manager.play_voice)
+
 	# VS-021: Initialize vehicle system
 	_setup_vehicle_system()
 
@@ -244,6 +334,7 @@ func _ready() -> void:
 		_npc_voice.playback_started.connect(_on_npc_voice_playback_started)
 		_npc_voice.playback_finished.connect(_on_npc_voice_playback_finished)
 		_npc_voice.playback_skipped.connect(_on_npc_voice_playback_skipped)
+	_setup_local_npc_voice()
 
 	# Ambient music is now driven by AudioBank (play_music called from PlayShell
 	# when the world is chosen). The _ambient_player node is kept so the scene
@@ -264,6 +355,8 @@ func _ready() -> void:
 		# Adv Y H2 fix — whoosh on EVERY swing (hit or miss)
 		if _player_controller.has_signal("attacked"):
 			_player_controller.attacked.connect(_on_player_attacked)
+		if _player_controller.has_signal("tool_used"):
+			_player_controller.tool_used.connect(_on_player_tool_used)
 		if _player_controller.has_signal("farted"):
 			_player_controller.farted.connect(_on_player_farted)
 
@@ -342,7 +435,89 @@ func setup_combat_data(
 		_xp_service = XpProgressionService.new()
 
 
-func start_session(world: World, session: Session) -> void:
+## VS-026: Collect a snapshot of the current runtime state for persistence.
+## Returns a fresh SandboxState populated from live fields — never mutates
+## the cached _sandbox_state so callers get a consistent read.
+func get_sandbox_state() -> SandboxState:
+	var state := SandboxState.new()
+
+	# --- identity ---
+	if _session != null:
+		state.world_id = _session.world_id
+
+	# --- player position ---
+	if _player_controller != null:
+		state.player_position = _player_controller.global_position
+
+	# --- inventory (single source of truth: rules_runtime context) ---
+	if _rules_runtime != null:
+		var raw: Variant = _rules_runtime.get_context_value("inventory")
+		if raw is Dictionary:
+			state.inventory = (raw as Dictionary).duplicate(true)
+
+	# --- placed blocks from build grid cell map ---
+	if _build_grid != null and is_instance_valid(_build_grid):
+		for cell: Vector3i in _build_grid._kind_for_cell.keys():
+			var kind_id: String = String(_build_grid._kind_for_cell[cell])
+			state.placed_blocks.append({"cell": cell, "kind": kind_id})
+
+	# --- progression fields ---
+	state.progression.score = _score
+	state.progression.collectibles = {}
+	if _session != null and _session.progress != null:
+		state.progression.collectibles = _session.progress.collectibles.duplicate(true)
+		state.progression.achievements = _session.progress.achievements.duplicate()
+		state.progression.unlocks = _session.progress.unlocks.duplicate()
+		state.progression.quest_progress = _session.progress.quest_progress.duplicate(true)
+
+	state.saved_at_unix = int(Time.get_unix_time_from_system())
+	return state
+
+
+## VS-026: Restore sandbox state from a previously saved snapshot.
+## Called deferred after world render + build grid init so all targets exist.
+func restore_sandbox_state(state: SandboxState) -> void:
+	_sandbox_state = state
+	if state == null or state.is_empty():
+		return
+
+	print("[gameplay] VS-026: restoring sandbox state (world=%s, blocks=%d, inv=%d items)" %
+		[state.world_id, state.placed_blocks.size(), state.inventory.size()])
+
+	# --- player position ---
+	if _player_controller != null and state.player_position != Vector3.ZERO:
+		_player_controller.global_position = state.player_position
+
+	# --- inventory → rules_runtime context ---
+	if not state.inventory.is_empty():
+		if _rules_runtime != null:
+			_rules_runtime.set_context_value("inventory", state.inventory.duplicate(true))
+		_refresh_inventory_panel(state.inventory)
+
+	# --- placed blocks → build grid ---
+	if _build_grid != null and is_instance_valid(_build_grid) and not state.placed_blocks.is_empty():
+		for entry in state.placed_blocks:
+			if entry is Dictionary:
+				var cell_raw: Variant = entry.get("cell", null)
+				var kind_id: String = String(entry.get("kind", ""))
+				if cell_raw is Vector3i and not kind_id.is_empty():
+					_build_grid.place_block(cell_raw as Vector3i, kind_id, false)
+
+	# --- progression ---
+	_score = state.progression.score
+	if _score_label != null:
+		_score_label.text = str(_score)
+
+
+## VS-026: Deferred restore to ensure world is fully rendered
+func _deferred_restore_sandbox_state() -> void:
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		restore_sandbox_state(_sandbox_state)
+
+
+func start_session(world: World, session: Session, sandbox_state: SandboxState = null) -> void:
+	_cancel_opening_spawn_evidence()
+	_evidence_session_token += 1
 	_session = session
 	_score = 0
 	_session_elapsed_sec = 0.0
@@ -350,6 +525,9 @@ func start_session(world: World, session: Session) -> void:
 	_last_goal_check_ratio = 0.0
 	_autowin = (OS.has_feature("debug") or OS.has_feature("editor")) \
 		and OS.get_environment("CHOYCE_AUTOWIN") == "1"
+	# VS-026: Store sandbox state reference to restore after world render
+	if sandbox_state != null:
+		_sandbox_state = sandbox_state
 	var t0 := Time.get_ticks_msec()
 	print("[gameplay] start_session: world=%s nodes=%d rules=%d" %
 		[world.world_id, world.scene_nodes.size(), world.game_rules.size()])
@@ -367,6 +545,10 @@ func start_session(world: World, session: Session) -> void:
 	_set_legacy_ground_collision_enabled(not _world_renderer.has_runtime_terrain_collision())
 	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
 	_register_world_rules(world)
+	# VS-026: Restore sandbox state after world is rendered and player is available
+	# Use call_deferred to ensure world is fully rendered before restoring
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		call_deferred("_deferred_restore_sandbox_state")
 	var spawn_pos := _world_renderer.get_spawn_position(0)
 	# Capsule bottom is 0.1m below the player root (shape centre y=0.8,
 	# total height 1.8). Spawn it directly on the floor instead of one metre
@@ -408,16 +590,7 @@ func start_session(world: World, session: Session) -> void:
 	_setup_build_grid()
 	_spawn_vehicles()
 
-	# VS-016: Schedule region transition capture after a short delay
-	# This gives the player time to move away from spawn point
-	var region_timer = Timer.new()
-	region_timer.wait_time = 5.0  # 5 seconds after spawn
-	region_timer.timeout.connect(func() -> void:
-		_trigger_evidence_capture(3)  # REGION_TRANSITION = 3
-		region_timer.queue_free()
-	)
-	add_child(region_timer)
-	region_timer.start()
+	_schedule_opening_spawn_evidence()
 
 	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
 
@@ -468,6 +641,7 @@ func _on_vehicle_entered(vehicle: VehicleBase, player: PlayerController) -> void
 
 	# Switch input context (optional - can be handled in vehicle itself)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_interaction_feedback("E  Wyjdź z pojazdu")
 
 
 func _on_vehicle_exited(vehicle: VehicleBase, player: PlayerController, exit_position: Vector3) -> void:
@@ -476,6 +650,7 @@ func _on_vehicle_exited(vehicle: VehicleBase, player: PlayerController, exit_pos
 
 	# Restore input
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_interaction_feedback("Wysiadłeś z pojazdu.")
 
 
 func _on_vehicle_destroyed(vehicle: VehicleBase, object: Node3D) -> void:
@@ -540,7 +715,11 @@ func _setup_adventure_sky() -> void:
 		# its presentation exactly, but detach it while Sky3D is active.
 		legacy_environment.environment = null
 	# Sky3D owns the sky material; retain the existing fog, GI and colour grade.
-	environment.sky = null
+	# Do not create a replacement shader material here. Sky3D initializes its
+	# first material with cloud/noise textures and all of its atmosphere uniform
+	# values during enter-tree. Swapping in a blank ShaderMaterial afterward
+	# technically renders a sky, but it is the featureless grey field seen in
+	# the opening capture.
 	# Adventure needs a readable daylight grade, not the high-ambient gray wash
 	# inherited from the generic runtime scene. Keep surfaces warm but restrained,
 	# preserve shadow contrast under trees and reduce horizon haze without showing
@@ -561,18 +740,24 @@ func _setup_adventure_sky() -> void:
 		return
 	sky.name = "AdventureSky3D"
 	add_child(sky)
-	# Sky3D's custom Environment setter forwards into its SkyDome, which is
-	# created during enter-tree initialization. Attach first, then transfer the
-	# retained project Environment. Re-run its initializer afterward: our copied
-	# Environment deliberately has no static sky, so the addon must install its
-	# animated shader material onto that new resource.
+	# Sky3D's custom Environment setter forwards into its SkyDome, which has
+	# already entered the tree. Preserve that initialized material while moving
+	# the project's Environment settings across. This keeps the same material in
+	# SkyDome's cloud processor and the viewport instead of making the former
+	# animate one material while the latter shows an uninitialized one.
+	var initialized_sky: Sky = sky.environment.sky if sky.environment != null else null
+	if initialized_sky != null and initialized_sky.sky_material is ShaderMaterial:
+		environment.sky = initialized_sky
+	else:
+		# Defensive fallback for an unexpected addon initialization failure. The
+		# normal code path above always preserves the addon-owned material.
+		environment.sky = Sky.new()
+		environment.sky.sky_material = ShaderMaterial.new()
+		environment.sky.sky_material.shader = load("res://addons/sky_3d/shaders/SkyMaterial.gdshader")
 	sky.environment = environment
-	sky.call("_initialize")
-	# SkyDome builds once during Sky3D's initial enter-tree pass. Rebinding the
-	# Environment above gives it the retained project settings, but its cached
-	# material still points at that first temporary Environment unless we update
-	# the addon-owned cache as well. Without this, clouds/time animate an unseen
-	# shader while the viewport sky stays frozen.
+	# Rebinding gives the dome the retained project Environment. Its material is
+	# intentionally the same initialized object, so time and clouds keep their
+	# prepared uniforms and texture bindings.
 	var sky_dome := sky.get_node_or_null("SkyDome")
 	if sky_dome != null and environment.sky != null:
 		sky_dome.set("environment", environment)
@@ -587,10 +772,12 @@ func _setup_adventure_sky() -> void:
 	sky.set("clouds_enabled", true)
 	sky.set("cloud_intensity", 0.24)
 	sky.set("sun_energy", 1.30)
-	sky.set("moon_energy", 0.32)
+	# Adventure night remains atmospheric but navigable: children must be able
+	# to read the ground, trail and landmark silhouettes without a flashlight.
+	sky.set("moon_energy", 0.82)
 	sky.set("sky_contribution", 0.62)
-	sky.set("night_sky_contribution", 0.56)
-	sky.set("tonemap_exposure", 0.90)
+	sky.set("night_sky_contribution", 0.92)
+	sky.set("tonemap_exposure", 1.02)
 	# Existing Environment fog is already tuned to hide the large-world horizon;
 	# do not stack Sky3D's fullscreen fog shader over it.
 	sky.set("fog_enabled", false)
@@ -964,6 +1151,9 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	root.set_meta("greeting_pl", npc.line_for("greeting"))
 	root.set_meta("npc_role", npc.role)
 	root.set_meta("npc_base_y", pos.y)
+	var fart_reaction: Variant = npc.lines_pl.get("fart_reaction", {})
+	if fart_reaction is Dictionary:
+		root.set_meta("fart_reaction", (fart_reaction as Dictionary).duplicate(true))
 	root.add_to_group("npcs")
 
 	# Real rigged, textured character model per role — replaces the old
@@ -1210,6 +1400,13 @@ func _on_npc_trigger_entered(body: Node, npc_root: Node3D) -> void:
 		return
 	if not is_instance_valid(npc_root):
 		return
+	# The reaction queue owns the one spoken-dialogue channel.  Walking past an
+	# NPC while a nearby character is reacting must not create a second voice on
+	# top of the first one.
+	if _npc_reaction_queue_active:
+		return
+	if _normal_npc_voice_active:
+		return
 	var name_pl: String = String(npc_root.get_meta("npc_name_pl", ""))
 	var greeting: String = String(npc_root.get_meta("greeting_pl", ""))
 	if greeting.is_empty():
@@ -1217,7 +1414,7 @@ func _on_npc_trigger_entered(body: Node, npc_root: Node3D) -> void:
 	_active_npc_id = String(npc_root.get_meta("npc_id", ""))
 	_animate_npc_speech(String(npc_root.get_meta("npc_id", "")), greeting)
 	_show_npc_dialogue(name_pl, greeting)
-	
+
 	# VS-016: Trigger guide interaction evidence capture
 	var npc_role = npc_root.get_meta("npc_role", null)
 	if npc_role == NPCCharacter.ROLE_GUIDE:
@@ -1242,9 +1439,69 @@ func _show_npc_dialogue(name_pl: String, line_pl: String, speak_line: bool = tru
 		return
 	_npc_dialogue_label.text = "%s: %s" % [name_pl, line_pl]
 	_npc_dialogue_label.visible = true
-	# Speak the line aloud (ElevenLabs). Caption stays as the fallback.
-	if speak_line and _npc_voice != null:
-		_npc_voice.speak(line_pl)
+	# Speak the line aloud (ElevenLabs). Caption stays as the fallback. Normal
+	# encounters are also request-aware; the reaction queue waits for this turn
+	# to finish instead of starting a second concurrent voice.
+	if speak_line:
+		_normal_npc_voice_request_id = _next_npc_reaction_request_id()
+		_normal_npc_voice_line = line_pl
+		_normal_npc_voice_active = _speak_npc_line(line_pl, _normal_npc_voice_request_id)
+
+
+func _setup_local_npc_voice() -> void:
+	if _local_npc_voice != null:
+		return
+	_local_npc_voice = AudioStreamPlayer.new()
+	_local_npc_voice.name = "AdventureNpcVoiceFallback"
+	_local_npc_voice.bus = "Voice"
+	add_child(_local_npc_voice)
+	_local_npc_voice.finished.connect(_on_local_npc_voice_finished)
+
+
+## Test doubles continue through VoicePromptPort. The production adapter uses
+## exact shipped ElevenLabs takes for authored Adventure lines, then falls
+## back to the live request path for future/un-authored lines.
+func _speak_npc_line(line: String, request_id: int) -> bool:
+	if _npc_voice is ElevenLabsVoicePromptAdapter and _play_local_npc_voice(line, request_id):
+		return true
+	if _npc_voice != null and _npc_voice.is_available():
+		_npc_voice.speak(line, "pl-PL", request_id)
+		return true
+	return _play_local_npc_voice(line, request_id)
+
+
+func _play_local_npc_voice(line: String, request_id: int) -> bool:
+	if _local_npc_voice == null:
+		return false
+	var stream := LOCAL_NPC_VOICE_STREAMS.get(line, null) as AudioStream
+	if stream == null:
+		return false
+	_local_npc_voice.stop()
+	_local_npc_voice.stream = stream
+	_local_npc_voice_line = line
+	_local_npc_voice_request_id = request_id
+	_local_npc_voice.play()
+	_on_npc_voice_playback_started(line, request_id)
+	return true
+
+
+func _on_local_npc_voice_finished() -> void:
+	if _local_npc_voice_line.is_empty():
+		return
+	var line := _local_npc_voice_line
+	var request_id := _local_npc_voice_request_id
+	_local_npc_voice_line = ""
+	_local_npc_voice_request_id = -1
+	_on_npc_voice_playback_finished(line, request_id)
+
+
+func _cancel_active_npc_voice() -> void:
+	if _npc_voice != null:
+		_npc_voice.cancel()
+	if _local_npc_voice != null:
+		_local_npc_voice.stop()
+	_local_npc_voice_line = ""
+	_local_npc_voice_request_id = -1
 
 
 func _speech_duration_for_line(line: String) -> float:
@@ -1349,22 +1606,72 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 	enemy.global_position = pos
 
 
-## Adv Y C2 fix — fire whoosh SFX when a swing hits empty air.
-## Keeps the air swing audible so a 7yo never thinks the button
-## broke.
+## Keep an empty swing readable, but route it to a dry physical air cue rather
+## than the old imported tonal whoosh that sounded like a spell being cast.
 func _on_player_swing_missed(attack_origin: Vector3) -> void:
 	if _audio_bus != null:
-		_audio_bus.emit_sfx("swing_whoosh", attack_origin)
+		var style := "punch"
+		if _player_controller != null and _player_controller.has_method("get_last_attack_style"):
+			style = _player_controller.get_last_attack_style()
+		_audio_bus.emit_sfx("physical_swing_%s" % style, attack_origin)
 
 
-## Adv Y H2 fix: whoosh SFX on every swing (hit or miss)
-## Adv Y H5: track attack style for phase-aware feedback
+## Cache attack style for phase-aware impact feedback. A landed hit plays only
+## its contact cue below; stacking the old magic-like whoosh on top was the
+## source of the reported spell-casting feel.
 func _on_player_attacked(damage: int, hit_position: Vector3) -> void:
-	if _audio_bus != null:
-		_audio_bus.emit_sfx("swing_whoosh", hit_position)
 	# Cache attack style for use in _on_enemy_damaged
 	if _player_controller != null and _player_controller.has_method("get_last_attack_style"):
 		_last_attack_style = _player_controller.get_last_attack_style()
+
+
+## A visible held tool must have a matching action. Pick the closest resource
+## inside a generous child-friendly forward cone, animate the harvest as three
+## deliberate hits, then reuse the normal inventory/reward path.
+func _on_player_tool_used(tool_id: String, effect_origin: Vector3, forward: Vector3) -> void:
+	if _player_controller == null:
+		return
+	var required_action := "gather_wood" if tool_id == "tool_axe" else "gather_stone"
+	var target: Node3D = null
+	var best_score := INF
+	for candidate in get_tree().get_nodes_in_group("world_interactable"):
+		if not (candidate is Node3D) or not is_instance_valid(candidate):
+			continue
+		var anchor := candidate as Node3D
+		if String(anchor.get_meta("interaction_action", "")) != required_action:
+			continue
+		var to_target := anchor.global_position - _player_controller.global_position
+		to_target.y = 0.0
+		var distance := to_target.length()
+		if distance > 3.4 or distance < 0.01:
+			continue
+		var alignment := forward.dot(to_target.normalized())
+		if alignment < -0.15:
+			continue
+		var score := distance - alignment * 0.75
+		if score < best_score:
+			best_score = score
+			target = anchor
+	if target == null:
+		if _audio_bus != null:
+			_audio_bus.emit_sfx("physical_swing_%s" % ("axe" if tool_id == "tool_axe" else "pickaxe"), effect_origin)
+		_interaction_feedback("Podejdź bliżej do %s." % ("drzewa" if tool_id == "tool_axe" else "skały"))
+		return
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("tool_axe_wood" if tool_id == "tool_axe" else "tool_pickaxe_stone", target.global_position)
+	var visual_variant: Variant = target.get_meta("resource_visual", null)
+	if visual_variant is Node3D and is_instance_valid(visual_variant):
+		var visual := visual_variant as Node3D
+		var base_rotation := visual.rotation
+		var shake := create_tween()
+		shake.tween_property(visual, "rotation:z", base_rotation.z + 0.045, 0.06)
+		shake.tween_property(visual, "rotation", base_rotation, 0.10)
+	var hits := int(target.get_meta("harvest_hits", 0)) + 1
+	target.set_meta("harvest_hits", hits)
+	if hits < 3:
+		_interaction_feedback("%s %d/3" % ["Rąbiesz drzewo" if tool_id == "tool_axe" else "Rozbijasz skałę", hits])
+		return
+	_gather_world_resource(target)
 
 
 func _on_enemy_damaged(amount: int, position: Vector3) -> void:
@@ -1381,7 +1688,7 @@ func _on_enemy_damaged(amount: int, position: Vector3) -> void:
 	# 60ms boss), not only on kill. This is the single biggest "yes I
 	# hit it" signal — Mick Hofman / J.W. Nijman pattern.
 	_apply_hit_stop(hit_stop_duration)
-	
+
 	# VS-016: Trigger combat evidence capture on first hit
 	_trigger_evidence_capture(4)  # COMBAT = 4
 	# Adv Y C4 fix: per-hit shake is now LOUDER than defeat shake
@@ -1710,12 +2017,19 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 	# translucent panel system as the rest of the HUD; the active slot is
 	# marked by a brighter accent border, the icon stays as a real kit
 	# thumbnail.
-	var catalog := BlockKind.default_catalog()
 	var slots: Array = []
-	slots.append({"id": "weapon", "name": _current_weapon_label()})
-	for i in mini(catalog.size(), 4):
-		var kind: BlockKind = catalog[i]
-		slots.append({"id": kind.block_id, "name": kind.display_name})
+	var hotbar_items: Array = []
+	if _player_controller != null and _player_controller.has_method("get_hotbar_items"):
+		hotbar_items = _player_controller.get_hotbar_items()
+	if hotbar_items.is_empty():
+		hotbar_items = ["tool_axe", "tool_pickaxe", "grass", "wood_oak", "stone"]
+	for item_variant in hotbar_items:
+		var item_id := String(item_variant)
+		var label := item_id.capitalize().replace("_", " ")
+		if item_id == "tool_axe": label = "Siekiera"
+		elif item_id == "tool_pickaxe": label = "Kilof"
+		elif item_id == "fist": label = _current_weapon_label()
+		slots.append({"id": item_id, "name": label})
 	for i in slots.size():
 		var entry: Dictionary = slots[i]
 		var slot := Control.new()
@@ -1773,8 +2087,12 @@ func _hotbar_icon_for(entry_id: String, slot_index: int) -> String:
 
 
 func _hotbar_texture_for(entry_id: String, slot_index: int) -> Texture2D:
-	if slot_index == 0 or entry_id == "weapon":
+	if entry_id == "tool_axe":
 		return HUD_ICON_AXE
+	if entry_id == "tool_pickaxe":
+		return HUD_ICON_PICKAXE
+	if entry_id == "fist" or entry_id == "weapon":
+		return HUD_ICON_HAMMER
 	match entry_id:
 		"grass", "dirt", "sand": return HUD_ICON_GRASS
 		"wood_oak", "wood": return HUD_ICON_WOOD
@@ -1829,6 +2147,21 @@ func _on_player_defeated() -> void:
 				_player_controller.hp_changed.emit(h.current_hp, h.max_hp)
 
 
+## A large sandbox should be easy to get lost in, never easy to get stranded
+## in. This optional camp return is image-led in the compact menu and does not
+## reset inventory, placed blocks, progression, or the saved world.
+func _return_player_to_camp() -> void:
+	if _world_renderer == null or _player_controller == null:
+		return
+	if _active_vehicle != null and is_instance_valid(_active_vehicle):
+		_active_vehicle.exit_vehicle()
+	var camp_position := _world_renderer.get_spawn_position(0) + Vector3(0.0, 0.10, 0.0)
+	_player_controller.spawn_at(camp_position)
+	_world_renderer.set_exploration_focus(camp_position)
+	if _effect_spawner != null:
+		_effect_spawner.spawn_sparkle_burst(camp_position + Vector3.UP * 0.8)
+
+
 ## Image-first shell controls keep the always-visible HUD understandable before
 ## a child can read. Tooltips remain for parents, keyboard users, and assistive
 ## technology; the visual affordance itself does not depend on words.
@@ -1878,11 +2211,14 @@ func _build_hud() -> void:
 	menu.add_theme_stylebox_override("focus", _hud_panel_style(Color(1.0, 0.86, 0.38), 0.96))
 	var menu_popup := menu.get_popup()
 	menu_popup.add_icon_item(HUD_ICON_STAR, "Wygląd postaci", 1)
-	menu_popup.add_icon_item(HUD_ICON_RETURN, "Wróć do menu", 2)
+	menu_popup.add_icon_item(HUD_ICON_CAMP, "Wróć do obozu", 2)
+	menu_popup.add_icon_item(HUD_ICON_RETURN, "Wróć do menu", 3)
 	menu_popup.id_pressed.connect(func(id: int) -> void:
 		if id == 1:
 			_on_customize_pressed()
 		elif id == 2:
+			_return_player_to_camp()
+		elif id == 3:
 			end_session())
 	hud.add_child(menu)
 
@@ -2172,9 +2508,73 @@ func _build_hud() -> void:
 	_interaction_prompt_label.offset_right = -8
 	prompt_content.add_child(_interaction_prompt_label)
 	hud.add_child(_interaction_prompt_panel)
+	_build_sandbox_fart_hint(hud)
+
+
+## A single playful discovery hint is enough to make the optional G-key gag
+## findable. It is not a permanent control legend: it fades after the opening
+## moment and disappears immediately once the child uses it.
+func _build_sandbox_fart_hint(hud: CanvasLayer) -> void:
+	if hud == null or _sandbox_hint_panel != null:
+		return
+	_sandbox_hint_panel = PanelContainer.new()
+	_sandbox_hint_panel.name = "SandboxFartHint"
+	_sandbox_hint_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_sandbox_hint_panel.offset_left = 30
+	_sandbox_hint_panel.offset_top = -96
+	_sandbox_hint_panel.offset_right = 82
+	_sandbox_hint_panel.offset_bottom = -44
+	_sandbox_hint_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sandbox_hint_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.52, 0.86, 0.67), 0.90))
+	var hint_icon := TextureRect.new()
+	hint_icon.name = "HintIcon"
+	hint_icon.texture = HUD_ACTION_GREEN
+	hint_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hint_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hint_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hint_icon.offset_left = 5
+	hint_icon.offset_top = 5
+	hint_icon.offset_right = -5
+	hint_icon.offset_bottom = -5
+	hint_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sandbox_hint_panel.add_child(hint_icon)
+	# Retain only the physical keycap, not a reading-heavy "PFF" callout.
+	# It fades before the first exploration evidence frame; the actual fart
+	# cloud, sound and NPC reactions remain the discoverable feedback.
+	var hint := Label.new()
+	hint.name = "HintKeyLabel"
+	hint.text = "G"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 20)
+	hint.add_theme_color_override("font_color", Color.WHITE)
+	hint.add_theme_color_override("font_shadow_color", Color(0.02, 0.12, 0.08, 0.95))
+	hint.add_theme_constant_override("shadow_offset_x", 1)
+	hint.add_theme_constant_override("shadow_offset_y", 2)
+	hint.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sandbox_hint_panel.add_child(hint)
+	hud.add_child(_sandbox_hint_panel)
+	if is_inside_tree():
+		var hint_timer := get_tree().create_timer(4.0)
+		hint_timer.timeout.connect(func() -> void:
+			if _sandbox_hint_panel != null and is_instance_valid(_sandbox_hint_panel):
+				_sandbox_hint_panel.visible = false)
 	
 func _tick_world_interactions() -> void:
-	if _world_renderer == null or _player_controller == null or _interaction_prompt_panel == null:
+	if _interaction_prompt_panel == null:
+		return
+	if _active_vehicle != null and is_instance_valid(_active_vehicle):
+		# Never let a proximity prompt replace this while the driver is hidden.
+		# It stays readable for the entire ride, not only for the 1.8s feedback
+		# flash used by ordinary interactions.
+		if _interaction_prompt_icon != null:
+			_interaction_prompt_icon.texture = HUD_ACTION_GREEN
+		if _interaction_prompt_label != null:
+			_interaction_prompt_label.text = "E / Esc  Wyjdź z pojazdu"
+		_interaction_prompt_panel.visible = true
+		return
+	if _world_renderer == null or _player_controller == null:
 		return
 	# Preserve action feedback for its short display window; otherwise the
 	# proximity scan below immediately replaces “Ugotowano!” with the generic
@@ -2213,10 +2613,21 @@ func _activate_world_interaction() -> void:
 			_craft_home_meal()
 		"sit":
 			if _player_controller.has_method("play_sit_at"):
-				_player_controller.play_sit_at(_nearby_world_interactable.global_position + Vector3(0, 0.45, 0.7))
+				var seat_position: Vector3 = _nearby_world_interactable.get_meta(
+					"seat_position", _nearby_world_interactable.global_position) as Vector3
+				_player_controller.play_sit_at(seat_position)
 			_interaction_feedback("Chwila odpoczynku przy stole.")
 		"gather_wood", "gather_stone":
+			var required_tool := "tool_axe" if action == "gather_wood" else "tool_pickaxe"
+			if _player_controller == null or not _player_controller.has_method("has_equipped_tool") \
+				or not _player_controller.has_equipped_tool(required_tool):
+				_interaction_feedback("Wybierz %s i uderz w zasób." % ("siekierę" if action == "gather_wood" else "kilof"))
+				return
 			_gather_world_resource(_nearby_world_interactable)
+		"find_food":
+			_collect_food_item(_nearby_world_interactable)
+		"train_jump", "train_run", "train_climb", "train_push", "train_pull", "train_balance":
+			_start_training_session(_nearby_world_interactable)
 
 
 func _interaction_feedback(message: String) -> void:
@@ -2233,7 +2644,84 @@ func _interaction_texture_for(action: String) -> Texture2D:
 		"door": return HUD_ICON_HAMMER
 		"gather_wood": return HUD_ICON_AXE
 		"gather_stone": return HUD_ICON_STONE
+		"find_food": return HUD_ICON_AXE
+		"train_jump", "train_run", "train_climb", "train_push", "train_pull", "train_balance": return HUD_ICON_STAR
 		_: return HUD_ACTION_GREEN
+
+
+## VS-025: Collect food item from world
+func _collect_food_item(anchor: Node3D) -> void:
+	if anchor == null or not is_instance_valid(anchor) or _nutrition_manager == null:
+		return
+
+	var item_id := String(anchor.get_meta("resource_item_id", ""))
+	if item_id.is_empty():
+		return
+
+	## Get the food item from the FoodDatabase
+	var food_item: FoodItem = _get_food_item_from_database(item_id)
+	if food_item == null:
+		push_warning("VS-025: Could not find food item for ID: %s" % item_id)
+		return
+
+	## Consume the food via NutritionManager
+	if _nutrition_manager.eat_food(food_item):
+		## Remove the visual
+		var visual: Variant = anchor.get_meta("resource_visual", null)
+		if visual != null and is_instance_valid(visual):
+			visual.queue_free()
+
+		## Remove the anchor
+		anchor.queue_free()
+
+		## Clear the nearby interactable reference
+		_interaction_prompt_panel.visible = false
+		_interaction_feedback_until = 0.0
+		_nearby_world_interactable = null
+
+
+## VS-025: Get FoodItem from FoodDatabase by item_id
+func _get_food_item_from_database(item_id: String) -> FoodItem:
+	## Try from WorldRenderer first
+	if _world_renderer != null:
+		var food_db: FoodDatabase = _world_renderer.get_food_database()
+		if food_db != null:
+			return food_db.get_food(item_id)
+
+	## Fallback: create a new FoodDatabase instance
+	var food_db_script = load("res://src/adapters/inbound/gameplay/food_database.gd")
+	if food_db_script != null:
+		var food_db_instance: FoodDatabase = food_db_script.new()
+		if food_db_instance != null:
+			food_db_instance._initialize_food_items()
+			return food_db_instance.get_food(item_id)
+
+	return null
+
+
+## VS-025: Start training session at equipment
+func _start_training_session(anchor: Node3D) -> void:
+	if anchor == null or not is_instance_valid(anchor) or _training_manager == null:
+		return
+
+	var action := String(anchor.get_meta("interaction_action", ""))
+
+	## Map action to TrainingType
+	var training_type: TrainingStats.TrainingType
+	match action:
+		"train_jump": training_type = TrainingStats.TrainingType.STAMINA
+		"train_run": training_type = TrainingStats.TrainingType.STAMINA
+		"train_climb": training_type = TrainingStats.TrainingType.STRENGTH
+		"train_push": training_type = TrainingStats.TrainingType.STRENGTH
+		"train_pull": training_type = TrainingStats.TrainingType.POSTURE
+		"train_balance": training_type = TrainingStats.TrainingType.AGILITY
+		_: training_type = TrainingStats.TrainingType.STRENGTH
+
+	## Start training via TrainingManager
+	_training_manager.start_training(training_type, anchor)
+	_interaction_prompt_panel.visible = false
+	_interaction_feedback_until = 0.0
+	_nearby_world_interactable = null
 
 
 func _gather_world_resource(anchor: Node3D) -> void:
@@ -2255,6 +2743,9 @@ func _gather_world_resource(anchor: Node3D) -> void:
 	_refresh_inventory_panel(inventory)
 	_try_auto_upgrade_weapon(inventory)
 	if _audio_bus != null:
+		var action := String(anchor.get_meta("resource_action", ""))
+		var tool_sfx := "tool_axe_wood" if action == "gather_wood" else "tool_pickaxe_stone"
+		_audio_bus.emit_sfx(tool_sfx, anchor.global_position)
 		_audio_bus.emit_sfx("collect", anchor.global_position)
 	if _effect_spawner != null:
 		_effect_spawner.spawn_collect_effect(anchor.global_position)
@@ -2595,6 +3086,17 @@ func _on_rules_action(rule_id: String, action_kind: int, params: Dictionary) -> 
 
 
 func end_session() -> void:
+	_evidence_session_token += 1
+	_cancel_opening_spawn_evidence()
+
+	# VS-026: Snapshot sandbox state BEFORE teardown wipes it.
+	# Cache into _sandbox_state so PlayShell / main.gd can persist it.
+	_sandbox_state = get_sandbox_state()
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		print("[gameplay] VS-026: sandbox state captured (%d blocks, score=%d)" %
+			[_sandbox_state.placed_blocks.size(), _sandbox_state.progression.score])
+		session_save_requested.emit(_sandbox_state)
+
 	_rules_active = false
 	_teardown_adventure_sky()
 	if _rules_runtime != null:
@@ -2638,6 +3140,16 @@ func end_session() -> void:
 	session_ended.emit()
 
 func _input(event: InputEvent) -> void:
+	# E is shared by generic interaction and vehicle egress. Runtime input runs
+	# before dynamically spawned vehicle nodes, so consume egress first or E can
+	# be swallowed by the generic interaction path and trap the player inside.
+	if _active_vehicle != null and is_instance_valid(_active_vehicle) \
+		and event.is_action_pressed("exit_vehicle"):
+		_active_vehicle.exit_vehicle()
+		var viewport := get_viewport()
+		if viewport != null:
+			viewport.set_input_as_handled()
+		return
 	if event.is_action_pressed("interact"):
 		_activate_world_interaction()
 		get_viewport().set_input_as_handled()
@@ -2664,6 +3176,8 @@ func _on_footstep() -> void:
 ## perform one harmless air-swat; this never damages the player or changes
 ## combat progression.
 func _on_player_farted(effect_origin: Vector3) -> void:
+	if _sandbox_hint_panel != null and is_instance_valid(_sandbox_hint_panel):
+		_sandbox_hint_panel.visible = false
 	if _audio_bus != null:
 		_audio_bus.emit_sfx("fart_kid_safe", effect_origin)
 	if _effect_spawner != null:
@@ -2674,13 +3188,19 @@ func _on_player_farted(effect_origin: Vector3) -> void:
 	# again before the current group has had its short turn.
 	if _npc_reaction_queue_active:
 		return
+	var spoken_reaction_count := 0
 	for npc_variant in _npc_root.get_children():
 		var npc_root := npc_variant as Node3D
 		if npc_root == null or npc_root.global_position.distance_to(effect_origin) > SILLY_FART_REACTION_RANGE:
 			continue
 		var reaction := _fart_reaction_for(npc_root)
+		# Everyone nearby visibly says their own short line at once in the world.
+		# Only the voice/caption channel is serialized below.
 		_match_npc_fart_animation(npc_root, String(reaction.action))
-		_queue_npc_reaction(npc_root, reaction)
+		_show_npc_reaction_bubble(npc_root, String(reaction.line))
+		if spoken_reaction_count < SILLY_FART_MAX_SPOKEN_REACTIONS:
+			_queue_npc_reaction(npc_root, reaction)
+			spoken_reaction_count += 1
 
 
 ## Every NPC in range gets an in-character line. The queue deliberately owns
@@ -2689,8 +3209,6 @@ func _on_player_farted(effect_origin: Vector3) -> void:
 ## visible effect still runs but its social beat waits behind the first group.
 func _queue_npc_reaction(npc_root: Node3D, reaction: Dictionary) -> void:
 	if npc_root == null:
-		return
-	if _npc_reaction_queue.size() >= SILLY_FART_MAX_QUEUED_REACTIONS:
 		return
 	var line := String(reaction.get("line", "")).strip_edges()
 	if line.is_empty():
@@ -2710,6 +3228,7 @@ func _queue_npc_reaction(npc_root: Node3D, reaction: Dictionary) -> void:
 
 
 func _drain_npc_reaction_queue() -> void:
+	await _wait_for_normal_npc_voice()
 	while not _npc_reaction_queue.is_empty():
 		var turn: Dictionary = _npc_reaction_queue.pop_front()
 		var npc_ref := turn.get("npc", null) as WeakRef
@@ -2718,7 +3237,6 @@ func _drain_npc_reaction_queue() -> void:
 			continue
 		var line := String(turn.get("line", ""))
 		var name_pl := String(turn.get("name_pl", "Ktoś"))
-		_show_npc_reaction_bubble(npc_root, line)
 		_animate_npc_speech(String(turn.get("npc_id", "")), line, int(turn.get("emotion", FacialPerformance.Emotion.HAPPY)))
 		_active_npc_reaction_line = line
 		_active_npc_reaction_name = name_pl
@@ -2726,16 +3244,16 @@ func _drain_npc_reaction_queue() -> void:
 		_active_npc_reaction_audio_started = false
 		_active_npc_reaction_audio_finished = false
 		_active_npc_reaction_audio_skipped = false
-		if _npc_voice != null and _npc_voice.is_available():
+		if (_npc_voice != null and _npc_voice.is_available()) or LOCAL_NPC_VOICE_STREAMS.has(line):
 			# The caption waits for playback_started; it cannot get ahead of a
 			# slow ElevenLabs synthesis or replace an audible previous line.
-			_npc_voice.speak(line, "pl-PL", _active_npc_reaction_request_id)
+			_speak_npc_line(line, _active_npc_reaction_request_id)
 			var voice_deadline_msec := Time.get_ticks_msec() + int(SILLY_FART_VOICE_TIMEOUT_SECONDS * 1000.0)
 			while not _active_npc_reaction_audio_finished and is_inside_tree():
 				if Time.get_ticks_msec() >= voice_deadline_msec:
 					# HTTPRequest also owns a timeout, but retain a runtime circuit
 					# breaker so a misbehaving custom adapter cannot stall the world.
-					_npc_voice.cancel()
+					_cancel_active_npc_voice()
 					_active_npc_reaction_audio_skipped = true
 					_active_npc_reaction_audio_finished = true
 					break
@@ -2763,7 +3281,25 @@ func _next_npc_reaction_request_id() -> int:
 	return _npc_reaction_request_sequence
 
 
+func _wait_for_normal_npc_voice() -> void:
+	if not _normal_npc_voice_active:
+		return
+	var deadline_msec := Time.get_ticks_msec() + int(NORMAL_NPC_VOICE_TIMEOUT_SECONDS * 1000.0)
+	while _normal_npc_voice_active and is_inside_tree():
+		if Time.get_ticks_msec() >= deadline_msec:
+			# The adapter itself is timed, but do not let a broken custom adapter
+			# block the social channel forever.
+			_cancel_active_npc_voice()
+			_normal_npc_voice_active = false
+			_normal_npc_voice_request_id = -1
+			_normal_npc_voice_line = ""
+			break
+		await get_tree().process_frame
+
+
 func _on_npc_voice_playback_started(line: String, request_id: int = 0) -> void:
+	if _normal_npc_voice_active and _normal_npc_voice_line == line and _normal_npc_voice_request_id == request_id:
+		return
 	if _active_npc_reaction_line != line or _active_npc_reaction_request_id != request_id:
 		return
 	_active_npc_reaction_audio_started = true
@@ -2771,28 +3307,60 @@ func _on_npc_voice_playback_started(line: String, request_id: int = 0) -> void:
 
 
 func _on_npc_voice_playback_finished(line: String, request_id: int = 0) -> void:
+	if _normal_npc_voice_active and _normal_npc_voice_line == line and _normal_npc_voice_request_id == request_id:
+		_normal_npc_voice_active = false
+		_normal_npc_voice_request_id = -1
+		_normal_npc_voice_line = ""
+		return
 	if _active_npc_reaction_line == line and _active_npc_reaction_request_id == request_id:
 		_active_npc_reaction_audio_finished = true
 
 
 func _on_npc_voice_playback_skipped(line: String, request_id: int = 0) -> void:
+	if _normal_npc_voice_active and _normal_npc_voice_line == line and _normal_npc_voice_request_id == request_id:
+		if _play_local_npc_voice(line, request_id):
+			return
+		_normal_npc_voice_active = false
+		_normal_npc_voice_request_id = -1
+		_normal_npc_voice_line = ""
+		return
 	if _active_npc_reaction_line == line and _active_npc_reaction_request_id == request_id:
+		if _play_local_npc_voice(line, request_id):
+			return
 		_active_npc_reaction_audio_skipped = true
 		_active_npc_reaction_audio_finished = true
 
 
 func _fart_reaction_for(npc_root: Node3D) -> Dictionary:
-	var visual_id := String(npc_root.get_meta("npc_id", ""))
 	var role := String(npc_root.get_meta("npc_role", ""))
-	if visual_id == "npc_parrot":
-		return {"line": "Ćwir! To był bąbelkowy podmuch!", "emotion": FacialPerformance.Emotion.HAPPY, "action": "laugh"}
-	if visual_id == "npc_pirate":
-		return {"line": "Arrr! Dość tych gazowych armat!", "emotion": FacialPerformance.Emotion.ANGRY, "action": "swat"}
+	var authored: Variant = npc_root.get_meta("fart_reaction", {})
+	if authored is Dictionary:
+		var authored_reaction: Dictionary = (authored as Dictionary).duplicate(true)
+		var line := String(authored_reaction.get("line_pl", authored_reaction.get("line", ""))).strip_edges()
+		var action := String(authored_reaction.get("action", "laugh"))
+		# A combat-off character remains a peaceful guide. Never surface even a
+		# pretend strike after the parental policy has downgraded their role.
+		if action == "swat" and role != NPCCharacter.ROLE_HOSTILE:
+			return {"line": "Uff! Ten podmuch mnie zaskoczył — wolę spokojne powietrze.", "emotion": FacialPerformance.Emotion.SURPRISED, "action": "recoil"}
+		if not line.is_empty():
+			return {
+				"line": line,
+				"emotion": _fart_emotion_from_string(String(authored_reaction.get("emotion", "happy"))),
+				"action": action,
+			}
 	if role == NPCCharacter.ROLE_VENDOR:
-		return {"line": "Fuj! Otwórzmy okno, proszę!", "emotion": FacialPerformance.Emotion.SURPRISED, "action": "recoil"}
+		return {"line": "Fuj! Otwarte okno i świeże powietrze, natychmiast!", "emotion": FacialPerformance.Emotion.SURPRISED, "action": "recoil"}
 	if role == NPCCharacter.ROLE_HOSTILE:
-		return {"line": "Ej! To wcale nie jest śmieszne!", "emotion": FacialPerformance.Emotion.ANGRY, "action": "swat"}
-	return {"line": "Haha! To był naprawdę mały wiaterek!", "emotion": FacialPerformance.Emotion.HAPPY, "action": "laugh"}
+		return {"line": "Ej! To wcale nie jest śmieszne — masz jedno ostrzeżenie!", "emotion": FacialPerformance.Emotion.ANGRY, "action": "swat"}
+	return {"line": "Haha! To był mały wiaterek, ale wielka historia!", "emotion": FacialPerformance.Emotion.HAPPY, "action": "laugh"}
+
+
+func _fart_emotion_from_string(value: String) -> int:
+	match value.to_lower():
+		"angry": return FacialPerformance.Emotion.ANGRY
+		"surprised": return FacialPerformance.Emotion.SURPRISED
+		"sad", "hurt": return FacialPerformance.Emotion.HURT
+		_: return FacialPerformance.Emotion.HAPPY
 
 
 func _show_npc_reaction_bubble(npc_root: Node3D, line: String) -> void:
@@ -2814,15 +3382,19 @@ func _show_npc_reaction_bubble(npc_root: Node3D, line: String) -> void:
 		npc_root.add_child(bubble)
 	bubble.text = line
 	bubble.visible = true
+	var generation := int(npc_root.get_meta("fart_bubble_generation", 0)) + 1
+	npc_root.set_meta("fart_bubble_generation", generation)
 	var tree := get_tree()
 	if tree == null:
 		return
 	# Keep a weak reference: streamed NPCs can be freed before the timeout and
 	# a lambda must never retain (or dereference) their old speech bubble.
 	var bubble_ref: WeakRef = weakref(bubble)
+	var npc_ref: WeakRef = weakref(npc_root)
 	tree.create_timer(2.8).timeout.connect(func() -> void:
 		var captured_bubble: Label3D = bubble_ref.get_ref() as Label3D
-		if captured_bubble != null and is_instance_valid(captured_bubble):
+		var captured_npc: Node3D = npc_ref.get_ref() as Node3D
+		if captured_bubble != null and is_instance_valid(captured_bubble) and captured_npc != null and is_instance_valid(captured_npc) and int(captured_npc.get_meta("fart_bubble_generation", 0)) == generation:
 			captured_bubble.visible = false)
 
 
@@ -2834,11 +3406,12 @@ func _match_npc_fart_animation(npc_root: Node3D, action: String) -> void:
 	var tween := create_tween()
 	match action:
 		"swat":
-			# Whole-rig roll was tipping characters and visibly lifting their feet.
-			# A quick planted-foot yaw is a readable, harmless "hey!" gesture.
-			tween.tween_property(visual, "rotation:y", original_yaw + 0.18, 0.12)
-			tween.tween_property(visual, "rotation:y", original_yaw - 0.10, 0.12)
-			tween.tween_property(visual, "rotation:y", original_yaw, 0.16)
+			# Prefer an actual right-arm air-swat. Kenney rigs expose arm-right;
+			# keep the planted-foot yaw only as a fallback for non-humanoid NPCs.
+			if not _tween_npc_air_swat_arm(visual, tween):
+				tween.tween_property(visual, "rotation:y", original_yaw + 0.18, 0.12)
+				tween.tween_property(visual, "rotation:y", original_yaw - 0.10, 0.12)
+				tween.tween_property(visual, "rotation:y", original_yaw, 0.16)
 		"recoil":
 			tween.tween_property(visual, "rotation:y", original_yaw - 0.12, 0.12)
 			tween.tween_property(visual, "rotation:y", original_yaw, 0.20)
@@ -2846,6 +3419,17 @@ func _match_npc_fart_animation(npc_root: Node3D, action: String) -> void:
 			tween.tween_property(visual, "rotation:y", original_yaw + 0.10, 0.10)
 			tween.tween_property(visual, "rotation:y", original_yaw - 0.10, 0.12)
 			tween.tween_property(visual, "rotation:y", original_yaw, 0.12)
+
+
+func _tween_npc_air_swat_arm(visual: Node3D, tween: Tween) -> bool:
+	var arm := visual.find_child("arm-right", true, false) as Node3D
+	if arm == null:
+		return false
+	var original_roll := arm.rotation.z
+	tween.tween_property(arm, "rotation:z", original_roll - 0.72, 0.10)
+	tween.tween_property(arm, "rotation:z", original_roll + 0.16, 0.12)
+	tween.tween_property(arm, "rotation:z", original_roll, 0.16)
+	return true
 
 func _on_landed() -> void:
 	if _audio_bus != null:
@@ -2915,7 +3499,7 @@ func _apply_loaded_customization() -> void:
 	if _player_controller == null or not _player_controller.has_method("apply_customization"):
 		return
 	if _customization == null:
-		_customization = CharacterCustomization.load_from_disk()
+		_customization = FilesystemCharacterCustomizationStore.load_customization()
 	_player_controller.apply_customization(_customization)
 
 
@@ -2924,7 +3508,7 @@ func _on_customize_pressed() -> void:
 		_close_customization_panel()
 		return
 	if _customization == null:
-		_customization = CharacterCustomization.load_from_disk()
+		_customization = FilesystemCharacterCustomizationStore.load_customization()
 	var hud := get_node_or_null("HUD")
 	if hud == null:
 		return
@@ -2943,7 +3527,7 @@ func _on_customization_panel_changed(c: CharacterCustomization) -> void:
 	_customization = c
 	if _player_controller != null and _player_controller.has_method("apply_customization"):
 		_player_controller.apply_customization(c)
-	c.save_to_disk()
+	FilesystemCharacterCustomizationStore.save_customization(c)
 
 
 func _close_customization_panel() -> void:
@@ -2968,6 +3552,42 @@ func _trigger_evidence_capture(capture_point: int) -> void:
 		return
 	_captured_evidence_points.append(capture_point)
 	emit_signal("evidence_capture_requested", capture_point)
+
+
+func _schedule_opening_spawn_evidence() -> void:
+	_cancel_opening_spawn_evidence()
+	var session_token := _evidence_session_token
+	var attempts := 0
+	var settle_timer := Timer.new()
+	_opening_evidence_timer = settle_timer
+	settle_timer.wait_time = 0.25
+	settle_timer.one_shot = false
+	settle_timer.timeout.connect(func() -> void:
+		if session_token != _evidence_session_token or _session == null or _opening_evidence_timer != settle_timer:
+			settle_timer.stop()
+			settle_timer.queue_free()
+			return
+		attempts += 1
+		if _world_renderer != null and _world_renderer.is_opening_generation_settled():
+			settle_timer.stop()
+			settle_timer.queue_free()
+			_opening_evidence_timer = null
+			_trigger_evidence_capture(1) # SPAWN
+		elif attempts % 32 == 0:
+			# An incomplete streamed frame is diagnostic information, never visual
+			# acceptance evidence. Keep waiting on slower hardware instead of
+			# falsely labelling the eight-second timeout as a settled opening.
+			push_warning("Opening evidence is waiting for streamed world generation (%d checks)" % attempts)
+	)
+	add_child(settle_timer)
+	settle_timer.start()
+
+
+func _cancel_opening_spawn_evidence() -> void:
+	if _opening_evidence_timer != null and is_instance_valid(_opening_evidence_timer):
+		_opening_evidence_timer.stop()
+		_opening_evidence_timer.queue_free()
+	_opening_evidence_timer = null
 
 
 ## Update ambient particles based on reduce-motion setting

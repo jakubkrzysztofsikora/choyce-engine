@@ -159,7 +159,10 @@ func _build_liminal_visual(is_boss: bool) -> Node3D:
 	# The source rig is authored with its feet at local zero. Its conventional
 	# front is +Z, while CharacterBody3D movement faces -Z.
 	model.rotation.y = PI
-	model.scale = Vector3.ONE * (1.22 if is_boss else 0.78)
+	# The bundled skeleton is authored far taller than the 1.8m player. Keep
+	# ordinary encounters slightly above player height; even bosses must not fill
+	# the opening camera or look like a broken giant.
+	model.scale = Vector3.ONE * (0.34 if is_boss else 0.22)
 	_tint_liminal_materials(model)
 	_add_liminal_eyes(model, is_boss)
 	add_child(model)
