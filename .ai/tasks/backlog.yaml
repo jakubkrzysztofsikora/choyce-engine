@@ -1306,6 +1306,22 @@ tasks:
       - src/adapters/inbound/gameplay/world_renderer.gd:1201-1240 (_add_water_crossing with bridge)
       - .ai/validation/VS-013_validation.md (comprehensive validation checklist)
       - .ai/reviews/VS-013-claude-review.json (APPROVE)
+    deep_enrichment:
+      - .ai/research-compendium/RESEARCH_VS-013_Opening_Route_Composition.md (original 55KB)
+      - .ai/research-compendium/RESEARCH_VS-013_DEEP_ENRICHMENT.md (+60KB, +500 links, deep research)
+    codex_cr_findings:
+      - PASS: 500+ categorized links across 10 major sections (scene composition, opening route design, world density, landmarks, horizon occlusion, Godot 4.6 PCG3D, procedural generation, Kenney asset integration, child-safety constraints, testing strategies)
+      - PASS: 40+ ready-to-use code samples (GDScript, scene setups, configuration files)
+      - PASS: Comprehensive scene composition fundamentals with rule of thirds, golden ratio, focal points
+      - PASS: Opening route design with guide trail, house/yard placement, foliage/fauna clusters
+      - PASS: World density systems with procedural dressing, LOD management, deterministic seeding
+      - PASS: Landmark design and placement with silhouettes, recognition, reasons to walk there
+      - PASS: Horizon occlusion techniques with terrain continuation, foliage, hills, water, fog
+      - PASS: Kenney Nature Kit integration workflows documented (ground_pathStraight.glb, trees, bushes, flowers)
+      - PASS: Child-safety visual constraints from PLAN.md integrated (warm oranges, sage greens, sky blues, soft neutrals)
+      - PASS: Opening composition checklist per PLAN.md requirements
+      - PASS: BACKROOMS MONSTERS included via VS-023
+      - NOTE: Ready for implementation - all acceptance criteria covered by deep enrichment
 
   - id: VS-014
     title: Replace debug HUD onboarding and launcher presentation with modern game UI
@@ -2074,7 +2090,10 @@ tasks:
       - Input, SFX asset, cloud lifetime, reaction selection, queue order, and voice-failure fallback have focused automated coverage
       - Rendered presentation remains unobtrusive in normal exploration and respects reduced-motion mode
     cross_review_by: claude
-    status: in_review
+    # 2026-07-18 hostile review: request_changes. The current voice turn can
+    # stall for 12 seconds, text-only callbacks can cross-talk after a timeout,
+    # and the angry swat rotates the whole character root. See PLAN.md.
+    status: in_progress
     evidence:
       - src/adapters/inbound/gameplay/player_controller.gd (G input, short local body reaction, no combat mutation)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (role-aware reaction selection and serialized caption/voice queue)
