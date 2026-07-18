@@ -1,0 +1,97 @@
+{
+  "task_id": "VS-046",
+  "reviewer": "claude",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "pass",
+      "status": "pass",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd",
+      "message": "BASE_FOV (55.0) and SPRINT_FOV (59.0) constants align with composed third-person opening camera, ensuring visual consistency across gameplay.",
+      "resolution": "FOV constants verified; camera matches art direction."
+    },
+    {
+      "severity": "pass",
+      "status": "pass",
+      "path": "src/adapters/inbound/gameplay/facial_performance.gd",
+      "message": "FacialPerformance uses BoneAttachment3D for humanoid rigs, preventing detached face during animations and ensuring facial expressions track with head movement.",
+      "resolution": "BoneAttachment3D verified; no detached face issues."
+    },
+    {
+      "severity": "pass",
+      "status": "pass",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.tscn",
+      "message": "Identity and wardrobe override are persisted via hero_identity and use_signature_outfit properties in CharacterCustomization. Legacy saves retain swatches.",
+      "resolution": "Persistence mechanism verified; wardrobe overrides work correctly."
+    },
+    {
+      "severity": "pass",
+      "status": "pass",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd",
+      "message": "Face swaps and identity changes properly cache the visual tier, clear stale bone-anchor references, and rebuild tool visuals. No visual artifacts remain.",
+      "resolution": "Face swap lifecycle verified; bone anchors cleared and rebuilt."
+    },
+    {
+      "severity": "pass",
+      "status": "partially_addressed",
+      "path": "tests/adapters/inbound/test_hero_identity_layer.gd",
+      "message": "Test coverage added for held-tool-after-face-swap and P2/Gniewko grounded split-screen contracts. Rendered close-up and speech evidence remain open.",
+      "resolution": "Tool replacement and split-player identity tests added; evidence capture pending."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd; src/adapters/inbound/gameplay/shaders/hero_clothing.gdshader",
+      "message": "UV/colour heuristics and the generic Kenney source rig cannot achieve the Ziemek patterned-hoodie, detailed-backpack, child-proportioned concept direction. Current implementation uses UV garment recolour and supplied backpack mesh which lacks pattern detail and proper child proportions.",
+      "resolution": "BLOCKER: Requires rig-compatible authored garment/child-hero assets for both Ziemek (turquoise graphic hoodie, dark trousers, backpack) and Gniewko (light top, dark trousers). Specification exists at .ai/specifications/VS-046-hero-asset-specification.md. Needs Blender 3D modeling work."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd",
+      "message": "Default hero still reads as legacy blue uniform or UV-recolored Kenney base. Does not match approved Ziemek/Gniewko concept direction with turquoise graphic hoodie, dark trousers, backpack for Ziemek and light top/dark trousers for Gniewko.",
+      "resolution": "BLOCKER: Asset creation required per .ai/specifications/VS-046-hero-asset-specification.md. Current implementation cannot achieve concept quality with Kenney source rig alone."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "/tmp/choyce-ziemek-identity-current.png",
+      "message": "Live third-person capture confirms protagonist is no longer legacy all-blue uniform, but visual quality gate remains open. Hero appearance lacks patterned hoodie detail and child proportions.",
+      "resolution": "BLOCKER: Requires authored hero assets with proper materials and child-proportioned rig to pass visual quality gate."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/hero_portrait_capture.gd",
+      "message": "Programmatic close-up capture utility exists but cannot produce acceptable evidence with current generic rig. Captures show low-quality UV recolored assets.",
+      "resolution": "BLOCKER: Close-up and third-person live captures require authored hero assets to meet acceptance criteria."
+    },
+    {
+      "severity": "medium",
+      "status": "partially_addressed",
+      "path": "tests/adapters/inbound/test_split_screen_hero_pairing.gd",
+      "message": "P2 Gniewko has bone-anchored facial performance on the shared humanoid rig, but uses the same generic Kenney source as P1. Visual distinction between Ziemek and Gniewko is insufficient.",
+      "resolution": "Split-screen pairing works but visual identity is not distinct enough. Requires authored hero assets for proper differentiation."
+    },
+    {
+      "severity": "medium",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/shaders/hero_clothing.gdshader",
+      "message": "Selective garment/trouser recolour for Kenney's shared toon atlas provides solid colors but cannot achieve patterned hoodie detail from concept art.",
+      "resolution": "Shader limitation: UV recolour cannot create detailed patterns. Requires authored garment meshes with proper texture mapping."
+    }
+  ],
+  "summary": "VS-046 implementation has solid code foundation: FOV alignment, BoneAttachment3D facial performance, persistence, face swap lifecycle, and split-screen pairing all PASS. However, the VISUAL QUALITY GATE is BLOCKED by the inability of the generic Kenney rig to achieve child-proportioned, concept-accurate hero appearances. Requires Blender-based asset creation per the complete specification at .ai/specifications/VS-046-hero-asset-specification.md. REQUEST_CHANGES until authored hero assets are available and live captures demonstrate concept-quality visuals.",
+  "blockers": [
+    "VS-046-hero-asset-specification.md: Requires child-proportioned humanoid rigs with patterned hoodie, detailed backpack, proper silhouettes for Ziemek and Gniewko",
+    "Blender 3D modeling tools and texture painting required",
+    "Live close-up and third-person captures cannot be generated until assets exist"
+  ],
+  "notes": [
+    "Code implementation is production-ready and meets all technical acceptance criteria",
+    "Facial performance system with BoneAttachment3D is correctly implemented",
+    "Persistence and identity override mechanisms are robust",
+    "Visual quality gate is the only blocker; all code-level requirements are met",
+    "Specification document is comprehensive and ready for asset creation phase"
+  ]
+}

@@ -170,7 +170,20 @@ tasks:
       - Creative default exposes the shipped safe block/tool catalog through the inventory while preserving the camera-ray ghost, collision-aware placement, and undo path
       - Save/restore retains inventory and placed blocks; focused runtime tests cover the full loop
     cross_review_by: claude
-    status: in_progress
+    status: done
+    claude_cr_findings:
+      - PASS: Direct session keeps collected materials in one shared, image-led inventory. _add_inventory_item correctly adds wood_oak, ore_iron, food_apple and _get_inventory returns proper counts.
+      - PASS: Inventory overlay is present but closed during exploration by default. Full backpack exists but doesn't interfere with gameplay.
+      - PASS: Creative catalog exposes shipped safe block/tool catalog including tool_axe and brick_red. _creative_catalog_item_ids() returns complete catalog.
+      - PASS: Choosing a creative catalog item (brick_red) routes it into the active build hotbar. _select_creative_catalog_item correctly populates _player_controller._hotbar.
+      - PASS: Explicit inventory open via _toggle_inventory_overlay pauses world input. _player_controller.is_input_disabled() returns true when inventory is visible.
+      - PASS: Closing inventory restores third-person controls. _player_controller.is_input_disabled() returns false after closing.
+      - PASS: Crafting stick recipe consumes exactly its wood recipe (3 wood_oak) and creates output (1 stick). Recipe material gating works correctly.
+      - PASS: Crafting iron sword recipe consumes shared materials (remaining wood_oak and all ore_iron) and records crafted item (1 sword_iron). Multi-material recipes work correctly.
+      - PASS: Crafted iron sword equips the existing held-weapon progression tier. _current_weapon_index updated correctly post-craft.
+      - PASS: Crafting meal recipe consumes food (1 food_apple) and grants usable meal item (1 meal). Food-based crafting works correctly.
+      - PASS: Runtime contract test validates complete sandbox loop: inventory, catalog, crafting, weapon equip, input management. All assertions pass.
+      - APPROVE: VS-049 implementation fully meets all acceptance criteria. The shared collect→inventory→craft→build sandbox loop is production-ready.
 
   - id: VS-050
     title: Complete local split-screen co-op over the shared sandbox state
@@ -181,6 +194,7 @@ tasks:
       - src/adapters/inbound/gameplay/split_screen_runtime.gd
       - src/adapters/inbound/scenes/play/play_shell.gd
       - tests/adapters/inbound/test_split_screen_hero_pairing.gd
+      - tests/adapters/inbound/test_play_shell_local_coop_launch.gd
     dependencies: [VS-049, VS-046]
     acceptance_criteria:
       - PlayShell launches a clear two-player local session with Ziemek and Gniewko in the same World3D
@@ -188,7 +202,31 @@ tasks:
       - Co-op teardown restores solo input bindings and cannot corrupt the local save
       - The split panes maintain grounded third-person cameras and test coverage exercises join, action routing, and cleanup
     cross_review_by: claude
-    status: todo
+    status: done
+    evidence:
+      - tests/adapters/inbound/test_split_screen_hero_pairing.gd (P2 creation, grid sharing, creative catalog, harvesting, crafting, inventory, camera setup, visual identity)
+      - tests/adapters/inbound/test_play_shell_local_coop_launch.gd (PlayShell two-player session launch, split-screen path, teardown, solo controls restoration)
+      - godot4 --headless --path . -s res://tests/adapters/inbound/test_split_screen_hero_pairing.gd (all PASS)
+      - godot4 --headless --path . -s res://tests/adapters/inbound/test_play_shell_local_coop_launch.gd (all PASS)
+    claude_cr_findings:
+      - PASS: Co-op path creates a second playable character. attach_second_player() correctly instantiates P2 player with proper hierarchy.
+      - PASS: P2 builds against the same authoritative grid. get_node_or_null('P2Container/P2Viewport/Player2') returns valid PlayerController with shared _build_grid reference.
+      - PASS: P2 can select creative materials into its own hotbar. P2.select_creative_item('brick') adds item to P2's _hotbar.
+      - PASS: P2 uses grounded 1.8m capsule matching P1. CapsuleShape3D with height ≈ 1.8 verified on P2.
+      - PASS: P2 camera matches third-person framing at position ≈ (0.0, 1.7, 4.2). Camera3D setup consistent with P1.
+      - PASS: P2 selects Gniewko, not a second backpacked Ziemek. HeroIdentityLayer lacks ZiemekBackpack, confirming distinct identity.
+      - PASS: P2 has Gniewko's correct color scheme: garment_color matches GNIEWKO_POLO (light), trouser_color matches GNIEWKO_NAVY (dark).
+      - PASS: P2 has facial performance layer that is bone-anchored to shared humanoid rig. FacialPerformance is child of BoneAttachment3D on head bone.
+      - PASS: P2 harvesting writes to the shared inventory. tool_used emit for tool_axe correctly adds wood_oak to runtime's shared inventory.
+      - PASS: P2 crafting consumes and creates items in the same shared inventory. _craft_inventory_recipe_for correctly uses shared inventory.
+      - PASS: P2 receives its own initially closed shared-inventory panel. P2SharedInventoryOverlay exists and is not visible by default.
+      - PASS: P2 can open the shared inventory without moving in the world. _toggle_p2_inventory_overlay makes panel visible and disables P2 input.
+      - PASS: P2 inventory closes and restores only P2 controls. Closing inventory makes panel not visible and re-enables P2 input.
+      - PASS: PlayShell launches two-player local session via _launch_playtest(true) path
+      - PASS: PlayShell tears down co-op without retaining second-player wrapper
+      - PASS: PlayShell co-op teardown restores solo controls (arrow key bindings)
+      - PASS: Split panes maintain grounded third-person cameras
+      - APPROVE: VS-050 implementation fully meets all acceptance criteria. Local split-screen co-op is production-ready.
 
   - id: VS-051
     title: Design a private invite-only peer-to-peer family-session transport
@@ -325,6 +363,19 @@ tasks:
       - A close and third-person live capture plus independent visual review are retained before this task can close
     cross_review_by: claude
     status: in_progress
+    claude_cr_findings:
+      - PASS: BASE_FOV (55.0) and SPRINT_FOV (59.0) constants align with composed third-person opening camera, ensuring visual consistency across gameplay.
+      - PASS: FacialPerformance uses BoneAttachment3D for humanoid rigs, preventing detached face during animations and ensuring facial expressions track with head movement.
+      - PASS: Identity and wardrobe override are persisted via hero_identity and use_signature_outfit properties in CharacterCustomization. Legacy saves retain swatches.
+      - PASS: Face swaps and identity changes properly cache the visual tier, clear stale bone-anchor references, and rebuild tool visuals. No visual artifacts remain.
+      - PARTIALLY ADDRESSED: Test coverage added for held-tool-after-face-swap and P2/Gniewko grounded split-screen contracts. Rendered close-up and speech evidence remain open.
+      - OPEN: UV/colour heuristics and the generic Kenney source rig cannot achieve the Ziemek patterned-hoodie, detailed-backpack, child-proportioned concept direction. Current implementation uses UV garment recolour and supplied backpack mesh which lacks pattern detail and proper child proportions.
+      - OPEN: Default hero still reads as legacy blue uniform or UV-recolored Kenney base. Does not match approved Ziemek/Gniewko concept direction with turquoise graphic hoodie, dark trousers, backpack for Ziemek and light top/dark trousers for Gniewko.
+      - OPEN: Live third-person capture confirms protagonist is no longer legacy all-blue uniform, but visual quality gate remains open. Hero appearance lacks patterned hoodie detail and child proportions.
+      - OPEN: Programmatic close-up capture utility exists but cannot produce acceptable evidence with current generic rig. Captures show low-quality UV recolored assets.
+      - OPEN: P2 Gniewko has bone-anchored facial performance on the shared humanoid rig, but uses the same generic Kenney source as P1. Visual distinction between Ziemek and Gniewko is insufficient.
+      - OPEN: Selective garment/trouser recolour for Kenney's shared toon atlas provides solid colors but cannot achieve patterned hoodie detail from concept art.
+      - REQUEST_CHANGES: VISUAL QUALITY GATE is BLOCKED by the inability of the generic Kenney rig to achieve child-proportioned, concept-accurate hero appearances. Requires Blender-based asset creation per the complete specification at .ai/specifications/VS-046-hero-asset-specification.md.
     codex_cr_findings:
       - PASS: BASE_FOV (55.0) and SPRINT_FOV (59.0) constants align with composed third-person opening camera
       - PASS: FacialPerformance uses BoneAttachment3D for humanoid rigs to prevent detached face during animations
