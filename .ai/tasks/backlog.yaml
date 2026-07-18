@@ -1629,10 +1629,26 @@ tasks:
     inputs:
       - PLAN.md
       - data/templates/obby.json
+      - src/adapters/inbound/scenes/create/create_shell.gd
+      - src/application/template_loader.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/gameplay/world_renderer.gd
     dependencies: [VS-004, VS-006]
     acceptance_criteria:
       - Obby checkpoints and win zone use shared trigger semantics
       - Respawn and finish behavior are data-driven
       - No template-specific fork of GameplayRuntime is introduced
     cross_review_by: codex
-    status: todo
+    status: in_progress
+    evidence:
+      - .ai/research-compendium/RESEARCH_VS-010_Obby_Shared_Runtime_Contracts.md (analysis and implementation plan)
+      - data/templates/obby.json (verified: has checkpoint and win_zone triggers, set_respawn_point and win_level rules)
+      - src/adapters/inbound/scenes/create/create_shell.gd:1044 (obby already in template list)
+      - src/domain/world_authoring/scene_node.gd:8-15 (NodeType enum includes TRIGGER)
+      - src/application/template_loader.gd (verified: preserves all node properties including trigger_type)
+      - src/adapters/inbound/gameplay/world_renderer.gd:1486 (verified: copies trigger_type to Area3D metadata)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd:2320-2322 (verified: handles win_zone trigger type)
+      - src/application/rule_compiler_service.gd:163-164 (verified: compiles set_respawn_point action)
+      - tests/application/test_obby_template_loader.gd (NEW: VS-010 template loading tests)
+      - tests/application/test_obby_template_contracts.gd (NEW: VS-010 shared runtime contracts tests)
+      - Godot parse-clean verification: TBC (pending test execution)

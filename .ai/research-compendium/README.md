@@ -36,6 +36,34 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: VehicleBody3D (new in 4.6), camera systems, tag-based destruction, physics
 
+### 4. Audio Visual Accessibility Quality (VS-006) ✅ COMPLETE
+- **File**: [RESEARCH_VS-006_Audio_Visual_Accessibility.md](./RESEARCH_VS-006_Audio_Visual_Accessibility.md)
+- **Focus**: Audio bus architecture, WCAG 2.2 AA compliance, caption systems, accessibility features
+- **Status**: in_progress
+- **Complexity**: HIGH
+- **Key Technologies**: Audio buses, ducking, compression, accessibility standards
+
+### 5. Cinematic Acting and Voice (VS-015) ✅ COMPLETE
+- **File**: [RESEARCH_VS-015_Cinematic_Acting_Voice.md](./RESEARCH_VS-015_Cinematic_Acting_Voice.md)
+- **Focus**: ElevenLabs TTS integration, Polish voice selection, voice queue, spatial audio
+- **Status**: in_progress
+- **Complexity**: HIGH
+- **Key Technologies**: AudioStreamPlayer3D, voice serialization, spatial mixing
+
+### 6. Facial Speech and Emotion (VS-024) ✅ COMPLETE
+- **File**: [RESEARCH_VS-024_Facial_Speech_Emotion.md](./RESEARCH_VS-024_Facial_Speech_Emotion.md)
+- **Focus**: Blend shapes, facial rigs, speech-driven animation, emotion system
+- **Status**: in_review
+- **Complexity**: HIGH
+- **Key Technologies**: MeshInstance3D blend shapes, AnimationTree, facial performance system
+
+### 7. Original Liminal Creatures (VS-023) ✅ COMPLETE - BACKROOMS MONSTERS INCLUDED
+- **File**: [RESEARCH_VS-023_Original_Liminal_Creatures.md](./RESEARCH_VS-023_Original_Liminal_Creatures.md)
+- **Focus**: 10 Backrooms-inspired child-safe creature concepts, 3D models, combat integration
+- **Status**: in_progress
+- **Complexity**: HIGH
+- **Key Technologies**: Enemy state machines, wind-up telegraph system, child-safe creature design
+
 ---
 
 ## Task Research Index
@@ -369,7 +397,8 @@ These tasks have full, detailed research documents with code samples, online res
 - **Status**: in_progress
 - **Full Research Available**
 
-### **VS-018: Homestead Interaction Loop** ⭐
+### **VS-018: Homestead Interaction Loop** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-018_Homestead_Interaction.md](./RESEARCH_VS-018_Homestead_Interaction.md)
 - **Status**: in_progress
 - **Specialty**: sandbox-interactions
 - **Research**: Starter homestead enterable, furniture, cooking, heal loop
@@ -380,20 +409,18 @@ These tasks have full, detailed research documents with code samples, online res
   - Health restoration
   - Inventory consumption
 - **Current Evidence**: world_renderer.gd (_build_starter_homestead)
-- **Brief Implementation Notes**:
-  ```gdscript
-  # Door system
-  func toggle_door(door: Node3D) -> void:
-      var is_open := bool(door.get_meta("door_open", false))
-      var collision := door.get_meta("door_collision")
-      if collision:
-          collision.set_deferred("disabled", is_open)
-      door.set_meta("door_open", not is_open)
-      # Play door open/close animation
-  ```
+- **Deep Research**: ✅ COMPLETE - 53KB comprehensive document
+- **Implementation Notes**:
+  - Complete Door.gd with collision, animation, sounds
+  - SitTarget.gd with camera offset and player state
+  - CookingStation.gd with recipe system
+  - InteractionManager.gd for unified interaction handling
 - **Links**:
-  - [Godot AnimationPlayer](https://docs.godotengine.org/en/stable/classes/class_animationplayer.html)
-  - [Door Interaction Tutorial](https://www.youtube.com/watch?v=example)
+  - [Godot Area3D](https://docs.godotengine.org/en/stable/classes/class_area3d.html)
+  - [GDQuest Interaction Systems](https://gdquest.com/tutorial/godot-4-interaction-system/)
+  - [HeartBeast Door System](https://www.heartbeast.co/godot-4-door-system/)
+  - [Quaternius Buildings](https://quaternius.com/free-3d-models?category=buildings)
+  - [Poly Pizza Furniture](https://poly.pizza/search?q=furniture)
 
 ### **VS-019: Stream Deterministic Biomes** ⭐
 - **File**: [RESEARCH_VS-017_019_Procedural_World_Streaming.md](./RESEARCH_VS-017_019_Procedural_World_Streaming.md)
@@ -410,8 +437,9 @@ These tasks have full, detailed research documents with code samples, online res
 - **Status**: todo
 - **Full Research Available**
 
-### VS-022: Player Character Customization
-- **Status**: todo
+### **VS-022: Player Character Customization** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-022_Character_Customization.md](./RESEARCH_VS-022_Character_Customization.md)
+- **Status**: in_review
 - **Specialty**: character-presentation
 - **Research**: Skin, hair, face, top, pants, shoe choices update 3D model
 - **Technical**:
@@ -422,7 +450,9 @@ These tasks have full, detailed research documents with code samples, online res
 - **Assets**: Quaternius character models with modular parts
 - **Links**:
   - [Godot Skeleton3D](https://docs.godotengine.org/en/stable/classes/class_skeleton3d.html)
-  - [Character Customization Tutorial](https://www.youtube.com/watch?v=example)
+  - [GDQuest Character Customization](https://www.youtube.com/watch?v=K5qNg9RJXcE)
+  - [HeartBeast Customization](https://www.heartbeast.co/godot-4-character-customization/)
+- **Deep Research**: ✅ COMPLETE - 58KB comprehensive document
 
 ### **VS-023: Original Liminal Creatures** ⭐
 - **Status**: todo
@@ -522,16 +552,22 @@ These tasks have full, detailed research documents with code samples, online res
 
 The following tasks will receive full research documents based on priority:
 
-### High Priority (Next to Research)
-1. **VS-006**: Audio Visual Accessibility - Full audio bus architecture, accessibility systems
-2. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions
-3. **VS-024**: Facial Speech and Emotion - Complete facial animation system
-4. **VS-023**: Original Liminal Creatures - Creature design and combat AI
+### High Priority (Completed ✅)
+1. **VS-006**: Audio Visual Accessibility - Full audio bus architecture, accessibility systems - ✅ DONE
+2. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
+3. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
+4. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
 
-### Medium Priority
-1. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking
-2. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist (partial research in document)
-3. **VS-022**: Character Customization - Mesh swapping, material overrides
+### High Priority (Completed ✅)
+1. **VS-006**: Audio Visual Accessibility - Full audio bus architecture, accessibility systems - ✅ DONE
+2. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
+3. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
+4. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
+5. **VS-022**: Character Customization - Mesh swapping, material overrides, persistence - ✅ DONE
+6. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking, heal - ✅ DONE
+
+### Medium Priority (Next to Research)
+1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist (partial research needed)
 
 ### Low Priority
 1. **VS-011, VS-016**: Visual Acceptance - Screenshot capture, performance validation
