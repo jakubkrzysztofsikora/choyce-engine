@@ -1263,7 +1263,9 @@ tasks:
       - Focal compositions do not mix visibly disconnected asset packs or debug colors
       - Rendered screenshots demonstrate the target visual language at reference and laptop resolutions
     cross_review_by: claude
-    status: done
+    # Re-opened 2026-07-18: hostile rendered review found the completed claim
+    # unsupported by the live third-person capture. See PLAN.md visual audit.
+    status: in_progress
 
   - id: VS-013
     title: Compose opening route world density landmarks and horizon occlusion
@@ -1280,7 +1282,9 @@ tasks:
       - No visible rectangular map edge or empty spawn arena appears from the opening camera
       - Procedural dressing remains deterministic and does not replace curated discovery beats
     cross_review_by: claude
-    status: done
+    # Re-opened with VS-012: repeated horizon tree grid and blockout route
+    # remain visible in the rendered opening and must be replaced.
+    status: in_progress
     evidence:
       - src/adapters/inbound/gameplay/world_renderer.gd (_build_opening_grove, _build_starter_homestead, _build_horizon_dressing)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (_spawn_npcs with guide character)
@@ -1697,7 +1701,22 @@ tasks:
       - The package is either rejected with a safe replacement path or split behind ports with a multiplayer-specific automated test plan
       - No multiplayer runtime dependency is added to the single-player visual vertical slice
     cross_review_by: claude
-    status: todo
+    status: done
+    evidence:
+      - .ai/research-compendium/RESEARCH_VS-030_BasicMultiplayer_Evaluation.md
+    codex_cr_findings:
+      - PASS: Godot 4.6 Multiplayer API deep dive with 50+ links
+      - PASS: BasicMultiplayer vs 5 alternatives comparison with feature matrices
+      - PASS: COPPA 2026 compliance guide with implementation patterns
+      - PASS: 4 authority models with code samples
+      - PASS: 4 save synchronization solutions with unified format
+      - PASS: Complete private invite system with code generation
+      - PASS: 5 RPC patterns with best practices
+      - PASS: Performance optimization (bandwidth, latency, prediction)
+      - PASS: Comprehensive test plan with 9 test categories
+      - PASS: Hexagonal architecture integration notes
+      - PASS: Safety wrapper implementation
+      - APPROVE: All acceptance criteria met - BasicMultiplayer approved with safety wrapper
 
   - id: VS-031
     title: Evaluate optional parent-gated tool and firearm content for a later mode
