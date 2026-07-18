@@ -1,0 +1,237 @@
+=== VS-006 Audio Analysis Report ===
+Generated: Sat Jul 18 02:18:36 CEST 2026
+
+## SFX Analysis
+
+=== block_buzz.mp3 ===
+Duration: 2.000000s
+Max Volume: -4.7
+Mean Volume: -21.0
+Silence: None detected
+
+=== collect_coin.mp3 ===
+Duration: 1.000000s
+Max Volume: -13.6
+Mean Volume: -35.0
+Silence: [Parsed_silencedetect_0 @ 0xc93030900] silence_end: 1 | silence_duration: 0.584286
+
+=== collect_star.mp3 ===
+Duration: 1.000000s
+Max Volume: -3.8
+Mean Volume: -21.5
+Silence: [Parsed_silencedetect_0 @ 0x95ec10e40] silence_end: 0.998526 | silence_duration: 0.237075
+
+=== footstep_grass.mp3 ===
+Duration: 1.000000s
+Max Volume: -31.0
+Mean Volume: -52.5
+Silence: [Parsed_silencedetect_0 @ 0x88b03c900] silence_end: 1 | silence_duration: 0.889229
+
+=== footstep_sand.mp3 ===
+Duration: 1.000000s
+Max Volume: -22.5
+Mean Volume: -37.8
+Silence: [Parsed_silencedetect_0 @ 0xbd6838900] silence_end: 1 | silence_duration: 0.102744
+
+=== jump_up.mp3 ===
+Duration: 1.000000s
+Max Volume: -13.0
+Mean Volume: -28.2
+Silence: [Parsed_silencedetect_0 @ 0xab8840900] silence_end: 1 | silence_duration: 0.755125
+
+=== kick_impact.mp3 ===
+Duration: 1.000000s
+Max Volume: -3.2
+Mean Volume: -27.0
+Silence: [Parsed_silencedetect_0 @ 0x88b010900] silence_end: 0.999569 | silence_duration: 0.460635
+
+=== land_soft.mp3 ===
+Duration: 1.000000s
+Max Volume: -7.6
+Mean Volume: -31.0
+Silence: [Parsed_silencedetect_0 @ 0xb92c5c900] silence_end: 1 | silence_duration: 0.833469
+
+=== punch_thud.mp3 ===
+Duration: 2.000000s
+Max Volume: -3.1
+Mean Volume: -22.5
+Silence: [Parsed_silencedetect_0 @ 0xbf503c900] silence_end: 2 | silence_duration: 1.030204
+
+=== spawn_pop.mp3 ===
+Duration: 1.000000s
+Max Volume: -3.2
+Mean Volume: -16.2
+Silence: [Parsed_silencedetect_0 @ 0x961438900] silence_end: 1 | silence_duration: 0.386032
+
+=== swing_whoosh.mp3 ===
+Duration: 2.000000s
+Max Volume: 0.0
+Mean Volume: -17.6
+Silence: [Parsed_silencedetect_0 @ 0x961438900] silence_end: 2 | silence_duration: 0.643764
+
+=== ui_back.mp3 ===
+Duration: 1.700000s
+Max Volume: -3.8
+Mean Volume: -18.8
+Silence: None detected
+
+=== ui_click.mp3 ===
+Duration: 0.051769s
+Max Volume: -26.7
+Mean Volume: -43.9
+Silence: None detected
+
+=== ui_confirm.mp3 ===
+Duration: 0.468685s
+Max Volume: -6.4
+Mean Volume: -22.5
+Silence: None detected
+
+=== ui_hover.mp3 ===
+Duration: 0.495601s
+Max Volume: -14.6
+Mean Volume: -30.6
+Silence: None detected
+
+=== victory_fanfare.mp3 ===
+Duration: 1.718073s
+Max Volume: -3.9
+Mean Volume: -18.7
+Silence: None detected
+
+## Voice Analysis
+
+=== block_oops.mp3 ===
+Duration: 2.647075s
+Max Volume: -1.7
+Mean Volume: -18.4
+Silence: [Parsed_silencedetect_0 @ 0x93303c900] silence_end: 2.647075 | silence_duration: 0.420363
+
+=== celebrate_collect.mp3 ===
+Duration: 1.114558s
+Max Volume: -2.8
+Mean Volume: -21.4
+Silence: [Parsed_silencedetect_0 @ 0x9fd40c900] silence_end: 0.914422 | silence_duration: 0.318254
+
+=== celebrate_win.mp3 ===
+Duration: 2.368435s
+Max Volume: -1.3
+Mean Volume: -19.1
+Silence: [Parsed_silencedetect_0 @ 0x76ac10e40] silence_end: 2.368435 | silence_duration: 0.256871
+
+=== cinematic_gniewko_help.mp3 ===
+Duration: 1.068118s
+Max Volume: -2.4
+Mean Volume: -18.0
+Silence: [Parsed_silencedetect_0 @ 0x8bec10e40] silence_end: 1.068118 | silence_duration: 0.236712
+
+=== cinematic_gniewko_ready.mp3 ===
+Duration: 0.882358s
+Max Volume: -3.9
+Mean Volume: -19.2
+Silence: [Parsed_silencedetect_0 @ 0xa8ec10e40] silence_end: 0.882358 | silence_duration: 0.289524
+
+=== cinematic_ziemek_attack.mp3 ===
+Duration: 1.671837s
+Max Volume: -2.8
+Mean Volume: -17.0
+Silence: [Parsed_silencedetect_0 @ 0xb7ac10e40] silence_end: 1.671837 | silence_duration: 0.419433
+
+=== cinematic_ziemek_monster.mp3 ===
+Duration: 1.439637s
+Max Volume: -1.5
+Mean Volume: -18.8
+Silence: [Parsed_silencedetect_0 @ 0x95cc5c900] silence_end: 1.439637 | silence_duration: 0.477483
+
+=== encourage_create.mp3 ===
+Duration: 3.854512s
+Max Volume: -1.8
+Mean Volume: -20.4
+Silence: [Parsed_silencedetect_0 @ 0xa8ac10e40] silence_end: 3.854512 | silence_duration: 0.259206
+
+=== greet_landing.mp3 ===
+Duration: 4.411791s
+Max Volume: -2.1
+Mean Volume: -20.0
+Silence: [Parsed_silencedetect_0 @ 0x81303c900] silence_end: 4.411791 | silence_duration: 0.241791
+
+=== no_world.mp3 ===
+Duration: 3.715193s
+Max Volume: -1.4
+Mean Volume: -19.5
+Silence: [Parsed_silencedetect_0 @ 0xc80824900] silence_end: 3.715193 | silence_duration: 0.259388
+
+=== parent_zone.mp3 ===
+Duration: 3.157914s
+Max Volume: -1.3
+Mean Volume: -19.8
+Silence: [Parsed_silencedetect_0 @ 0x79cc10e40] silence_end: 3.157914 | silence_duration: 0.253016
+
+=== session_end.mp3 ===
+Duration: 2.368435s
+Max Volume: -1.9
+Mean Volume: -20.8
+Silence: [Parsed_silencedetect_0 @ 0xbdd03c900] silence_end: 2.368435 | silence_duration: 0.24678
+
+=== tools_unavailable.mp3 ===
+Duration: 2.321995s
+Max Volume: -2.0
+Mean Volume: -21.1
+Silence: [Parsed_silencedetect_0 @ 0x7dd03c900] silence_end: 2.321995 | silence_duration: 0.287234
+
+=== world_picker.mp3 ===
+Duration: 2.739955s
+Max Volume: -1.1
+Mean Volume: -20.3
+Silence: [Parsed_silencedetect_0 @ 0x89303c900] silence_end: 2.739955 | silence_duration: 0.215465
+
+## Music Analysis
+
+=== adventure_island.mp3 ===
+Duration: 27.719161s
+Max Volume: -0.8
+Mean Volume: -16.6
+Silence: None detected
+
+=== celebration.mp3 ===
+Duration: 28.012653s
+Max Volume: -0.6
+Mean Volume: -14.8
+Silence: None detected
+
+=== combat_phonk.mp3 ===
+Duration: 28.449229s
+Max Volume: -1.5
+Mean Volume: -9.9
+Silence: None detected
+
+=== drift_phonk.mp3 ===
+Duration: 28.791270s
+Max Volume: -8.3
+Mean Volume: -27.9
+Silence: [Parsed_silencedetect_0 @ 0xa0c840900] silence_end: 26.426009 | silence_duration: 0.116485
+
+=== landing_ambient.mp3 ===
+Duration: 28.980567s
+Max Volume: -0.0
+Mean Volume: -19.5
+Silence: None detected
+
+=== little_farm.mp3 ===
+Duration: 28.186032s
+Max Volume: -1.1
+Mean Volume: -17.2
+Silence: None detected
+
+=== mushroom_forest.mp3 ===
+Duration: 27.188005s
+Max Volume: -1.2
+Mean Volume: -18.4
+Silence: None detected
+
+=== sigma_protocol.mp3 ===
+Duration: 131.200000s
+Max Volume: -0.1
+Mean Volume: -11.6
+Silence: [Parsed_silencedetect_0 @ 0x7bd030900] silence_end: 131.19034 | silence_duration: 0.244694
+

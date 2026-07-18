@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/gameplay_runtime.gd" id="1_gameplay_runtime"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/world_renderer.gd" id="2_world_renderer"]
@@ -9,6 +9,13 @@
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/victory_sequence.gd" id="7_victory_sequence"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/audio_event_bus.gd" id="8_audio_event_bus"]
 [ext_resource type="PackedScene" path="res://data/models/kenney/toon_characters/Models/GLB format/character-male-a.glb" id="9_character_mesh"]
+[ext_resource type="Texture2D" path="res://data/textures/generated/forest-meadow-ground-v1.png" id="10_ground_color"]
+[ext_resource type="Texture2D" path="res://data/textures/pbr/ground003/Ground003_1K-JPG_NormalGL.jpg" id="11_ground_normal"]
+[ext_resource type="Texture2D" path="res://data/textures/pbr/ground003/Ground003_1K-JPG_Roughness.jpg" id="12_ground_roughness"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/nutrition_manager.gd" id="9_nutrition_manager"]
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/training_manager.gd" id="10_training_manager"]
+[ext_resource type="Script" path="res://src/adapters/inbound/shared/feedback_manager.gd" id="11_feedback_manager"]
+[ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/hud/nutrition_hud.tscn" id="12_nutrition_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSky_kid"]
 sky_top_color = Color(0.30, 0.55, 0.85, 1)
@@ -32,7 +39,14 @@ ambient_light_sky_contribution = 0.5
 ambient_light_energy = 1.0
 tonemap_mode = 2
 tonemap_exposure = 1.05
-tonemap_white = 6.0
+tonemap_white = 7.0
+sdfgi_enabled = true
+sdfgi_use_occlusion = true
+sdfgi_bounce_feedback = 0.5
+sdfgi_cascades = 4
+sdfgi_min_cell_size = 0.1
+sdfgi_y_scale = 2
+sdfgi_energy = 1.0
 ssao_enabled = true
 ssao_radius = 2.0
 ssao_intensity = 1.5
@@ -46,13 +60,13 @@ glow_intensity = 0.6
 glow_bloom = 0.05
 glow_blend_mode = 1
 adjustment_enabled = true
-adjustment_saturation = 1.15
+adjustment_saturation = 0.98
 adjustment_contrast = 1.05
 fog_enabled = true
 fog_mode = 1
 fog_light_color = Color(0.78, 0.88, 0.95, 1)
 fog_light_energy = 0.7
-fog_density = 0.008
+fog_density = 0.0035
 fog_sky_affect = 0.0
 fog_aerial_perspective = 0.3
 
@@ -60,52 +74,40 @@ fog_aerial_perspective = 0.3
 emission_shape = 3
 emission_box_extents = Vector3(25, 15, 25)
 gravity = Vector3(0, 0.05, 0)
-scale_min = 0.5
-scale_max = 1.5
-color = Color(1, 1, 0.9, 0.4)
+scale_min = 0.12
+scale_max = 0.32
+color = Color(0.96, 0.90, 0.72, 0.14)
 
 [sub_resource type="SphereMesh" id="SphereMesh_dust"]
-radius = 0.03
-height = 0.06
+radius = 0.008
+height = 0.016
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dust"]
 transparency = 1
-albedo_color = Color(1, 1, 0.9, 0.5)
-emission_enabled = true
-emission = Color(1, 1, 0.8, 1)
-emission_energy_multiplier = 0.5
+albedo_color = Color(0.96, 0.90, 0.72, 0.14)
 
 [sub_resource type="BoxMesh" id="BoxMesh_ground"]
-size = Vector3(80, 0.5, 80)
-
-[sub_resource type="Gradient" id="Gradient_grass"]
-offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(0.32, 0.55, 0.28, 1, 0.50, 0.72, 0.38, 1, 0.62, 0.82, 0.48, 1)
-
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_ground"]
-noise_type = 1
-frequency = 0.08
-fractal_octaves = 4
-
-[sub_resource type="NoiseTexture2D" id="NoiseTex_ground"]
-width = 512
-height = 512
-seamless = true
-color_ramp = SubResource("Gradient_grass")
-noise = SubResource("FastNoiseLite_ground")
+size = Vector3(2400, 0.5, 2400)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.85, 0.95, 0.80, 1)
-albedo_texture = SubResource("NoiseTex_ground")
-roughness = 0.95
-uv1_scale = Vector3(20, 20, 1)
+; Original production ground albedo with the existing CC0 normal/roughness
+; maps keeps the foreground from reading as a repeated flat grass plate.
+albedo_color = Color(0.92, 0.96, 0.88, 1)
+albedo_texture = ExtResource("10_ground_color")
+normal_enabled = true
+normal_texture = ExtResource("11_ground_normal")
+roughness_texture = ExtResource("12_ground_roughness")
+roughness_texture_channel = 0
+roughness = 0.82
+texture_filter = 5
+uv1_scale = Vector3(260, 260, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
-size = Vector3(80, 0.5, 80)
+size = Vector3(2400, 0.5, 2400)
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.35
-height = 1.6
+height = 1.8
 
 [node name="GameplayRuntime" type="Node3D"]
 script = ExtResource("1_gameplay_runtime")
@@ -134,14 +136,22 @@ shape = SubResource("CapsuleShape3D_player")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="PlayerController"]
-transform = Transform3D(1, 0, 0, 0, 0.965926, -0.258819, 0, 0.258819, 0.965926, 0, 2.5, 4.5)
+; A restrained game-camera lens keeps the bridge, house and forest destination
+; legible in the first third-person frame instead of turning the opening into a
+; wide, lawn-dominant editor overview. Players retain free look for building.
+transform = Transform3D(1, 0, 0, 0, 0.984808, 0.173648, 0, -0.173648, 0.984808, 0, 1.7, 4.2)
+fov = 50.0
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
 shadow_enabled = true
 shadow_blur = 0.8
-shadow_bias = 0.05
-shadow_normal_bias = 2.0
+; A 2m normal bias made contact shadows visibly detach from the playable
+; characters, which reads as floating even while the controller is grounded.
+; Keep enough bias for the broad Terrain3D surface, but let boots, furniture
+; and NPC feet retain an immediate contact shadow.
+shadow_bias = 0.02
+shadow_normal_bias = 0.55
 directional_shadow_mode = 2
 directional_shadow_split_1 = 0.08
 directional_shadow_split_2 = 0.2
@@ -156,7 +166,7 @@ light_specular = 0.7
 environment = SubResource("Environment_basic")
 
 [node name="AmbientParticles" type="GPUParticles3D" parent="."]
-amount = 200
+amount = 56
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5, 0)
 lifetime = 8.0
 process_material = SubResource("ParticleProcessMaterial_dust")
@@ -191,3 +201,15 @@ script = ExtResource("7_victory_sequence")
 
 [node name="AmbientPlayer" type="AudioStreamPlayer" parent="."]
 volume_db = -12.0
+
+# VS-025: Nutrition and Training Managers
+[node name="NutritionManager" type="Node" parent="."]
+script = ExtResource("9_nutrition_manager")
+
+[node name="TrainingManager" type="Node" parent="."]
+script = ExtResource("10_training_manager")
+
+[node name="FeedbackManager" type="Node" parent="."]
+script = ExtResource("11_feedback_manager")
+
+[node name="NutritionHUD" parent="." instance=ExtResource("12_nutrition_hud")]

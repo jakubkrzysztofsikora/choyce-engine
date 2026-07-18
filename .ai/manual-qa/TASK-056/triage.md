@@ -2,8 +2,8 @@
 
 | Finding ID | Severity | Summary | Owner | Target fix date | Status |
 | --- | --- | --- | --- | --- | --- |
-| F-056-01 | HIGH | 11+ Polish strings with missing diacritics in create_shell.gd bypass _t() | copilot | 2026-03-13 | open — CERTIFICATION BLOCKER |
-| F-056-02 | LOW  | Info label and co-op status strings hardcoded, not routed through _t()     | copilot | 2026-03-20 | open |
+| F-056-01 | HIGH | Primary Create helper copy still bypasses `_t()` in `create_shell.gd` | codex | 2026-07-21 | open — CERTIFICATION BLOCKER |
+| F-056-02 | LOW | Preview placeholder and voice helper microcopy remain hardcoded | codex | 2026-07-24 | open |
 
 Severity guide:
 - High: release-blocking accessibility/localization defect.

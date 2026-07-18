@@ -4,6 +4,12 @@ extends Control
 const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const SHELL_CREATE := "create"
 const SHELL_LIBRARY := "library"
+const DEFAULT_SANDBOX_SLOT := "adventure"
+
+## Emitted immediately after the root runtime exists and before its world is
+## started. Adapters such as acceptance evidence can subscribe without guessing
+## when a kid will select a world after opening the Play shell.
+signal gameplay_runtime_created(runtime: GameplayRuntime)
 
 var _navigator: ShellNavigator
 var _profile: PlayerProfile
@@ -13,6 +19,7 @@ var _kid_status_read_model: KidStatusReadModel
 var _get_world_callback: Callable
 var _active_world_id: String = ""
 var _gameplay_runtime: GameplayRuntime
+var _split_screen: SplitScreenRuntime = null
 var _provenance_badge: ProvenanceBadge
 var _no_world_cta_button: Button = null
 var _voice_prompt_port: VoicePromptPort = null
@@ -35,6 +42,11 @@ var _template_loader: TemplateLoader = null
 var _goal_evaluator: EvaluateGoalService = null
 var _active_template_id: String = ""
 var _npc_loader: NPCDialogueLoader = null
+var _sandbox_persistence: SandboxPersistenceService = null
+## Optional, governed NPC dialogue seams. They remain null for the ordinary
+## offline demo, so authored local dialogue still works without a model.
+var _llm: LLMPort = null
+var _moderation: ModerationPort = null
 
 @onready var _title: Label = $Layout/Header/Title
 @onready var _info: Label = $Layout/Header/Info
@@ -62,6 +74,7 @@ var _npc_loader: NPCDialogueLoader = null
 @onready var _safe_restore_button: Button = $Layout/Actions/SafeRestoreButton
 @onready var _go_create_button: Button = $Layout/Actions/GoCreateButton
 @onready var _go_library_button: Button = $Layout/Actions/GoLibraryButton
+@onready var _new_game_button: Button = $Layout/Actions/NewGameButton
 
 
 func _ready() -> void:
@@ -72,6 +85,8 @@ func _ready() -> void:
 	_apply_theme()
 	_session_end_panel.visible = false
 	_celebration_layer.visible = false
+	# VS-026: Try to auto-resume sandbox on startup
+	_try_auto_resume_sandbox()
 
 
 func setup(
@@ -80,7 +95,9 @@ func setup(
 	localization_policy: LocalizationPolicyPort,
 	run_playtest_port: RunPlaytestPort,
 	kid_status_read_model: KidStatusReadModel = null,
-	get_world_callback: Callable = Callable()
+	get_world_callback: Callable = Callable(),
+	llm: LLMPort = null,
+	moderation: ModerationPort = null
 ) -> PlayShell:
 	_navigator = navigator
 	_profile = profile
@@ -88,6 +105,8 @@ func setup(
 	_run_playtest_port = run_playtest_port
 	_kid_status_read_model = kid_status_read_model
 	_get_world_callback = get_world_callback
+	_llm = llm
+	_moderation = moderation
 	if _provenance_badge != null and _provenance_badge.has_method("setup"):
 		_provenance_badge.call("setup", _localization_policy)
 
@@ -116,6 +135,10 @@ func setup_goal_pipeline(
 ## fetched per template and forwarded to GameplayRuntime.setup_npcs().
 func setup_npc_pipeline(loader: NPCDialogueLoader) -> void:
 	_npc_loader = loader
+
+
+func setup_sandbox_persistence(persistence: SandboxPersistenceService) -> void:
+	_sandbox_persistence = persistence
 
 
 func setup_for_direct_launch(project_store: ProjectStorePort) -> void:
@@ -319,6 +342,7 @@ func _wire_actions() -> void:
 		if _navigator != null:
 			_navigator.show_shell(SHELL_LIBRARY)
 	)
+	_new_game_button.pressed.connect(_on_new_game_requested)
 	_session_end_close.pressed.connect(_on_session_end_close)
 	_celebration_close.pressed.connect(hide_celebration)
 
@@ -337,6 +361,115 @@ func _refresh_labels() -> void:
 	_session_end_close.text = "%s %s" % [IconFont.get_icon("check"), _t("play.session.close")]
 	_refresh_kid_status_summary()
 	_refresh_quest_tracker()
+
+
+## VS-026: Sandbox persistence helpers
+
+## Try to load saved sandbox state and auto-resume if valid
+func _try_auto_resume_sandbox() -> bool:
+	if _sandbox_persistence == null or _profile == null:
+		return false
+	if not _sandbox_persistence.has_saved_sandbox():
+		return false
+	var saved_state := _sandbox_persistence.load_sandbox()
+	if saved_state == null or saved_state.is_empty():
+		return false
+	# Auto-set the world ID from saved state if we don't have one selected
+	if _active_world_id.is_empty() and not saved_state.world_id.is_empty():
+		_active_world_id = saved_state.world_id
+		_refresh_labels()
+		return true
+	return false
+
+
+## Save current sandbox state when session ends
+func _save_sandbox_state() -> bool:
+	if _sandbox_persistence == null or _gameplay_runtime == null:
+		return false
+	# Extract sandbox state from gameplay runtime
+	var state := _extract_sandbox_state_from_runtime()
+	if state == null:
+		return false
+	return _sandbox_persistence.save_sandbox(state)
+
+
+## Extract SandboxState from running GameplayRuntime
+func _extract_sandbox_state_from_runtime() -> SandboxState:
+	if _gameplay_runtime == null:
+		return null
+	# Use the runtime's get_sandbox_state() method if available
+	if _gameplay_runtime.has_method("get_sandbox_state"):
+		var state := _gameplay_runtime.get_sandbox_state()
+		if state != null and not state.is_empty():
+			return state
+	# Fallback to manual extraction for backwards compatibility
+	var state := SandboxState.new()
+	# Get world ID
+	if _gameplay_runtime.has_method("get_world_id"):
+		state.world_id = _gameplay_runtime.get_world_id()
+	elif not _active_world_id.is_empty():
+		state.world_id = _active_world_id
+	# Get player position
+	if _gameplay_runtime.has_method("get_player_position"):
+		state.player_position = _gameplay_runtime.get_player_position()
+	# Get inventory
+	if _gameplay_runtime.has_method("get_inventory"):
+		state.inventory = _gameplay_runtime.get_inventory()
+	# Get placed blocks
+	if _gameplay_runtime.has_method("get_placed_blocks"):
+		state.placed_blocks = _gameplay_runtime.get_placed_blocks()
+	# Get progression
+	if _gameplay_runtime.has_method("get_progression"):
+		state.progression = _gameplay_runtime.get_progression()
+	# Only save if we have meaningful state
+	if state.world_id.is_empty():
+		return null
+	return state
+
+
+## Clear sandbox save (New Game action)
+func clear_sandbox_save() -> bool:
+	if _sandbox_persistence == null:
+		return false
+	return _sandbox_persistence.clear_sandbox()
+
+
+## Handle New Game button press - show confirmation dialog
+func _on_new_game_requested() -> void:
+	# VS-026: Show confirmation before clearing sandbox save
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "New Game"
+	dialog.dialog_text = "Are you sure you want to start a new game? Your current progress will be lost."
+	dialog.ok_button_text = "Yes, Start New Game"
+	dialog.cancel_button_text = "Cancel"
+	dialog.confirmed.connect(_on_new_game_confirmed)
+	add_child(dialog)
+	dialog.popup_centered()
+
+
+## Handle confirmed New Game action
+func _on_new_game_confirmed() -> void:
+	if clear_sandbox_save():
+		_info.text = "Sandbox cleared. Starting fresh."
+		# Clear the active world to start fresh
+		_active_world_id = ""
+		_refresh_labels()
+	else:
+		_info.text = "Failed to clear sandbox."
+
+
+## Load sandbox state for a specific world
+func _load_sandbox_state_for_world(world_id: String) -> SandboxState:
+	if _sandbox_persistence == null:
+		return null
+	if not _sandbox_persistence.has_saved_sandbox():
+		return null
+	var saved_state := _sandbox_persistence.load_sandbox()
+	# Check if the saved state matches the world we're loading
+	if saved_state != null and not saved_state.is_empty() and saved_state.world_id == world_id:
+		return saved_state
+	# World doesn't match, return null to start fresh
+	return null
 
 
 func _launch_playtest(local_coop: bool) -> Session:
@@ -372,11 +505,19 @@ func _launch_playtest(local_coop: bool) -> Session:
 	var mode_label: String = _t("play.mode.coop") if local_coop else _t("play.mode.solo")
 	_info.text = "%s: %s (%s)" % [_t("play.session.started"), mode_label, session.session_id]
 	_session_start_time = Time.get_ticks_msec() / 1000.0
-	_start_gameplay(world, session)
+	_start_gameplay(world, session, local_coop)
 	return session
 
 
-func _start_gameplay(world: World, session: Session) -> void:
+func _start_gameplay(world: World, session: Session, local_coop: bool = false) -> void:
+	# VS-026: Load sandbox state for this world if available
+	var sandbox_state := _load_sandbox_state_for_world(world.world_id)
+	
+	# H5: Stop world music before starting gameplay to prevent stacking
+	var bank := _audio_bank()
+	if bank != null and bank.has_method("stop_music"):
+		bank.stop_music(true)  # fade out over 0.4s
+	
 	if _gameplay_runtime != null:
 		_gameplay_runtime.queue_free()
 		_gameplay_runtime = null
@@ -389,6 +530,7 @@ func _start_gameplay(world: World, session: Session) -> void:
 	# saw a blank screen with HUD only. Root attach uses the project's
 	# default World3D + Camera3D from the gameplay_runtime scene.
 	get_tree().root.add_child(_gameplay_runtime)
+	gameplay_runtime_created.emit(_gameplay_runtime)
 	if _rules_runtime != null and _rule_compiler != null \
 			and _gameplay_runtime.has_method("setup_rules"):
 		_gameplay_runtime.setup_rules(_rules_runtime, _rule_compiler)
@@ -427,7 +569,25 @@ func _start_gameplay(world: World, session: Session) -> void:
 		var combat_on: bool = policy != null and policy.combat_enabled
 		var filtered := _npc_loader.filtered_for_policy(raw_npcs, combat_on)
 		_gameplay_runtime.setup_npcs(filtered)
-	_gameplay_runtime.start_session(world, session)
+		if _gameplay_runtime.has_method("setup_npc_llm"):
+			_gameplay_runtime.setup_npc_llm(_llm, _moderation)
+
+	# VS-026: Connect save signal so sandbox state persists on session end.
+	if _gameplay_runtime.has_signal("session_save_requested") \
+			and not _gameplay_runtime.is_connected("session_save_requested", _on_session_save_requested):
+		_gameplay_runtime.session_save_requested.connect(_on_session_save_requested)
+	# VS-026: Pass sandbox state to restore player position, inventory, etc.
+	_gameplay_runtime.start_session(world, session, sandbox_state)
+	if local_coop:
+		_spawn_split_screen()
+
+
+## GameplayRuntime emits its final state before teardown so the save contains
+## the real player position and placed objects, not a half-freed fallback.
+func _on_session_save_requested(state: SandboxState) -> void:
+	if _sandbox_persistence == null or state == null or state.is_empty():
+		return
+	_sandbox_persistence.save_sandbox(state)
 
 
 ## Wave 3 W3-A/B: terminal-state handler — branches the celebration UI
@@ -442,7 +602,7 @@ func _on_session_outcome(outcome: WinOutcome) -> void:
 		if _celebration_layer != null:
 			_celebration_layer.visible = true
 		if _celebration_title != null:
-			_celebration_title.text = "Wygrana!"  # localized further in W3-A6 HUD pass
+			_celebration_title.text = _t("ui.play.outcome.win")
 	else:
 		# Lose: show the existing session-end panel with reason copy.
 		if _session_end_panel != null:
@@ -450,9 +610,9 @@ func _on_session_outcome(outcome: WinOutcome) -> void:
 		if _session_end_title != null:
 			match outcome.reason:
 				WinOutcome.REASON_TIMEOUT:
-					_session_end_title.text = "Czas się skończył"
+					_session_end_title.text = _t("ui.play.outcome.timeout")
 				_:
-					_session_end_title.text = "Spróbuj jeszcze raz"
+					_session_end_title.text = _t("ui.play.outcome.retry")
 
 
 ## Resolve the policy to apply for this session. CLAUDE.md
@@ -466,18 +626,14 @@ func _resolve_policy_for_session() -> ParentalControlPolicy:
 	if _policy_store == null or _profile == null:
 		# Tampered/missing store or no profile — strict deny.
 		return ParentalControlPolicy.deny_all()
+	# has_policy distinguishes a brand-new kid (nothing on disk → friendly
+	# first-run default, combat on) from a present-but-unreadable policy
+	# (tamper/wrong key → load_policy fails closed to deny_all). The encrypted
+	# vault returns deny_all() for BOTH absence and tamper, so a stored==null
+	# check alone silently bricked combat on every first session.
+	var has_stored: bool = _policy_store.has_policy(_profile.profile_id)
 	var stored: ParentalControlPolicy = _policy_store.load_policy(_profile.profile_id)
-	# Adv V #4 — type-check the returned value. A corrupted vault
-	# returning a wrong-type Object would bypass the null check.
-	# Defensive: trust nothing about decryption output.
-	if stored == null or not (stored is ParentalControlPolicy):
-		# Brand-new kid profile (or corrupt store), never been to
-		# parent zone. Friendly default (Adv P A2 fix) — 60-min
-		# daily + 30-min session + combat on with wave cap 5 —
-		# instead of the 1-min deny_all brick. Parent still sees
-		# this in audit + can lock it down anytime.
-		return ParentalControlPolicy.default_for_first_run()
-	return stored
+	return ParentalControlPolicy.resolve_for_session(has_stored, stored)
 
 
 func _is_autoplay_session() -> bool:
@@ -500,7 +656,21 @@ func _permissive_autoplay_policy() -> ParentalControlPolicy:
 	)
 
 
+func _spawn_split_screen() -> void:
+	if _gameplay_runtime == null:
+		return
+	_split_screen = SplitScreenRuntime.new().setup(_gameplay_runtime)
+	get_tree().root.add_child(_split_screen)
+	# Second player joins once the world + P1 exist this frame.
+	_split_screen.call_deferred("attach_second_player")
+
+
 func _on_session_ended() -> void:
+	# VS-026: Save sandbox state before tearing down
+	_save_sandbox_state()
+	if _split_screen != null:
+		_split_screen.teardown()
+		_split_screen = null
 	if _gameplay_runtime != null:
 		_gameplay_runtime.queue_free()
 		_gameplay_runtime = null
@@ -687,6 +857,9 @@ func _t(key: String) -> String:
 		"ui.common.safe_restore": "Przywróć bezpieczny zapis",
 		"ui.play.go_create": "Wróć do tworzenia",
 		"ui.play.go_library": "Przejdź do biblioteki",
+		"ui.play.outcome.win": "Wygrana!",
+		"ui.play.outcome.timeout": "Czas się skończył",
+		"ui.play.outcome.retry": "Spróbuj jeszcze raz",
 		"play.error.no_world": "Najpierw stwórz świat.",
 		"play.error.load_failed": "Świat nie wczytał się.",
 		"play.error.create_first": "Najpierw stwórz świat!",
@@ -761,8 +934,10 @@ func _play_world_music(template_id: String) -> void:
 		"forest":
 			bank.play_music("mushroom_forest", true)
 		"adventure":
-			if not bank.play_phonk_random(true):
-				bank.play_music("sigma_protocol", true)
+			# The sandbox needs a continuous, welcoming exploration bed. The
+			# previous random phonk fallback made the world feel like a menu and
+			# could be silent when the optional pack was not imported.
+			bank.play_music("adventure_island", true)
 		_:
 			bank.play_music("sigma_protocol", true)
 

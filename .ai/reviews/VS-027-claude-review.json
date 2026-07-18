@@ -1,0 +1,7 @@
+{
+  "task_id": "VS-027",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [],
+  "summary": "Verified the third-person creative block placement restoration. Checked right-click handling at the camera target, input map integration, and separation between creative building and combat modes. The automated checks pass."
+}

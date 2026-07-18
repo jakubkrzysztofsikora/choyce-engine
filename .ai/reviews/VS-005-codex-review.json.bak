@@ -1,0 +1,78 @@
+{
+  "task_id": "VS-005",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "message": "Crosshair tinting when enemy in range NOT IMPLEMENTED - comment only at gameplay_runtime.gd:2141, no actual tinting logic",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:2141"
+    },
+    {
+      "severity": "high",
+      "message": "combat_difficulty field NOT serialized in ParentalControlPolicy.to_dict() - missing from serialization at line 78-88",
+      "path": "src/domain/identity_safety/parental_control_policy.gd:78-88"
+    },
+    {
+      "severity": "high",
+      "message": "combat_difficulty field NOT deserialized in ParentalControlPolicy.from_dict() - missing from deserialization at line 145-155",
+      "path": "src/domain/identity_safety/parental_control_policy.gd:145-155"
+    },
+    {
+      "severity": "info",
+      "message": "EASY mode HP/damage scaling IS implemented correctly in gameplay_runtime.gd:1246-1248",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:1246-1248"
+    },
+    {
+      "severity": "info",
+      "message": "WINDUP state implemented with proper telegraph timing (0.8s mob / 1.2s boss)",
+      "path": "src/adapters/inbound/gameplay/enemy_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Emission-spike white flash on hit (snap to white + emission, 80ms hold)",
+      "path": "src/adapters/inbound/gameplay/enemy_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Squash + stretch animation on enemy hit (1.3, 0.65, 1.3)",
+      "path": "src/adapters/inbound/gameplay/enemy_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Combo system with window-based cooldown (0.5s window, faster combo swings)",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Increased punch squash (1.18, 0.86, 1.18)",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Soft aim assist (60% snap toward nearest enemy within ~28 degrees)",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Damage number scale-pop animation (0.2 -> 1.4 -> 1.0)",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Hit-stop on EVERY hit-connect (35ms mob / 60ms boss)",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Phase-aware feedback (kicks get 2x knockback, bigger shake, longer hit-stop)",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Directional camera shake",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    }
+  ],
+  "summary": "BLOCKING: 3 critical issues prevent approval. Crosshair tinting not implemented (only comment). combat_difficulty not serialized in to_dict()/from_dict(). EASY mode scaling IS implemented correctly. All other combat feedback features (windup, squash, combo, aim assist, damage numbers, hit-stop, camera shake) are properly implemented."
+}

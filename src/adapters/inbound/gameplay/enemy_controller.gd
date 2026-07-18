@@ -18,12 +18,15 @@ signal defeated(enemy_id: String, position: Vector3, loot: Array)
 
 const GRAVITY := 18.0           ## m/s^2 — slightly heavier than player for snappy bounce
 const BOUNCE_INTERVAL := 1.2    ## SLIME hops every N seconds
-const BOUNCE_VELOCITY := 5.0
-const BOUNCER_VELOCITY := 7.5
+const BOUNCE_VELOCITY := 3.8
+const BOUNCER_VELOCITY := 5.0
 const BOUNCER_INTERVAL := 0.9
+const CONTACT_ATTACK_WINDUP := 0.32
+const CONTACT_ATTACK_COOLDOWN := 1.1
+const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
 
 
-enum State { IDLE, WANDER, CHASE, HURT, DEFEAT }
+enum State { IDLE, WANDER, CHASE, WINDUP, HURT, DEFEAT }
 
 
 var definition: EnemyDefinition
@@ -31,12 +34,26 @@ var health: HealthState
 var _state: State = State.IDLE
 var _bounce_cooldown: float = 0.0
 var _hurt_remaining: float = 0.0
+## Adv BB P0-2: telegraph wind-up before attack
+var _telegraph_remaining: float = 0.0
+const WINDUP_DURATION := 0.8
+const BOSS_WINDUP_DURATION := 1.2
 var _player_ref: Node3D
 var _wander_target: Vector3 = Vector3.ZERO
 var _wander_remaining: float = 0.0
 var _spawn_origin: Vector3 = Vector3.ZERO
+## `_mesh` is retained as the low-cost fallback and collision-scale reference.
+## Normal Adventure encounters replace it with a real local creature model.
 var _mesh: MeshInstance3D
+var _visual_root: Node3D
+var _visual_base_scale: Vector3 = Vector3.ONE
+var _liminal_materials: Array[StandardMaterial3D] = []
 var _collision: CollisionShape3D
+var _ground_shadow: MeshInstance3D
+var _attack_marker: MeshInstance3D
+var _facial_performance
+var _contact_attack_remaining: float = 0.0
+var _contact_attack_cooldown: float = 0.0
 ## Boolean guard — `_collision.set_deferred("disabled", true)` alone
 ## is racy on Godot 4.6.2: a second damage source in the same tick
 ## can re-enter _on_defeat before the deferred call lands and
@@ -76,7 +93,9 @@ func _build_visuals() -> void:
 	_collision.shape = shape
 	add_child(_collision)
 
-	# Mesh — procedural sphere or capsule, tinted by definition.tint.
+	# Keep a tiny primitive only as a safe fallback. The playable Adventure uses
+	# the approved local model below: the previous green/pink sphere/capsule
+	# bodies were the exact "mystery balls" reported in the playtest.
 	_mesh = MeshInstance3D.new()
 	var mesh_res: Mesh
 	if definition.archetype == EnemyDefinition.Archetype.BOUNCER:
@@ -87,7 +106,9 @@ func _build_visuals() -> void:
 	else:
 		var sph := SphereMesh.new()
 		sph.radius = radius
-		sph.height = radius * 2.0
+		# A slightly squashed jelly silhouette reads as a character instead of
+		# an unexplained floating ball.
+		sph.height = radius * 1.65
 		mesh_res = sph
 	_mesh.mesh = mesh_res
 	var mat := StandardMaterial3D.new()
@@ -95,6 +116,167 @@ func _build_visuals() -> void:
 	mat.roughness = 0.7
 	_mesh.material_override = mat
 	add_child(_mesh)
+	_visual_root = _build_liminal_visual(is_boss)
+	if _visual_root == null:
+		# Degraded mode must still read as a creature instead of an unlabelled
+		# projectile. This only executes when the bundled model is unavailable.
+		_visual_root = _mesh
+		_build_face(_mesh, radius)
+		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.new()
+		_facial_performance.name = "FacialPerformance"
+		_mesh.add_child(_facial_performance)
+		_facial_performance.setup_face(Vector3(0.0, 0.0, -radius * 0.88), -radius * 0.88, 0.72, false, false)
+	else:
+		_mesh.visible = false
+	_visual_base_scale = _visual_root.scale
+	_build_ground_shadow(radius)
+	_build_attack_marker(radius)
+
+	# Keep the controller grounded on the large authored terrain even when a
+	# bounce ends on a seam between the runtime floor and a template surface.
+	floor_snap_length = 0.35
+	safe_margin = 0.04
+
+
+## Load the local low-poly skeleton as an original, non-gory liminal watcher.
+## It preserves the model's authored mesh/material detail and puts a pair of
+## restrained emissive eyes at the actual head height, so it reads as a living
+## encounter instead of a UI-coloured physics primitive.
+func _build_liminal_visual(is_boss: bool) -> Node3D:
+	if definition == null or definition.mesh_asset_id.is_empty():
+		return null
+	if not ResourceLoader.exists(definition.mesh_asset_id):
+		push_warning("Enemy model missing: %s" % definition.mesh_asset_id)
+		return null
+	var packed := load(definition.mesh_asset_id) as PackedScene
+	if packed == null:
+		push_warning("Enemy model could not load: %s" % definition.mesh_asset_id)
+		return null
+	var model := packed.instantiate() as Node3D
+	if model == null:
+		return null
+	model.name = "LiminalWatcherVisual"
+	# The source rig is authored with its feet at local zero. Its conventional
+	# front is +Z, while CharacterBody3D movement faces -Z.
+	model.rotation.y = PI
+	# The bundled skeleton is authored far taller than the 1.8m player. Keep
+	# ordinary encounters slightly above player height; even bosses must not fill
+	# the opening camera or look like a broken giant.
+	model.scale = Vector3.ONE * (0.34 if is_boss else 0.22)
+	_tint_liminal_materials(model)
+	_add_liminal_eyes(model, is_boss)
+	add_child(model)
+	return model
+
+
+func _tint_liminal_materials(root: Node) -> void:
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			var mesh_node := child as MeshInstance3D
+			if mesh_node.mesh != null:
+				for surface in range(mesh_node.mesh.get_surface_count()):
+					var source := mesh_node.get_active_material(surface)
+					var styled: StandardMaterial3D = null
+					if source is StandardMaterial3D:
+						styled = (source as StandardMaterial3D).duplicate() as StandardMaterial3D
+					else:
+						styled = StandardMaterial3D.new()
+					# Tint only slightly; keep source texture/shape readable and avoid
+					# the oversaturated neon palette from the prototype.
+					styled.albedo_color = styled.albedo_color.lerp(definition.tint, 0.28)
+					styled.roughness = maxf(styled.roughness, 0.52)
+					mesh_node.set_surface_override_material(surface, styled)
+					_liminal_materials.append(styled)
+		for nested in child.get_children():
+			_tint_liminal_materials(nested)
+
+
+func _add_liminal_eyes(model: Node3D, is_boss: bool) -> void:
+	var eye_mat := StandardMaterial3D.new()
+	eye_mat.albedo_color = Color(0.88, 0.94, 1.0)
+	eye_mat.emission_enabled = true
+	eye_mat.emission = Color(0.20, 0.62, 1.0) if not is_boss else Color(0.78, 0.22, 0.95)
+	eye_mat.emission_energy_multiplier = 2.0 if not is_boss else 2.8
+	eye_mat.roughness = 0.25
+	for x in [-0.105, 0.105]:
+		var eye := MeshInstance3D.new()
+		var eye_mesh := SphereMesh.new()
+		eye_mesh.radius = 0.055
+		eye_mesh.height = 0.11
+		eye.mesh = eye_mesh
+		eye.material_override = eye_mat
+		# The imported rig has a 1.65m head centre; position is local to the
+		# model, so it stays anchored as its scale changes.
+		eye.position = Vector3(x, 1.54, -0.19)
+		model.add_child(eye)
+
+
+func _visual_target() -> Node3D:
+	return _visual_root if _visual_root != null and is_instance_valid(_visual_root) else _mesh
+
+
+func _reset_visual_scale() -> void:
+	var visual := _visual_target()
+	if visual != null:
+		visual.scale = _visual_base_scale
+
+
+func _build_face(parent: Node3D, radius: float) -> void:
+	var eye_mat := StandardMaterial3D.new()
+	eye_mat.albedo_color = Color(0.03, 0.04, 0.08)
+	eye_mat.roughness = 0.45
+	for x in [-0.14, 0.14]:
+		var eye := MeshInstance3D.new()
+		var eye_mesh := SphereMesh.new()
+		eye_mesh.radius = 0.065
+		eye_mesh.height = 0.13
+		eye.mesh = eye_mesh
+		eye.material_override = eye_mat
+		eye.position = Vector3(x, 0.08, -radius * 0.82)
+		parent.add_child(eye)
+
+	var mouth := MeshInstance3D.new()
+	var mouth_mesh := BoxMesh.new()
+	mouth_mesh.size = Vector3(0.18, 0.035, 0.035)
+	mouth.mesh = mouth_mesh
+	mouth.material_override = eye_mat
+	mouth.position = Vector3(0, -0.10, -radius * 0.83)
+	parent.add_child(mouth)
+
+
+func _build_ground_shadow(radius: float) -> void:
+	_ground_shadow = MeshInstance3D.new()
+	_ground_shadow.name = "GroundShadow"
+	var shadow_mesh := CylinderMesh.new()
+	shadow_mesh.top_radius = radius * 1.15
+	shadow_mesh.bottom_radius = radius * 1.15
+	shadow_mesh.height = 0.025
+	_ground_shadow.mesh = shadow_mesh
+	var shadow_mat := StandardMaterial3D.new()
+	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shadow_mat.albedo_color = Color(0.02, 0.04, 0.08, 0.24)
+	_ground_shadow.material_override = shadow_mat
+	_ground_shadow.top_level = true
+	add_child(_ground_shadow)
+
+
+func _build_attack_marker(radius: float) -> void:
+	_attack_marker = MeshInstance3D.new()
+	_attack_marker.name = "AttackTelegraph"
+	var marker_mesh := CylinderMesh.new()
+	marker_mesh.top_radius = radius * 1.35
+	marker_mesh.bottom_radius = radius * 1.35
+	marker_mesh.height = 0.025
+	_attack_marker.mesh = marker_mesh
+	var marker_mat := StandardMaterial3D.new()
+	marker_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	marker_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	marker_mat.albedo_color = Color(1.0, 0.78, 0.18, 0.8)
+	_attack_marker.material_override = marker_mat
+	_attack_marker.position.y = -radius + 0.04
+	_attack_marker.visible = false
+	add_child(_attack_marker)
 
 
 func _physics_process(delta: float) -> void:
@@ -102,6 +284,7 @@ func _physics_process(delta: float) -> void:
 		return
 	health.tick(delta)
 	_hurt_remaining = maxf(_hurt_remaining - delta, 0.0)
+	_contact_attack_cooldown = maxf(_contact_attack_cooldown - delta, 0.0)
 
 	# Gravity
 	if not is_on_floor():
@@ -109,41 +292,58 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = 0.0
 
-	match _state:
-		State.IDLE:
-			_state_idle(delta)
-		State.WANDER:
-			_state_wander(delta)
-		State.CHASE:
-			_state_chase(delta)
-		State.HURT:
-			_state_hurt(delta)
-		State.DEFEAT:
-			pass
+	if _contact_attack_remaining > 0.0:
+		_contact_attack_remaining -= delta
+		velocity.x = move_toward(velocity.x, 0.0, 20.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, 20.0 * delta)
+		if _contact_attack_remaining <= 0.0:
+			_perform_contact_attack()
+	else:
+		match _state:
+			State.IDLE:
+				_state_idle(delta)
+			State.WANDER:
+				_state_wander(delta)
+			State.CHASE:
+				_state_chase(delta)
+			State.WINDUP:
+				_state_windup(delta)
+			State.HURT:
+				_state_hurt(delta)
+			State.DEFEAT:
+				pass
 
 	move_and_slide()
+	if _ground_shadow != null and is_instance_valid(_ground_shadow):
+		_ground_shadow.global_position = Vector3(global_position.x, 0.015, global_position.z)
 	_check_aggro()
 
 
-func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO) -> bool:
+func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO, attack_style: String = "punch") -> bool:
 	if not health.apply_damage(amount):
 		return false
 	emit_signal("damaged", health.current_hp)
 	emit_signal("damaged_with_amount", amount, global_position + Vector3(0, 0.4, 0))
 	_state = State.HURT
 	_hurt_remaining = 0.2
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.HURT, 0.42)
+	# Adv Y H5 fix: kicks get 2x knockback
+	var knockback_mult := 2.0 if attack_style == "kick" else 1.0
 	# Knockback away from attacker
 	if knockback_from != Vector3.ZERO:
 		var away := (global_position - knockback_from).normalized()
 		away.y = 0.0
-		velocity = away * 6.0
-		velocity.y = 3.0
+		velocity = away * 6.0 * knockback_mult
+		velocity.y = 3.0 * knockback_mult
 	# Adv Y C3 fix — emission-spike white flash (visible on green AND
 	# purple BIG_SLIME). Previous pale-pink (1.0, 0.85, 0.85) tint
 	# was invisible on green slime tint. Snap to pure white + emission
 	# spike for 50ms, then linear-fade back over 120ms. Holds the
 	# bright frame long enough for the kid's eye to register "WHACK"
-	# before the colour returns to the original tint.
+	# Adv Y C3 fix: emission-spike white flash with 80ms hold + snap-back.
+	# Previous pale-pink (1.0, 0.85, 0.85) tint was invisible on green slime.
+	# Snap to pure white + emission spike, hold 80ms, then snap back instantly.
 	if _mesh != null and _mesh.material_override is StandardMaterial3D:
 		var mat: StandardMaterial3D = _mesh.material_override
 		var original_color := mat.albedo_color
@@ -154,18 +354,27 @@ func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO) -> bool:
 		mat.emission_enabled = true
 		mat.emission = Color.WHITE
 		mat.emission_energy_multiplier = 1.5
+		# Adv Y M2 fix: vertical squash + horizontal stretch on hit reads as "OOF"
+		# Parallel-tween with the emission flash for simultaneous visual feedback
+		var visual := _visual_target()
+		var original_scale := visual.scale if visual != null else Vector3.ONE
+		var squash_tween := create_tween().set_parallel(true)
+		if visual != null:
+			squash_tween.tween_property(visual, "scale",
+				original_scale * Vector3(1.3, 0.65, 1.3), 0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			squash_tween.tween_property(visual, "scale",
+				original_scale, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		var tween := create_tween()
-		# Hold the bright frame.
-		tween.tween_interval(0.05)
-		# Linear-fade albedo + emission energy back to original.
-		tween.parallel().tween_property(mat, "albedo_color", original_color, 0.12)
-		tween.parallel().tween_property(mat, "emission_energy_multiplier",
-			original_emission_energy, 0.12)
+		# Hold the bright frame for 80ms so the eye registers "WHACK"
+		tween.tween_interval(0.08)
 		tween.tween_callback(func() -> void:
 			if mat == null:
 				return
+			# Snap back to original in one frame (no tween)
+			mat.albedo_color = original_color
 			mat.emission = original_emission
 			mat.emission_enabled = original_emission_enabled
+			mat.emission_energy_multiplier = original_emission_energy
 		)
 	if not health.is_alive:
 		_on_defeat()
@@ -186,11 +395,12 @@ func _on_defeat() -> void:
 	# Shrink-out anim (kid-safe — no rag doll). If end_session frees
 	# the node mid-tween, the post-await check prevents calling
 	# queue_free on an already-freed instance (Adv 6 #1).
-	if _mesh == null or not is_instance_valid(_mesh):
+	var visual := _visual_target()
+	if visual == null or not is_instance_valid(visual):
 		queue_free()
 		return
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(_mesh, "scale", Vector3.ZERO, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tween.tween_property(visual, "scale", Vector3.ZERO, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "global_position",
 		global_position + Vector3(0, 0.5, 0), 0.3)
 	await tween.finished
@@ -230,10 +440,8 @@ func _state_chase(delta: float) -> void:
 		return
 	var to_player := _player_ref.global_position - global_position
 	to_player.y = 0.0
-	if to_player.length() < 0.6:
-		# In contact range — try contact-damage on player via callback metadata.
-		_try_contact_damage()
-		return
+	# Note: Contact attack is now triggered via WINDUP state (Adv BB P0-2)
+	# when enemy gets within attack range. This provides readable wind-up telegraph.
 	match definition.archetype:
 		EnemyDefinition.Archetype.BOUNCER:
 			_bounce_toward(to_player, BOUNCER_VELOCITY, BOUNCER_INTERVAL, delta)
@@ -244,6 +452,56 @@ func _state_chase(delta: float) -> void:
 func _state_hurt(_delta: float) -> void:
 	if _hurt_remaining <= 0.0:
 		_state = State.CHASE if _player_in_range() else State.WANDER
+
+
+## Adv BB P0-2: WINDUP state for attack telegraph
+func _state_windup(delta: float) -> void:
+	_telegraph_remaining -= delta
+	# Keep facing the player during wind-up
+	if _player_ref != null:
+		var to_player := _player_ref.global_position - global_position
+		to_player.y = 0.0
+		if to_player.length_squared() > 0.0001:
+			look_at(_player_ref.global_position + Vector3(0, 0.5, 0), Vector3.UP)
+		# If player moves out of attack range, abort wind-up and return to chase
+		if to_player.length() > 1.0:  # Slightly larger threshold for hysteresis
+			_state = State.CHASE
+			# Reset color
+			if _mesh != null and _mesh.material_override is StandardMaterial3D:
+				var mat: StandardMaterial3D = _mesh.material_override
+				if mat.has_meta("original_color"):
+					mat.albedo_color = mat.get_meta("original_color")
+				else:
+					mat.albedo_color = definition.tint
+			_reset_visual_scale()
+	if _telegraph_remaining <= 0.0:
+		# Wind-up complete, trigger attack
+		_begin_contact_attack()
+		# Reset visuals after attack
+		if _mesh != null and _mesh.material_override is StandardMaterial3D:
+			var mat: StandardMaterial3D = _mesh.material_override
+			if mat.has_meta("original_color"):
+				mat.albedo_color = mat.get_meta("original_color")
+			else:
+				mat.albedo_color = definition.tint
+		_reset_visual_scale()
+
+
+func _start_windup_visuals() -> void:
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.ANGRY, WINDUP_DURATION + 0.2)
+	# Scale up and tint red for wind-up
+	if _mesh != null and _mesh.material_override is StandardMaterial3D:
+		var mat: StandardMaterial3D = _mesh.material_override
+		# Store original color to restore later
+		if not mat.has_meta("original_color"):
+			mat.set_meta("original_color", mat.albedo_color)
+		mat.albedo_color = Color(1.0, 0.3, 0.3)  # Red tint
+		# Scale up
+		var visual := _visual_target()
+		if visual != null:
+			var windup_tween := create_tween()
+			windup_tween.tween_property(visual, "scale", _visual_base_scale * Vector3(1.3, 1.3, 1.3), 0.1)
 
 
 func _bounce_toward(direction: Vector3, magnitude: float, interval: float, delta: float) -> void:
@@ -263,6 +521,32 @@ func _try_contact_damage() -> void:
 		definition.contact_damage, global_position)
 
 
+func _begin_contact_attack() -> void:
+	if _contact_attack_cooldown > 0.0 or _contact_attack_remaining > 0.0:
+		return
+	_contact_attack_remaining = CONTACT_ATTACK_WINDUP
+	_contact_attack_cooldown = CONTACT_ATTACK_COOLDOWN
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.FOCUSED, CONTACT_ATTACK_WINDUP + 0.2)
+	if _attack_marker != null and is_instance_valid(_attack_marker):
+		_attack_marker.visible = true
+		_attack_marker.scale = Vector3(0.65, 1.0, 0.65)
+		var tween := create_tween()
+		tween.tween_property(_attack_marker, "scale", Vector3.ONE, CONTACT_ATTACK_WINDUP)
+		tween.tween_callback(func() -> void:
+			if _attack_marker != null and is_instance_valid(_attack_marker):
+				_attack_marker.visible = false
+		)
+
+
+func _perform_contact_attack() -> void:
+	if _player_ref == null or not is_instance_valid(_player_ref):
+		return
+	if global_position.distance_to(_player_ref.global_position) > 1.35:
+		return
+	_try_contact_damage()
+
+
 func _pick_wander_target() -> void:
 	var angle := randf() * TAU
 	var radius := randf_range(2.0, 4.5)
@@ -272,12 +556,19 @@ func _pick_wander_target() -> void:
 func _check_aggro() -> void:
 	if _player_ref == null:
 		return
-	if _state == State.HURT or _state == State.DEFEAT:
+	if _state == State.HURT or _state == State.DEFEAT or _state == State.WINDUP:
 		return
 	if definition.disposition == EnemyDefinition.Disposition.PASSIVE:
 		return
 	var dist := global_position.distance_to(_player_ref.global_position)
-	if dist <= definition.aggro_radius:
+	# Adv BB P0-2: enter WINDUP when in attack range (closer than aggro)
+	var attack_threshold := 0.8  # Distance to start wind-up
+	if dist <= attack_threshold and _state != State.WINDUP:
+		_state = State.WINDUP
+		_telegraph_remaining = BOSS_WINDUP_DURATION if definition.archetype == EnemyDefinition.Archetype.BIG_SLIME else WINDUP_DURATION
+		# Start visual wind-up: scale up and tint red
+		_start_windup_visuals()
+	elif dist <= definition.aggro_radius:
 		if _state != State.CHASE:
 			_state = State.CHASE
 	elif _state == State.CHASE and dist > definition.aggro_radius * 1.5:

@@ -1,0 +1,7 @@
+{
+  "task_id": "VS-003",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [],
+  "summary": "Verified that _spawn_one_npc correctly adds the NPC node to the scene tree (_npc_root.add_child(root)) before modifying transforms/positions, effectively preventing any !is_inside_tree errors during Adventure startup."
+}

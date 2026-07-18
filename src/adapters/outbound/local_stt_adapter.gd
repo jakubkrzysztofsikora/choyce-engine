@@ -10,7 +10,7 @@ func setup(model_path: String = "user://models/whisper-tiny-pl.gguf") -> LocalST
 	_model_path = model_path
 	return self
 
-func transcribe(audio: PackedByteArray, language: String = "") -> String:
+func transcribe(audio: PackedByteArray, language: String) -> String:
 	# Use provided language or fall back to instance default (don't mutate state)
 	var effective_language := language if language != "" else _language
 

@@ -23,6 +23,7 @@ func _run() -> void:
 	await _test_create_pressed_signal()
 	await _test_parent_pressed_signal()
 	await _test_setup_no_error()
+	await _test_setup_refreshes_visible_polish_labels()
 	await _test_show_world_picker_visible()
 	await _test_show_world_picker_populates_cards()
 	await _test_world_card_pressed_signal()
@@ -100,6 +101,25 @@ func _test_setup_no_error() -> void:
 		quit(1)
 		return
 	print("PASS M4: setup() completed without error")
+	screen.queue_free()
+
+
+## The real composition root injects localization after LandingScreen._ready.
+## Ensure that late DI replaces placeholder key text on the visible controls.
+func _test_setup_refreshes_visible_polish_labels() -> void:
+	var screen := LandingScreen.new()
+	get_root().add_child(screen)
+	await process_frame
+	screen.setup(PlayerProfile.new("kid_1", PlayerProfile.Role.KID), MockProjectStore.new(), PolishLocalizationPolicy.new())
+	var title := screen.get_node_or_null("TitleLabel") as Label
+	if title == null or screen._btn_play.text == "landing.play" \
+			or screen._btn_create.text == "landing.create" \
+			or title.text != "Ziemek i Gniewko: Demo":
+		print("FAIL: late localization injection left raw launcher keys visible")
+		screen.queue_free()
+		quit(1)
+		return
+	print("PASS: late localization injection refreshes the visible demo launcher labels")
 	screen.queue_free()
 
 

@@ -28,6 +28,7 @@ var _card_row: HBoxContainer
 
 func _ready() -> void:
 	_build_scene_tree()
+	_refresh_localized_text()
 	_apply_theme()
 	_start_cloud_drift()
 	_wire_buttons()
@@ -40,7 +41,23 @@ func setup(profile, project_store, localization) -> LandingScreen:
 	_profile = profile
 	_project_store = project_store
 	_localization = localization
+	# The shell's _ready() runs before Main injects its policies. Refresh the
+	# already-built controls here so the first real frame never exposes raw
+	# localization keys such as "landing.play".
+	_refresh_localized_text()
 	return self
+
+
+func _refresh_localized_text() -> void:
+	var title := get_node_or_null("TitleLabel") as Label
+	if title != null:
+		title.text = _t("landing.title")
+	if _btn_play != null:
+		_btn_play.text = _t("landing.play")
+	if _btn_create != null:
+		_btn_create.text = _t("landing.create")
+	if _btn_parent != null:
+		_btn_parent.text = _t("landing.parent")
 
 
 # ---------- scene construction ----------
@@ -280,8 +297,9 @@ func _start_landing_audio() -> void:
 		bank.play_music("sigma_protocol", true)
 	elif not bank.play_phonk_random(true):
 		bank.play_music("landing_ambient", true)
-	await get_tree().create_timer(0.8).timeout
-	bank.play_voice("greet_landing")
+	# The think-demo launcher owns the first impression. Do not play the legacy
+	# "Cześć, jestem twoim ninja" greeting underneath its cinematic; character
+	# voices belong to the trailer/gameplay moments where they have context.
 
 
 func _audio_bank() -> Node:

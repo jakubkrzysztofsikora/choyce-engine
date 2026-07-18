@@ -1,7 +1,8 @@
 class_name SFXPlayer extends Node3D
 
 # SFX dispatcher — routes gameplay audio events to AudioBank-loaded streams.
-# Previously used synthesized tones (AudioStreamGenerator); now uses real assets.
+# Physical action cues are generated dry at runtime so they never inherit a
+# musical/spell-like tail from a generic ability or UI asset.
 
 var _audio_bus: AudioEventBus
 
@@ -25,6 +26,19 @@ func play(event_name: String, _position: Vector3 = Vector3.ZERO) -> void:
 	if bank == null:
 		return
 	match event_name:
+		"punch_thud":
+			if bank.has_method("play_melee_impact"):
+				bank.play_melee_impact("punch")
+			else:
+				bank.play_sfx("punch_thud")
+		"kick_impact":
+			if bank.has_method("play_melee_impact"):
+				bank.play_melee_impact("kick")
+			else:
+				bank.play_sfx("kick_impact")
+		"physical_swing_punch", "physical_swing_kick", "physical_swing_axe", "physical_swing_pickaxe", "tool_axe_wood", "tool_pickaxe_stone":
+			if bank.has_method("play_physical_action"):
+				bank.play_physical_action(event_name)
 		"jump":     bank.play_sfx("jump_up")
 		"land":     bank.play_sfx("land_soft")
 		"collect":  bank.play_sfx("collect_coin")
@@ -32,6 +46,8 @@ func play(event_name: String, _position: Vector3 = Vector3.ZERO) -> void:
 		"step":     bank.play_sfx("footstep_grass")
 		"ui_click": bank.play_sfx("ui_click")
 		"ui_back":  bank.play_sfx("ui_back")
+		"enemy_grunt": bank.play_sfx("enemy_grunt")
+		"swing_whoosh": bank.play_sfx("swing_whoosh")
 		_:
 			# Attempt a direct name match so future events resolve automatically
 			bank.play_sfx(event_name)

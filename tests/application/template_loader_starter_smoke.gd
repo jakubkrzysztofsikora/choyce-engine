@@ -18,7 +18,14 @@ func _init() -> void:
 		var world: World = project.worlds[0]
 		if world.scene_nodes.is_empty():
 			failures.append("%s: no scene nodes created" % template_id)
-		if world.game_rules.is_empty():
+		if template_id == "adventure":
+			if not world.game_rules.is_empty():
+				failures.append("adventure: sandbox must not seed compulsory rules")
+			var terrain: SceneNode = world.scene_nodes[0] as SceneNode
+			var size: Variant = terrain.properties.get("size", []) if terrain != null else []
+			if not (size is Array and (size as Array).size() >= 3 and float((size as Array)[0]) >= 2400.0 and float((size as Array)[2]) >= 2400.0):
+				failures.append("adventure: terrain must cover at least 2.4km × 2.4km")
+		elif world.game_rules.is_empty():
 			failures.append("%s: no game rules created" % template_id)
 
 	if failures.is_empty():

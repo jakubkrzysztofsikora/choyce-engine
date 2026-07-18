@@ -11,6 +11,7 @@ var _is_dyslexia_enabled: bool = false
 var _is_motor_enabled: bool = false
 var _captions_enabled: bool = false
 var _motor_scale_factor: float = 1.0
+var _reduce_motion_enabled: bool = false
 
 # Default configuration values
 const DYSLEXIA_FONT_NAME := "OpenDyslexic"
@@ -20,6 +21,9 @@ const META_ORIGINAL_MIN_SIZE := "_a11y_original_min_size"
 
 func setup(root_node: Node) -> GodotAccessibilityAdapter:
 	_root_node = root_node
+	
+	# Register as global instance for cross-module access
+	AccessibilityPolicyPort._global_instance = self
 	
 	# Initialize overlay
 	_overlay = CaptionsOverlay.new()
@@ -127,6 +131,18 @@ func show_caption(text: String, duration: float = 3.0) -> void:
 		_overlay.show_message(safe_text, duration)
 	else:
 		_overlay.call_deferred("show_message", safe_text, duration)
+
+
+## Enables or disables reduce-motion mode
+## When enabled, animations that could cause discomfort should be disabled or simplified
+## @param enabled: If true, reduce motion effects
+func set_reduce_motion(enabled: bool) -> void:
+	_reduce_motion_enabled = enabled
+
+
+## Returns whether reduce-motion mode is currently enabled
+func is_reduce_motion_enabled() -> bool:
+	return _reduce_motion_enabled
 
 
 func _apply_theme_overrides() -> void:

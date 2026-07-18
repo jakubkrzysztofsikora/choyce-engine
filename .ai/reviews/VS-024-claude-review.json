@@ -1,0 +1,7 @@
+{
+  "task_id": "VS-024",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [],
+  "summary": "Verified the facial performance implementation. Active characters can express emotions and blink. Mouth animations activate temporarily during NPC dialogue speech and clear cleanly afterwards. Checked automated script tests, which pass."
+}

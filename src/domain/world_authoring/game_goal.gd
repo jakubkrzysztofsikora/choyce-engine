@@ -59,6 +59,10 @@ func _init(
 func progress_ratio(ctx: Dictionary) -> float:
 	if target <= 0:
 		return 0.0
+	# Score-based collect goals (win_condition "score>=N", e.g. defeat-N-enemies)
+	# track the live score, not inventory — the bar fills as the kid scores.
+	if kind == KIND_COLLECT and win_condition.strip_edges().begins_with("score"):
+		return clampf(float(int(ctx.get("score", 0))) / float(target), 0.0, 1.0)
 	var current: int = 0
 	match kind:
 		KIND_COLLECT:

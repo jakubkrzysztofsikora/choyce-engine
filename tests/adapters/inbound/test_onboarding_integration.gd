@@ -25,14 +25,22 @@ func _setup() -> void:
     _test_scene = scene_pkg.instantiate()
     root.add_child(_test_scene)
 
-    # Inject mock ports - using dynamic mocks below
+    # Create event bus for onboarding service
+    var event_bus = load("res://src/domain/events/event_bus.gd").new()
+
+    # Inject mock ports and event bus - using dynamic mocks below
     _test_scene.setup(
         null, # Navigator
         profile,
         null, # Localization
         MockCreateProjectPort.new(),
         MockRunPlaytestPort.new(),
-        MockApplyWorldEditPort.new()
+        MockApplyWorldEditPort.new(),
+        null, # request_ai_help_port
+        null, # speech_to_text_port
+        null, # feature_flags
+        null, # voice_prompt
+        event_bus
     )
 
 func _run_tests() -> void:

@@ -73,17 +73,17 @@ func _run_tests() -> void:
     # Accessing private members via loose typing for test verification or checking children
     # Since _label is var, we can access it
     var label_text = badge._label.text
-    var label_modulate = badge._label.modulate
+    var label_color = badge._label.get_theme_color("font_color")
     
-    _assert(label_text == "Human", "Badge text is 'Human' (Found: " + label_text + ")")
+    _assert(label_text == "Człowiek", "Badge text is 'Człowiek' (Found: " + label_text + ")")
     # Approx comparison for color if needed, but exact should work
-    _assert(label_modulate.is_equal_approx(badge.COLOR_HUMAN), "Badge color is correct for Human")
+    _assert(label_color.is_equal_approx(badge.COLOR_HUMAN), "Badge color is correct for Human")
     
     var prov_ai = ProvenanceData.new(ProvenanceData.SourceType.AI_TEXT, "gpt-4", "audit-999")
     badge.set_provenance(prov_ai)
     
     label_text = badge._label.text
-    _assert(label_text == "AI (Text)", "Badge text is 'AI (Text)'")
+    _assert(label_text == "AI (Tekst)", "Badge text is 'AI (Tekst)'")
     
     var tooltip = badge.tooltip_text
     var has_model = tooltip.find("gpt-4") != -1

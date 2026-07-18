@@ -1,0 +1,149 @@
+{
+  "task_id": "VS-026",
+  "reviewer": "codex",
+  "decision": "ready_for_cross_review",
+  "findings": [
+    {
+      "severity": "high",
+      "message": "Fixed FileAccess.remove_file() compilation error - Godot 4.6 does not have this method on FileAccess. Changed to DirAccess.remove_absolute() which is the correct API.",
+      "path": "src/adapters/outbound/filesystem_session_progress_store.gd:87",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "Added setup() method for method chaining pattern, compatible with InMemorySessionProgressStore and other adapters.",
+      "path": "src/adapters/outbound/filesystem_session_progress_store.gd:18-19",
+      "status": "FIXED"
+    },
+    {
+      "severity": "medium",
+      "message": "Updated JSON serialization from instance method to static JSON.stringify() - Godot 4.6 deprecated print_indent property on JSON instances.",
+      "path": "src/adapters/outbound/filesystem_session_progress_store.gd:153-165",
+      "status": "FIXED"
+    },
+    {
+      "severity": "medium",
+      "message": "Fixed directory listing for Godot 4.6 - changed from get_next_filename() to get_next() pattern with list_dir_begin()/list_dir_end().",
+      "path": "src/adapters/outbound/filesystem_session_progress_store.gd:110-120",
+      "status": "FIXED"
+    },
+    {
+      "severity": "medium",
+      "message": "Changed ProgressState typed arrays (Array[String]) to untyped arrays to avoid Godot 4.6 RefCounted typed array assignment issues. Added duplicate(true) for deep copies during deserialization.",
+      "path": "src/domain/shared/progress_state.gd:8-9",
+      "status": "FIXED"
+    },
+    {
+      "severity": "medium",
+      "message": "Fixed score deserialization to handle int/float conversion from JSON.parse() which may return floats for integer values.",
+      "path": "src/adapters/outbound/filesystem_session_progress_store.gd:182-183",
+      "status": "FIXED"
+    },
+    {
+      "severity": "medium",
+      "message": "Updated main.gd to use FilesystemSessionProgressStore instead of InMemorySessionProgressStore for persistent storage.",
+      "path": "src/adapters/inbound/main.gd:379",
+      "status": "FIXED"
+    },
+    {
+      "severity": "low",
+      "message": "Added duplicate(true) when deserializing dictionaries and arrays to ensure deep copies and avoid reference sharing.",
+      "path": "src/adapters/outbound/filesystem_session_progress_store.gd:170-180",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 SandboxState wiring: Added _phase1_sandbox_persistence storage and injection in main.gd",
+      "path": "src/adapters/inbound/main.gd:420,1131-1133",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 SandboxState wiring: Added sandbox persistence variable and setup method to PlayShell",
+      "path": "src/adapters/inbound/scenes/play/play_shell.gd:37-122",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 SandboxState wiring: Added auto-resume logic in PlayShell._ready() and _try_auto_resume_sandbox()",
+      "path": "src/adapters/inbound/scenes/play/play_shell.gd:76,348-365",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 SandboxState wiring: Added save on session end in PlayShell._on_session_ended()",
+      "path": "src/adapters/inbound/scenes/play/play_shell.gd:517",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 SandboxState wiring: Added sandbox state extraction and loading methods to PlayShell",
+      "path": "src/adapters/inbound/scenes/play/play_shell.gd:367-419",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 SandboxState wiring: Added get_sandbox_state() and restore_sandbox_state() to GameplayRuntime",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:93-105",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 SandboxState wiring: Modified GameplayRuntime.start_session() to accept and restore sandbox state",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:391-417",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 New Game action: Added NewGameButton to play_shell.tscn, wired in play_shell.gd with confirmation dialog via AcceptDialog",
+      "path": "src/adapters/inbound/scenes/play/play_shell.tscn, src/adapters/inbound/scenes/play/play_shell.gd:63,309-330",
+      "status": "FIXED"
+    },
+    {
+      "severity": "high",
+      "message": "VS-026 New Game action: Added _on_new_game_requested() with confirmation and _on_new_game_confirmed() to clear sandbox",
+      "path": "src/adapters/inbound/scenes/play/play_shell.gd:422-438",
+      "status": "FIXED"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "progression_saves_to_disk": "PASS - ProgressState persists to user://saves/{profile_id}/{world_id}.json",
+      "reload_resumes_state": "PASS - load_progress() correctly deserializes saved state",
+      "clear_progress_works": "PASS - clear_progress() removes save files and returns true",
+      "list_player_progress_works": "PASS - Lists all JSON saves for a profile",
+      "corrupt_save_handling": "PASS - Empty/invalid files return empty ProgressState",
+      "no_blocking_modal": "PASS - All operations are synchronous without UI blocking",
+      "world_state_saves": "PASS - SandboxState (world, player position, inventory, placed blocks, progression) saves via FilesystemSandboxStore",
+      "auto_resume_on_relaunch": "PASS - PlayShell._ready() calls _try_auto_resume_sandbox() to load and resume saved state",
+      "save_on_session_end": "PASS - PlayShell._on_session_ended() calls _save_sandbox_state() to persist current state",
+      "new_game_clears_save": "PASS - NewGameButton with confirmation dialog clears sandbox via clear_sandbox_save()"
+    },
+    "hexagonal_boundaries": {
+      "implements_port_contract": "PASS - FilesystemSessionProgressStore extends SessionProgressStorePort",
+      "framework_agnostic_domain": "PASS - ProgressState and SandboxState remain RefCounted, adapters handle Godot specifics",
+      "dependency_injection": "PASS - main.gd injects concrete adapter via setup_sandbox_persistence()",
+      "sandbox_state_isolation": "PASS - SandboxState is domain value object, FilesystemSandboxStore is adapter"
+    },
+    "testing": {
+      "unit_tests_exist": "PASS - test_filesystem_session_progress_store.gd covers all methods",
+      "tests_pass": "PASS - All test cases pass (verified 2026-07-18)"
+    }
+  },
+  "summary": "VS-026 implementation complete and ready for claude cross-review. All compilation errors fixed, tests pass, and all acceptance criteria met. FilesystemSessionProgressStore correctly saves/loads ProgressState. SandboxState wiring complete: PlayShell auto-loads sandbox on startup, saves on session end, and passes sandbox state to GameplayRuntime for restoration. GameplayRuntime has get_sandbox_state() and restore_sandbox_state() methods. New Game action fully implemented with confirmation dialog via NewGameButton in play_shell.tscn.",
+  "date": "2026-07-18",
+  "files_changed": [
+    "src/adapters/outbound/filesystem_session_progress_store.gd",
+    "src/adapters/inbound/main.gd",
+    "src/domain/shared/progress_state.gd",
+    "tests/adapters/outbound/test_filesystem_session_progress_store.gd",
+    "src/adapters/inbound/scenes/play/play_shell.gd",
+    "src/adapters/inbound/scenes/play/play_shell.tscn",
+    "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+  ],
+  "files_created": [
+    "src/adapters/outbound/filesystem_session_progress_store.gd",
+    "tests/adapters/outbound/test_filesystem_session_progress_store.gd"
+  ],
+  "research_doc": ".ai/research-compendium/RESEARCH_VS-026_Sandbox_Persistence.md"
+}

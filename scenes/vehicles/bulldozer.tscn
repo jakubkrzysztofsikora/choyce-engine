@@ -1,0 +1,243 @@
+[gd_scene load_steps=22 format=3 uid="uid://new_bulldozer"]
+
+[ext_resource type="Script" path="res://src/adapters/inbound/gameplay/vehicles/bulldozer.gd" id="1_script"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_yellow"]
+albedo_color = Color(0.96, 0.58, 0.045, 1)
+metallic = 0.16
+roughness = 0.46
+
+[sub_resource type="StandardMaterial3D" id="Mat_dark"]
+albedo_color = Color(0.055, 0.065, 0.07, 1)
+metallic = 0.34
+roughness = 0.64
+
+[sub_resource type="StandardMaterial3D" id="Mat_steel"]
+albedo_color = Color(0.36, 0.39, 0.4, 1)
+metallic = 0.72
+roughness = 0.4
+
+[sub_resource type="StandardMaterial3D" id="Mat_glass"]
+transparency = 1
+albedo_color = Color(0.13, 0.5, 0.64, 0.62)
+metallic = 0.1
+roughness = 0.16
+
+[sub_resource type="StandardMaterial3D" id="Mat_light"]
+albedo_color = Color(1, 0.91, 0.48, 1)
+emission_enabled = true
+emission = Color(1, 0.72, 0.2, 1)
+emission_energy_multiplier = 1.8
+roughness = 0.2
+
+[sub_resource type="BoxMesh" id="Mesh_chassis"]
+material = SubResource("Mat_yellow")
+size = Vector3(2.05, 0.76, 3.12)
+
+[sub_resource type="BoxMesh" id="Mesh_engine"]
+material = SubResource("Mat_yellow")
+size = Vector3(1.72, 0.7, 1.35)
+
+[sub_resource type="BoxMesh" id="Mesh_grille"]
+material = SubResource("Mat_dark")
+size = Vector3(1.45, 0.48, 0.1)
+
+[sub_resource type="BoxMesh" id="Mesh_track"]
+material = SubResource("Mat_dark")
+size = Vector3(0.3, 0.72, 3.28)
+
+[sub_resource type="BoxMesh" id="Mesh_track_cap"]
+material = SubResource("Mat_steel")
+size = Vector3(0.34, 0.12, 3.05)
+
+[sub_resource type="BoxMesh" id="Mesh_cab_frame"]
+material = SubResource("Mat_yellow")
+size = Vector3(0.14, 1.35, 0.14)
+
+[sub_resource type="BoxMesh" id="Mesh_roof"]
+material = SubResource("Mat_yellow")
+size = Vector3(1.82, 0.16, 1.48)
+
+[sub_resource type="BoxMesh" id="Mesh_window_front"]
+material = SubResource("Mat_glass")
+size = Vector3(1.49, 0.82, 0.06)
+
+[sub_resource type="BoxMesh" id="Mesh_window_side"]
+material = SubResource("Mat_glass")
+size = Vector3(0.06, 0.82, 0.96)
+
+[sub_resource type="BoxMesh" id="Mesh_blade"]
+material = SubResource("Mat_steel")
+size = Vector3(2.85, 0.78, 0.2)
+
+[sub_resource type="BoxMesh" id="Mesh_arm"]
+material = SubResource("Mat_yellow")
+size = Vector3(0.15, 0.16, 1.28)
+
+[sub_resource type="SphereMesh" id="Mesh_lamp"]
+material = SubResource("Mat_light")
+radius = 0.14
+height = 0.24
+radial_segments = 12
+rings = 6
+
+[sub_resource type="BoxShape3D" id="Shape_chassis"]
+size = Vector3(2.16, 1.48, 3.34)
+
+[sub_resource type="BoxShape3D" id="Shape_blade"]
+size = Vector3(2.86, 0.78, 0.22)
+
+[sub_resource type="BoxShape3D" id="Shape_interaction"]
+size = Vector3(1.0, 1.9, 1.45)
+
+[sub_resource type="BoxShape3D" id="Shape_destroyer"]
+size = Vector3(2.7, 0.76, 0.54)
+
+[node name="Bulldozer" type="CharacterBody3D"]
+script = ExtResource("1_script")
+camera_follow_distance = 6.2
+camera_follow_height = 3.0
+
+[node name="Chassis" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.98, 0)
+mesh = SubResource("Mesh_chassis")
+
+[node name="EngineCover" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.42, -0.73)
+mesh = SubResource("Mesh_engine")
+
+[node name="FrontGrille" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.38, -1.44)
+mesh = SubResource("Mesh_grille")
+
+[node name="LeftTrackHousing" type="MeshInstance3D" parent="."]
+position = Vector3(-1.12, 0.63, 0)
+mesh = SubResource("Mesh_track")
+
+[node name="RightTrackHousing" type="MeshInstance3D" parent="."]
+position = Vector3(1.12, 0.63, 0)
+mesh = SubResource("Mesh_track")
+
+[node name="LeftTrackTop" type="MeshInstance3D" parent="."]
+position = Vector3(-1.12, 1.01, 0)
+mesh = SubResource("Mesh_track_cap")
+
+[node name="RightTrackTop" type="MeshInstance3D" parent="."]
+position = Vector3(1.12, 1.01, 0)
+mesh = SubResource("Mesh_track_cap")
+
+[node name="CabRoof" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.65, 0.83)
+mesh = SubResource("Mesh_roof")
+
+[node name="CabPillarFrontLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.78, 2.01, 0.18)
+mesh = SubResource("Mesh_cab_frame")
+
+[node name="CabPillarFrontRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.78, 2.01, 0.18)
+mesh = SubResource("Mesh_cab_frame")
+
+[node name="CabPillarRearLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.78, 2.01, 1.48)
+mesh = SubResource("Mesh_cab_frame")
+
+[node name="CabPillarRearRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.78, 2.01, 1.48)
+mesh = SubResource("Mesh_cab_frame")
+
+[node name="Windshield" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.03, 0.215)
+mesh = SubResource("Mesh_window_front")
+
+[node name="RearWindow" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.03, 1.445)
+mesh = SubResource("Mesh_window_front")
+
+[node name="LeftWindow" type="MeshInstance3D" parent="."]
+position = Vector3(-0.81, 2.03, 0.83)
+mesh = SubResource("Mesh_window_side")
+
+[node name="RightWindow" type="MeshInstance3D" parent="."]
+position = Vector3(0.81, 2.03, 0.83)
+mesh = SubResource("Mesh_window_side")
+
+[node name="Blade" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.76, -2.02)
+mesh = SubResource("Mesh_blade")
+
+[node name="BladeArmLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-0.93, 0.72, -1.45)
+rotation = Vector3(0, 0, -0.0872665)
+mesh = SubResource("Mesh_arm")
+
+[node name="BladeArmRight" type="MeshInstance3D" parent="."]
+position = Vector3(0.93, 0.72, -1.45)
+rotation = Vector3(0, 0, 0.0872665)
+mesh = SubResource("Mesh_arm")
+
+[node name="HeadlightLeftFixture" type="MeshInstance3D" parent="."]
+position = Vector3(-0.54, 1.52, -1.515)
+mesh = SubResource("Mesh_lamp")
+
+[node name="HeadlightRightFixture" type="MeshInstance3D" parent="."]
+position = Vector3(0.54, 1.52, -1.515)
+mesh = SubResource("Mesh_lamp")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.0, 0)
+shape = SubResource("Shape_chassis")
+
+[node name="BladeCollision" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.76, -2.02)
+shape = SubResource("Shape_blade")
+
+[node name="EntryPoint" type="Area3D" parent="."]
+position = Vector3(-1.63, 1.1, 0.72)
+collision_layer = 0
+collision_mask = 1
+monitoring = true
+monitorable = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EntryPoint"]
+shape = SubResource("Shape_interaction")
+
+[node name="ExitPoint" type="Area3D" parent="."]
+position = Vector3(1.73, 1.1, 0.72)
+collision_layer = 0
+collision_mask = 1
+monitoring = false
+monitorable = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ExitPoint"]
+shape = SubResource("Shape_interaction")
+
+[node name="DestroyerArea" type="Area3D" parent="."]
+position = Vector3(0, 0.76, -2.18)
+collision_layer = 0
+collision_mask = 1
+monitoring = true
+monitorable = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DestroyerArea"]
+shape = SubResource("Shape_destroyer")
+
+[node name="VehicleCamera" type="Camera3D" parent="."]
+position = Vector3(0, 3.8, 6.2)
+rotation = Vector3(-0.261799, 0, 0)
+current = false
+fov = 69.0
+
+[node name="Headlight_L" type="OmniLight3D" parent="."]
+position = Vector3(-0.54, 1.52, -1.62)
+light_color = Color(1, 0.82, 0.46, 1)
+light_energy = 1.2
+omni_range = 4.0
+visible = false
+
+[node name="Headlight_R" type="OmniLight3D" parent="."]
+position = Vector3(0.54, 1.52, -1.62)
+light_color = Color(1, 0.82, 0.46, 1)
+light_energy = 1.2
+omni_range = 4.0
+visible = false

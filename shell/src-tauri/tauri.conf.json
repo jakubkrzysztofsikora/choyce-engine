@@ -37,6 +37,9 @@
     "category": "Education",
     "shortDescription": "Kid-safe Polish-language game engine shell",
     "longDescription": "Choyce Engine shell — landing / library / parent zone / create chrome. Play mode runs in a Godot 4.6 sidecar.",
-    "resources": ["../src/messages/pl.json"]
+    "resources": ["../src/messages/pl.json"],
+    "externalBin": [
+      "binaries/play-engine"
+    ]
   }
 }

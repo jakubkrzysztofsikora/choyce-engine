@@ -39,6 +39,33 @@ if not API_KEY:
 MASCOT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 TTS_MODEL = "eleven_multilingual_v2"
 
+# Cinematic character voices created with ElevenLabs Voice Design: both are
+# youthful Polish-speaking male game characters, deliberately distinct from
+# the adult narrator voices used elsewhere in the app.
+CINEMATIC_VOICE_IDS = {
+    "ziemek": "xMkKy7yY4DLmATtMWDXw",
+    "gniewko": "i0EQYxsgYUqm1osBmKst",
+}
+CINEMATIC_LINES = {
+    "cinematic_ziemek_attack": ("ziemek", "Gniewko!"),
+    "cinematic_gniewko_ready": ("gniewko", "Ziemek!"),
+    "cinematic_ziemek_monster": ("ziemek", "Potwór!"),
+    "cinematic_gniewko_help": ("gniewko", "Uwaga!"),
+}
+
+# Core Adventure dialogue needs a shipped fallback because launching Godot from
+# Finder/the editor does not inherit a developer terminal's API-key variables.
+# These remain ElevenLabs recordings; the runtime HTTP adapter is reserved for
+# un-authored future dialogue.
+ADVENTURE_NPC_VOICE_LINES = {
+    "adventure_olek_greeting": ("TX3LPaxmHKxFdv7VOQHJ", "Hej! Jestem Olek. Wybierz kierunek i zobaczmy, co odkryjemy."),
+    "adventure_pablo_greeting": ("SOYHLrjzK2X1ezoPC6cr", "Arr! Jestem Pablo. Nie dotykaj mojego kompasu, ale rozejrzyj się do woli."),
+    "adventure_pestka_greeting": ("TX3LPaxmHKxFdv7VOQHJ", "Ćwir-ćwir! Jestem Pestka. Lubię śmiech, fale i błyszczące kamyki!"),
+    "adventure_olek_fart": ("TX3LPaxmHKxFdv7VOQHJ", "Ojej! Ten wiatr ma własny plan podróży!"),
+    "adventure_pablo_fart": ("SOYHLrjzK2X1ezoPC6cr", "Arrr! Jeszcze jeden taki podmuch i wymachnę szablą w powietrzu!"),
+    "adventure_pestka_fart": ("TX3LPaxmHKxFdv7VOQHJ", "Ćwir-haha! Pestka słyszała głośniejsze fale!"),
+}
+
 # Sigma-coded short declarative lines — calm authority, dry humor,
 # slight mystery. No yelling, no rage, no scary content. Reads like
 # a chill ninja sensei talking to a kid apprentice. PL only.
@@ -75,7 +102,12 @@ SFX_PROMPTS = {
     # hit-stop time-scale dip.
     "punch_thud":       "cartoon punch impact, soft padded thud, low-mid frequency whump, no metallic shimmer, no scream, kid-friendly cartoon style, 150ms",
     "kick_impact":      "cartoon kick impact, padded boot whump, slightly deeper than punch, soft low thud, no scream no gore, kid-friendly, 180ms",
-    "swing_whoosh":     "fast cartoon arm swing whoosh through air, soft airy sweep, descending pitch, no metallic blade, kid-friendly, 120ms",
+    "swing_whoosh":     "short dry cloth-and-air arm swing, no melody, no sparkle, no magical shimmer, no reverb, kid-friendly, 90ms",
+    "tool_axe_wood":    "short close wooden axe chop into a log, dry timber knock and wood fibre crack, no musical tone, no reverb, kid-friendly, 140ms",
+    "tool_pickaxe_stone": "short close pickaxe tap on stone, blunt mineral clack with a tiny grit tail, no ring, no magic, no reverb, kid-friendly, 120ms",
+    "vehicle_engine_start": "small petrol car engine starting, one cheerful realistic ignition and short idle catch, no siren, no music, no voices, kid-friendly, 900ms",
+    "vehicle_engine_idle": "steady small petrol car engine idling outdoors, realistic low mechanical hum, no siren, no music, no voices, seamless loop-friendly, 4 seconds",
+    "vehicle_brake": "short realistic small car tyre and brake slowdown on dry grass and dirt, soft friction, no crash, no music, kid-friendly, 400ms",
 }
 
 MUSIC_PROMPTS = {
@@ -109,20 +141,28 @@ def http_post(url: str, body: dict, accept: str = "audio/mpeg") -> bytes:
         return resp.read()
 
 
-def gen_voice(name: str, text: str) -> bool:
+def gen_voice(
+    name: str,
+    text: str,
+    voice_id: str = MASCOT_VOICE_ID,
+    style: float = 0.35,
+    stability: float = 0.55,
+    force: bool = False,
+) -> bool:
     out = VOICE_DIR / f"{name}.mp3"
-    if out.exists() and out.stat().st_size > 1024:
+    if not force and out.exists() and out.stat().st_size > 1024:
         print(f"[skip] voice/{name}.mp3 already present ({out.stat().st_size} bytes)")
         return True
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{MASCOT_VOICE_ID}"
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     body = {
         "text": text,
         "model_id": TTS_MODEL,
         "voice_settings": {
-            "stability": 0.55,
+            "stability": stability,
             "similarity_boost": 0.8,
-            "style": 0.35,
+            "style": style,
             "use_speaker_boost": True,
+            "speed": 1.2,
         },
     }
     try:
@@ -191,6 +231,43 @@ def main() -> int:
     MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 
     tally = {"voice_ok": 0, "voice_fail": 0, "sfx_ok": 0, "sfx_fail": 0, "music_ok": 0, "music_fail": 0}
+
+    if "--cinematic" in sys.argv:
+        print("=== Cinematic character voices (Polish / ElevenLabs) ===")
+        failed = 0
+        force = "--force" in sys.argv
+        for name, (character, text) in CINEMATIC_LINES.items():
+            voice_id = CINEMATIC_VOICE_IDS[character]
+            if not gen_voice(name, text, voice_id, style=0.65, stability=0.58, force=force):
+                failed += 1
+        return 1 if failed else 0
+
+    if "--npc" in sys.argv:
+        print("=== Adventure NPC voices (Polish / ElevenLabs) ===")
+        failed = 0
+        force = "--force" in sys.argv
+        for name, (voice_id, text) in ADVENTURE_NPC_VOICE_LINES.items():
+            if not gen_voice(name, text, voice_id, style=0.56, stability=0.62, force=force):
+                failed += 1
+        return 1 if failed else 0
+
+    # Targeted SFX generation keeps a small gameplay repair from regenerating
+    # every voice/music asset. Example: --sfx vehicle_engine_start,vehicle_engine_idle
+    if "--sfx" in sys.argv:
+        index = sys.argv.index("--sfx")
+        if index + 1 >= len(sys.argv):
+            print("--sfx requires a comma-separated list of known SFX keys", file=sys.stderr)
+            return 2
+        requested = [name.strip() for name in sys.argv[index + 1].split(",") if name.strip()]
+        failed = 0
+        for name in requested:
+            prompt = SFX_PROMPTS.get(name)
+            if prompt is None:
+                print(f"[fail] unknown SFX key: {name}", file=sys.stderr)
+                failed += 1
+            elif not gen_sfx(name, prompt):
+                failed += 1
+        return 1 if failed else 0
 
     print("=== Voice lines (Polish) ===")
     for name, text in VOICE_LINES.items():

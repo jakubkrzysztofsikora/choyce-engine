@@ -29,7 +29,11 @@ func load_template(template_id: String) -> Dictionary:
 	
 	return json.data
 
-func create_project_from_template(template_id: String, owner: PlayerProfile) -> Project:
+func create_project_from_template(
+	template_id: String,
+	owner: PlayerProfile,
+	project_id_override: String = ""
+) -> Project:
 	var template_data := load_template(template_id)
 	if template_data.is_empty():
 		return null
@@ -37,7 +41,7 @@ func create_project_from_template(template_id: String, owner: PlayerProfile) -> 
 	var now := _clock.now_iso()
 	
 	var project := Project.new()
-	project.project_id = "%s_%s" % [owner.profile_id, template_id]
+	project.project_id = project_id_override if not project_id_override.is_empty() else "%s_%s" % [owner.profile_id, template_id]
 	project.title = template_data.get("name_pl", template_id)
 	project.template_id = template_id
 	project.owner_profile_id = owner.profile_id
@@ -50,6 +54,7 @@ func create_project_from_template(template_id: String, owner: PlayerProfile) -> 
 		var default_world := World.new()
 		default_world.world_id = "%s_world_1" % project.project_id
 		default_world.name = default_world_data.get("name_pl", template_id)
+		default_world.theme = str(template_data.get("theme", template_id))
 		
 		# Add scene nodes from template
 		var nodes_data := default_world_data.get("nodes", []) as Array
@@ -62,8 +67,12 @@ func create_project_from_template(template_id: String, owner: PlayerProfile) -> 
 			scene_node.node_id = "%s_node_%d" % [default_world.world_id, i]
 			scene_node.node_type = _parse_node_type(node_data.get("type", "OBJECT"))
 			scene_node.display_name = node_data.get("display_name_pl", "Node")
-			var position := node_data.get("position", [0, 0, 0]) as Array
-			scene_node.position = Vector3(position[0], position[1], position[2])
+			scene_node.position = _parse_vector3(node_data.get("position", [0, 0, 0]), Vector3.ZERO)
+			scene_node.rotation = _parse_vector3(node_data.get("rotation", [0, 0, 0]), Vector3.ZERO)
+			scene_node.scale = _parse_vector3(node_data.get("scale", [1, 1, 1]), Vector3.ONE)
+			var properties_variant: Variant = node_data.get("properties", {})
+			if properties_variant is Dictionary:
+				scene_node.properties = (properties_variant as Dictionary).duplicate(true)
 			default_world.add_node(scene_node)
 		
 		# Add game rules from template
@@ -78,12 +87,28 @@ func create_project_from_template(template_id: String, owner: PlayerProfile) -> 
 			game_rule.rule_type = _parse_rule_type(rule_data.get("type", "TIMER"))
 			game_rule.display_name = rule_data.get("display_name_pl", "Rule")
 			game_rule.compiled_logic = rule_data.get("compiled_logic", "")
+			var source_blocks_variant: Variant = rule_data.get("source_blocks", [])
+			if source_blocks_variant is Array:
+				game_rule.source_blocks = (source_blocks_variant as Array).duplicate(true)
+			var rule_properties_variant: Variant = rule_data.get("properties", {})
+			if rule_properties_variant is Dictionary:
+				game_rule.properties = (rule_properties_variant as Dictionary).duplicate(true)
+			game_rule.is_active = bool(rule_data.get("is_active", true))
 			default_world.add_rule(game_rule)
 		
 		project.add_world(default_world)
 	
 	_project_store.save_project(project)
 	return project
+
+
+func _parse_vector3(raw: Variant, fallback: Vector3) -> Vector3:
+	if raw is Vector3:
+		return raw
+	if raw is Array and (raw as Array).size() >= 3:
+		var values: Array = raw
+		return Vector3(float(values[0]), float(values[1]), float(values[2]))
+	return fallback
 
 
 func _parse_node_type(raw_type: Variant) -> SceneNode.NodeType:

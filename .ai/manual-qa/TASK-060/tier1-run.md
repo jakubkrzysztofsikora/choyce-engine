@@ -1,14 +1,14 @@
 # TASK-060 Tier-1 Run
 
-- Date: 2026-03-06
+- Date: 2026-07-18
 - Tester: claude (AI Architecture Agent — static code analysis of ManageDataLifecycleService,
   main.gd, SetParentalControlsService, LocalConsentStore)
 - Hardware tier: Tier-1
 - Device spec: N/A (static analysis — live evidence deferred to TASK-063 scenario SC-001/SC-002)
-- OS version: macOS 25.0.0
-- Build/commit: 3b04185
-- Start time (UTC): 2026-03-06T21:45:00Z
-- End time (UTC): 2026-03-06T22:10:00Z
+- OS version: macOS 15.0.0
+- Build/commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+- Start time (UTC): 2026-07-18T03:00:00Z
+- End time (UTC): 2026-07-18T03:25:00Z
 
 ## Compliance Drill Results
 1. Parent-only export flow

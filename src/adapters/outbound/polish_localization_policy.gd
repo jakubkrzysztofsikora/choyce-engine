@@ -248,7 +248,7 @@ func _load_defaults() -> void:
 		"landing.play": "ZAGRAJ",
 		"landing.create": "ZRÓB",
 		"landing.parent": "RODZIC",
-		"landing.title": "Choyce",
+		"landing.title": "Ziemek i Gniewko: Demo",
 		"landing.picker.title": "Wybierz świat",
 		"landing.picker.close": "Zamknij",
 		"landing.world.adventure": "Wyspa skarbów",

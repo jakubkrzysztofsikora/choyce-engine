@@ -1,6 +1,10 @@
 class_name GameplayRuntime
 extends Node3D
 
+const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
+const SKY3D_SCRIPT := preload("res://addons/sky_3d/src/Sky3D.gd")
+const PICTORIAL_VITALITY_METER: Script = preload("res://src/adapters/inbound/shared/ui/pictorial_vitality_meter.gd")
+
 signal session_ended
 ## Emitted at session-end with the WinOutcome so HUD/celebration
 ## can branch on win vs. lose vs. reason. Always fires before
@@ -11,15 +15,47 @@ signal session_outcome(outcome: WinOutcome)
 ##   params:      Dict — action params
 signal rule_fired(rule_id: String, action_kind: int, params: Dictionary)
 
+## VS-016: Evidence capture signals for visual acceptance testing
+signal evidence_capture_requested(capture_point: int)
+
+## VS-026: Emitted BEFORE end_session tears down state, carrying the
+## full SandboxState snapshot. PlayShell / main.gd connects this to
+## SandboxPersistenceService.save_sandbox() for automatic persistence.
+signal session_save_requested(state: SandboxState)
+
 var _world_renderer: WorldRenderer
 var _player_controller: PlayerController
 var _session: Session
+
+## VS-016: Track which evidence capture points have been triggered
+## to ensure we only capture once per point
+var _captured_evidence_points: Array = []
+var _opening_evidence_timer: Timer = null
+var _evidence_session_token := 0
+var _terrain_collision_probe_generation := 0
 var _audio_bus: AudioEventBus
 var _sfx_player: SFXPlayer
+## Live NPC voice (ElevenLabs TTS). Silent no-op without ELEVENLABS_API_KEY.
+var _npc_voice: VoicePromptPort = null
+var _local_npc_voice: AudioStreamPlayer = null
+var _local_npc_voice_line := ""
+var _local_npc_voice_request_id := -1
 var _effect_spawner: EffectSpawner
 var _screen_feedback: ScreenFeedback
 var _victory_sequence: VictorySequence
 var _ambient_player: AudioStreamPlayer
+var _ambient_particles: GPUParticles3D
+var _adventure_sky: WorldEnvironment = null
+var _adventure_legacy_environment: WorldEnvironment = null
+var _adventure_legacy_environment_resource: Environment = null
+var _adventure_legacy_light_visibility: Dictionary = {}
+var _adventure_legacy_fill_light_state: Dictionary = {}
+
+# VS-025: Nutrition, Training, and Body Progression
+var _nutrition_manager: NutritionManager = null
+var _training_manager: TrainingManager = null
+var _feedback_manager: FeedbackManager = null
+var _nutrition_hud: NutritionHUD = null
 
 # Rules engine — injected by main.gd via setup_rules() before start_session.
 # Optional: GameplayRuntime keeps working with null rules (legacy worlds).
@@ -28,15 +64,34 @@ var _rule_compiler: RuleCompilerService
 var _score: int = 0
 var _rules_active: bool = false
 
-# Combat HUD references — built lazily in _build_hud.
-var _hp_bar: ProgressBar
+# Combat HUD references — built lazily in _build_hud. The visible emergency
+# indicator is a pictorial radial meter rather than an unreadable dashboard.
+var _hp_meter: Control
 var _score_label: Label
+var _stats_panel: PanelContainer
 var _enemy_root: Node3D
 var _loot_root: Node3D
 var _build_grid: BuildGrid
 var _hotbar_panel: HBoxContainer
-var _inventory_panel: VBoxContainer
+## The undo control is contextual: it only appears after the child has made a
+## build edit. Keeping it visible from the first frame made the opening read as
+## an editor rather than an adventure.
+var _undo_button: Button
+var _inventory_panel: Container
 var _inventory_labels: Dictionary = {}  ## item_id -> Label
+## The rules runtime is authoritative when injected, but direct/demo sessions
+## must not lose collected items just because that optional integration is
+## absent. This local mirror is also the hand-off seam for local co-op.
+var _local_inventory: Dictionary = {}
+var _inventory_overlay: PanelContainer = null
+var _inventory_grid: GridContainer = null
+var _craft_recipe_list: VBoxContainer = null
+var _inventory_open := false
+const SANDBOX_RECIPES := {
+	"meal": {"needs": {"food_apple": 1}, "gives": {"meal": 1}, "label": "Posiłek"},
+	"stick": {"needs": {"wood_oak": 3}, "gives": {"stick": 1}, "label": "Patyk"},
+	"sword_iron": {"needs": {"wood_oak": 3, "ore_iron": 2}, "gives": {"sword_iron": 1}, "label": "Żelazny miecz"},
+}
 var _weapon_tiers := [
 	{"id": "fist",      "damage": 4,  "label": "Pięść",          "needs": {}},
 	{"id": "stick",     "damage": 7,  "label": "Patyk",          "needs": {"wood_oak": 3}},
@@ -48,6 +103,8 @@ var _weapon_label: Label
 var _wave_number: int = 0
 var _wave_respawn_timer: float = 0.0
 var _rng: RandomNumberGenerator = null
+## Adv Y H5: track last attack style for phase-aware feedback
+var _last_attack_style: String = "punch"
 
 # Application services extracted from this adapter per Adv 1 H1/H2.
 # Lazy-init so legacy callers (autoplay, tests) keep working.
@@ -65,18 +122,65 @@ var _xp_level: int = 0
 var _xp_current: int = 0
 var _xp_bar: ProgressBar = null
 var _xp_label: Label = null
+
+# VS-026: Sandbox persistence - current sandbox state
+var _sandbox_state: SandboxState = null
+
+# VS-021: Vehicle system
+var _vehicle_spawner: VehicleSpawner = null
+var _destruction_tracker: DestructionTracker = null
+var _active_vehicle: VehicleBase = null
+var _adventure_music_state := ""
+var _next_adventure_music_rotation_sec := 0.0
+const ADVENTURE_MUSIC_ROTATION_SECONDS := {
+	"explore": 75.0,
+	"drive": 55.0,
+	"danger": 45.0,
+	"night": 95.0,
+}
+
 const WAVE_RESPAWN_DELAY := 6.0
 ## Kid falls below this y → soft-respawn. Fixes spring-launch
 ## softlock (Adv 2 H-5). Default world floor is y=0; -50 leaves a
 ## comfortable buffer for tall builds.
 const FALL_KILL_PLANE_Y := -50.0
+const HUD_ACTION_GREEN: Texture2D = preload("res://data/textures/ui/PNG/Green/Double/button_round_depth_gloss.png")
+const HUD_ICON_AXE: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-axe.png")
+const HUD_ICON_PICKAXE: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-pickaxe.png")
+const HUD_ICON_HAMMER: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-hammer.png")
+const HUD_ICON_GRASS: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/grass.png")
+const HUD_ICON_WOOD: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/resource-wood.png")
+const HUD_ICON_STONE: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/resource-stone.png")
+const HUD_ICON_WORKBENCH: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/workbench.png")
+const HUD_ICON_BEDROLL: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/bedroll.png")
+const HUD_ICON_STAR: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/star.png")
+const HUD_ICON_RETURN: Texture2D = preload("res://data/textures/ui/PNG/Blue/Double/arrow_basic_w.png")
+const HUD_ICON_CAMP: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/campfire-pit.png")
+const HUD_ICON_UNDO: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/arrow_basic_w.png")
+const HUD_ICON_SILLY_PUFF: Texture2D = preload("res://data/textures/generated/silly-puff-icon-v1.png")
+
+# These core Adventure lines are generated with ElevenLabs at asset-prep time
+# and shipped with the game. Finder/editor runs do not inherit a developer
+# shell API key, so the cast must not go silent in those normal play paths.
+const LOCAL_NPC_VOICE_STREAMS := {
+	"Hej! Jestem Olek. Wybierz kierunek i zobaczmy, co odkryjemy.": preload("res://data/audio/voice/adventure_olek_greeting.mp3"),
+	"Arr! Jestem Pablo. Nie dotykaj mojego kompasu, ale rozejrzyj się do woli.": preload("res://data/audio/voice/adventure_pablo_greeting.mp3"),
+	"Ćwir-ćwir! Jestem Pestka. Lubię śmiech, fale i błyszczące kamyki!": preload("res://data/audio/voice/adventure_pestka_greeting.mp3"),
+	"Ojej! Ten wiatr ma własny plan podróży!": preload("res://data/audio/voice/adventure_olek_fart.mp3"),
+	"Arrr! Jeszcze jeden taki podmuch i wymachnę szablą w powietrzu!": preload("res://data/audio/voice/adventure_pablo_fart.mp3"),
+	"Ćwir-haha! Pestka słyszała głośniejsze fale!": preload("res://data/audio/voice/adventure_pestka_fart.mp3"),
+}
 
 # Goal + lose-condition injection (Wave 3 W3-A/B). Populated by
 # setup_goal() from main.gd composition root, sourced from the
-# template pack's default_goal + lose_conditions. Null = legacy
-# free-play mode (no win-screen, no lose, kid taps back).
+# template pack's optional default_goal + lose_conditions. Null = sandbox
+# free-play mode (no forced win-screen or loss, kid can explore and leave).
 var _goal: GameGoal = null
 var _goal_evaluator: EvaluateGoalService = null
+## Debug-only: when CHOYCE_AUTOWIN=1 in a debug/editor build, defeat one enemy
+## per tick so goal-bearing templates can exercise the generic completion path
+## headlessly (no input automation). Never active in a release build.
+var _autowin: bool = false
 var _lives_remaining: int = -1            ## -1 = unlimited
 var _time_limit_sec: int = 0              ## 0 = no timer
 var _kill_plane_y: float = FALL_KILL_PLANE_Y
@@ -85,8 +189,9 @@ var _outcome_emitted: bool = false        ## Guard so end_session is idempotent.
 var _last_goal_check_ratio: float = 0.0   ## Cached so HUD can paint a progress bar.
 
 # Wave 3 W3-A3 NPC roster. Injected via setup_npcs(); populated by
-# PlayShell from NPCDialogueLoader.filtered_for_policy(). Empty list
-# means no friendly NPCs spawn (legacy / free-play sessions).
+# PlayShell from NPCDialogueLoader.filtered_for_policy(). An empty list
+# skips the authored Adventure NPCs, but starter-camp residents still
+# spawn so free-play sessions have a lived-in, child-safe camp.
 var _npc_roster: Array = []
 var _npc_root: Node3D = null
 var _npc_dialogue_label: Label = null
@@ -98,6 +203,57 @@ var _goal_label: Label = null
 var _goal_bar: ProgressBar = null
 var _lives_label: Label = null
 var _timer_label: Label = null
+var _interaction_prompt_panel: PanelContainer = null
+var _interaction_prompt_label: Label = null
+var _interaction_prompt_icon: TextureRect = null
+var _sandbox_hint_panel: PanelContainer = null
+var _nearby_world_interactable: Node3D = null
+var _interaction_feedback_until: float = 0.0
+const SILLY_FART_REACTION_RANGE := 10.0
+## A reaction is a tiny social beat, not a crowd of voices competing at once.
+## Every nearby NPC gets an immediate world-space response. Spoken turns then
+## use one channel, so a crowd never mutters over itself.
+const SILLY_FART_REACTION_GAP_SECONDS := 0.12
+## Every nearby character gets its own visible bubble, but only a few close
+## voices use the shared caption/TTS channel. This keeps a crowded village
+## readable instead of letting an optional gag suppress normal conversation.
+const SILLY_FART_MAX_SPOKEN_REACTIONS := 3
+const SILLY_FART_VOICE_TIMEOUT_SECONDS := 3.0
+const NORMAL_NPC_VOICE_TIMEOUT_SECONDS := 5.0
+## FIFO of nearby NPC reaction turns. Entries keep a WeakRef so streamed-out
+## NPCs can disappear safely before their turn without holding their scene
+## nodes alive.
+var _npc_reaction_queue: Array[Dictionary] = []
+var _npc_reaction_queue_active := false
+var _active_npc_reaction_line := ""
+var _active_npc_reaction_name := ""
+var _active_npc_reaction_audio_started := false
+var _active_npc_reaction_audio_finished := false
+var _active_npc_reaction_audio_skipped := false
+var _npc_reaction_request_sequence := 0
+var _active_npc_reaction_request_id := -1
+## Normal greetings share the same one ElevenLabs player as reactions. Track
+## their request separately so an optional gag waits rather than talking over
+## or cancelling an ordinary encounter.
+var _normal_npc_voice_active := false
+var _normal_npc_voice_request_id := -1
+var _normal_npc_voice_line := ""
+
+# Intelligent NPC dialogue variables
+var _npc_llm_port: LLMPort = null
+var _npc_moderation: ModerationPort = null
+var _npc_dialogue_panel: PanelContainer = null
+var _npc_dialogue_input: LineEdit = null
+var _npc_dialogue_send: Button = null
+var _npc_dialogue_close: Button = null
+var _npc_dialogue_history: Dictionary = {}
+# A provider is optional enrichment, never a modal gameplay dependency. Keep a
+# generation token so a late model callback cannot overwrite a local reply
+# after its short fail-safe timeout.
+var _npc_dialogue_request_sequence := 0
+var _active_npc_dialogue_request_id := -1
+const NPC_DIALOGUE_REPLY_TIMEOUT_SECONDS := 4.0
+
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
@@ -112,6 +268,23 @@ var _profile_id: String = ""
 ## stays painless.
 var _shell_bridge: Object = null
 
+## VS-022: cosmetic-only player-character customization. Loaded once at
+## session start from user://character_customization.json, applied to the
+## player rig, and re-saved whenever the panel emits a change signal.
+var _customization: CharacterCustomization = null
+var _customization_panel: CharacterCustomizationPanel = null
+
+# VS-025: Nutrition and training state
+var _nutrition: Nutrition = null
+var _training: Training = null
+var _body_progression: BodyProgression = null
+
+# VS-025: Nutrition/Training HUD references
+var _nutrition_panel: PanelContainer = null
+var _protein_bar: ProgressBar = null
+var _carbs_bar: ProgressBar = null
+var _training_label: Label = null
+var _body_level_label: Label = null
 
 ## Inject the optional shell bridge. main.gd's _build_default_ports_phase_2
 ## passes the WebSocketShellBridgeAdapter when registered; otherwise this
@@ -128,6 +301,21 @@ func _notify_shell(method: String, args: Array) -> void:
 	_shell_bridge.callv(method, args)
 
 
+## Imported characters are normally a Node3D/armature wrapper around one or
+## more render meshes.  Keep systems such as body progression independent from
+## that importer detail by resolving the first actual MeshInstance3D safely.
+func _find_first_mesh_instance(root: Node) -> MeshInstance3D:
+	if root == null:
+		return null
+	if root is MeshInstance3D:
+		return root as MeshInstance3D
+	for child in root.get_children():
+		var found := _find_first_mesh_instance(child)
+		if found != null:
+			return found
+	return null
+
+
 func _ready() -> void:
 	_world_renderer = $WorldRenderer
 	_player_controller = $PlayerController
@@ -137,6 +325,59 @@ func _ready() -> void:
 	_screen_feedback = $ScreenFeedbackLayer/ScreenFeedback
 	_victory_sequence = $VictorySequence
 	_ambient_player = $AmbientPlayer
+	_ambient_particles = $AmbientParticles if has_node("AmbientParticles") else null
+	# VS-025: Initialize nutrition and training managers
+	_nutrition_manager = $NutritionManager if has_node("NutritionManager") else null
+	_training_manager = $TrainingManager if has_node("TrainingManager") else null
+	_feedback_manager = $FeedbackManager if has_node("FeedbackManager") else null
+	_nutrition_hud = $NutritionHUD if has_node("NutritionHUD") else null
+	# The standalone NutritionHUD predates the Adventure image-first HUD and is
+	# a separate CanvasLayer at layer 100.  Merely hiding the later in-code
+	# nutrition panel did not affect it, leaving the old English Energy /
+	# Nutrition / Training text floating over the first scenic frame.  Nutrition
+	# still runs in the sandbox; detailed state belongs in the future inventory
+	# or character screen, not in a permanent launch overlay.
+	if _nutrition_hud != null:
+		var legacy_nutrition_panel := _nutrition_hud.get_node_or_null("Panel") as CanvasItem
+		if legacy_nutrition_panel != null:
+			legacy_nutrition_panel.hide()
+
+	# VS-025: Set up player mesh reference for BlendShape body progression
+	if _training_manager != null and has_node("PlayerController/CharacterMesh"):
+		# Imported GLB characters use a Node3D/armature root, rather than a
+		# MeshInstance3D root.  The old typed assignment raised at startup and
+		# aborted _ready before voice, vehicle and accessibility setup could run.
+		# Resolve the first render mesh inside the actual character hierarchy.
+		var player_mesh_node := _find_first_mesh_instance($PlayerController/CharacterMesh)
+		if player_mesh_node != null:
+			_training_manager.set_player_mesh(player_mesh_node)
+	
+	# VS-025: Wire up manager signals
+	if _nutrition_manager != null and _feedback_manager != null:
+		_nutrition_manager.caption_requested.connect(_feedback_manager.show_caption)
+		_nutrition_manager.voice_requested.connect(_feedback_manager.play_voice)
+	if _training_manager != null and _feedback_manager != null:
+		_training_manager.caption_requested.connect(_feedback_manager.show_caption)
+		_training_manager.voice_requested.connect(_feedback_manager.play_voice)
+
+	# VS-021: Initialize vehicle system
+	_setup_vehicle_system()
+
+	# Respect reduce-motion accessibility setting for ambient particles
+	_update_ambient_particles_from_reduce_motion()
+
+	# Live NPC voice via ElevenLabs. Key from env; absent -> silent no-op.
+	# Accept both env spellings (ELEVENLABS_API_KEY and ELEVEN_LABS_API_KEY).
+	var eleven_key := OS.get_environment("ELEVENLABS_API_KEY").strip_edges()
+	if eleven_key.is_empty():
+		eleven_key = OS.get_environment("ELEVEN_LABS_API_KEY").strip_edges()
+	var eleven_voice := OS.get_environment("ELEVENLABS_VOICE_ID").strip_edges()
+	_npc_voice = ElevenLabsVoicePromptAdapter.new().setup(self, eleven_key, eleven_voice)
+	if _npc_voice != null:
+		_npc_voice.playback_started.connect(_on_npc_voice_playback_started)
+		_npc_voice.playback_finished.connect(_on_npc_voice_playback_finished)
+		_npc_voice.playback_skipped.connect(_on_npc_voice_playback_skipped)
+	_setup_local_npc_voice()
 
 	# Ambient music is now driven by AudioBank (play_music called from PlayShell
 	# when the world is chosen). The _ambient_player node is kept so the scene
@@ -147,6 +388,7 @@ func _ready() -> void:
 		_player_controller.visible = false
 		_player_controller.set_process_input(false)
 		_player_controller.set_process(false)
+		_player_controller.set_physics_process(false)
 		_player_controller.footstep.connect(_on_footstep)
 		_player_controller.landed.connect(_on_landed)
 		_player_controller.hard_landed.connect(_on_hard_landed)
@@ -154,6 +396,13 @@ func _ready() -> void:
 		# Adv Y C2 fix — whoosh on swing miss (no enemy in cone).
 		if _player_controller.has_signal("swing_missed"):
 			_player_controller.swing_missed.connect(_on_player_swing_missed)
+		# Adv Y H2 fix — whoosh on EVERY swing (hit or miss)
+		if _player_controller.has_signal("attacked"):
+			_player_controller.attacked.connect(_on_player_attacked)
+		if _player_controller.has_signal("tool_used"):
+			_player_controller.tool_used.connect(_on_player_tool_used)
+		if _player_controller.has_signal("farted"):
+			_player_controller.farted.connect(_on_player_farted)
 
 	if _victory_sequence != null:
 		_victory_sequence.setup(_effect_spawner, _audio_bus, _screen_feedback, _player_controller)
@@ -191,8 +440,8 @@ func setup_combat_governance(
 ## adapter knows when to apply them; they stay pure RefCounted.
 ## Wave 3 W3-A/B: Inject the template-pack goal + lose conditions so
 ## the runtime can produce a real WinOutcome at session end.
-## Pass null `goal` for legacy free-play worlds — the runtime stays in
-## collect-or-touch-win mode and emits an "abandoned" outcome on exit.
+## Pass null `goal` for sandbox worlds — the runtime stays open-ended and
+## emits an "abandoned" outcome on exit rather than forcing completion.
 func setup_goal(
 	goal: GameGoal,
 	evaluator: EvaluateGoalService,
@@ -214,6 +463,12 @@ func setup_npcs(npcs: Array) -> void:
 	_npc_roster = npcs.duplicate()
 
 
+func setup_npc_llm(llm: LLMPort, moderation: ModerationPort) -> void:
+	_npc_llm_port = llm
+	_npc_moderation = moderation
+
+
+
 func setup_combat_data(
 	gear_tiers: Array,        ## Array[GearTierResource]
 	wave_configs: Array       ## Array[WaveConfig]
@@ -230,12 +485,101 @@ func setup_combat_data(
 		_xp_service = XpProgressionService.new()
 
 
-func start_session(world: World, session: Session) -> void:
+## VS-026: Collect a snapshot of the current runtime state for persistence.
+## Returns a fresh SandboxState populated from live fields — never mutates
+## the cached _sandbox_state so callers get a consistent read.
+func get_sandbox_state() -> SandboxState:
+	var state := SandboxState.new()
+
+	# --- identity ---
+	if _session != null:
+		state.world_id = _session.world_id
+
+	# --- player position ---
+	if _player_controller != null:
+		state.player_position = _player_controller.global_position
+
+	# --- inventory (single source of truth: rules_runtime context) ---
+	if _rules_runtime != null:
+		var raw: Variant = _rules_runtime.get_context_value("inventory")
+		if raw is Dictionary:
+			state.inventory = (raw as Dictionary).duplicate(true)
+
+	# --- placed blocks from build grid cell map ---
+	if _build_grid != null and is_instance_valid(_build_grid):
+		for cell: Vector3i in _build_grid._kind_for_cell.keys():
+			var kind_id: String = String(_build_grid._kind_for_cell[cell])
+			state.placed_blocks.append({"cell": cell, "kind": kind_id})
+
+	# --- progression fields ---
+	state.progression.score = _score
+	state.progression.collectibles = {}
+	if _session != null and _session.progress != null:
+		state.progression.collectibles = _session.progress.collectibles.duplicate(true)
+		state.progression.achievements = _session.progress.achievements.duplicate()
+		state.progression.unlocks = _session.progress.unlocks.duplicate()
+		state.progression.quest_progress = _session.progress.quest_progress.duplicate(true)
+
+	state.saved_at_unix = int(Time.get_unix_time_from_system())
+	return state
+
+
+## VS-026: Restore sandbox state from a previously saved snapshot.
+## Called deferred after world render + build grid init so all targets exist.
+func restore_sandbox_state(state: SandboxState) -> void:
+	_sandbox_state = state
+	if state == null or state.is_empty():
+		return
+
+	print("[gameplay] VS-026: restoring sandbox state (world=%s, blocks=%d, inv=%d items)" %
+		[state.world_id, state.placed_blocks.size(), state.inventory.size()])
+
+	# --- player position ---
+	if _player_controller != null and state.player_position != Vector3.ZERO:
+		_player_controller.global_position = state.player_position
+
+	# --- inventory → rules_runtime context ---
+	if not state.inventory.is_empty():
+		if _rules_runtime != null:
+			_rules_runtime.set_context_value("inventory", state.inventory.duplicate(true))
+		_refresh_inventory_panel(state.inventory)
+
+	# --- placed blocks → build grid ---
+	if _build_grid != null and is_instance_valid(_build_grid) and not state.placed_blocks.is_empty():
+		for entry in state.placed_blocks:
+			if entry is Dictionary:
+				var cell_raw: Variant = entry.get("cell", null)
+				var kind_id: String = String(entry.get("kind", ""))
+				if cell_raw is Vector3i and not kind_id.is_empty():
+					_build_grid.place_block(cell_raw as Vector3i, kind_id, false)
+
+	# --- progression ---
+	_score = state.progression.score
+	if _score_label != null:
+		_score_label.text = str(_score)
+
+
+## VS-026: Deferred restore to ensure world is fully rendered
+func _deferred_restore_sandbox_state() -> void:
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		restore_sandbox_state(_sandbox_state)
+
+
+func start_session(world: World, session: Session, sandbox_state: SandboxState = null) -> void:
+	_cancel_opening_spawn_evidence()
+	_evidence_session_token += 1
+	_terrain_collision_probe_generation += 1
+	var terrain_probe_generation := _terrain_collision_probe_generation
 	_session = session
 	_score = 0
 	_session_elapsed_sec = 0.0
 	_outcome_emitted = false
 	_last_goal_check_ratio = 0.0
+	_autowin = (OS.has_feature("debug") or OS.has_feature("editor")) \
+		and OS.get_environment("CHOYCE_AUTOWIN") == "1"
+	# VS-026: Store sandbox state reference to restore after world render
+	if sandbox_state != null:
+		_sandbox_state = sandbox_state
 	var t0 := Time.get_ticks_msec()
 	print("[gameplay] start_session: world=%s nodes=%d rules=%d" %
 		[world.world_id, world.scene_nodes.size(), world.game_rules.size()])
@@ -243,14 +587,39 @@ func start_session(world: World, session: Session) -> void:
 	# its world picker / show an in-session badge. No-op when shell bridge
 	# is off (default).
 	_notify_shell("notify_session_started", [world.world_id, _profile_id])
+	var use_adventure_sky := world.theme in ["adventure", "tropical_fantasy"]
+	if not use_adventure_sky:
+		_teardown_adventure_sky()
 	_world_renderer.render_world(world)
+	if use_adventure_sky:
+		_setup_adventure_sky()
+	_set_legacy_ground_visual_visible(not _world_renderer.has_runtime_terrain_surface())
+	# Terrain3D collision is asynchronous. Keep the invisible legacy floor as a
+	# safety catch until direct physics rays prove the spawned terrain has live
+	# collision at both the player start and the north bridge approach.
+	_set_legacy_ground_collision_enabled(true)
 	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
 	_register_world_rules(world)
+	# VS-026: Restore sandbox state after world is rendered and player is available
+	# Use call_deferred to ensure world is fully rendered before restoring
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		call_deferred("_deferred_restore_sandbox_state")
 	var spawn_pos := _world_renderer.get_spawn_position(0)
-	_player_controller.spawn_at(spawn_pos + Vector3(0, 1, 0))
+	# Capsule bottom is 0.1m below the player root (shape centre y=0.8,
+	# total height 1.8). Spawn it directly on the floor instead of one metre
+	# above it and waiting for a visible physics drop.
+	_player_controller.spawn_at(spawn_pos + Vector3(0, 0.10, 0))
 	_player_controller.visible = true
 	_player_controller.set_process_input(true)
 	_player_controller.set_process(true)
+	# Vehicle entry deliberately disables physics. A reused runtime must never
+	# carry that disabled state into a new Adventure session, otherwise a player
+	# remains suspended at its spawn coordinate despite the visible ground below.
+	_player_controller.set_physics_process(true)
+	_apply_loaded_customization()
+	if use_adventure_sky and _world_renderer.has_runtime_terrain_collision():
+		call_deferred("_confirm_runtime_terrain_collision", terrain_probe_generation,
+			_world_renderer.get_runtime_terrain_adapter())
 	# Don't capture mouse — kid needs to click ESC button / nav back if anything stalls.
 	# Mouse capture made the apparent "hang" feel total since user couldn't escape.
 	# FPS-style mouselook — capture cursor so motion is raw delta.
@@ -262,6 +631,11 @@ func start_session(world: World, session: Session) -> void:
 	# gameplay_runtime is rooted at scene-tree root so it stays visible.
 	_set_main_layout_visible(false)
 
+	# VS-025: Initialize nutrition, training, and body progression
+	_nutrition = Nutrition.new()
+	_training = Training.new()
+	_body_progression = BodyProgression.new()
+
 	# Session-init effects + HUD + spawns moved OUT of _set_main_layout_visible
 	# (Adv D bug #4 — they were running on every layout toggle including
 	# session-end, double-spawning enemies + HUD). Now run once here.
@@ -272,11 +646,108 @@ func start_session(world: World, session: Session) -> void:
 			if not child.body_entered.is_connected(_on_trigger_area_entered):
 				child.body_entered.connect(_on_trigger_area_entered.bind(child))
 	_build_hud()
-	_spawn_starter_enemies()
+	_ensure_session_music()
 	_spawn_npcs()
+	_spawn_starter_enemies()
 	_setup_build_grid()
+	_spawn_vehicles()
+
+	_schedule_opening_spawn_evidence()
 
 	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
+
+
+func _ensure_session_music() -> void:
+	# Direct test/demo launch paths bypass PlayShell. Keep a dynamic, local,
+	# non-lyrical phonk/ambient bed alive there too, so the world is never silent.
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank != null and bank.has_method("set_adventure_music_state"):
+		bank.call("set_adventure_music_state", "explore")
+		_adventure_music_state = "explore"
+		_next_adventure_music_rotation_sec = ADVENTURE_MUSIC_ROTATION_SECONDS["explore"]
+	elif bank != null and bank.has_method("play_music"):
+		bank.call("play_music", "adventure_island", true)
+
+
+func _tick_adventure_music() -> void:
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank == null or not bank.has_method("set_adventure_music_state"):
+		return
+	var desired := "explore"
+	if _active_vehicle != null and is_instance_valid(_active_vehicle):
+		desired = "drive"
+	elif _player_controller != null and is_instance_valid(_player_controller):
+		for enemy_variant in get_tree().get_nodes_in_group("enemies"):
+			if not (enemy_variant is EnemyController) or not is_instance_valid(enemy_variant):
+				continue
+			var enemy := enemy_variant as EnemyController
+			if enemy.health != null and enemy.health.is_alive \
+				and enemy.global_position.distance_to(_player_controller.global_position) < 15.0:
+				desired = "danger"
+				break
+	if desired != _adventure_music_state:
+		bank.call("set_adventure_music_state", desired)
+		_adventure_music_state = desired
+		_next_adventure_music_rotation_sec = _session_elapsed_sec + float(ADVENTURE_MUSIC_ROTATION_SECONDS.get(desired, 75.0))
+	if _session_elapsed_sec >= _next_adventure_music_rotation_sec \
+		and bank.has_method("rotate_adventure_track"):
+		bank.call("rotate_adventure_track")
+		_next_adventure_music_rotation_sec = _session_elapsed_sec + float(ADVENTURE_MUSIC_ROTATION_SECONDS.get(desired, 75.0))
+
+
+## VS-021: Vehicle System
+
+func _setup_vehicle_system() -> void:
+	# Create destruction tracker if not exists
+	if not has_node("DestructionTracker"):
+		_destruction_tracker = DestructionTracker.new()
+		_destruction_tracker.name = "DestructionTracker"
+		_destruction_tracker.configure(self, _world_renderer)
+		add_child(_destruction_tracker)
+	else:
+		_destruction_tracker = $DestructionTracker
+		_destruction_tracker.configure(self, _world_renderer)
+
+	# Create vehicle spawner if not exists. Inject sibling dependencies before
+	# adding it to the tree so its _ready path can spawn safely in embedded roots.
+	if not has_node("VehicleSpawner"):
+		_vehicle_spawner = VehicleSpawner.new()
+		_vehicle_spawner.name = "VehicleSpawner"
+		_vehicle_spawner.configure(self, _player_controller, _destruction_tracker)
+		add_child(_vehicle_spawner)
+	else:
+		_vehicle_spawner = $VehicleSpawner
+		_vehicle_spawner.configure(self, _player_controller, _destruction_tracker)
+
+
+func _spawn_vehicles() -> void:
+	if _vehicle_spawner == null:
+		_setup_vehicle_system()
+
+	if _vehicle_spawner != null:
+		_vehicle_spawner.configure(self, _player_controller, _destruction_tracker)
+
+
+func _on_vehicle_entered(vehicle: VehicleBase, player: PlayerController) -> void:
+	_active_vehicle = vehicle
+
+	# Switch input context (optional - can be handled in vehicle itself)
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_interaction_feedback("E  Wyjdź z pojazdu")
+
+
+func _on_vehicle_exited(vehicle: VehicleBase, player: PlayerController, exit_position: Vector3) -> void:
+	if _active_vehicle == vehicle:
+		_active_vehicle = null
+
+	# Restore input
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_interaction_feedback("Wysiadłeś z pojazdu.")
+
+
+func _on_vehicle_destroyed(vehicle: VehicleBase, object: Node3D) -> void:
+	# Handle vehicle destruction tracking if needed
+	pass
 
 
 ## Hide / restore the InboundMain Layout (NavBar + Body) for fullscreen
@@ -286,6 +757,225 @@ func _set_main_layout_visible(value: bool) -> void:
 	var layout := get_node_or_null("/root/Main/Layout")
 	if layout != null:
 		layout.visible = value
+	# ActiveIndicator is deliberately a sibling of Main/Layout so it can animate
+	# across launcher tabs. That also meant it survived the layout hide and left
+	# a disconnected lime dash in the gameplay sky. It belongs to shell
+	# navigation, never to the in-world HUD.
+	var active_indicator := get_node_or_null("/root/Main/ActiveIndicator")
+	if active_indicator != null:
+		active_indicator.visible = value
+	# VoxelBodyBG is an OPAQUE black full-rect ColorRect on Main's 2D canvas —
+	# it draws over the root 3D viewport. Hide it (and the scanline overlay)
+	# during gameplay or the kid sees a black screen with only the HUD
+	# CanvasLayer visible above it.
+	var bg := get_node_or_null("/root/Main/VoxelBodyBG")
+	if bg != null:
+		bg.visible = value
+	var scan := get_node_or_null("/root/Main/VoxelScanlines")
+	if scan != null:
+		scan.visible = value
+
+
+## Preserve the legacy StaticBody3D collider beneath the opening, but never
+## render it on top of a successfully imported Terrain3D mesh. The old mesh
+## and Terrain3D differed by only centimetres, which made the entire ground
+## flicker as the depth buffer alternated between them.
+func _set_legacy_ground_visual_visible(value: bool) -> void:
+	var ground_mesh := get_node_or_null("GroundPlane/GroundMesh") as MeshInstance3D
+	if ground_mesh != null:
+		ground_mesh.visible = value
+
+
+## The legacy StaticBody3D is an invisible safety catch while Terrain3D is
+## streaming its local collision. It is disabled only after verified ray hits;
+## that keeps a failed/lazy extension build from letting a child sink through
+## visible ground on the first frame of a session.
+func _set_legacy_ground_collision_enabled(value: bool) -> void:
+	var ground_collision := get_node_or_null("GroundPlane/GroundCollider") as CollisionShape3D
+	if ground_collision != null:
+		ground_collision.set_deferred("disabled", not value)
+
+
+func _confirm_runtime_terrain_collision(probe_generation: int, expected_adapter: Node3D) -> void:
+	# Dynamic Terrain3D collision is populated after the import/update request;
+	# wait for four physics frames rather than treating the request as a ready
+	# signal. The legacy floor remains active throughout the check.
+	for _frame in 4:
+		await get_tree().physics_frame
+	if probe_generation != _terrain_collision_probe_generation:
+		return
+	if _world_renderer == null or not _world_renderer.has_runtime_terrain_collision():
+		return
+	if _world_renderer.get_runtime_terrain_adapter() != expected_adapter:
+		return
+	var ground_plane := get_node_or_null("GroundPlane") as CollisionObject3D
+	var excluded: Array[RID] = []
+	if ground_plane != null:
+		excluded.append(ground_plane.get_rid())
+	if _player_controller != null:
+		excluded.append(_player_controller.get_rid())
+	var contacts: Array[Vector3] = [
+		_world_renderer.get_spawn_position(0),
+		Vector3(0.0, 0.0, -46.0),
+		Vector3(14.0, 0.0, -43.0),
+	]
+	var terrain_session_token := _world_renderer.get_terrain_import_session_token() if _world_renderer else 0
+	if _world_renderer.verify_runtime_terrain_contacts(contacts, excluded, expected_adapter, terrain_session_token):
+		_set_legacy_ground_collision_enabled(false)
+		print("[gameplay] Terrain3D collision verified at spawn and bridge bank; safety floor disabled")
+	else:
+		push_warning("Terrain3D collision did not verify; retaining hidden safety floor")
+
+
+## The installed MIT-licensed Sky3D addon replaces the static procedural sky
+## only for the Adventure world. We preserve the established Environment's
+## fog, GI, post-processing and restrained palette, while Sky3D supplies
+## moving daylight, moonlight and cloud layers that make the large island read
+## as an explorable place rather than a frozen test scene.
+func _setup_adventure_sky() -> void:
+	if _adventure_sky != null and is_instance_valid(_adventure_sky):
+		return
+	var legacy_environment := get_node_or_null("WorldEnvironment") as WorldEnvironment
+	var environment := Environment.new()
+	if legacy_environment != null and legacy_environment.environment != null:
+		_adventure_legacy_environment = legacy_environment
+		_adventure_legacy_environment_resource = legacy_environment.environment
+		environment = legacy_environment.environment.duplicate(true) as Environment
+		# A WorldEnvironment uses one active Environment at a time. Keep the
+		# baseline node and resource so a later non-adventure session can restore
+		# its presentation exactly, but detach it while Sky3D is active.
+		legacy_environment.environment = null
+	# Sky3D owns the sky material; retain the existing fog, GI and colour grade.
+	# Do not create a replacement shader material here. Sky3D initializes its
+	# first material with cloud/noise textures and all of its atmosphere uniform
+	# values during enter-tree. Swapping in a blank ShaderMaterial afterward
+	# technically renders a sky, but it is the featureless grey field seen in
+	# the opening capture.
+	# Adventure needs a readable daylight grade, not the high-ambient gray wash
+	# inherited from the generic runtime scene. Keep surfaces warm but restrained,
+	# preserve shadow contrast under trees and reduce horizon haze without showing
+	# the world boundary.
+	# Keep a physical ambient floor separate from the sky colour. Sky3D's night
+	# sky becomes near-black by design; without this floor the playable terrain,
+	# NPCs and bridge collapsed into silhouettes even though moonlight existed.
+	environment.ambient_light_energy = 1.15
+	environment.ambient_light_sky_contribution = 0.62
+	environment.tonemap_exposure = 0.90
+	environment.adjustment_enabled = true
+	environment.adjustment_saturation = 0.88
+	environment.adjustment_contrast = 1.12
+	environment.fog_density = 0.0019
+	environment.fog_light_color = Color(0.58, 0.67, 0.72, 1.0)
+	environment.fog_light_energy = 0.46
+	environment.fog_aerial_perspective = 0.46
+	var sky := SKY3D_SCRIPT.new() as WorldEnvironment
+	if sky == null:
+		push_warning("Adventure Sky3D could not be created; retaining the static sky")
+		return
+	sky.name = "AdventureSky3D"
+	add_child(sky)
+	# Sky3D's custom Environment setter forwards into its SkyDome, which has
+	# already entered the tree. Preserve that initialized material while moving
+	# the project's Environment settings across. This keeps the same material in
+	# SkyDome's cloud processor and the viewport instead of making the former
+	# animate one material while the latter shows an uninitialized one.
+	var initialized_sky: Sky = sky.environment.sky if sky.environment != null else null
+	if initialized_sky != null and initialized_sky.sky_material is ShaderMaterial:
+		environment.sky = initialized_sky
+	else:
+		# Defensive fallback for an unexpected addon initialization failure. The
+		# normal code path above always preserves the addon-owned material.
+		environment.sky = Sky.new()
+		environment.sky.sky_material = ShaderMaterial.new()
+		environment.sky.sky_material.shader = load("res://addons/sky_3d/shaders/SkyMaterial.gdshader")
+	sky.environment = environment
+	# Rebinding gives the dome the retained project Environment. Its material is
+	# intentionally the same initialized object, so time and clouds keep their
+	# prepared uniforms and texture bindings.
+	var sky_dome := sky.get_node_or_null("SkyDome")
+	if sky_dome != null and environment.sky != null:
+		sky_dome.set("environment", environment)
+		sky_dome.set("sky_material", environment.sky.sky_material)
+		sky_dome.set("cumulus_material", environment.sky.sky_material)
+	_adventure_sky = sky
+	# Set these after the node enters the tree, once Sky3D has created its
+	# TimeOfDay/SunLight/MoonLight/SkyDome children.
+	sky.set("current_time", 13.25)
+	# A child should explore a daylight session before night begins. A 24-minute
+	# cycle repeatedly threw the live demo into its darkest phase while testing.
+	sky.set("minutes_per_day", 48.0)
+	sky.set("update_interval", 0.20)
+	sky.set("clouds_enabled", true)
+	sky.set("cloud_intensity", 0.24)
+	sky.set("sun_energy", 1.30)
+	# Adventure night remains atmospheric but navigable: children must be able
+	# to read the ground, trail and landmark silhouettes without a flashlight.
+	sky.set("moon_energy", 1.15)
+	sky.set("ambient_energy", 1.15)
+	sky.set("sky_contribution", 0.52)
+	# Sky3D only reveals ambient energy at night when this is lower than the
+	# daytime sky contribution. The previous 0.92 value was clamped to 0.62,
+	# making a full night effectively unlit.
+	sky.set("night_ambient_boost", true)
+	sky.set("night_sky_contribution", 0.16)
+	sky.set("tonemap_exposure", 1.02)
+	# Existing Environment fog is already tuned to hide the large-world horizon;
+	# do not stack Sky3D's fullscreen fog shader over it.
+	sky.set("fog_enabled", false)
+	# Sky3D supplies the changing key light. Retain the scene's low-energy,
+	# shadowless FillLight as a stable readability floor; it prevents an outdoor
+	# sandbox from becoming unplayably black during a clouded moonlit phase.
+	var night_fill := get_node_or_null("FillLight") as DirectionalLight3D
+	if night_fill != null:
+		_adventure_legacy_fill_light_state = {
+			"energy": night_fill.light_energy,
+			"color": night_fill.light_color,
+		}
+		var time_of_day := sky.get_node_or_null("TimeOfDay")
+		if time_of_day != null and time_of_day.has_signal("time_changed"):
+			time_of_day.time_changed.connect(_update_adventure_fill_light.bind(sky))
+		_update_adventure_fill_light(float(sky.get("current_time")), sky)
+	for legacy_light_name in ["DirectionalLight3D"]:
+		var legacy_light := get_node_or_null(legacy_light_name) as DirectionalLight3D
+		if legacy_light != null:
+			_adventure_legacy_light_visibility[legacy_light_name] = legacy_light.visible
+			legacy_light.visible = false
+
+
+## Restore the base scene's Environment and light visibility after an Adventure
+## session. GameplayRuntime is reused by the launcher, so this cannot rely on
+## the scene itself being destroyed between themes.
+func _teardown_adventure_sky() -> void:
+	if _adventure_sky != null and is_instance_valid(_adventure_sky):
+		_adventure_sky.environment = null
+		_adventure_sky.queue_free()
+	_adventure_sky = null
+	if _adventure_legacy_environment != null and is_instance_valid(_adventure_legacy_environment):
+		_adventure_legacy_environment.environment = _adventure_legacy_environment_resource
+	for legacy_light_name in _adventure_legacy_light_visibility:
+		var legacy_light := get_node_or_null(String(legacy_light_name)) as DirectionalLight3D
+		if legacy_light != null:
+			legacy_light.visible = bool(_adventure_legacy_light_visibility[legacy_light_name])
+	_adventure_legacy_light_visibility.clear()
+	var fill_light := get_node_or_null("FillLight") as DirectionalLight3D
+	if fill_light != null and not _adventure_legacy_fill_light_state.is_empty():
+		fill_light.light_energy = float(_adventure_legacy_fill_light_state.get("energy", fill_light.light_energy))
+		fill_light.light_color = _adventure_legacy_fill_light_state.get("color", fill_light.light_color)
+	_adventure_legacy_fill_light_state.clear()
+	_adventure_legacy_environment = null
+	_adventure_legacy_environment_resource = null
+
+
+## Keep daylight contrast intact while giving moonlit play a predictable
+## readability floor. Sky3D owns the key lights; this is only a shadowless fill
+## that follows its actual night state instead of permanently washing the day.
+func _update_adventure_fill_light(_time: float, sky: WorldEnvironment) -> void:
+	var fill_light := get_node_or_null("FillLight") as DirectionalLight3D
+	if fill_light == null or sky == null or not is_instance_valid(sky):
+		return
+	var is_night := bool(sky.call("is_night")) if sky.has_method("is_night") else false
+	fill_light.light_energy = 0.62 if is_night else 0.24
+	fill_light.light_color = Color(0.48, 0.62, 0.88, 1.0) if is_night else Color(0.75, 0.85, 1.0, 1.0)
 
 
 ## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
@@ -306,7 +996,9 @@ func _setup_build_grid() -> void:
 	_build_grid.block_removed.connect(_on_block_removed)
 	_build_grid.block_dropped_item.connect(_on_block_dropped_item)
 	_build_grid.block_place_failed.connect(_on_block_place_failed)
-	_seed_resource_nodes()
+	# Resources remain available through manual building/crafting. Do not stamp
+	# cube-shaped placeholder trees and ore into the opening view: the authored
+	# procedural forest already supplies grounded nature at the correct scale.
 
 
 ## Spawn 6 tree_oak + 3 ore_node blocks around the player so mining
@@ -418,6 +1110,8 @@ func _enemy_factory_for(enemy_id: String) -> EnemyDefinition:
 ## wall-clock seconds regardless of Engine.time_scale.
 func _apply_hit_stop(duration_seconds: float) -> void:
 	Engine.time_scale = 0.15
+	if get_tree() == null:
+		return
 	var t := get_tree().create_timer(duration_seconds, true, false, true)
 	t.timeout.connect(func() -> void:
 		Engine.time_scale = 1.0
@@ -440,6 +1134,14 @@ func _spawn_damage_number(amount: int, position: Vector3, is_boss: bool = false)
 	lbl.outline_modulate = Color(0.1, 0.05, 0.0, 1.0)
 	add_child(lbl)
 	lbl.global_position = position + Vector3(0, 1.4, 0)
+	# Adv Y H1 fix: scale-pop animation for juicy hit feedback
+	# Start small, slam to overscale, then settle
+	lbl.scale = Vector3(0.2, 0.2, 0.2)
+	var pop_tween := create_tween()
+	var target_scale := 1.8 if is_boss else 1.4
+	pop_tween.tween_property(lbl, "scale", Vector3(target_scale, target_scale, target_scale), 0.08).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop_tween.tween_property(lbl, "scale", Vector3.ONE, 0.10)
+	# Original drift-up + fade tween
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(lbl, "global_position", lbl.global_position + Vector3(0, 1.2, 0), 0.9)
 	tw.tween_property(lbl, "modulate:a", 0.0, 0.9).set_delay(0.2)
@@ -473,22 +1175,37 @@ func _on_block_place_failed(reason: String) -> void:
 
 
 func _on_block_placed(cell: Vector3i, kind_id: String) -> void:
+	_set_undo_button_visible(true)
 	if _rules_runtime != null:
 		_rules_runtime.set_context_value("blocks_placed", _build_grid.block_count())
 		_rules_runtime.on_event("place_block", {"kind": kind_id, "cell": cell})
 
 
 func _on_block_removed(cell: Vector3i, kind_id: String) -> void:
+	_set_undo_button_visible(true)
 	if _rules_runtime != null:
 		_rules_runtime.set_context_value("blocks_placed", _build_grid.block_count())
 		_rules_runtime.on_event("break_block", {"kind": kind_id, "cell": cell})
 
 
-## MVP: spawn a small kid-safe enemy pack around the player so the
-## 7yo Roblox-fluent kid has someone to fight from the moment the
-## world loads. Procedural — no Kenney character meshes needed.
-## Three enemies: 2 green slimes + 1 pink bouncer at 8m / 12m / 14m
-## from spawn.
+func _on_hud_undo_pressed() -> void:
+	if _build_grid != null:
+		if _build_grid.undo_last_action():
+			_interaction_feedback("Cofnięto!")
+			if _audio_bus != null:
+				_audio_bus.emit_sfx("collect", _player_controller.global_position if _player_controller != null else Vector3.ZERO)
+		else:
+			_set_undo_button_visible(false)
+
+
+func _set_undo_button_visible(should_show: bool) -> void:
+	if _undo_button != null and is_instance_valid(_undo_button):
+		_undo_button.visible = should_show
+
+
+## MVP: spawn a small kid-safe enemy pack beyond the opening guide and
+## landmarks. The first minute teaches movement and exploration before
+## introducing three readable encounters.
 ##
 ## Gated by ParentalControlPolicy.combat_enabled (Adv 2 TB-1 fix).
 ## When combat is off, the runtime stays in the legacy
@@ -508,9 +1225,25 @@ func _tick_npcs(delta: float) -> void:
 		var base_y: float = float(body.get_meta("npc_base_y", body.global_position.y))
 		match role:
 			NPCCharacter.ROLE_GUIDE, NPCCharacter.ROLE_VENDOR:
-				# Friendly bob + slow rotate so kid sees the NPC is alive.
-				body.global_position.y = base_y + sin(t * 2.0 + float(body.get_instance_id() % 7)) * 0.08
-				body.rotate_y(delta * 0.6)
+				# Civilian NPCs follow a small, authored loop around their work/home
+				# marker. They stay at terrain height—no idle bob or floating labels—so
+				# the opening reads as a lived-in place rather than a prop showroom.
+				var wander_origin: Vector3 = body.get_meta("npc_wander_origin", body.global_position) as Vector3
+				var wander_radius := float(body.get_meta("npc_wander_radius", 1.25))
+				var wander_speed := float(body.get_meta("npc_wander_speed", 0.32))
+				var phase := float(body.get_meta("npc_wander_phase", 0.0))
+				var orbit := Vector3(cos(t * wander_speed + phase), 0.0,
+					sin(t * wander_speed * 0.83 + phase)) * wander_radius
+				var desired := wander_origin + orbit
+				desired.y = base_y
+				var horizontal := desired - body.global_position
+				horizontal.y = 0.0
+				var is_walking := horizontal.length() > 0.10
+				if is_walking:
+					body.global_position = body.global_position.move_toward(desired, delta * 0.72)
+					body.look_at(body.global_position + horizontal, Vector3.UP)
+				body.global_position.y = base_y
+				_set_npc_locomotion(body, is_walking)
 			NPCCharacter.ROLE_HOSTILE:
 				# Slow chase: lerp toward player on the XZ plane, capped speed.
 				if _player_controller == null or not is_instance_valid(_player_controller):
@@ -523,15 +1256,11 @@ func _tick_npcs(delta: float) -> void:
 				body.look_at(_player_controller.global_position, Vector3.UP)
 
 
-## Wave 3 W3-A3: spawn one visible NPC marker per roster entry around
-## the player spawn. Each gets a capsule body + Area3D so walking up
-## triggers the greeting bubble. Visuals are placeholder geometry
-## (capsule + role-tinted material) so the kid sees a distinct
-## character; KayKit/Quaternius rigs swap in a follow-up commit.
+## Wave 3 W3-A3: spawn one visible NPC per roster entry around the opening
+## path. Each gets a collision body + Area3D so walking up triggers the
+## greeting bubble. Quaternius rigs provide recognizable silhouettes.
 func _spawn_npcs() -> void:
 	if _player_controller == null:
-		return
-	if _npc_roster.is_empty():
 		return
 	if _npc_root != null and is_instance_valid(_npc_root):
 		_npc_root.queue_free()
@@ -540,51 +1269,145 @@ func _spawn_npcs() -> void:
 	add_child(_npc_root)
 
 	var origin := _player_controller.global_position
-	# Arrange NPCs on a ring around the player so the kid sees a small
-	# friendly crowd at spawn. Radius 6m is just outside arm's reach.
-	var count: int = _npc_roster.size()
-	for i in count:
-		var npc_variant: Variant = _npc_roster[i]
+	# Spawn markers are stored at the player root, which starts 1m above the
+	# floor while physics settles. Static NPCs must use terrain height, not that
+	# transient character height, or they remain permanently airborne.
+	origin.y = 0.0
+
+	# Spawn authored Adventure NPCs only when a roster was injected. The roster
+	# may be empty in free-play sessions, but the starter-camp residents below
+	# still populate the opening so the world never feels abandoned.
+	if not _npc_roster.is_empty():
+		# Put the guide on the opening path and keep optional characters farther
+		# out. The first thing the kid sees is a friendly invitation, not a wall of
+		# hostile geometry.
+		var count: int = _npc_roster.size()
+		for i in count:
+			var npc_variant: Variant = _npc_roster[i]
+			if not (npc_variant is NPCCharacter):
+				continue
+			var npc: NPCCharacter = npc_variant
+			var angle := (TAU / float(count)) * float(i)
+			var pos := origin + Vector3(cos(angle) * 10.0, 0.0, sin(angle) * 10.0)
+			if i == 0:
+				# The guide is visible beside the opening trail, but speaks only when
+				# approached. This avoids a reading-heavy dialogue slab obscuring the
+			# first scenic frame before the child has chosen to interact.
+				pos = origin + Vector3(-3.8, 0.0, -6.0)
+			elif npc.visual_id == "npc_pirate":
+				# The pirate is a discoverable world character even when parental
+				# combat policy degrades their role to guide. Do not let the policy
+				# move a full-sized human into the opening tableau.
+				pos = origin + Vector3(-120.0, 0.0, 90.0)
+			elif npc.visual_id == "npc_parrot":
+				# Pestka stays near Olek as a small, grounded companion—not a human
+				# at a random point on the NPC ring.
+				pos = origin + Vector3(-5.5, 0.0, -6.5)
+			_spawn_one_npc(npc, pos)
+
+	# A small, ordinary camp population makes the north-bank home feel lived in
+	# before the later village expansion. These reuse the grounded human rigs and
+	# local facial attachment path; none are color blobs or passive billboards.
+	var residents: Array[NPCCharacter] = [
+		NPCCharacter.new("npc_hania", NPCCharacter.ROLE_GUIDE, "Hania", {
+			"greeting_pl": "Cześć! Właśnie wracam z lasu. Masz już siekierę?",
+			"fart_reaction": {"kind": "laugh", "line": "Ha! Ale numer!"},
+		}),
+		NPCCharacter.new("npc_bartek", NPCCharacter.ROLE_VENDOR, "Bartek", {
+			"greeting_pl": "Pilnuję opału przy domu. Drewno przyda się do gotowania.",
+			"fart_reaction": {"kind": "disgust", "line": "Ej, przewietrzmy to!"},
+		}),
+		NPCCharacter.new("npc_lena", NPCCharacter.ROLE_GUIDE, "Lena", {
+			"greeting_pl": "Miło cię widzieć! Za mostem znajdziesz kamienie do zbierania.",
+			"fart_reaction": {"kind": "curious", "line": "To było naprawdę głośne!"},
+		}),
+	]
+	var resident_positions := [
+		origin + Vector3(-7.5, 0.0, -35.5),
+		origin + Vector3(20.5, 0.0, -48.0),
+		origin + Vector3(4.5, 0.0, -57.0),
+	]
+	for resident_index in residents.size():
+		_spawn_one_npc(residents[resident_index], resident_positions[resident_index], 2.15)
+
+
+func _show_intro_npc() -> void:
+	if _npc_roster.is_empty():
+		return
+	for npc_variant in _npc_roster:
 		if not (npc_variant is NPCCharacter):
 			continue
 		var npc: NPCCharacter = npc_variant
-		var angle := (TAU / float(count)) * float(i)
-		var pos := origin + Vector3(cos(angle) * 6.0, 0.0, sin(angle) * 6.0)
-		_spawn_one_npc(npc, pos)
+		if npc.role != NPCCharacter.ROLE_GUIDE and npc.role != NPCCharacter.ROLE_VENDOR:
+			continue
+		var greeting := npc.line_for("greeting")
+		if greeting.is_empty():
+			return
+		_active_npc_id = npc.npc_id
+		_animate_npc_speech(npc.npc_id, greeting)
+		_show_npc_dialogue(npc.name_pl, greeting)
+		return
 
 
 ## Spawn a single NPC marker: capsule mesh + collision + Area3D for
 ## the greeting trigger. Color encodes role so the kid can tell a
 ## guide (green) from a vendor (gold) from a (degraded) hostile (red).
-func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
+func _spawn_one_npc(npc: NPCCharacter, pos: Vector3, wander_radius: float = 1.25) -> void:
 	var root := StaticBody3D.new()
+	var is_small_companion := npc.visual_id == "npc_parrot"
 	root.name = "npc_%s" % npc.npc_id
-	root.global_position = pos
+	# A detached node cannot safely receive a global transform. Add it to the
+	# NPC root first, then use local position so the authored spawn is stable
+	# and smoke runs stay free of !is_inside_tree() errors.
+	_npc_root.add_child(root)
+	root.position = pos
 	root.set_meta("npc_id", npc.npc_id)
 	root.set_meta("npc_name_pl", npc.name_pl)
 	root.set_meta("greeting_pl", npc.line_for("greeting"))
 	root.set_meta("npc_role", npc.role)
 	root.set_meta("npc_base_y", pos.y)
+	root.set_meta("npc_wander_origin", pos)
+	root.set_meta("npc_wander_radius", wander_radius)
+	root.set_meta("npc_wander_speed", 0.31 + float(abs(npc.npc_id.hash()) % 9) * 0.015)
+	root.set_meta("npc_wander_phase", deg_to_rad(float(abs(npc.npc_id.hash()) % 360)))
+	root.set_meta("speech_bubble_height", 0.90 if is_small_companion else 1.75)
+	var fart_reaction: Variant = npc.lines_pl.get("fart_reaction", {})
+	if fart_reaction is Dictionary:
+		root.set_meta("fart_reaction", (fart_reaction as Dictionary).duplicate(true))
 	root.add_to_group("npcs")
 
-	var capsule := MeshInstance3D.new()
-	var mesh := CapsuleMesh.new()
-	mesh.height = 1.6
-	mesh.radius = 0.35
-	capsule.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = _color_for_role(npc.role)
-	mat.emission_enabled = true
-	mat.emission = mat.albedo_color
-	mat.emission_energy_multiplier = 0.15
-	capsule.material_override = mat
-	root.add_child(capsule)
+	# Real rigged, textured character model per role — replaces the old
+	# solid-color capsule so kids can tell an NPC apart from a prop. Falls
+	# back to a tinted capsule only if the model fails to load.
+	var visual := _build_npc_visual(npc)
+	root.add_child(visual)
+	var facial = visual.find_child("FacialPerformance", true, false)
+	if facial != null:
+		root.set_meta("facial_performance", facial)
+
+	# The interaction bubble carries the name once the child chooses to talk.
+	# Floating labels across the terrain made the world read like an editor.
+	var label := Label3D.new()
+	label.text = npc.name_pl
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = false
+	label.fixed_size = false
+	label.pixel_size = 0.004
+	label.font_size = 32
+	label.outline_size = 4
+	label.modulate = Color(0.92, 0.96, 1.0)
+	label.outline_modulate = Color(0, 0, 0, 0.85)
+	label.position = Vector3(0, 0.95 if is_small_companion else 2.05, 0)
+	label.visible = false
+	root.add_child(label)
 
 	var col := CollisionShape3D.new()
+	col.name = "CollisionShape3D"
 	var shape := CapsuleShape3D.new()
-	shape.height = 1.6
-	shape.radius = 0.35
+	shape.height = 0.68 if is_small_companion else 1.2
+	shape.radius = 0.21 if is_small_companion else 0.28
 	col.shape = shape
+	col.position.y = 0.34 if is_small_companion else 0.6
 	root.add_child(col)
 
 	# Interaction trigger — 1.8m radius so walking up greets the kid
@@ -592,7 +1415,7 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	var trigger := Area3D.new()
 	trigger.name = "GreetTrigger"
 	var trig_shape := SphereShape3D.new()
-	trig_shape.radius = 1.8
+	trig_shape.radius = 1.0 if is_small_companion else 1.8
 	var trig_col := CollisionShape3D.new()
 	trig_col.shape = trig_shape
 	trigger.add_child(trig_col)
@@ -600,7 +1423,220 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	trigger.body_exited.connect(_on_npc_trigger_exited.bind(root))
 	root.add_child(trigger)
 
-	_npc_root.add_child(root)
+
+const _NPC_WALK_HINTS := ["Walk", "walk", "CharacterArmature|Walk", "SkeletonArmature|Skeleton_Walk"]
+
+
+func _set_npc_locomotion(body: StaticBody3D, walking: bool) -> void:
+	var desired_state := "walk" if walking else "idle"
+	if String(body.get_meta("npc_locomotion", "")) == desired_state:
+		return
+	var visual := body.get_child(0) as Node3D if body.get_child_count() > 0 else null
+	var anim := visual.find_child("AnimationPlayer", true, false) as AnimationPlayer if visual != null else null
+	if anim == null:
+		return
+	var hints := _NPC_WALK_HINTS if walking else _NPC_IDLE_HINTS
+	for hint in hints:
+		if anim.has_animation(hint):
+			anim.get_animation(hint).loop_mode = Animation.LOOP_LINEAR
+			anim.play(hint)
+			body.set_meta("npc_locomotion", desired_state)
+			return
+
+## The player already proves these Kenney character scenes at the correct kid
+## scale. Reuse them for every NPC instead of depending on a separate rig that
+## can silently fail and leave the green capsule fallback in the world.
+const _NPC_MODEL_BY_ROLE := {
+	"guide": "res://data/models/kenney/toon_characters/Models/GLB format/character-male-b.glb",
+	"vendor": "res://data/models/kenney/toon_characters/Models/GLB format/character-male-d.glb",
+	"hostile": "res://data/models/kenney/toon_characters/Models/GLB format/character-male-f.glb",
+}
+const _NPC_IDLE_HINTS := ["Idle", "idle", "CharacterArmature|Idle", "SkeletonArmature|Skeleton_Idle"]
+
+
+## Build the NPC's visual node: a loaded character model (idle-animated when the
+## model has clips), or a tinted capsule fallback if loading fails.
+func _build_npc_visual(npc: NPCCharacter) -> Node3D:
+	if npc.visual_id == "npc_parrot":
+		return _build_parrot_visual()
+	var role := npc.role
+	var path: String = _NPC_MODEL_BY_ROLE.get(role, _NPC_MODEL_BY_ROLE["guide"])
+	if ResourceLoader.exists(path):
+		var packed: PackedScene = load(path)
+		if packed != null:
+			var model := packed.instantiate() as Node3D
+			if model != null:
+				model.scale = Vector3.ONE * 0.92
+				# Kenney's visible feet sit 10cm above its imported root.  The player
+				# controller calibrates this same rig; civilians need the matching
+				# resting offset or they visibly hover above their collision capsule.
+				model.position.y = -0.10
+				# Kenney rigs author facing +Z; face -Z toward the approaching kid.
+				model.rotation.y = PI
+				if npc.visual_id == "npc_pirate":
+					_add_pirate_accessories(model)
+				_attach_humanoid_face(model)
+				var anim := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+				if anim != null:
+					for hint in _NPC_IDLE_HINTS:
+						if anim.has_animation(hint):
+							anim.get_animation(hint).loop_mode = Animation.LOOP_LINEAR
+							anim.play(hint)
+							break
+				return model
+	# Fallback: tinted capsule (old behavior) so an NPC is never invisible.
+	var capsule := MeshInstance3D.new()
+	var mesh := CapsuleMesh.new()
+	mesh.height = 1.6
+	mesh.radius = 0.35
+	capsule.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = _color_for_role(role)
+	mat.emission_enabled = true
+	mat.emission = mat.albedo_color
+	mat.emission_energy_multiplier = 0.15
+	capsule.material_override = mat
+	# Keep the degraded fallback expressive too; the face sits on its forward
+	# surface rather than leaving a silent blank marker in a live session.
+	var fallback_face = FACIAL_PERFORMANCE_SCRIPT.new()
+	fallback_face.name = "FacialPerformance"
+	capsule.add_child(fallback_face)
+	fallback_face.setup_face(Vector3(0.0, 0.36, 0.0), -0.35, 0.8)
+	return capsule
+
+
+func _attach_humanoid_face(model: Node3D) -> void:
+	FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(model)
+
+
+func _build_parrot_visual() -> Node3D:
+	# No suitable bird model exists in the compatible local packs. Keep a compact,
+	# readable parrot silhouette (body, wings, tail, beak and feet) rather than
+	# degrading this NPC to a humanoid or a smooth chicken-shaped blob.
+	var parrot := Node3D.new()
+	parrot.name = "ParrotVisual"
+	parrot.scale = Vector3.ONE * 0.62
+	var green := _npc_material(Color(0.08, 0.46, 0.22))
+	var blue := _npc_material(Color(0.06, 0.23, 0.75))
+	var red := _npc_material(Color(0.78, 0.12, 0.08))
+	var yellow := _npc_material(Color(1.0, 0.64, 0.08))
+	var dark := _npc_material(Color(0.015, 0.02, 0.03))
+	var body := MeshInstance3D.new()
+	var body_mesh := SphereMesh.new()
+	body_mesh.radius = 0.31
+	body_mesh.height = 0.64
+	body.mesh = body_mesh
+	body.material_override = green
+	body.position.y = 0.42
+	parrot.add_child(body)
+	var head := MeshInstance3D.new()
+	var head_mesh := SphereMesh.new()
+	head_mesh.radius = 0.24
+	head_mesh.height = 0.44
+	head.mesh = head_mesh
+	# A yellow head read as a tiny human with a coloured helmet from the
+	# third-person camera. Keep the head in the parrot's green plumage; reserve
+	# yellow for a compact chest patch and the red beak.
+	head.material_override = green
+	head.position = Vector3(0.0, 0.76, -0.10)
+	parrot.add_child(head)
+	var chest := MeshInstance3D.new()
+	var chest_mesh := SphereMesh.new()
+	chest_mesh.radius = 0.18
+	chest_mesh.height = 0.30
+	chest.mesh = chest_mesh
+	chest.material_override = yellow
+	chest.position = Vector3(0.0, 0.46, -0.25)
+	chest.scale = Vector3(0.75, 1.0, 0.45)
+	parrot.add_child(chest)
+	for x in [-0.27, 0.27]:
+		var wing := MeshInstance3D.new()
+		var wing_mesh := SphereMesh.new()
+		wing_mesh.radius = 0.18
+		wing_mesh.height = 0.48
+		wing.mesh = wing_mesh
+		wing.material_override = blue
+		wing.position = Vector3(x, 0.43, 0.03)
+		wing.scale = Vector3(0.58, 1.0, 0.36)
+		wing.rotation.z = -0.38 * signf(x)
+		parrot.add_child(wing)
+	var beak := MeshInstance3D.new()
+	var beak_mesh := PrismMesh.new()
+	beak_mesh.size = Vector3(0.18, 0.13, 0.25)
+	beak.mesh = beak_mesh
+	beak.material_override = red
+	beak.position = Vector3(0.0, 0.76, -0.31)
+	beak.rotation.x = PI * 0.5
+	parrot.add_child(beak)
+	for x in [-0.09, 0.09]:
+		var eye := MeshInstance3D.new()
+		var eye_mesh := SphereMesh.new()
+		eye_mesh.radius = 0.035
+		eye_mesh.height = 0.07
+		eye.mesh = eye_mesh
+		eye.material_override = dark
+		eye.position = Vector3(x, 0.82, -0.31)
+		parrot.add_child(eye)
+	var tail := MeshInstance3D.new()
+	var tail_mesh := PrismMesh.new()
+	tail_mesh.size = Vector3(0.24, 0.54, 0.18)
+	tail.mesh = tail_mesh
+	tail.material_override = blue
+	tail.position = Vector3(0.0, 0.18, 0.28)
+	tail.rotation.x = -0.55
+	parrot.add_child(tail)
+	for x in [-0.09, 0.09]:
+		var foot := MeshInstance3D.new()
+		var foot_mesh := CylinderMesh.new()
+		foot_mesh.top_radius = 0.025
+		foot_mesh.bottom_radius = 0.025
+		foot_mesh.height = 0.18
+		foot.mesh = foot_mesh
+		foot.material_override = dark
+		foot.position = Vector3(x, 0.08, 0.02)
+		parrot.add_child(foot)
+	# The parrot keeps its authored eyes while this lightweight mouth layer
+	# opens only while its greeting is being spoken.
+	var face = FACIAL_PERFORMANCE_SCRIPT.new()
+	face.name = "FacialPerformance"
+	parrot.add_child(face)
+	face.setup_face(Vector3(0.0, 0.76, -0.10), -0.22, 0.72, false, false)
+	return parrot
+
+func _npc_material(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.62
+	return mat
+
+
+func _add_pirate_accessories(model: Node3D) -> void:
+	# A compact red bandana and eyepatch turn the shared human rig into a clear
+	# pirate silhouette using only runtime primitives; no blob/fallback or new
+	# unlicensed character asset is needed.
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color(0.56, 0.08, 0.06)
+	red.roughness = 0.72
+	var bandana := MeshInstance3D.new()
+	var bandana_mesh := CylinderMesh.new()
+	bandana_mesh.top_radius = 0.23
+	bandana_mesh.bottom_radius = 0.23
+	bandana_mesh.height = 0.075
+	bandana.mesh = bandana_mesh
+	bandana.material_override = red
+	bandana.position = Vector3(0.0, 1.42, 0.0)
+	model.add_child(bandana)
+	var black := StandardMaterial3D.new()
+	black.albedo_color = Color(0.025, 0.02, 0.018)
+	black.roughness = 0.6
+	var patch := MeshInstance3D.new()
+	var patch_mesh := SphereMesh.new()
+	patch_mesh.radius = 0.075
+	patch_mesh.height = 0.035
+	patch.mesh = patch_mesh
+	patch.material_override = black
+	patch.position = Vector3(-0.10, 1.30, -0.22)
+	model.add_child(patch)
 
 
 func _color_for_role(role: String) -> Color:
@@ -620,12 +1656,25 @@ func _on_npc_trigger_entered(body: Node, npc_root: Node3D) -> void:
 		return
 	if not is_instance_valid(npc_root):
 		return
+	# The reaction queue owns the one spoken-dialogue channel.  Walking past an
+	# NPC while a nearby character is reacting must not create a second voice on
+	# top of the first one.
+	if _npc_reaction_queue_active:
+		return
+	if _normal_npc_voice_active:
+		return
 	var name_pl: String = String(npc_root.get_meta("npc_name_pl", ""))
 	var greeting: String = String(npc_root.get_meta("greeting_pl", ""))
 	if greeting.is_empty():
 		return
 	_active_npc_id = String(npc_root.get_meta("npc_id", ""))
+	_animate_npc_speech(String(npc_root.get_meta("npc_id", "")), greeting)
 	_show_npc_dialogue(name_pl, greeting)
+
+	# VS-016: Trigger guide interaction evidence capture
+	var npc_role = npc_root.get_meta("npc_role", null)
+	if npc_role == NPCCharacter.ROLE_GUIDE:
+		_trigger_evidence_capture(2)  # GUIDE_INTERACTION = 2
 
 
 func _on_npc_trigger_exited(body: Node, npc_root: Node3D) -> void:
@@ -639,18 +1688,126 @@ func _on_npc_trigger_exited(body: Node, npc_root: Node3D) -> void:
 
 ## Lazily build a single shared dialogue label at the bottom-center.
 ## Kept on the HUD CanvasLayer so it sits above 3D geometry.
-func _show_npc_dialogue(name_pl: String, line_pl: String) -> void:
+func _show_npc_dialogue(name_pl: String, line_pl: String, speak_line: bool = true) -> void:
 	if _npc_dialogue_label == null:
 		_npc_dialogue_label = _build_npc_dialogue_label()
 	if _npc_dialogue_label == null:
 		return
 	_npc_dialogue_label.text = "%s: %s" % [name_pl, line_pl]
 	_npc_dialogue_label.visible = true
+	if _npc_dialogue_panel != null:
+		_npc_dialogue_panel.visible = true
+
+	# Clear input text
+	if _npc_dialogue_input != null:
+		_npc_dialogue_input.text = ""
+
+	# Conversation is an optional overlay, never a modal state. In particular,
+	# do not focus its LineEdit on greeting: that previously swallowed E and
+	# other gameplay bindings before a child had chosen to type anything.
+
+	# Start conversation history if empty
+	if not _npc_dialogue_history.has(_active_npc_id) or _npc_dialogue_history[_active_npc_id].is_empty():
+		_npc_dialogue_history[_active_npc_id] = [
+			{"role": "assistant", "content": line_pl}
+		]
+
+	# Speak the line aloud (ElevenLabs). Caption stays as the fallback. Normal
+	# encounters are also request-aware; the reaction queue waits for this turn
+	# to finish instead of starting a second concurrent voice.
+	if speak_line:
+		_normal_npc_voice_request_id = _next_npc_reaction_request_id()
+		_normal_npc_voice_line = line_pl
+		_normal_npc_voice_active = _speak_npc_line(line_pl, _normal_npc_voice_request_id)
+
+
+func _setup_local_npc_voice() -> void:
+	if _local_npc_voice != null:
+		return
+	_local_npc_voice = AudioStreamPlayer.new()
+	_local_npc_voice.name = "AdventureNpcVoiceFallback"
+	_local_npc_voice.bus = "Voice"
+	add_child(_local_npc_voice)
+	_local_npc_voice.finished.connect(_on_local_npc_voice_finished)
+
+
+## Test doubles continue through VoicePromptPort. The production adapter uses
+## exact shipped ElevenLabs takes for authored Adventure lines, then falls
+## back to the live request path for future/un-authored lines.
+func _speak_npc_line(line: String, request_id: int) -> bool:
+	if _npc_voice is ElevenLabsVoicePromptAdapter and _play_local_npc_voice(line, request_id):
+		return true
+	if _npc_voice != null and _npc_voice.is_available():
+		_npc_voice.speak(line, "pl-PL", request_id)
+		return true
+	return _play_local_npc_voice(line, request_id)
+
+
+func _play_local_npc_voice(line: String, request_id: int) -> bool:
+	if _local_npc_voice == null:
+		return false
+	var stream := LOCAL_NPC_VOICE_STREAMS.get(line, null) as AudioStream
+	if stream == null:
+		return false
+	_local_npc_voice.stop()
+	_local_npc_voice.stream = stream
+	_local_npc_voice_line = line
+	_local_npc_voice_request_id = request_id
+	_local_npc_voice.play()
+	_on_npc_voice_playback_started(line, request_id)
+	return true
+
+
+func _on_local_npc_voice_finished() -> void:
+	if _local_npc_voice_line.is_empty():
+		return
+	var line := _local_npc_voice_line
+	var request_id := _local_npc_voice_request_id
+	_local_npc_voice_line = ""
+	_local_npc_voice_request_id = -1
+	_on_npc_voice_playback_finished(line, request_id)
+
+
+func _cancel_active_npc_voice() -> void:
+	if _npc_voice != null:
+		_npc_voice.cancel()
+	if _local_npc_voice != null:
+		_local_npc_voice.stop()
+	_local_npc_voice_line = ""
+	_local_npc_voice_request_id = -1
+
+
+func _speech_duration_for_line(line: String) -> float:
+	# Voice assets can vary a little, but this avoids a permanent talk loop and
+	# closely covers short kid-facing greetings until audio playback ends.
+	return clampf(float(line.length()) / 13.0, 0.75, 4.5)
+
+
+func _animate_npc_speech(
+		npc_id: String,
+		line: String,
+		emotion: int = FacialPerformance.Emotion.HAPPY
+	) -> void:
+	if _npc_root == null or npc_id.is_empty():
+		return
+	for child in _npc_root.get_children():
+		if not (child is Node3D) or String(child.get_meta("npc_id", "")) != npc_id:
+			continue
+		if not child.has_meta("facial_performance"):
+			return
+		var facial = child.get_meta("facial_performance")
+		if facial != null and is_instance_valid(facial):
+			facial.speak_for(_speech_duration_for_line(line), emotion)
+		return
 
 
 func _hide_npc_dialogue() -> void:
 	if _npc_dialogue_label != null:
 		_npc_dialogue_label.visible = false
+	if _npc_dialogue_panel != null:
+		_npc_dialogue_panel.visible = false
+	if _player_controller != null and _player_controller.has_method("set_input_disabled") and _player_controller.is_input_disabled():
+		_player_controller.set_input_disabled(false)
 
 
 func _build_npc_dialogue_label() -> Label:
@@ -661,10 +1818,25 @@ func _build_npc_dialogue_label() -> Label:
 	panel.name = "NPCDialogue"
 	panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	panel.offset_left = 280
-	panel.offset_top = -160
+	if _npc_llm_port != null:
+		panel.offset_top = -240
+	else:
+		panel.offset_top = -160
 	panel.offset_right = -280
 	panel.offset_bottom = -90
 	hud.add_child(panel)
+	_npc_dialogue_panel = panel
+	# The conversation composer is an interaction surface, not a permanent HUD
+	# element.  A visible empty panel at boot read as a developer chat overlay
+	# and covered the lower third of the opening scene before the child had met
+	# anyone. `_show_npc_dialogue()` reveals it only after entering an NPC's
+	# intentional conversation radius.
+	panel.visible = false
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "DialogueVBox"
+	panel.add_child(vbox)
+
 	var label := Label.new()
 	label.name = "NPCDialogueLabel"
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -675,8 +1847,333 @@ func _build_npc_dialogue_label() -> Label:
 	label.add_theme_constant_override("shadow_offset_x", 2)
 	label.add_theme_constant_override("shadow_offset_y", 2)
 	label.visible = false
-	panel.add_child(label)
+	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(label)
+
+	if _npc_llm_port != null:
+		var hbox := HBoxContainer.new()
+		hbox.name = "DialogueInputHBox"
+		hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vbox.add_child(hbox)
+
+		var input := LineEdit.new()
+		input.name = "DialogueInput"
+		input.placeholder_text = "Napisz cos do NPC..."
+		input.focus_mode = Control.FOCUS_CLICK
+		input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		input.add_theme_font_size_override("font_size", 18)
+		hbox.add_child(input)
+		_npc_dialogue_input = input
+		input.text_submitted.connect(_on_npc_dialogue_submitted)
+		# The controller polls Input actions every frame. GUI consumption alone
+		# therefore cannot stop E/G/W from also becoming world actions while their
+		# letters are typed. Disable player input only while this LineEdit owns
+		# focus; gravity and physics keep running normally.
+		input.focus_entered.connect(_on_npc_dialogue_input_focus_entered)
+		input.focus_exited.connect(_on_npc_dialogue_input_focus_exited)
+
+		var send_btn := Button.new()
+		send_btn.name = "DialogueSendButton"
+		send_btn.text = "Wyslij"
+		send_btn.focus_mode = Control.FOCUS_CLICK
+		send_btn.add_theme_font_size_override("font_size", 18)
+		hbox.add_child(send_btn)
+		_npc_dialogue_send = send_btn
+		send_btn.pressed.connect(func() -> void: _on_npc_dialogue_submitted(""))
+
+		var close_btn := Button.new()
+		close_btn.name = "DialogueCloseButton"
+		close_btn.text = "Pozegnaj"
+		close_btn.focus_mode = Control.FOCUS_CLICK
+		close_btn.add_theme_font_size_override("font_size", 18)
+		hbox.add_child(close_btn)
+		_npc_dialogue_close = close_btn
+		close_btn.pressed.connect(_hide_npc_dialogue)
+
 	return label
+
+
+func _on_npc_dialogue_submitted(text: String = "") -> void:
+	if text.strip_edges().is_empty():
+		if _npc_dialogue_input != null:
+			text = _npc_dialogue_input.text
+	if text.strip_edges().is_empty():
+		return
+
+	if _npc_dialogue_input != null:
+		_npc_dialogue_input.text = ""
+		_npc_dialogue_input.release_focus()
+
+	var npc_name := ""
+	if _npc_root != null:
+		for child in _npc_root.get_children():
+			if child.get_meta("npc_id", "") == _active_npc_id:
+				npc_name = child.get_meta("npc_name_pl", "")
+				break
+	if npc_name.is_empty():
+		npc_name = _active_npc_id
+
+	if _npc_dialogue_label != null:
+		_npc_dialogue_label.text = "%s myśli..." % npc_name
+
+	_npc_dialogue_request_sequence += 1
+	var request_id := _npc_dialogue_request_sequence
+	_active_npc_dialogue_request_id = request_id
+	if _npc_llm_port == null:
+		_present_npc_reply(_active_npc_id, npc_name, _authored_npc_fallback_line(_active_npc_from_roster()))
+		_active_npc_dialogue_request_id = -1
+		return
+	_execute_npc_completions(text, request_id)
+	# A local model can accept a request and never invoke its callback. Do not
+	# strand a child in a permanent “thinking” UI; present the authored response
+	# after a short bound and ignore a late callback by request id.
+	var tree := get_tree()
+	if tree != null:
+		tree.create_timer(NPC_DIALOGUE_REPLY_TIMEOUT_SECONDS).timeout.connect(func() -> void:
+			if _active_npc_dialogue_request_id != request_id:
+				return
+			_present_npc_reply(_active_npc_id, npc_name, _authored_npc_fallback_line(_active_npc_from_roster()))
+			_active_npc_dialogue_request_id = -1
+		)
+
+
+func _on_npc_dialogue_input_focus_entered() -> void:
+	if _player_controller != null and _player_controller.has_method("set_input_disabled"):
+		_player_controller.set_input_disabled(true)
+
+
+func _on_npc_dialogue_input_focus_exited() -> void:
+	if _player_controller != null and _player_controller.has_method("set_input_disabled"):
+		_player_controller.set_input_disabled(false)
+
+
+func _active_npc_from_roster() -> NPCCharacter:
+	for npc_variant in _npc_roster:
+		if npc_variant is NPCCharacter and npc_variant.npc_id == _active_npc_id:
+			return npc_variant as NPCCharacter
+	return null
+
+
+func _get_inventory() -> Dictionary:
+	if _rules_runtime != null:
+		var raw: Variant = _rules_runtime.get_context_value("inventory")
+		if raw is Dictionary:
+			return raw
+	return _local_inventory
+
+
+func _commit_inventory(inventory: Dictionary, changed_item_id: String = "") -> void:
+	_local_inventory = inventory.duplicate(true)
+	if _rules_runtime != null:
+		_rules_runtime.set_context_value("inventory", inventory)
+		if not changed_item_id.is_empty():
+			_rules_runtime.on_event("inventory_changed", {"item": changed_item_id})
+	_refresh_inventory_panel(inventory)
+
+
+func _add_inventory_item(item_id: String, amount: int = 1) -> void:
+	var inventory := _get_inventory()
+	inventory[item_id] = int(inventory.get(item_id, 0)) + amount
+	_commit_inventory(inventory, item_id)
+
+
+func _execute_npc_completions(player_text: String, request_id: int = -1) -> void:
+	if _npc_llm_port == null:
+		return
+
+	var active_npc: NPCCharacter = null
+	for npc_variant in _npc_roster:
+		if npc_variant is NPCCharacter and npc_variant.npc_id == _active_npc_id:
+			active_npc = npc_variant
+			break
+
+	var npc_name_pl := _active_npc_id
+	var npc_role := "guide"
+	if active_npc != null:
+		npc_name_pl = active_npc.name_pl
+		npc_role = active_npc.role
+
+	if not _npc_dialogue_history.has(_active_npc_id):
+		_npc_dialogue_history[_active_npc_id] = []
+
+	_npc_dialogue_history[_active_npc_id].append({"role": "user", "content": player_text})
+
+	var inv_str := ""
+	var inv := _get_inventory()
+	for item_id in inv.keys():
+		inv_str += "%s: %d, " % [item_id, inv[item_id]]
+	if inv_str.is_empty():
+		inv_str = "pusty"
+	else:
+		inv_str = inv_str.left(inv_str.length() - 2)
+
+	var sys_prompt := "Jesteś postacią w grze przygodowej dla dzieci. " \
+		+ "Nazywasz się: %s.\n" \
+		+ "Twoja rola to: %s (guide = pomocnik/trener, vendor = kupiec, hostile = wróg).\n" \
+		+ "Stan gry:\n" \
+		+ "- Punkty gracza: %d\n" \
+		+ "- Życie gracza: %d/%d\n" \
+		+ "- Ekwipunek gracza: %s\n\n" \
+		+ "Odpowiadaj po polsku. Pisz krótko (1-3 zdania), przyjaźnie i zgodnie ze swoją rolą.\n" \
+		+ "Możesz modyfikować stan gry (dawać/odbierać przedmioty, leczyć, zadawać obrażenia, dawać punkty).\n" \
+		+ "Jeśli podejmiesz decyzję o zmianie stanu gry, na samym końcu swojej odpowiedzi dopisz dokładnie blok w tagu <decision>:\n" \
+		+ "<decision>\n" \
+		+ "{\n" \
+		+ "  \"action\": \"give_item|take_item|give_score|heal|damage\",\n" \
+		+ "  \"item_id\": \"wood_oak|ore_iron|slime_gel|food_apple|banana\",\n" \
+		+ "  \"amount\": 1\n" \
+		+ "}\n" \
+		+ "</decision>\n" \
+		+ "W zwykłym tekście nie wspomominaj o tym bloku ani o tagach."
+
+	sys_prompt = sys_prompt % [
+		npc_name_pl,
+		npc_role,
+		_score,
+		_player_controller.get_health().current_hp if _player_controller != null and _player_controller.get_health() != null else 100,
+		_player_controller.get_health().max_hp if _player_controller != null and _player_controller.get_health() != null else 100,
+		inv_str
+	]
+
+	var prompt_text := ""
+	for msg in _npc_dialogue_history[_active_npc_id]:
+		var prefix := "Gracz: " if msg["role"] == "user" else (npc_name_pl + ": ")
+		prompt_text += prefix + msg["content"] + "\n"
+	prompt_text += npc_name_pl + ":"
+
+	var envelope := PromptEnvelope.new(prompt_text, "pl-PL")
+	envelope.system_prompt = sys_prompt
+	envelope.max_tokens = 250
+
+	var npc_id := _active_npc_id
+	var captured_npc_name := npc_name_pl
+	var captured_authored_npc := active_npc
+
+	_npc_llm_port.complete(
+		envelope,
+		{},
+		func(_token: String) -> void: pass,
+		func(result: Dictionary) -> void:
+			if request_id >= 0 and _active_npc_dialogue_request_id != request_id:
+				return
+			var reply_text := str(result.get("text", "")).strip_edges()
+			# Providers are optional enrichment. A transport/model failure must
+			# never become an NPC's line; the child gets a real authored response
+			# immediately, even offline or while LiteLLM/Ollama is restarting.
+			if _is_unusable_npc_model_result(result, reply_text):
+				var local_reply := _authored_npc_fallback_line(captured_authored_npc)
+				_present_npc_reply(npc_id, captured_npc_name, local_reply)
+				_active_npc_dialogue_request_id = -1
+				return
+
+			if _npc_moderation != null:
+				# GameplayRuntime receives only a profile id; preserve the child-safe
+				# default until a typed profile-age seam is injected by the shell.
+				var age_band := AgeBand.new()
+				var check := _npc_moderation.check_text(reply_text, age_band)
+				if check.is_blocked():
+					reply_text = check.safe_alternative if not check.safe_alternative.is_empty() else "Ojej, nie moge o tym rozmawiac."
+
+			var clean_text := reply_text
+			var decision_json := ""
+			if reply_text.contains("<decision>") and reply_text.contains("</decision>"):
+				var start := reply_text.find("<decision>") + 10
+				var end := reply_text.find("</decision>")
+				decision_json = reply_text.substr(start, end - start).strip_edges()
+				clean_text = reply_text.substr(0, reply_text.find("<decision>")).strip_edges()
+
+			_present_npc_reply(npc_id, captured_npc_name, clean_text)
+			_active_npc_dialogue_request_id = -1
+
+			if not decision_json.is_empty():
+				_apply_npc_decision(decision_json)
+	)
+
+
+## LLMPort deliberately normalises providers into a compact dictionary, so the
+## game must recognise failures by either explicit metadata or a small family
+## of provider-error phrases. It is intentionally narrow: an authored NPC is
+## still allowed to say ordinary "nie mogę" dialogue unless it refers to a
+## model/provider/transport failure.
+func _is_unusable_npc_model_result(result: Dictionary, reply_text: String) -> bool:
+	if bool(result.get("stopped", false)) or result.has("error"):
+		return true
+	var normalized := reply_text.to_lower().strip_edges()
+	if normalized.is_empty():
+		return true
+	var provider_error_terms := ["model", "llm", "provider", "błąd", "blad", "error", "unavailable", "połączeni", "polaczeni", "connection"]
+	for term in provider_error_terms:
+		if normalized.contains(term):
+			return true
+	return false
+
+
+## Resolve a safe, character-specific line that ships with the adventure.
+## This keeps the offline demo personable without pretending a live model is
+## available or allowing a provider failure to interrupt the play loop.
+func _authored_npc_fallback_line(npc: NPCCharacter) -> String:
+	if npc != null:
+		for trigger in ["hint", "greeting", "celebration"]:
+			var line := npc.line_for(trigger)
+			if not line.is_empty():
+				return line
+	return "Rozejrzyj się spokojnie — przygoda jest wszędzie."
+
+
+func _present_npc_reply(npc_id: String, npc_name: String, reply_text: String) -> void:
+	if _npc_dialogue_label != null:
+		_npc_dialogue_label.text = "%s: %s" % [npc_name, reply_text]
+	_normal_npc_voice_request_id = _next_npc_reaction_request_id()
+	_normal_npc_voice_line = reply_text
+	_normal_npc_voice_active = _speak_npc_line(reply_text, _normal_npc_voice_request_id)
+	if not _npc_dialogue_history.has(npc_id):
+		_npc_dialogue_history[npc_id] = []
+	_npc_dialogue_history[npc_id].append({"role": "assistant", "content": reply_text})
+
+
+func _apply_npc_decision(json_str: String) -> void:
+	var json := JSON.new()
+	if json.parse(json_str) != OK or not json.data is Dictionary:
+		push_warning("Failed to parse NPC decision JSON: %s" % json_str)
+		return
+
+	var data: Dictionary = json.data
+	var action := str(data.get("action", "")).strip_edges()
+	var item_id := str(data.get("item_id", "")).strip_edges()
+	var amount := int(data.get("amount", 1))
+
+	match action:
+		"give_item":
+			if not item_id.is_empty():
+				_add_inventory_item(item_id, amount)
+				print("[npc_decision] gave item: %s x%d" % [item_id, amount])
+		"take_item":
+			if not item_id.is_empty():
+				var inv := _get_inventory()
+				var current := int(inv.get(item_id, 0))
+				if current >= amount:
+					inv[item_id] = current - amount
+					if _rules_runtime != null:
+						_rules_runtime.set_context_value("inventory", inv)
+						_rules_runtime.on_event("inventory_changed", {"item": item_id})
+					_refresh_inventory_panel(inv)
+					print("[npc_decision] took item: %s x%d" % [item_id, amount])
+		"give_score":
+			_score += amount
+			if _score_label != null:
+				_score_label.text = str(_score)
+			if _rules_runtime != null:
+				_rules_runtime.set_context_value("score", _score)
+			print("[npc_decision] gave score: %d" % amount)
+		"heal":
+			if _player_controller != null and _player_controller.get_health() != null:
+				_player_controller.get_health().heal(amount)
+				_player_controller.hp_changed.emit(_player_controller.get_health().current_hp, _player_controller.get_health().max_hp)
+				print("[npc_decision] healed player: %d" % amount)
+		"damage":
+			if _player_controller != null:
+				_player_controller.apply_damage(amount)
+				print("[npc_decision] damaged player: %d" % amount)
 
 
 func _spawn_starter_enemies() -> void:
@@ -700,9 +2197,13 @@ func _spawn_starter_enemies() -> void:
 	var def_b := EnemyDefinition.slime_green()
 	var def_c := EnemyDefinition.bouncer()
 
-	_spawn_one(def_a, spawn + Vector3(8, 1, 0))
-	_spawn_one(def_b, spawn + Vector3(-7, 1, 6))
-	_spawn_one(def_c, spawn + Vector3(0, 1, 14))
+	# The opening is an invitation to explore, not an instant three-enemy
+	# ambush. Encounters live at the cave, deep in the forest, and by the beach;
+	# the first view therefore contains a guide and places to walk toward, not
+	# placeholder blobs attacking from the yard.
+	_spawn_one(def_a, spawn + Vector3(46, 1, -62))
+	_spawn_one(def_b, spawn + Vector3(-210, 1, 126))
+	_spawn_one(def_c, spawn + Vector3(-118, 1, -92))
 
 
 func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
@@ -710,6 +2211,10 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 	enemy.add_to_group("enemies")
 	# setup() before add_child so definition is non-null when _ready fires.
 	enemy.setup(def, _player_controller)
+	# Adv BB P0-7 fix: apply easy mode scaling if enabled
+	if _combat_policy != null and _combat_policy.combat_difficulty == ParentalControlPolicy.CombatDifficulty.EASY:
+		enemy.health.max_hp = int(enemy.health.max_hp * 0.6)
+		enemy.definition.contact_damage = int(enemy.definition.contact_damage * 0.5)
 	enemy.defeated.connect(_on_enemy_defeated)
 	# Hook hit feedback: floating "-N" damage label + short shake +
 	# percussive SFX on every landed swing. (Adv N/M feel overhaul.)
@@ -718,12 +2223,98 @@ func _spawn_one(def: EnemyDefinition, pos: Vector3) -> void:
 	enemy.global_position = pos
 
 
-## Adv Y C2 fix — fire whoosh SFX when a swing hits empty air.
-## Keeps the air swing audible so a 7yo never thinks the button
-## broke.
+## Keep an empty swing readable, but route it to a dry physical air cue rather
+## than the old imported tonal whoosh that sounded like a spell being cast.
 func _on_player_swing_missed(attack_origin: Vector3) -> void:
 	if _audio_bus != null:
-		_audio_bus.emit_sfx("swing_whoosh", attack_origin)
+		var style := "punch"
+		if _player_controller != null and _player_controller.has_method("get_last_attack_style"):
+			style = _player_controller.get_last_attack_style()
+		_audio_bus.emit_sfx("physical_swing_%s" % style, attack_origin)
+
+
+## Cache attack style for phase-aware impact feedback. A landed hit plays only
+## its contact cue below; stacking the old magic-like whoosh on top was the
+## source of the reported spell-casting feel.
+func _on_player_attacked(damage: int, hit_position: Vector3) -> void:
+	# Cache attack style for use in _on_enemy_damaged
+	if _player_controller != null and _player_controller.has_method("get_last_attack_style"):
+		_last_attack_style = _player_controller.get_last_attack_style()
+
+
+## A visible held tool must have a matching action. Pick the closest resource
+## inside a generous child-friendly forward cone, animate the harvest as three
+## deliberate hits, then reuse the normal inventory/reward path.
+func _on_player_tool_used(tool_id: String, effect_origin: Vector3, forward: Vector3) -> void:
+	_on_player_tool_used_for(_player_controller, tool_id, effect_origin, forward)
+
+
+## Shared-world adapter for both local players. The resource/inventory state
+## belongs to GameplayRuntime; only target selection belongs to the actor that
+## actually swung the tool.
+func _on_player_tool_used_for(actor: PlayerController, tool_id: String, effect_origin: Vector3, forward: Vector3) -> void:
+	if actor == null or not is_instance_valid(actor):
+		return
+	var required_action := "gather_wood" if tool_id == "tool_axe" else "gather_stone"
+	var target: Node3D = null
+	var best_score := INF
+	var candidates := get_tree().get_nodes_in_group("world_interactable")
+	# The actual forest, not only isolated loot props, is harvestable with an
+	# axe. These roots carry the same resource metadata as interaction anchors
+	# but deliberately have no large E-radius bubble around every trunk.
+	if tool_id == "tool_axe":
+		candidates.append_array(get_tree().get_nodes_in_group("harvestable_tree"))
+	for candidate in candidates:
+		if not (candidate is Node3D) or not is_instance_valid(candidate):
+			continue
+		var anchor := candidate as Node3D
+		if String(anchor.get_meta("interaction_action", "")) != required_action:
+			continue
+		var to_target := anchor.global_position - actor.global_position
+		to_target.y = 0.0
+		var distance := to_target.length()
+		if distance > 3.4 or distance < 0.01:
+			continue
+		var alignment := forward.dot(to_target.normalized())
+		if alignment < -0.15:
+			continue
+		var score := distance - alignment * 0.75
+		if score < best_score:
+			best_score = score
+			target = anchor
+	if target == null:
+		if _audio_bus != null:
+			_audio_bus.emit_sfx("physical_swing_%s" % ("axe" if tool_id == "tool_axe" else "pickaxe"), effect_origin)
+		# Tools remain useful in danger. In creative mode the first selected item
+		# is often an axe, so silently making it unable to affect a nearby monster
+		# felt like combat was broken. Preserve harvesting priority, but route a
+		# close visible enemy through the normal physical-hit path when no matching
+		# resource was targeted.
+		for enemy_candidate in get_tree().get_nodes_in_group("enemies"):
+			if enemy_candidate is EnemyController and is_instance_valid(enemy_candidate):
+				var enemy := enemy_candidate as EnemyController
+				if enemy.global_position.distance_to(actor.global_position) <= 2.15:
+					actor._perform_attack()
+					break
+		_interaction_feedback("Podejdź bliżej do %s." % ("drzewa" if tool_id == "tool_axe" else "skały"),
+			"gather_wood" if tool_id == "tool_axe" else "gather_stone")
+		return
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("tool_axe_wood" if tool_id == "tool_axe" else "tool_pickaxe_stone", target.global_position)
+	var visual_variant: Variant = target.get_meta("resource_visual", null)
+	if visual_variant is Node3D and is_instance_valid(visual_variant):
+		var visual := visual_variant as Node3D
+		var base_rotation := visual.rotation
+		var shake := create_tween()
+		shake.tween_property(visual, "rotation:z", base_rotation.z + 0.045, 0.06)
+		shake.tween_property(visual, "rotation", base_rotation, 0.10)
+	var hits := int(target.get_meta("harvest_hits", 0)) + 1
+	target.set_meta("harvest_hits", hits)
+	if hits < 3:
+		_interaction_feedback("%s %d/3" % ["Rąbiesz drzewo" if tool_id == "tool_axe" else "Rozbijasz skałę", hits],
+			"gather_wood" if tool_id == "tool_axe" else "gather_stone")
+		return
+	_gather_world_resource(target)
 
 
 func _on_enemy_damaged(amount: int, position: Vector3) -> void:
@@ -731,10 +2322,18 @@ func _on_enemy_damaged(amount: int, position: Vector3) -> void:
 	# bar). Future: pass enemy_id through.
 	var is_boss := amount >= 8
 	_spawn_damage_number(amount, position, is_boss)
+	# Adv Y H5 fix: phase-aware feedback (kicks > punches)
+	# Kicks get bigger shake, longer hit-stop, and 2x knockback
+	var is_kick := _last_attack_style == "kick"
+	var hit_stop_duration := 0.06 if is_boss else (0.06 if is_kick else 0.035)
+	var shake_amplitude := 7.0 if is_kick else 6.0
 	# Adv Y C1 fix: hit-stop fires on EVERY hit-connect (35ms mob /
 	# 60ms boss), not only on kill. This is the single biggest "yes I
 	# hit it" signal — Mick Hofman / J.W. Nijman pattern.
-	_apply_hit_stop(0.06 if is_boss else 0.035)
+	_apply_hit_stop(hit_stop_duration)
+
+	# VS-016: Trigger combat evidence capture on first hit
+	_trigger_evidence_capture(4)  # COMBAT = 4
 	# Adv Y C4 fix: per-hit shake is now LOUDER than defeat shake
 	# (because it fires every swing, defeat is the rarer payoff).
 	# Direction = away from player toward hit point so the camera
@@ -745,12 +2344,16 @@ func _on_enemy_damaged(amount: int, position: Vector3) -> void:
 			dir_x = signf(position.x - _player_controller.global_position.x)
 		var dir := Vector2(dir_x, -0.4)
 		if _screen_feedback.has_method("shake_directional"):
-			_screen_feedback.shake_directional(6.0, 0.08, dir)
+			_screen_feedback.shake_directional(shake_amplitude, 0.08, dir)
 		elif _screen_feedback.has_method("shake"):
-			_screen_feedback.shake(6.0, 0.08)
-	# Adv Y C2 fix: real punch SFX, not the coin pickup chime.
+			_screen_feedback.shake(shake_amplitude, 0.08)
+	# Physical impact SFX follows the actual animation phase: fist strikes use
+	# a dry punch, kicks use a lower body-impact thud.
+	# Adv Y C2 fix: also play enemy_grunt on hit for audio feedback
 	if _audio_bus != null:
-		_audio_bus.emit_sfx("punch_thud", position)
+		var impact_sfx := "kick_impact" if is_kick else "punch_thud"
+		_audio_bus.emit_sfx(impact_sfx, position)
+		_audio_bus.emit_sfx("enemy_grunt", position)
 
 
 func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> void:
@@ -809,27 +2412,18 @@ func _on_enemy_defeated(enemy_id: String, position: Vector3, loot: Array) -> voi
 	# Default scoring fallback (works even without compiled rules).
 	_score += 5
 	if _score_label != null:
-		_score_label.text = "★ %d" % _score
+		_score_label.text = str(_score)
 
 
 func _on_loot_picked_up(item_id: String, quantity: int) -> void:
 	if _audio_bus != null and _player_controller != null:
 		_audio_bus.emit_sfx("collect", _player_controller.global_position)
-	# Update inventory via rules-runtime context (single source of truth).
+	var inventory := _get_inventory()
+	inventory[item_id] = int(inventory.get(item_id, 0)) + quantity
+	_commit_inventory(inventory, item_id)
 	if _rules_runtime != null:
-		var inv: Variant = _rules_runtime.get_context_value("inventory")
-		var inv_dict: Dictionary = inv if inv is Dictionary else {}
-		inv_dict[item_id] = int(inv_dict.get(item_id, 0)) + quantity
-		_rules_runtime.set_context_value("inventory", inv_dict)
-		_rules_runtime.on_event("inventory_changed", {"item": item_id})
 		_rules_runtime.on_event("collect_%s" % item_id, {})
-		_refresh_inventory_panel(inv_dict)
-		_try_auto_upgrade_weapon(inv_dict)
-	else:
-		# Fallback when rules runtime not wired — local inventory map.
-		var inv_dict: Dictionary = {}
-		inv_dict[item_id] = quantity
-		_refresh_inventory_panel(inv_dict)
+	_try_auto_upgrade_weapon(inventory)
 
 
 func _refresh_inventory_panel(inv: Dictionary) -> void:
@@ -839,15 +2433,191 @@ func _refresh_inventory_panel(inv: Dictionary) -> void:
 		var count := int(inv[item_id])
 		var label: Label = _inventory_labels.get(item_id, null)
 		if label == null:
+			var slot := Control.new()
+			slot.name = "Inventory_%s" % item_id
+			slot.custom_minimum_size = Vector2(52, 52)
+			slot.tooltip_text = _pretty_item_name(item_id)
+			var icon := TextureRect.new()
+			icon.texture = _inventory_texture_for(item_id)
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+			icon.offset_left = 4
+			icon.offset_top = 4
+			icon.offset_right = -4
+			icon.offset_bottom = -4
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			slot.add_child(icon)
 			label = Label.new()
-			label.add_theme_font_size_override("font_size", 18)
+			label.add_theme_font_size_override("font_size", 16)
 			label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.95))
 			label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 			label.add_theme_constant_override("shadow_offset_x", 2)
 			label.add_theme_constant_override("shadow_offset_y", 2)
-			_inventory_panel.add_child(label)
+			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+			label.set_anchors_preset(Control.PRESET_FULL_RECT)
+			label.offset_left = 4
+			label.offset_top = 4
+			label.offset_right = -4
+			label.offset_bottom = -4
+			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			slot.add_child(label)
+			_inventory_panel.add_child(slot)
 			_inventory_labels[item_id] = label
-		label.text = "%s × %d" % [_pretty_item_name(item_id), count]
+		label.text = "×%d" % count
+	_refresh_inventory_overlay(inv)
+
+
+## Exploration retains a compact pictorial backpack. The complete inventory is
+## an explicit, paused-input panel, so crafting never turns the normal HUD into
+## a text-heavy editor overlay.
+func _build_inventory_overlay(hud: CanvasLayer) -> void:
+	if _inventory_overlay != null:
+		return
+	var panel := PanelContainer.new()
+	panel.name = "SandboxInventoryOverlay"
+	panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	panel.offset_left = -392
+	panel.offset_top = -226
+	panel.offset_right = -28
+	panel.offset_bottom = 226
+	panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.28, 0.72, 0.55), 0.96))
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	hud.add_child(panel)
+	_inventory_overlay = panel
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	panel.add_child(content)
+	var title := Label.new()
+	title.text = "PLECAK"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	content.add_child(title)
+	var grid := GridContainer.new()
+	grid.name = "InventoryGrid"
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	content.add_child(grid)
+	_inventory_grid = grid
+	var recipes_title := Label.new()
+	recipes_title.text = "Zrób"
+	recipes_title.add_theme_font_size_override("font_size", 18)
+	content.add_child(recipes_title)
+	var recipes := VBoxContainer.new()
+	recipes.name = "CraftRecipes"
+	recipes.add_theme_constant_override("separation", 6)
+	content.add_child(recipes)
+	_craft_recipe_list = recipes
+	for recipe_id in SANDBOX_RECIPES.keys():
+		var recipe: Dictionary = SANDBOX_RECIPES[recipe_id]
+		var button := Button.new()
+		button.name = "Craft_%s" % recipe_id
+		button.text = String(recipe.get("label", recipe_id))
+		button.focus_mode = Control.FOCUS_CLICK
+		button.pressed.connect(func() -> void: _craft_inventory_recipe(recipe_id))
+		recipes.add_child(button)
+	var close_hint := Label.new()
+	close_hint.text = "I — zamknij"
+	close_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	close_hint.add_theme_font_size_override("font_size", 14)
+	close_hint.modulate = Color(0.78, 0.86, 0.90)
+	content.add_child(close_hint)
+	_refresh_inventory_overlay(_get_inventory())
+
+
+func _refresh_inventory_overlay(inventory: Dictionary) -> void:
+	if _inventory_grid == null:
+		return
+	for child in _inventory_grid.get_children():
+		child.queue_free()
+	for item_id in inventory.keys():
+		var count := int(inventory[item_id])
+		if count <= 0:
+			continue
+		var slot := PanelContainer.new()
+		slot.custom_minimum_size = Vector2(72, 72)
+		slot.tooltip_text = "%s ×%d" % [_pretty_item_name(String(item_id)), count]
+		slot.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.35, 0.62, 0.78), 0.78))
+		var icon := TextureRect.new()
+		icon.texture = _inventory_texture_for(String(item_id))
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = 7
+		icon.offset_top = 7
+		icon.offset_right = -7
+		icon.offset_bottom = -7
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		var badge := Label.new()
+		badge.text = "×%d" % count
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		badge.set_anchors_preset(Control.PRESET_FULL_RECT)
+		badge.add_theme_font_size_override("font_size", 16)
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(badge)
+		_inventory_grid.add_child(slot)
+	if _craft_recipe_list != null:
+		for child in _craft_recipe_list.get_children():
+			var button := child as Button
+			if button == null:
+				continue
+			var recipe_id := String(button.name).trim_prefix("Craft_")
+			button.disabled = not _has_recipe_materials(recipe_id, inventory)
+
+
+func _toggle_inventory_overlay() -> void:
+	if _inventory_overlay == null:
+		return
+	_inventory_open = not _inventory_open
+	_inventory_overlay.visible = _inventory_open
+	if _player_controller != null and _player_controller.has_method("set_input_disabled"):
+		_player_controller.set_input_disabled(_inventory_open)
+	if _inventory_open:
+		_refresh_inventory_overlay(_get_inventory())
+
+
+func _has_recipe_materials(recipe_id: String, inventory: Dictionary = {}) -> bool:
+	var recipe: Dictionary = SANDBOX_RECIPES.get(recipe_id, {})
+	if recipe.is_empty():
+		return false
+	var available := inventory if not inventory.is_empty() else _get_inventory()
+	var needs: Dictionary = recipe.get("needs", {})
+	for item_id in needs:
+		if int(available.get(item_id, 0)) < int(needs[item_id]):
+			return false
+	return true
+
+
+func _craft_inventory_recipe(recipe_id: String) -> void:
+	var inventory := _get_inventory()
+	if not _has_recipe_materials(recipe_id, inventory):
+		_interaction_feedback("Brakuje składników.")
+		return
+	var recipe: Dictionary = SANDBOX_RECIPES[recipe_id]
+	var needs: Dictionary = recipe.get("needs", {})
+	var gives: Dictionary = recipe.get("gives", {})
+	for item_id in needs:
+		inventory[item_id] = int(inventory.get(item_id, 0)) - int(needs[item_id])
+	for item_id in gives:
+		inventory[item_id] = int(inventory.get(item_id, 0)) + int(gives[item_id])
+	_commit_inventory(inventory, recipe_id)
+	if recipe_id == "stick":
+		_apply_tier(1, "Patyk", 7, inventory)
+	elif recipe_id == "sword_iron":
+		_apply_tier(2, "Żelazny miecz", 12, inventory)
+	elif recipe_id == "meal" and _player_controller != null and _player_controller.get_health() != null:
+		var health := _player_controller.get_health()
+		health.heal(20)
+		_player_controller.hp_changed.emit(health.current_hp, health.max_hp)
+	if _audio_bus != null and _player_controller != null:
+		_audio_bus.emit_sfx("collect", _player_controller.global_position)
+	_interaction_feedback("Gotowe: %s" % String(recipe.get("label", recipe_id)))
 
 
 func _pretty_item_name(item_id: String) -> String:
@@ -860,6 +2630,15 @@ func _pretty_item_name(item_id: String) -> String:
 		"star": return "Gwiazdka"
 		_:
 			return item_id.capitalize()
+
+
+func _inventory_texture_for(item_id: String) -> Texture2D:
+	match item_id:
+		"wood_oak", "wood": return HUD_ICON_WOOD
+		"ore_iron", "stone", "brick_red": return HUD_ICON_STONE
+		"meal", "apple": return HUD_ICON_WORKBENCH
+		"slime_gel": return HUD_ICON_GRASS
+		_: return HUD_ICON_HAMMER
 
 
 ## Gear grinding loop: when kid has the materials, auto-upgrade weapon
@@ -903,8 +2682,10 @@ func _apply_tier(index: int, label: String, damage: int, inv: Dictionary) -> voi
 	_current_weapon_index = index
 	if _player_controller != null and _player_controller.has_method("equip_weapon_damage"):
 		_player_controller.equip_weapon_damage(damage)
+	if _player_controller != null and _player_controller.has_method("set_weapon_visual"):
+		_player_controller.set_weapon_visual(String(_weapon_tiers[index].get("id", "")))
 	if _weapon_label != null:
-		_weapon_label.text = "🗡 %s (%d dmg)" % [label, damage]
+		_weapon_label.text = "%s" % label
 	if _screen_feedback != null:
 		_screen_feedback.flash(Color(1.0, 0.95, 0.4), 0.3)
 	if _effect_spawner != null and _player_controller != null:
@@ -944,6 +2725,18 @@ func _refresh_xp_hud() -> void:
 	_xp_bar.value = _xp_current
 	if _xp_label != null:
 		_xp_label.text = "Lv %d  •  %d/%d XP" % [_xp_level, _xp_current, needed]
+
+
+## VS-025: Refresh nutrition and training HUD
+func _refresh_nutrition_hud() -> void:
+	if _protein_bar == null or _carbs_bar == null or _nutrition == null:
+		return
+	_protein_bar.value = _nutrition.protein_level
+	_carbs_bar.value = _nutrition.carbohydrate_level
+	if _training_label != null and _training != null:
+		_training_label.text = "Trening: %d sesji" % _training.total_sessions()
+	if _body_level_label != null and _body_progression != null:
+		_body_level_label.text = "Forma: %s" % _body_progression.get_body_level_name()
 
 
 ## Kid-friendly level-up: flash + sparkle + audio cue + STAT BOOST
@@ -987,8 +2780,8 @@ func _on_level_up(before: int, after: int) -> void:
 func _current_weapon_label() -> String:
 	if _current_weapon_index >= 0 and _current_weapon_index < _weapon_tiers.size():
 		var tier: Dictionary = _weapon_tiers[_current_weapon_index]
-		return "🗡 %s" % String(tier.get("label", "Pięść"))
-	return "🗡 Pięść"
+		return String(tier.get("label", "Pięść"))
+	return "Pięść"
 
 
 func _current_weapon_damage() -> int:
@@ -1004,79 +2797,84 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 		return
 	for child in _hotbar_panel.get_children():
 		child.queue_free()
-	# Slot 0 is the weapon (fist by default), slots 1-4 are first 4
-	# blocks from the catalog. Matches PlayerController.setup_build_grid.
-	# Show the PL display name on each tile so it's not "empty squares"
-	# (user-reported bug).
-	var catalog := BlockKind.default_catalog()
+	# Slot 0 is the tool, slots 1-4 are build materials. The previous version
+	# painted each slot with the bundled Kenney Blue/Yellow placeholder
+	# textures, which read as debug UI rather than a kid game. Reuse the same
+	# translucent panel system as the rest of the HUD; the active slot is
+	# marked by a brighter accent border, the icon stays as a real kit
+	# thumbnail.
 	var slots: Array = []
-	# Weapon tile (slot 0) — label reflects current tier so kid sees
-	# "🗡 Patyk" → "🗡 Żelazny miecz" etc. as they upgrade. Color
-	# shifts toward gold for upgraded gear (Adv H #7 fix).
-	var weapon_label := _current_weapon_label()
-	var weapon_color := Color(0.7, 0.7, 0.8) if _current_weapon_index <= 0 else Color(0.95, 0.78, 0.32)
-	slots.append({"id": "weapon", "name": weapon_label, "color": weapon_color})
-	for i in mini(catalog.size(), 4):
-		var kind: BlockKind = catalog[i]
-		slots.append({"id": kind.block_id, "name": kind.display_name, "color": kind.color})
-	# VoxelForge frame around each hotbar slot — black surface with
-	# lime border, active slot pulses brighter yellow. Inner ColorRect
-	# still shows the block tint so the kid can recognize materials.
-	var voxel_lime := Color(0.639, 0.902, 0.208, 1)
-	var voxel_yellow := Color(0.988, 0.882, 0.278, 1)
+	var hotbar_items: Array = []
+	if _player_controller != null and _player_controller.has_method("get_hotbar_items"):
+		hotbar_items = _player_controller.get_hotbar_items()
+	if hotbar_items.is_empty():
+		hotbar_items = ["tool_axe", "tool_pickaxe", "grass", "wood_oak", "stone"]
+	for item_variant in hotbar_items:
+		var item_id := String(item_variant)
+		var label := item_id.capitalize().replace("_", " ")
+		if item_id == "tool_axe": label = "Siekiera"
+		elif item_id == "tool_pickaxe": label = "Kilof"
+		elif item_id == "fist": label = _current_weapon_label()
+		slots.append({"id": item_id, "name": label})
 	for i in slots.size():
 		var entry: Dictionary = slots[i]
-		var slot_panel := PanelContainer.new()
-		slot_panel.custom_minimum_size = Vector2(80, 80)
-		var frame := StyleBoxFlat.new()
-		frame.bg_color = Color(0.0, 0.0, 0.0, 0.92)
-		frame.border_color = voxel_yellow if i == active_slot else voxel_lime
-		frame.set_border_width_all(3 if i == active_slot else 2)
-		frame.set_corner_radius_all(8)
-		frame.shadow_color = Color(voxel_yellow.r, voxel_yellow.g, voxel_yellow.b, 0.30) if i == active_slot else Color(0, 0, 0, 0)
-		frame.shadow_size = 8 if i == active_slot else 0
-		frame.content_margin_left = 4
-		frame.content_margin_top = 4
-		frame.content_margin_right = 4
-		frame.content_margin_bottom = 4
-		slot_panel.add_theme_stylebox_override("panel", frame)
-		var slot_bg := ColorRect.new()
-		slot_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-		slot_bg.color = entry["color"]
-		if i == active_slot:
-			slot_bg.color = (entry["color"] as Color).lightened(0.3)
-		slot_panel.add_child(slot_bg)
-		# Number key hint top-left.
-		var num_label := Label.new()
-		num_label.text = "%d" % (i + 1)
-		num_label.add_theme_font_size_override("font_size", 16)
-		num_label.add_theme_color_override("font_color", Color.WHITE)
-		num_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-		num_label.add_theme_constant_override("shadow_offset_x", 2)
-		num_label.add_theme_constant_override("shadow_offset_y", 2)
-		num_label.position = Vector2(6, 4)
-		num_label.size = Vector2(16, 18)
-		num_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot_panel.add_child(num_label)
-		# Item name bottom — kid sees "Trawa" not "empty square".
-		var name_label := Label.new()
-		name_label.text = String(entry["name"])
-		name_label.add_theme_font_size_override("font_size", 12)
-		name_label.add_theme_color_override("font_color", Color.WHITE)
-		name_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-		name_label.add_theme_constant_override("shadow_offset_x", 1)
-		name_label.add_theme_constant_override("shadow_offset_y", 1)
-		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_label.anchor_left = 0
-		name_label.anchor_right = 1
-		name_label.anchor_top = 1
-		name_label.anchor_bottom = 1
-		name_label.offset_top = -22
-		name_label.offset_left = 2
-		name_label.offset_right = -2
-		name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot_panel.add_child(name_label)
-		_hotbar_panel.add_child(slot_panel)
+		var slot := Control.new()
+		slot.name = "HotbarSlot_%d" % i
+		slot.custom_minimum_size = Vector2(82, 82)
+		slot.tooltip_text = String(entry["name"])
+		var panel := PanelContainer.new()
+		panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		var accent := Color(0.78, 0.62, 0.32) if i == active_slot else Color(0.45, 0.55, 0.70)
+		panel.add_theme_stylebox_override("panel", _hud_panel_style(accent, 0.92 if i == active_slot else 0.78))
+		slot.add_child(panel)
+		var icon := TextureRect.new()
+		icon.texture = _hotbar_texture_for(String(entry["id"]), i)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.offset_left = 14
+		icon.offset_top = 14
+		icon.offset_right = -14
+		icon.offset_bottom = -14
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		# The hotbar is picture-first for children who cannot read. Keyboard and
+		# accessibility names remain available through the non-rendered tooltip;
+		# the visible numeric overlay made every otherwise-icon-led slot feel like
+		# a debug control legend in the captured Adventure opening.
+		_hotbar_panel.add_child(slot)
+
+
+## Emoji icon for a hotbar slot. Slot 0 is the weapon (icon follows the
+## current tier: fist -> stick -> sword -> epic sword); slots 1-4 are blocks.
+func _hotbar_icon_for(entry_id: String, slot_index: int) -> String:
+	if slot_index == 0 or entry_id == "weapon":
+		match _weapon_tiers[_current_weapon_index].get("id", "fist"):
+			"stick": return "WOOD"
+			"sword_iron": return "SWORD"
+			"sword_epic": return "EPIC"
+			_: return "FIST"
+	match entry_id:
+		"grass": return "GRASS"
+		"dirt": return "DIRT"
+		"wood_oak", "wood": return "WOOD"
+		"stone", "brick_red", "brick": return "STONE"
+		"sand": return "SAND"
+		_: return "BUILD"
+
+
+func _hotbar_texture_for(entry_id: String, slot_index: int) -> Texture2D:
+	if entry_id == "tool_axe":
+		return HUD_ICON_AXE
+	if entry_id == "tool_pickaxe":
+		return HUD_ICON_PICKAXE
+	if entry_id == "fist" or entry_id == "weapon":
+		return HUD_ICON_HAMMER
+	match entry_id:
+		"grass", "dirt", "sand": return HUD_ICON_GRASS
+		"wood_oak", "wood": return HUD_ICON_WOOD
+		"stone", "brick_red", "brick": return HUD_ICON_STONE
+		_: return HUD_ICON_HAMMER
 
 
 func _on_hotbar_changed(active_slot: int, _block_id: String) -> void:
@@ -1084,22 +2882,22 @@ func _on_hotbar_changed(active_slot: int, _block_id: String) -> void:
 
 
 func _on_player_hp_changed(current: int, max_hp: int) -> void:
-	if _hp_bar == null:
+	if _hp_meter == null:
 		return
-	_hp_bar.max_value = max_hp
-	_hp_bar.value = current
-	# Adv W #3 — color ramp + low-HP panic cue. Default ProgressBar
-	# gives no visual signal at low HP; kid keeps swinging into a
-	# slime not realizing they're 5 HP from defeat. Color blindness
-	# fallback: also use saturation drop at low HP (red ≈ desaturated
-	# gray-red so red-green CB still sees a contrast shift).
+	if _stats_panel != null:
+		# Do not occupy the opening with an unexplained empty dashboard. Health
+		# appears when it matters—after an encounter has actually hurt the child.
+		_stats_panel.visible = current < max_hp
+	# Visual ramp: the radial ring also loses pips, so low health remains clear
+	# even when the player cannot distinguish its green/amber/red colour.
 	var ratio: float = float(current) / float(maxi(max_hp, 1))
+	var accent := Color(0.46, 0.94, 0.58)
 	if ratio < 0.3:
-		_hp_bar.modulate = Color(1.0, 0.4, 0.4)
+		accent = Color(1.0, 0.42, 0.38)
 	elif ratio < 0.6:
-		_hp_bar.modulate = Color(1.0, 0.85, 0.4)
-	else:
-		_hp_bar.modulate = Color(0.7, 1.0, 0.7)
+		accent = Color(1.0, 0.76, 0.34)
+	if _hp_meter.has_method("set_vitality"):
+		_hp_meter.call("set_vitality", ratio, accent)
 
 
 func _on_player_defeated() -> void:
@@ -1113,7 +2911,7 @@ func _on_player_defeated() -> void:
 		_screen_feedback.flash(Color(1.0, 0.85, 0.85), 0.5)
 	if _world_renderer != null and _player_controller != null:
 		var spawn_pos := _world_renderer.get_spawn_position(0)
-		_player_controller.spawn_at(spawn_pos + Vector3(0, 1, 0))
+		_player_controller.spawn_at(spawn_pos + Vector3(0, 0.10, 0))
 		if _player_controller.has_method("get_health"):
 			var h: HealthState = _player_controller.get_health()
 			if h != null:
@@ -1122,9 +2920,42 @@ func _on_player_defeated() -> void:
 				_player_controller.hp_changed.emit(h.current_hp, h.max_hp)
 
 
-## Kid-facing HUD: a Wróć button + control hint so a 5-7 year-old sees what to
-## do after world load. Previously start_session hid PlayShell.Layout, left
-## mouse captured, and gave no on-screen affordances — kid perceived a hang.
+## A large sandbox should be easy to get lost in, never easy to get stranded
+## in. This optional camp return is image-led in the compact menu and does not
+## reset inventory, placed blocks, progression, or the saved world.
+func _return_player_to_camp() -> void:
+	if _world_renderer == null or _player_controller == null:
+		return
+	if _active_vehicle != null and is_instance_valid(_active_vehicle):
+		_active_vehicle.exit_vehicle()
+	var camp_position := _world_renderer.get_spawn_position(0) + Vector3(0.0, 0.10, 0.0)
+	_player_controller.spawn_at(camp_position)
+	_world_renderer.set_exploration_focus(camp_position)
+	if _effect_spawner != null:
+		_effect_spawner.spawn_sparkle_burst(camp_position + Vector3.UP * 0.8)
+
+
+## Image-first shell controls keep the always-visible HUD understandable before
+## a child can read. Tooltips remain for parents, keyboard users, and assistive
+## technology; the visual affordance itself does not depend on words.
+func _make_hud_icon_button(name: String, icon: Texture2D, tooltip: String, accent: Color) -> Button:
+	var button := Button.new()
+	button.name = name
+	button.text = ""
+	button.tooltip_text = tooltip
+	button.custom_minimum_size = Vector2(64, 64)
+	button.icon = icon
+	button.expand_icon = true
+	button.focus_mode = Control.FOCUS_ALL
+	button.add_theme_stylebox_override("normal", _hud_panel_style(accent, 0.90))
+	button.add_theme_stylebox_override("hover", _hud_panel_style(accent.lightened(0.16), 0.98))
+	button.add_theme_stylebox_override("pressed", _hud_panel_style(accent.darkened(0.18), 0.98))
+	button.add_theme_stylebox_override("focus", _hud_panel_style(Color(1.0, 0.94, 0.48), 0.98))
+	return button
+
+
+## Kid-facing HUD: image-led controls and a small contextual prompt so a 5-7
+## year-old sees what to do after world load without an on-screen legend.
 func _build_hud() -> void:
 	if has_node("HUD"):
 		return
@@ -1133,100 +2964,162 @@ func _build_hud() -> void:
 	hud.layer = 5
 	add_child(hud)
 
-	var back := Button.new()
-	back.name = "BackBtn"
-	back.text = "← Wróć"
-	back.custom_minimum_size = Vector2(160, 56)
-	back.add_theme_font_size_override("font_size", 28)
-	back.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	back.offset_left = 32
-	back.offset_top = 32
-	back.offset_right = 192
-	back.offset_bottom = 88
-	back.pressed.connect(end_session)
-	hud.add_child(back)
+	# Keep the first scenic frame free of a row of unexplained editor buttons.
+	# A single compact menu preserves the two infrequent actions (customization
+	# and safe return) without competing with the character, guide or world.
+	var menu := MenuButton.new()
+	menu.name = "AdventureMenuBtn"
+	menu.tooltip_text = "Menu gry"
+	menu.icon = HUD_ICON_RETURN
+	menu.expand_icon = true
+	menu.focus_mode = Control.FOCUS_ALL
+	menu.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	# This is an infrequent escape/customization utility, not a primary HUD
+	# element. Keep it intentionally quieter and smaller than the world-facing
+	# image hotbar so the opening reads as a game scene rather than an editor.
+	menu.offset_left = 20
+	menu.offset_top = 20
+	menu.offset_right = 60
+	menu.offset_bottom = 60
+	menu.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.22, 0.32, 0.38), 0.62))
+	menu.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.38, 0.58, 0.66), 0.88))
+	menu.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.16, 0.26, 0.32), 0.90))
+	menu.add_theme_stylebox_override("focus", _hud_panel_style(Color(1.0, 0.86, 0.38), 0.96))
+	var menu_popup := menu.get_popup()
+	menu_popup.add_icon_item(HUD_ICON_STAR, "Wygląd postaci", 1)
+	menu_popup.add_icon_item(HUD_ICON_CAMP, "Wróć do obozu", 2)
+	menu_popup.add_icon_item(HUD_ICON_RETURN, "Wróć do menu", 3)
+	menu_popup.id_pressed.connect(func(id: int) -> void:
+		if id == 1:
+			_on_customize_pressed()
+		elif id == 2:
+			_return_player_to_camp()
+		elif id == 3:
+			end_session())
+	hud.add_child(menu)
 
-	# HP bar + score panel (top-right). 7yo combat HUD.
+	var undo_btn := _make_hud_icon_button("UndoBtn", HUD_ICON_UNDO, "Cofnij ostatnią zmianę", Color(0.92, 0.72, 0.30))
+	undo_btn.name = "UndoBtn"
+	undo_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	undo_btn.offset_left = 88
+	undo_btn.offset_top = 28
+	undo_btn.offset_right = 140
+	undo_btn.offset_bottom = 80
+	undo_btn.pressed.connect(_on_hud_undo_pressed)
+	undo_btn.visible = false
+	_undo_button = undo_btn
+	hud.add_child(undo_btn)
+
+	# VS-025: Nutrition/Training panel (bottom-right)
+	_nutrition_panel = PanelContainer.new()
+	_nutrition_panel.name = "NutritionPanel"
+	_nutrition_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_nutrition_panel.offset_left = -280
+	_nutrition_panel.offset_top = -200
+	_nutrition_panel.offset_right = -16
+	_nutrition_panel.offset_bottom = -16
+	_nutrition_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.45, 0.85, 0.55), 0.84))
+	
+	var nutrition_vbox := VBoxContainer.new()
+	nutrition_vbox.add_theme_constant_override("separation", 4)
+	_nutrition_panel.add_child(nutrition_vbox)
+	
+	# Nutrition bars
+	var nutrition_label := Label.new()
+	nutrition_label.text = "Odżywianie"
+	nutrition_label.add_theme_font_size_override("font_size", 18)
+	nutrition_label.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0))
+	nutrition_vbox.add_child(nutrition_label)
+	
+	_protein_bar = ProgressBar.new()
+	_protein_bar.name = "ProteinBar"
+	_protein_bar.min_value = 0
+	_protein_bar.max_value = 100
+	_protein_bar.value = 0
+	_protein_bar.custom_minimum_size = Vector2(140, 16)
+	_protein_bar.add_theme_color_override("font_color", Color.WHITE)
+	nutrition_vbox.add_child(_protein_bar)
+	
+	_carbs_bar = ProgressBar.new()
+	_carbs_bar.name = "CarbsBar"
+	_carbs_bar.min_value = 0
+	_carbs_bar.max_value = 100
+	_carbs_bar.value = 0
+	_carbs_bar.custom_minimum_size = Vector2(140, 16)
+	_carbs_bar.add_theme_color_override("font_color", Color.WHITE)
+	nutrition_vbox.add_child(_carbs_bar)
+	
+	# Training and body level
+	_training_label = Label.new()
+	_training_label.name = "TrainingLabel"
+	_training_label.text = "Trening: 0 sesji"
+	_training_label.add_theme_font_size_override("font_size", 16)
+	_training_label.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
+	nutrition_vbox.add_child(_training_label)
+	
+	_body_level_label = Label.new()
+	_body_level_label.name = "BodyLevelLabel"
+	_body_level_label.text = "Forma: Podstawowy"
+	_body_level_label.add_theme_font_size_override("font_size", 16)
+	_body_level_label.add_theme_color_override("font_color", Color(0.96, 0.93, 1.0))
+	nutrition_vbox.add_child(_body_level_label)
+	
+	hud.add_child(_nutrition_panel)
+	# Nutrition and training are secondary sandbox systems. Keeping their
+	# developer-style text card permanently visible breaks the image-first HUD
+	# and competes with the world. State still updates in the background and can
+	# later be surfaced from the inventory/character screen.
+	_nutrition_panel.visible = false
+
+	# Emergency vitality only. The old rectangular status dashboard contained
+	# score, XP and level text that read as a debug overlay and obscured scenery.
+	# A compact pictorial ring appears only when the child has actually taken
+	# damage; inventory/progression still updates in the background.
 	var stats_panel := PanelContainer.new()
 	stats_panel.name = "StatsPanel"
+	_stats_panel = stats_panel
 	stats_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	stats_panel.offset_left = -240
-	stats_panel.offset_top = 32
-	stats_panel.offset_right = -32
-	stats_panel.offset_bottom = 132
+	stats_panel.offset_left = -112
+	stats_panel.offset_top = 20
+	stats_panel.offset_right = -20
+	stats_panel.offset_bottom = 112
+	stats_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.16, 0.30, 0.44), 0.72))
+	stats_panel.visible = false
 	hud.add_child(stats_panel)
 
-	var stats_vbox := VBoxContainer.new()
-	stats_vbox.add_theme_constant_override("separation", 6)
-	stats_panel.add_child(stats_vbox)
+	_hp_meter = PICTORIAL_VITALITY_METER.new() as Control
+	_hp_meter.name = "PictorialVitalityMeter"
+	_hp_meter.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_hp_meter.offset_left = 8
+	_hp_meter.offset_top = 8
+	_hp_meter.offset_right = -8
+	_hp_meter.offset_bottom = -8
+	stats_panel.add_child(_hp_meter)
+	var vitality_icon := TextureRect.new()
+	vitality_icon.name = "VitalityStar"
+	vitality_icon.texture = HUD_ICON_STAR
+	vitality_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	vitality_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	vitality_icon.set_anchors_preset(Control.PRESET_CENTER)
+	vitality_icon.position = Vector2(28, 28)
+	vitality_icon.size = Vector2(28, 28)
+	vitality_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_panel.add_child(vitality_icon)
+	if _hp_meter.has_method("set_vitality"):
+		_hp_meter.call("set_vitality", 1.0, Color(0.46, 0.94, 0.58))
 
-	_hp_bar = ProgressBar.new()
-	_hp_bar.name = "HpBar"
-	_hp_bar.min_value = 0
-	_hp_bar.max_value = 100
-	_hp_bar.value = 100
-	_hp_bar.custom_minimum_size = Vector2(180, 24)
-	_hp_bar.add_theme_color_override("font_color", Color.WHITE)
-	stats_vbox.add_child(_hp_bar)
-
-	_score_label = Label.new()
-	_score_label.name = "ScoreLabel"
-	_score_label.text = "★ 0"
-	_score_label.add_theme_font_size_override("font_size", 22)
-	_score_label.add_theme_color_override("font_color", Color(1, 0.92, 0.4))
-	_score_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	_score_label.add_theme_constant_override("shadow_offset_x", 2)
-	_score_label.add_theme_constant_override("shadow_offset_y", 2)
-	stats_vbox.add_child(_score_label)
-
-	_weapon_label = Label.new()
-	_weapon_label.name = "WeaponLabel"
-	_weapon_label.text = "🗡 Pięść (4 dmg)"
-	_weapon_label.add_theme_font_size_override("font_size", 18)
-	_weapon_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
-	_weapon_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	_weapon_label.add_theme_constant_override("shadow_offset_x", 2)
-	_weapon_label.add_theme_constant_override("shadow_offset_y", 2)
-	stats_vbox.add_child(_weapon_label)
-
-	# XP bar — Adv 4 ROI 2 dopamine fix. Sits below weapon label.
-	_xp_bar = ProgressBar.new()
-	_xp_bar.name = "XpBar"
-	_xp_bar.min_value = 0
-	_xp_bar.max_value = 4
-	_xp_bar.value = 0
-	_xp_bar.custom_minimum_size = Vector2(180, 18)
-	_xp_bar.modulate = Color(0.6, 1.0, 0.7)
-	stats_vbox.add_child(_xp_bar)
-	_xp_label = Label.new()
-	_xp_label.name = "XpLabel"
-	_xp_label.text = "Lv 0  •  0/4 XP"
-	_xp_label.add_theme_font_size_override("font_size", 16)
-	_xp_label.add_theme_color_override("font_color", Color(0.85, 1.0, 0.85))
-	_xp_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	_xp_label.add_theme_constant_override("shadow_offset_x", 2)
-	_xp_label.add_theme_constant_override("shadow_offset_y", 2)
-	stats_vbox.add_child(_xp_label)
-	_refresh_xp_hud()
-
-	# Inventory panel — bottom-left, lists collected items + counts.
-	_inventory_panel = VBoxContainer.new()
+	# Pictorial backpack — bottom-left. Items appear as familiar resource/tool
+	# thumbnails with a small numeric badge instead of a reading-heavy list.
+	_inventory_panel = HBoxContainer.new()
 	_inventory_panel.name = "Inventory"
-	_inventory_panel.add_theme_constant_override("separation", 4)
+	_inventory_panel.add_theme_constant_override("separation", 6)
 	_inventory_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_inventory_panel.offset_left = 32
-	_inventory_panel.offset_top = -260
-	_inventory_panel.offset_right = 240
+	_inventory_panel.offset_top = -176
+	_inventory_panel.offset_right = 300
 	_inventory_panel.offset_bottom = -110
 	hud.add_child(_inventory_panel)
-	var inv_title := Label.new()
-	inv_title.text = "🎒 Plecak"
-	inv_title.add_theme_font_size_override("font_size", 20)
-	inv_title.add_theme_color_override("font_color", Color.WHITE)
-	inv_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	inv_title.add_theme_constant_override("shadow_offset_x", 2)
-	inv_title.add_theme_constant_override("shadow_offset_y", 2)
-	_inventory_panel.add_child(inv_title)
+	_build_inventory_overlay(hud)
 
 	# Wave 3 W3-A6: goal HUD (top-center). Visible only when setup_goal()
 	# has been called with a non-null GameGoal — otherwise the panel
@@ -1291,35 +3184,9 @@ func _build_hud() -> void:
 		_player_controller.hp_changed.connect(_on_player_hp_changed)
 		_player_controller.player_defeated.connect(_on_player_defeated)
 
-	# Crosshair (center) — 16×16 reticle so kid sees where their
-	# raycast lands. Tiny + low-contrast so it doesn't overwhelm the
-	# 3D scene. CenterContainer keeps it locked to viewport center
-	# regardless of resize. (Adv 5 #2 fix.)
-	var crosshair_layer := CenterContainer.new()
-	crosshair_layer.name = "CrosshairContainer"
-	crosshair_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
-	crosshair_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(crosshair_layer)
-	var crosshair := ColorRect.new()
-	crosshair.name = "Crosshair"
-	crosshair.custom_minimum_size = Vector2(16, 16)
-	# White cross drawn via two thin ColorRects (cheap; no PNG asset
-	# needed for MVP). 2px thick, 16px wide.
-	crosshair.color = Color(1, 1, 1, 0.0)  ## transparent root
-	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var crosshair_h := ColorRect.new()
-	crosshair_h.color = Color(1, 1, 1, 0.8)
-	crosshair_h.position = Vector2(0, 7)
-	crosshair_h.size = Vector2(16, 2)
-	crosshair_h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crosshair.add_child(crosshair_h)
-	var crosshair_v := ColorRect.new()
-	crosshair_v.color = Color(1, 1, 1, 0.8)
-	crosshair_v.position = Vector2(7, 0)
-	crosshair_v.size = Vector2(2, 16)
-	crosshair_v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	crosshair.add_child(crosshair_v)
-	crosshair_layer.add_child(crosshair)
+	# No centre-screen FPS crosshair in third person. In build mode the 3D
+	# ghost block is the world-space target preview, which shows the exact
+	# placement cell without pretending the camera is the player's eyes.
 
 	# Hotbar (bottom-center) — 5 block-kind slots, kid hits 1..5 to switch.
 	_hotbar_panel = HBoxContainer.new()
@@ -1335,30 +3202,328 @@ func _build_hud() -> void:
 	if _player_controller != null and _player_controller.has_signal("hotbar_changed"):
 		_player_controller.hotbar_changed.connect(_on_hotbar_changed)
 
-	var hint := Label.new()
-	hint.name = "ControlsHint"
-	hint.text = "WSAD ruch  •  SPACJA skok  •  Myszka patrz  •  LPM atak/kop  •  1-5 wybór  •  ESC pokaż myszkę"
-	hint.add_theme_font_size_override("font_size", 22)
-	hint.add_theme_color_override("font_color", Color.WHITE)
-	hint.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	hint.add_theme_constant_override("shadow_offset_x", 2)
-	hint.add_theme_constant_override("shadow_offset_y", 2)
-	hint.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	hint.offset_left = -360
-	hint.offset_top = 36
-	hint.offset_right = 360
-	hint.offset_bottom = 76
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hud.add_child(hint)
+	# One contextual action prompt replaces a permanent wall of controls. It
+	# appears only near a door, chair, workbench or other authored object.
+	_interaction_prompt_panel = PanelContainer.new()
+	_interaction_prompt_panel.name = "InteractionPrompt"
+	_interaction_prompt_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_interaction_prompt_panel.offset_left = -58
+	_interaction_prompt_panel.offset_top = -178
+	_interaction_prompt_panel.offset_right = 58
+	_interaction_prompt_panel.offset_bottom = -70
+	_interaction_prompt_panel.visible = false
+	_interaction_prompt_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.22, 0.64, 0.42), 0.78))
+	var prompt_content := Control.new()
+	prompt_content.custom_minimum_size = Vector2(116, 108)
+	_interaction_prompt_panel.add_child(prompt_content)
+	var prompt_action_back := TextureRect.new()
+	prompt_action_back.name = "InteractionActionBackdrop"
+	prompt_action_back.texture = HUD_ACTION_GREEN
+	prompt_action_back.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	prompt_action_back.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	prompt_action_back.position = Vector2(19, 12)
+	prompt_action_back.size = Vector2(78, 78)
+	prompt_action_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prompt_content.add_child(prompt_action_back)
+	_interaction_prompt_icon = TextureRect.new()
+	_interaction_prompt_icon.name = "InteractionIcon"
+	_interaction_prompt_icon.texture = HUD_ICON_AXE
+	_interaction_prompt_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_interaction_prompt_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_interaction_prompt_icon.position = Vector2(33, 26)
+	_interaction_prompt_icon.size = Vector2(50, 50)
+	_interaction_prompt_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prompt_content.add_child(_interaction_prompt_icon)
+	# Retain the text node for keyboard/screen-reader feedback and legacy input
+	# seams, but never draw it in the child-facing sandbox HUD. The image badge
+	# above communicates the action without turning the world into a task list.
+	_interaction_prompt_label = Label.new()
+	_interaction_prompt_label.name = "InteractionPromptLabel"
+	_interaction_prompt_label.visible = false
+	prompt_content.add_child(_interaction_prompt_label)
+	hud.add_child(_interaction_prompt_panel)
+	_build_sandbox_fart_hint(hud)
+
+
+## A single playful discovery hint makes the optional G-key gag findable.
+## It stays compact and quiet until used, then disappears immediately.
+func _build_sandbox_fart_hint(hud: CanvasLayer) -> void:
+	if hud == null or _sandbox_hint_panel != null:
+		return
+	_sandbox_hint_panel = PanelContainer.new()
+	_sandbox_hint_panel.name = "SandboxFartHint"
+	_sandbox_hint_panel.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_sandbox_hint_panel.offset_left = 30
+	_sandbox_hint_panel.offset_top = -96
+	_sandbox_hint_panel.offset_right = 82
+	_sandbox_hint_panel.offset_bottom = -44
+	_sandbox_hint_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sandbox_hint_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.52, 0.86, 0.67), 0.90))
+	var hint_icon := TextureRect.new()
+	hint_icon.name = "HintIcon"
+	hint_icon.texture = HUD_ICON_SILLY_PUFF
+	hint_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	hint_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	hint_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hint_icon.offset_left = 5
+	hint_icon.offset_top = 5
+	hint_icon.offset_right = -5
+	hint_icon.offset_bottom = -5
+	hint_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sandbox_hint_panel.add_child(hint_icon)
+	# The action must be legible before reading. Keep the keyboard binding as a
+	# non-rendered tooltip for grown-ups and keyboard discovery, but expose only
+	# the image in the child-facing HUD.
+	hint_icon.tooltip_text = "Puf (G)"
+	hud.add_child(_sandbox_hint_panel)
+	
+func _tick_world_interactions() -> void:
+	if _interaction_prompt_panel == null:
+		return
+	if _active_vehicle != null and is_instance_valid(_active_vehicle):
+		# Never let a proximity prompt replace this while the driver is hidden.
+		# It stays readable for the entire ride, not only for the 1.8s feedback
+		# flash used by ordinary interactions.
+		if _interaction_prompt_icon != null:
+			_interaction_prompt_icon.texture = HUD_ICON_RETURN
+		if _interaction_prompt_label != null:
+			_interaction_prompt_label.text = "E / Esc  Wyjdź z pojazdu"
+		_interaction_prompt_panel.visible = true
+		return
+	if _world_renderer == null or _player_controller == null:
+		return
+	# Preserve action feedback for its short display window; otherwise the
+	# proximity scan below immediately replaces “Ugotowano!” with the generic
+	# E prompt on the very next physics tick.
+	if _interaction_feedback_until > 0.0:
+		_interaction_prompt_panel.visible = true
+		return
+	var nearest: Node3D = null
+	var nearest_distance := 2.8
+	for candidate in get_tree().get_nodes_in_group("world_interactable"):
+		if not (candidate is Node3D) or not is_instance_valid(candidate):
+			continue
+		var distance := _player_controller.global_position.distance_to((candidate as Node3D).global_position)
+		if distance < nearest_distance:
+			nearest = candidate as Node3D
+			nearest_distance = distance
+	_nearby_world_interactable = nearest
+	if nearest == null:
+		_interaction_prompt_panel.visible = false
+		return
+	if _interaction_prompt_icon != null:
+		_interaction_prompt_icon.texture = _interaction_texture_for(String(nearest.get_meta("interaction_action", "")))
+	_interaction_prompt_label.text = String(nearest.get_meta("interaction_prompt", "E  Interakcja"))
+	_interaction_prompt_panel.visible = true
+
+
+func _activate_world_interaction() -> void:
+	if _nearby_world_interactable == null or not is_instance_valid(_nearby_world_interactable):
+		return
+	var action := String(_nearby_world_interactable.get_meta("interaction_action", ""))
+	match action:
+		"door":
+			_world_renderer.toggle_door(_nearby_world_interactable)
+			_interaction_feedback("Drzwi gotowe — wejdź do środka.")
+		"cook":
+			_craft_home_meal()
+		"sit":
+			if _player_controller.has_method("play_sit_at"):
+				var seat_position: Vector3 = _nearby_world_interactable.get_meta(
+					"seat_position", _nearby_world_interactable.global_position) as Vector3
+				_player_controller.play_sit_at(seat_position)
+			_interaction_feedback("Chwila odpoczynku przy stole.")
+		"gather_wood", "gather_stone":
+			var required_tool := "tool_axe" if action == "gather_wood" else "tool_pickaxe"
+			if _player_controller == null or not _player_controller.has_method("has_equipped_tool") \
+				or not _player_controller.has_equipped_tool(required_tool):
+				_interaction_feedback("Wybierz %s i uderz w zasób." % ("siekierę" if action == "gather_wood" else "kilof"))
+				return
+			_gather_world_resource(_nearby_world_interactable)
+		"find_food":
+			_collect_food_item(_nearby_world_interactable)
+		"train_jump", "train_run", "train_climb", "train_push", "train_pull", "train_balance":
+			_start_training_session(_nearby_world_interactable)
+
+
+func _interaction_feedback(message: String, action: String = "") -> void:
+	if _interaction_prompt_label == null:
+		return
+	_interaction_prompt_label.text = message
+	if not action.is_empty() and _interaction_prompt_icon != null:
+		_interaction_prompt_icon.texture = _interaction_texture_for(action)
+	_interaction_feedback_until = 1.8
+
+
+func _interaction_texture_for(action: String) -> Texture2D:
+	match action:
+		"cook": return HUD_ICON_WORKBENCH
+		"sit": return HUD_ICON_BEDROLL
+		"door": return HUD_ICON_HAMMER
+		"gather_wood": return HUD_ICON_AXE
+		"gather_stone": return HUD_ICON_STONE
+		"find_food": return HUD_ICON_AXE
+		"train_jump", "train_run", "train_climb", "train_push", "train_pull", "train_balance": return HUD_ICON_STAR
+		_: return HUD_ACTION_GREEN
+
+
+## VS-025: Collect food item from world
+func _collect_food_item(anchor: Node3D) -> void:
+	if anchor == null or not is_instance_valid(anchor) or _nutrition_manager == null:
+		return
+
+	var item_id := String(anchor.get_meta("resource_item_id", ""))
+	if item_id.is_empty():
+		return
+
+	## Get the food item from the FoodDatabase
+	var food_item: FoodItem = _get_food_item_from_database(item_id)
+	if food_item == null:
+		push_warning("VS-025: Could not find food item for ID: %s" % item_id)
+		return
+
+	## Consume the food via NutritionManager
+	if _nutrition_manager.eat_food(food_item):
+		## Remove the visual
+		var visual: Variant = anchor.get_meta("resource_visual", null)
+		if visual != null and is_instance_valid(visual):
+			visual.queue_free()
+
+		## Remove the anchor
+		anchor.queue_free()
+
+		## Clear the nearby interactable reference
+		_interaction_prompt_panel.visible = false
+		_interaction_feedback_until = 0.0
+		_nearby_world_interactable = null
+
+
+## VS-025: Get FoodItem from FoodDatabase by item_id
+func _get_food_item_from_database(item_id: String) -> FoodItem:
+	## Try from WorldRenderer first
+	if _world_renderer != null:
+		var food_db: FoodDatabase = _world_renderer.get_food_database()
+		if food_db != null:
+			return food_db.get_food(item_id)
+
+	## Fallback: create a new FoodDatabase instance
+	var food_db_script = load("res://src/adapters/inbound/gameplay/food_database.gd")
+	if food_db_script != null:
+		var food_db_instance: FoodDatabase = food_db_script.new()
+		if food_db_instance != null:
+			food_db_instance._initialize_food_items()
+			return food_db_instance.get_food(item_id)
+
+	return null
+
+
+## VS-025: Start training session at equipment
+func _start_training_session(anchor: Node3D) -> void:
+	if anchor == null or not is_instance_valid(anchor) or _training_manager == null:
+		return
+
+	var action := String(anchor.get_meta("interaction_action", ""))
+
+	## Map action to TrainingType
+	var training_type: TrainingStats.TrainingType
+	match action:
+		"train_jump": training_type = TrainingStats.TrainingType.STAMINA
+		"train_run": training_type = TrainingStats.TrainingType.STAMINA
+		"train_climb": training_type = TrainingStats.TrainingType.STRENGTH
+		"train_push": training_type = TrainingStats.TrainingType.STRENGTH
+		"train_pull": training_type = TrainingStats.TrainingType.POSTURE
+		"train_balance": training_type = TrainingStats.TrainingType.AGILITY
+		_: training_type = TrainingStats.TrainingType.STRENGTH
+
+	## Start training via TrainingManager
+	_training_manager.start_training(training_type, anchor)
+	_interaction_prompt_panel.visible = false
+	_interaction_feedback_until = 0.0
+	_nearby_world_interactable = null
+
+
+func _gather_world_resource(anchor: Node3D) -> void:
+	if anchor == null or not is_instance_valid(anchor):
+		return
+	var item_id := String(anchor.get_meta("resource_item_id", ""))
+	if item_id.is_empty():
+		return
+	var inventory := _get_inventory()
+	inventory[item_id] = int(inventory.get(item_id, 0)) + 1
+	_commit_inventory(inventory, item_id)
+	if _rules_runtime != null:
+		_rules_runtime.on_event("inventory_changed", {"item": item_id})
+		_rules_runtime.on_event("collect_%s" % item_id, {})
+	_try_auto_upgrade_weapon(inventory)
+	if _audio_bus != null:
+		var action := String(anchor.get_meta("resource_action", ""))
+		var tool_sfx := "tool_axe_wood" if action == "gather_wood" else "tool_pickaxe_stone"
+		_audio_bus.emit_sfx(tool_sfx, anchor.global_position)
+		_audio_bus.emit_sfx("collect", anchor.global_position)
+	if _effect_spawner != null:
+		_effect_spawner.spawn_collect_effect(anchor.global_position)
+	var visual_variant: Variant = anchor.get_meta("resource_visual", null)
+	if visual_variant is Node and is_instance_valid(visual_variant):
+		(visual_variant as Node).queue_free()
+	anchor.remove_from_group("world_interactable")
+	if _nearby_world_interactable == anchor:
+		_nearby_world_interactable = null
+	anchor.queue_free()
+	_interaction_feedback("Zebrano!")
+
+
+func _craft_home_meal() -> void:
+	var inventory := _get_inventory()
+	# The starter kitchen has a forgiving first recipe so the child can learn
+	# the loop immediately; later meals consume an apple or gathered wood.
+	var has_ingredient := int(inventory.get("apple", 0)) > 0 or int(inventory.get("wood_oak", 0)) > 0
+	if has_ingredient:
+		if int(inventory.get("apple", 0)) > 0:
+			inventory["apple"] = int(inventory["apple"]) - 1
+		else:
+			inventory["wood_oak"] = int(inventory["wood_oak"]) - 1
+	inventory["meal"] = int(inventory.get("meal", 0)) + 1
+	_commit_inventory(inventory, "meal")
+	if _player_controller != null and _player_controller.get_health() != null:
+		var health := _player_controller.get_health()
+		health.current_hp = mini(health.current_hp + 20, health.max_hp)
+		health.is_alive = true
+		_player_controller.hp_changed.emit(health.current_hp, health.max_hp)
+	_interaction_feedback("Ugotowano posiłek! +20 zdrowia")
+
+
+func _hud_panel_style(accent: Color, alpha: float) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.045, 0.075, alpha)
+	style.border_color = Color(accent.r, accent.g, accent.b, 0.58)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(12)
+	style.content_margin_left = 14
+	style.content_margin_right = 14
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.30)
+	style.shadow_size = 8
+	return style
 
 func _physics_process(delta: float) -> void:
 	if _rules_active and _rules_runtime != null:
 		_rules_runtime.tick(delta)
+	if _autowin:
+		_tick_autowin()
 	_check_enemy_wave_respawn(delta)
 	_check_fall_kill_plane()
 	_session_elapsed_sec += delta
 	_check_goal_and_lose()
 	_tick_npcs(delta)
+	_tick_adventure_music()
+	if _world_renderer != null and _player_controller != null and is_instance_valid(_player_controller):
+		_world_renderer.set_exploration_focus(_player_controller.global_position)
+	_tick_world_interactions()
+	if _interaction_feedback_until > 0.0:
+		_interaction_feedback_until -= delta
+		if _interaction_feedback_until <= 0.0 and _interaction_prompt_label != null:
+			_interaction_prompt_label.text = ""
 
 
 ## Wave 3 W3-A/B: evaluate the active goal + lose conditions each tick.
@@ -1442,7 +3607,13 @@ func _finish_session(outcome: WinOutcome) -> void:
 		return
 	_outcome_emitted = true
 	session_outcome.emit(outcome)
-	end_session()
+	if outcome.won and _victory_sequence != null:
+		# Win juice: confetti + win sting + green flash. VictorySequence
+		# ends the session itself via completed -> _on_victory_completed,
+		# so don't double-end here.
+		_trigger_victory()
+	else:
+		end_session()
 
 
 ## Spring block can launch kid past the world edge (Adv 2 H-5). If
@@ -1483,6 +3654,18 @@ func _consume_life_or_lose() -> void:
 ## Endless engagement: once kid clears all enemies in a wave, after
 ## WAVE_RESPAWN_DELAY seconds spawn the next wave with +1 enemy and
 ## a stronger archetype mix. Drives the gear-grinding loop.
+## Debug-only smoke driver. If a template explicitly configures a goal, this
+## can defeat one live enemy per tick to exercise the generic goal pipeline
+## without input automation. Adventure sandbox does not configure a goal.
+func _tick_autowin() -> void:
+	if _enemy_root == null or not is_instance_valid(_enemy_root):
+		return
+	for child in _enemy_root.get_children():
+		if child is EnemyController and (child as EnemyController).health.is_alive:
+			(child as EnemyController).apply_damage(9999)
+			return
+
+
 func _check_enemy_wave_respawn(delta: float) -> void:
 	if _enemy_root == null or not is_instance_valid(_enemy_root):
 		return
@@ -1610,7 +3793,19 @@ func _on_rules_action(rule_id: String, action_kind: int, params: Dictionary) -> 
 
 
 func end_session() -> void:
+	_evidence_session_token += 1
+	_cancel_opening_spawn_evidence()
+
+	# VS-026: Snapshot sandbox state BEFORE teardown wipes it.
+	# Cache into _sandbox_state so PlayShell / main.gd can persist it.
+	_sandbox_state = get_sandbox_state()
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		print("[gameplay] VS-026: sandbox state captured (%d blocks, score=%d)" %
+			[_sandbox_state.placed_blocks.size(), _sandbox_state.progression.score])
+		session_save_requested.emit(_sandbox_state)
+
 	_rules_active = false
+	_teardown_adventure_sky()
 	if _rules_runtime != null:
 		_rules_runtime.reset()
 	# Always release the cursor so post-session menus are clickable.
@@ -1646,25 +3841,328 @@ func end_session() -> void:
 		_player_controller.visible = false
 		_player_controller.set_process_input(false)
 		_player_controller.set_process(false)
+		_player_controller.set_physics_process(false)
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	# Restore Main/Layout (NavBar + Body) so the kid sees Landing on return.
 	_set_main_layout_visible(true)
 	session_ended.emit()
 
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
-		# ESC: if cursor is captured (FPS look mode), release it so
-		# kid can click HUD (back button, hotbar). Press ESC again
-		# from HUD to actually exit the session. Two-press exit
-		# prevents accidental quits during combat.
+	# Once the child explicitly focuses the composer, it owns every character.
+	# This runs before generic interaction/vehicle handlers, which otherwise see
+	# E/G despite the LineEdit receiving the same character later in Godot's GUI
+	# event pipeline.
+	if _npc_dialogue_input != null and _npc_dialogue_input.has_focus() \
+			and event is InputEventKey:
+		get_viewport().set_input_as_handled()
+		return
+	# NPC conversation is intentionally unfocused on arrival so movement and
+	# interaction keys stay with the world. Enter is the explicit, discoverable
+	# handoff into typing: the first press focuses the composer, the next Enter
+	# is handled by LineEdit and submits the written message.
+	if _npc_dialogue_panel != null and _npc_dialogue_panel.visible \
+			and _npc_dialogue_input != null and not _npc_dialogue_input.has_focus() \
+			and event is InputEventKey and event.pressed and not event.echo \
+			and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
+		_npc_dialogue_input.grab_focus()
+		var dialogue_viewport := get_viewport()
+		if dialogue_viewport != null:
+			dialogue_viewport.set_input_as_handled()
+		return
+	if event.is_action_pressed("inventory"):
+		_toggle_inventory_overlay()
+		get_viewport().set_input_as_handled()
+		return
+	# E is shared by generic interaction and vehicle egress. Runtime input runs
+	# before dynamically spawned vehicle nodes, so consume egress first or E can
+	# be swallowed by the generic interaction path and trap the player inside.
+	if _active_vehicle != null and is_instance_valid(_active_vehicle) \
+		and event.is_action_pressed("exit_vehicle"):
+		_active_vehicle.exit_vehicle()
+		var viewport := get_viewport()
+		if viewport != null:
+			viewport.set_input_as_handled()
+		return
+	if Input.is_action_pressed("interact"):
+		_activate_world_interaction()
+		get_viewport().set_input_as_handled()
+		return
+	if Input.is_action_pressed("ui_cancel"):
+		# ESC only ever TOGGLES the mouse cursor — it never ends the
+		# session. The old two-press "second ESC quits" fired on the
+		# first press whenever the cursor was already visible (kid on
+		# HUD, or capture never took), ending the game by accident. The
+		# visible red Back button is the one and only exit.
 		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-			return
-		end_session()
+		else:
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		get_viewport().set_input_as_handled()
 
 func _on_footstep() -> void:
 	if _audio_bus != null:
 		_audio_bus.emit_sfx("step", _player_controller.global_position)
+
+
+## G-key's optional silly interaction is visual/social only: a real local SFX,
+## a short readable cloud, and role-aware nearby reactions. Angry characters
+## perform one harmless air-swat; this never damages the player or changes
+## combat progression.
+func _on_player_farted(effect_origin: Vector3) -> void:
+	if _sandbox_hint_panel != null and is_instance_valid(_sandbox_hint_panel):
+		_sandbox_hint_panel.visible = false
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("fart_cc0_short", effect_origin)
+	if _effect_spawner != null:
+		_effect_spawner.spawn_stink_cloud(effect_origin)
+	if _npc_root == null:
+		return
+	# Do not build an ever-growing second social queue when the kid presses G
+	# again before the current group has had its short turn.
+	if _npc_reaction_queue_active:
+		return
+	var spoken_reaction_count := 0
+	for npc_variant in _npc_root.get_children():
+		var npc_root := npc_variant as Node3D
+		if npc_root == null or npc_root.global_position.distance_to(effect_origin) > SILLY_FART_REACTION_RANGE:
+			continue
+		var reaction := _fart_reaction_for(npc_root)
+		# Everyone nearby visibly says their own short line at once in the world.
+		# Only the voice/caption channel is serialized below.
+		_match_npc_fart_animation(npc_root, String(reaction.action))
+		_show_npc_reaction_bubble(npc_root, String(reaction.line))
+		if spoken_reaction_count < SILLY_FART_MAX_SPOKEN_REACTIONS:
+			_queue_npc_reaction(npc_root, reaction)
+			spoken_reaction_count += 1
+
+
+## Every NPC in range gets an in-character line. The queue deliberately owns
+## the single shared subtitle/voice channel so a crowd does not talk over or
+## mute itself. If another fart happens while these reactions are playing, its
+## visible effect still runs but its social beat waits behind the first group.
+func _queue_npc_reaction(npc_root: Node3D, reaction: Dictionary) -> void:
+	if npc_root == null:
+		return
+	var line := String(reaction.get("line", "")).strip_edges()
+	if line.is_empty():
+		return
+	_npc_reaction_queue.append({
+		"npc": weakref(npc_root),
+		"npc_id": String(npc_root.get_meta("npc_id", "")),
+		"name_pl": String(npc_root.get_meta("npc_name_pl", "Ktoś")),
+		"line": line,
+		"emotion": int(reaction.get("emotion", FacialPerformance.Emotion.HAPPY)),
+		"request_id": _next_npc_reaction_request_id(),
+	})
+	if _npc_reaction_queue_active or not is_inside_tree():
+		return
+	_npc_reaction_queue_active = true
+	_drain_npc_reaction_queue()
+
+
+func _drain_npc_reaction_queue() -> void:
+	await _wait_for_normal_npc_voice()
+	while not _npc_reaction_queue.is_empty():
+		var turn: Dictionary = _npc_reaction_queue.pop_front()
+		var npc_ref := turn.get("npc", null) as WeakRef
+		var npc_root := npc_ref.get_ref() as Node3D if npc_ref != null else null
+		if npc_root == null or not is_instance_valid(npc_root):
+			continue
+		var line := String(turn.get("line", ""))
+		var name_pl := String(turn.get("name_pl", "Ktoś"))
+		_animate_npc_speech(String(turn.get("npc_id", "")), line, int(turn.get("emotion", FacialPerformance.Emotion.HAPPY)))
+		_active_npc_reaction_line = line
+		_active_npc_reaction_name = name_pl
+		_active_npc_reaction_request_id = int(turn.get("request_id", -1))
+		_active_npc_reaction_audio_started = false
+		_active_npc_reaction_audio_finished = false
+		_active_npc_reaction_audio_skipped = false
+		if (_npc_voice != null and _npc_voice.is_available()) or LOCAL_NPC_VOICE_STREAMS.has(line):
+			# The caption waits for playback_started; it cannot get ahead of a
+			# slow ElevenLabs synthesis or replace an audible previous line.
+			_speak_npc_line(line, _active_npc_reaction_request_id)
+			var voice_deadline_msec := Time.get_ticks_msec() + int(SILLY_FART_VOICE_TIMEOUT_SECONDS * 1000.0)
+			while not _active_npc_reaction_audio_finished and is_inside_tree():
+				if Time.get_ticks_msec() >= voice_deadline_msec:
+					# HTTPRequest also owns a timeout, but retain a runtime circuit
+					# breaker so a misbehaving custom adapter cannot stall the world.
+					_cancel_active_npc_voice()
+					_active_npc_reaction_audio_skipped = true
+					_active_npc_reaction_audio_finished = true
+					break
+				await get_tree().process_frame
+			if _active_npc_reaction_audio_skipped and is_inside_tree():
+				_show_npc_dialogue(name_pl, line, false)
+				await get_tree().create_timer(_speech_duration_for_line(line)).timeout
+			_hide_npc_dialogue()
+		else:
+			# Offline mode remains accessible through a timed visual caption.
+			_show_npc_dialogue(name_pl, line, false)
+			var tree := get_tree()
+			if tree == null:
+				break
+			await tree.create_timer(_speech_duration_for_line(line) + SILLY_FART_REACTION_GAP_SECONDS).timeout
+			_hide_npc_dialogue()
+		_active_npc_reaction_line = ""
+		_active_npc_reaction_name = ""
+		_active_npc_reaction_request_id = -1
+	_npc_reaction_queue_active = false
+
+
+func _next_npc_reaction_request_id() -> int:
+	_npc_reaction_request_sequence += 1
+	return _npc_reaction_request_sequence
+
+
+func _wait_for_normal_npc_voice() -> void:
+	if not _normal_npc_voice_active:
+		return
+	var deadline_msec := Time.get_ticks_msec() + int(NORMAL_NPC_VOICE_TIMEOUT_SECONDS * 1000.0)
+	while _normal_npc_voice_active and is_inside_tree():
+		if Time.get_ticks_msec() >= deadline_msec:
+			# The adapter itself is timed, but do not let a broken custom adapter
+			# block the social channel forever.
+			_cancel_active_npc_voice()
+			_normal_npc_voice_active = false
+			_normal_npc_voice_request_id = -1
+			_normal_npc_voice_line = ""
+			break
+		await get_tree().process_frame
+
+
+func _on_npc_voice_playback_started(line: String, request_id: int = 0) -> void:
+	if _normal_npc_voice_active and _normal_npc_voice_line == line and _normal_npc_voice_request_id == request_id:
+		return
+	if _active_npc_reaction_line != line or _active_npc_reaction_request_id != request_id:
+		return
+	_active_npc_reaction_audio_started = true
+	_show_npc_dialogue(_active_npc_reaction_name, line, false)
+
+
+func _on_npc_voice_playback_finished(line: String, request_id: int = 0) -> void:
+	if _normal_npc_voice_active and _normal_npc_voice_line == line and _normal_npc_voice_request_id == request_id:
+		_normal_npc_voice_active = false
+		_normal_npc_voice_request_id = -1
+		_normal_npc_voice_line = ""
+		return
+	if _active_npc_reaction_line == line and _active_npc_reaction_request_id == request_id:
+		_active_npc_reaction_audio_finished = true
+
+
+func _on_npc_voice_playback_skipped(line: String, request_id: int = 0) -> void:
+	if _normal_npc_voice_active and _normal_npc_voice_line == line and _normal_npc_voice_request_id == request_id:
+		if _play_local_npc_voice(line, request_id):
+			return
+		_normal_npc_voice_active = false
+		_normal_npc_voice_request_id = -1
+		_normal_npc_voice_line = ""
+		return
+	if _active_npc_reaction_line == line and _active_npc_reaction_request_id == request_id:
+		if _play_local_npc_voice(line, request_id):
+			return
+		_active_npc_reaction_audio_skipped = true
+		_active_npc_reaction_audio_finished = true
+
+
+func _fart_reaction_for(npc_root: Node3D) -> Dictionary:
+	var role := String(npc_root.get_meta("npc_role", ""))
+	var authored: Variant = npc_root.get_meta("fart_reaction", {})
+	if authored is Dictionary:
+		var authored_reaction: Dictionary = (authored as Dictionary).duplicate(true)
+		var line := String(authored_reaction.get("line_pl", authored_reaction.get("line", ""))).strip_edges()
+		var action := String(authored_reaction.get("action", "laugh"))
+		# A combat-off character remains a peaceful guide. Never surface even a
+		# pretend strike after the parental policy has downgraded their role.
+		if action == "swat" and role != NPCCharacter.ROLE_HOSTILE:
+			return {"line": "Uff! Ten podmuch mnie zaskoczył — wolę spokojne powietrze.", "emotion": FacialPerformance.Emotion.SURPRISED, "action": "recoil"}
+		if not line.is_empty():
+			return {
+				"line": line,
+				"emotion": _fart_emotion_from_string(String(authored_reaction.get("emotion", "happy"))),
+				"action": action,
+			}
+	if role == NPCCharacter.ROLE_VENDOR:
+		return {"line": "Fuj! Otwarte okno i świeże powietrze, natychmiast!", "emotion": FacialPerformance.Emotion.SURPRISED, "action": "recoil"}
+	if role == NPCCharacter.ROLE_HOSTILE:
+		return {"line": "Ej! To wcale nie jest śmieszne — masz jedno ostrzeżenie!", "emotion": FacialPerformance.Emotion.ANGRY, "action": "swat"}
+	return {"line": "Haha! To był mały wiaterek, ale wielka historia!", "emotion": FacialPerformance.Emotion.HAPPY, "action": "laugh"}
+
+
+func _fart_emotion_from_string(value: String) -> int:
+	match value.to_lower():
+		"angry": return FacialPerformance.Emotion.ANGRY
+		"surprised": return FacialPerformance.Emotion.SURPRISED
+		"sad", "hurt": return FacialPerformance.Emotion.HURT
+		_: return FacialPerformance.Emotion.HAPPY
+
+
+func _show_npc_reaction_bubble(npc_root: Node3D, line: String) -> void:
+	var bubble := npc_root.get_node_or_null("FartReaction") as Label3D
+	if bubble == null:
+		bubble = Label3D.new()
+		bubble.name = "FartReaction"
+		bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		bubble.no_depth_test = false
+		bubble.pixel_size = 0.0035
+		bubble.font_size = 24
+		bubble.outline_size = 4
+		bubble.modulate = Color(0.92, 1.0, 0.76)
+		bubble.outline_modulate = Color(0.04, 0.08, 0.02, 0.9)
+		# Every NPC source has a different body height. The spawn path can supply
+		# a precise speech anchor; otherwise this compact default stays close to a
+		# human head rather than hovering above small props such as the parrot.
+		bubble.position = Vector3(0.0, float(npc_root.get_meta("speech_bubble_height", 1.75)), 0.0)
+		npc_root.add_child(bubble)
+	bubble.text = line
+	bubble.visible = true
+	var generation := int(npc_root.get_meta("fart_bubble_generation", 0)) + 1
+	npc_root.set_meta("fart_bubble_generation", generation)
+	var tree := get_tree()
+	if tree == null:
+		return
+	# Keep a weak reference: streamed NPCs can be freed before the timeout and
+	# a lambda must never retain (or dereference) their old speech bubble.
+	var bubble_ref: WeakRef = weakref(bubble)
+	var npc_ref: WeakRef = weakref(npc_root)
+	tree.create_timer(2.8).timeout.connect(func() -> void:
+		var captured_bubble: Label3D = bubble_ref.get_ref() as Label3D
+		var captured_npc: Node3D = npc_ref.get_ref() as Node3D
+		if captured_bubble != null and is_instance_valid(captured_bubble) and captured_npc != null and is_instance_valid(captured_npc) and int(captured_npc.get_meta("fart_bubble_generation", 0)) == generation:
+			captured_bubble.visible = false)
+
+
+func _match_npc_fart_animation(npc_root: Node3D, action: String) -> void:
+	var visual := npc_root.get_child(0) as Node3D if npc_root.get_child_count() > 0 else null
+	if visual == null:
+		return
+	var original_yaw := visual.rotation.y
+	var tween := create_tween()
+	match action:
+		"swat":
+			# Prefer an actual right-arm air-swat. Kenney rigs expose arm-right;
+			# keep the planted-foot yaw only as a fallback for non-humanoid NPCs.
+			if not _tween_npc_air_swat_arm(visual, tween):
+				tween.tween_property(visual, "rotation:y", original_yaw + 0.18, 0.12)
+				tween.tween_property(visual, "rotation:y", original_yaw - 0.10, 0.12)
+				tween.tween_property(visual, "rotation:y", original_yaw, 0.16)
+		"recoil":
+			tween.tween_property(visual, "rotation:y", original_yaw - 0.12, 0.12)
+			tween.tween_property(visual, "rotation:y", original_yaw, 0.20)
+		_:
+			tween.tween_property(visual, "rotation:y", original_yaw + 0.10, 0.10)
+			tween.tween_property(visual, "rotation:y", original_yaw - 0.10, 0.12)
+			tween.tween_property(visual, "rotation:y", original_yaw, 0.12)
+
+
+func _tween_npc_air_swat_arm(visual: Node3D, tween: Tween) -> bool:
+	var arm := visual.find_child("arm-right", true, false) as Node3D
+	if arm == null:
+		return false
+	var original_roll := arm.rotation.z
+	tween.tween_property(arm, "rotation:z", original_roll - 0.72, 0.10)
+	tween.tween_property(arm, "rotation:z", original_roll + 0.16, 0.12)
+	tween.tween_property(arm, "rotation:z", original_roll, 0.16)
+	return true
 
 func _on_landed() -> void:
 	if _audio_bus != null:
@@ -1689,8 +4187,9 @@ func _on_trigger_area_entered(body: Node3D, area: Area3D) -> void:
 	if _rules_active and _rules_runtime != null:
 		_rules_runtime.on_event("zone_%s" % trigger_type, {"zone_id": area.name})
 		_rules_runtime.on_event("reach_%s" % trigger_type, {"zone_id": area.name})
+		_rules_runtime.on_event("touch_%s" % trigger_type, {"zone_id": area.name})
 	match trigger_type:
-		"win":
+		"win", "win_zone":
 			_trigger_victory()
 		"collectible", _:
 			_trigger_collectible(area)
@@ -1722,3 +4221,112 @@ func _trigger_victory() -> void:
 
 func _on_victory_completed() -> void:
 	end_session()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# VS-022 character customization wiring. Loads from disk once per session,
+# applies to the player, and lets a compact overlay mutate + persist it.
+# ──────────────────────────────────────────────────────────────────────────────
+
+func _apply_loaded_customization() -> void:
+	if _player_controller == null or not _player_controller.has_method("apply_customization"):
+		return
+	if _customization == null:
+		_customization = FilesystemCharacterCustomizationStore.load_customization()
+	_player_controller.apply_customization(_customization)
+
+
+func _on_customize_pressed() -> void:
+	if _customization_panel != null and is_instance_valid(_customization_panel):
+		_close_customization_panel()
+		return
+	if _customization == null:
+		_customization = FilesystemCharacterCustomizationStore.load_customization()
+	var hud := get_node_or_null("HUD")
+	if hud == null:
+		return
+	_customization_panel = CharacterCustomizationPanel.new().setup(_customization)
+	_customization_panel.customization_changed.connect(_on_customization_panel_changed)
+	_customization_panel.panel_closed.connect(_close_customization_panel)
+	hud.add_child(_customization_panel)
+	# Release mouse capture so the kid can interact with the panel without the
+	# camera fighting their cursor. Recaptured on panel close.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+func _on_customization_panel_changed(c: CharacterCustomization) -> void:
+	if c == null:
+		return
+	# A deliberate swatch choice opts out of the authored first-run wardrobe;
+	# persist that choice so a new session cannot silently overwrite it.
+	c.use_signature_outfit = false
+	_customization = c
+	if _player_controller != null and _player_controller.has_method("apply_customization"):
+		_player_controller.apply_customization(c)
+	FilesystemCharacterCustomizationStore.save_customization(c)
+
+
+func _close_customization_panel() -> void:
+	if _customization_panel != null and is_instance_valid(_customization_panel):
+		_customization_panel.queue_free()
+	_customization_panel = null
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+## Helper to check if reduce-motion is enabled via the global accessibility policy
+func _is_reduce_motion_enabled() -> bool:
+	var AccessibilityPolicyPort_class := load("res://src/ports/outbound/accessibility_policy_port.gd")
+	if AccessibilityPolicyPort_class != null:
+		return AccessibilityPolicyPort_class._global_instance.is_reduce_motion_enabled() if AccessibilityPolicyPort_class._global_instance else false
+	return false
+
+
+## VS-016: Trigger evidence capture for a specific capture point
+## Only triggers once per point to avoid duplicate screenshots
+func _trigger_evidence_capture(capture_point: int) -> void:
+	if _captured_evidence_points.has(capture_point):
+		return
+	_captured_evidence_points.append(capture_point)
+	emit_signal("evidence_capture_requested", capture_point)
+
+
+func _schedule_opening_spawn_evidence() -> void:
+	_cancel_opening_spawn_evidence()
+	var session_token := _evidence_session_token
+	var attempts := 0
+	var settle_timer := Timer.new()
+	_opening_evidence_timer = settle_timer
+	settle_timer.wait_time = 0.25
+	settle_timer.one_shot = false
+	settle_timer.timeout.connect(func() -> void:
+		if session_token != _evidence_session_token or _session == null or _opening_evidence_timer != settle_timer:
+			settle_timer.stop()
+			settle_timer.queue_free()
+			return
+		attempts += 1
+		if _world_renderer != null and _world_renderer.is_opening_generation_settled():
+			settle_timer.stop()
+			settle_timer.queue_free()
+			_opening_evidence_timer = null
+			_trigger_evidence_capture(1) # SPAWN
+		elif attempts % 32 == 0:
+			# An incomplete streamed frame is diagnostic information, never visual
+			# acceptance evidence. Keep waiting on slower hardware instead of
+			# falsely labelling the eight-second timeout as a settled opening.
+			push_warning("Opening evidence is waiting for streamed world generation (%d checks)" % attempts)
+	)
+	add_child(settle_timer)
+	settle_timer.start()
+
+
+func _cancel_opening_spawn_evidence() -> void:
+	if _opening_evidence_timer != null and is_instance_valid(_opening_evidence_timer):
+		_opening_evidence_timer.stop()
+		_opening_evidence_timer.queue_free()
+	_opening_evidence_timer = null
+
+
+## Update ambient particles based on reduce-motion setting
+func _update_ambient_particles_from_reduce_motion() -> void:
+	if _ambient_particles != null:
+		_ambient_particles.emitting = not _is_reduce_motion_enabled()

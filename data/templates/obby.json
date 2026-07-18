@@ -241,7 +241,6 @@
   },
   "lose_conditions": {
     "lives": 5,
-    "time_limit_sec": 180,
     "kill_plane_y": -10.0
   }
 }

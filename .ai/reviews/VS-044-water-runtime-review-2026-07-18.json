@@ -1,0 +1,28 @@
+{
+  "task_id": "VS-044",
+  "reviewer": "codex",
+  "decision": "REQUEST_CHANGES",
+  "safe_to_keep_in_progress": true,
+  "findings": [
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/shaders/adventure_water.gdshader",
+      "message": "Normalized full-river UVs leave no legible flow pattern in the bridge camera; derive DUDV from local/world metres and retain temporal runtime evidence."
+    },
+    {
+      "severity": "medium",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "Cosmetic vertex-wave amplitude exceeds the fixed water-volume contact tolerance; reduce or recalibrate it."
+    },
+    {
+      "severity": "medium",
+      "path": "tests/adapters/inbound/test_world_renderer_toon_shader.gd",
+      "message": "Contracts must inspect material runtime parameters and generated mesh density, not only shader source fragments."
+    },
+    {
+      "severity": "low",
+      "path": "tests/adapters/inbound/test_world_renderer_toon_shader.gd",
+      "message": "Headless exits report resource leaks; improve isolated teardown before using tests as clean runtime-safety evidence."
+    }
+  ]
+}

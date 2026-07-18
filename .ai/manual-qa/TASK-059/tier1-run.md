@@ -1,16 +1,16 @@
 # TASK-059 Tier-1 Run
 
-- Date: 2026-03-06
+- Date: 2026-07-18
 - Tester: claude (AI Architecture Agent — static code analysis run)
 - Method: Static analysis of src/adapters/inbound/main.gd, create_shell.gd, manage_data_lifecycle_service.gd
   NOTE: This run is a code-review evaluation. Live Godot execution deferred to AI vision runner (TASK-063).
   Evidence type: static — no screenshots. Scenario runner evidence to be added when bridge is live.
 - Hardware tier: Tier-1 (code analysis; runtime to be validated on Intel i5 / 8 GB RAM equivalent)
 - Device spec: N/A (static analysis)
-- OS version: macOS 25.0.0 (Darwin)
-- Build/commit: 3b04185
-- Start time (UTC): 2026-03-06T19:45:00Z
-- End time (UTC): 2026-03-06T20:15:00Z
+- OS version: macOS 15.0.0 (Darwin)
+- Build/commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+- Start time (UTC): 2026-07-18T00:45:00Z
+- End time (UTC): 2026-07-18T01:15:00Z
 
 ---
 

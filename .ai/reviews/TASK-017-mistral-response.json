@@ -1,0 +1,117 @@
+{
+  "task_id": "TASK-017",
+  "reviewer": "claude",
+  "reviewer_of_response": "mistral",
+  "decision": "request_changes",
+  "responses": [
+    {
+      "finding_index": 0,
+      "severity": "high",
+      "message": "Consent fail-open in CloudSTTAdapter with empty profile_id",
+      "action_taken": "Already fixed. CloudSTTAdapter.transcribe() at line 23-24 checks: if _profile_id == \"\" or not _consent_port.has_consent(_profile_id, \"cloud_stt\"): return \"\"\u001b[32m",
+      "evidence": [
+        "src/adapters/outbound/cloud_stt_adapter.gd:23-24"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 1,
+      "severity": "high",
+      "message": "PolishIntentExtractor references non-existent AgeBand enum values",
+      "action_taken": "Already fixed. Line 11 now uses AgeBand.Band.CHILD_6_8 instead of AgeBand.CHILD_5_7. The default in setup() is correctly using the existing enum value.",
+      "evidence": [
+        "src/application/polish_intent_extractor.gd:11"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 2,
+      "severity": "high",
+      "message": "CloudSTTAdapter and STTFallbackChain break SpeechToTextPort contract",
+      "action_taken": "Fixed. Changed CloudSTTAdapter.transcribe() signature from (audio, language: String = \"\") to (audio, language: String) to match port contract. Changed STTFallbackChain._cloud_adapter type from CloudSTTAdapter to SpeechToTextPort. Updated setup() and all method calls to use the port interface with has_method() checks and call().",
+      "evidence": [
+        "src/adapters/outbound/cloud_stt_adapter.gd:19",
+        "src/adapters/outbound/local_stt_adapter.gd:13",
+        "src/application/stt_fallback_chain.gd:8",
+        "src/application/stt_fallback_chain.gd:12",
+        "src/application/stt_fallback_chain.gd:17-24",
+        "src/application/stt_fallback_chain.gd:31-35"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 3,
+      "severity": "medium",
+      "message": "Polish normalization uses global substring replacement corrupting common words",
+      "action_taken": "Already fixed. Replaced simple String.replace() with regex-based _regex_replace() helper that uses word boundary matching. Lines 32-35 now use \\b (word boundary) anchors for \"dzis\" -> \"dzisiaj\". Lines 38-39 use specific context-aware replacements.",
+      "evidence": [
+        "src/application/polish_intent_extractor.gd:26-41",
+        "src/application/polish_intent_extractor.gd:44-49"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 4,
+      "severity": "medium",
+      "message": "STTFallbackChain depends on concrete adapter types instead of SpeechToTextPort interface",
+      "action_taken": "Fixed as part of finding #2. Changed _cloud_adapter type from CloudSTTAdapter to SpeechToTextPort. All method calls now use has_method() checks and call() to maintain port abstraction.",
+      "evidence": [
+        "src/application/stt_fallback_chain.gd:8",
+        "src/application/stt_fallback_chain.gd:12"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 5,
+      "severity": "medium",
+      "message": "Intent extraction only matches infinitive verb forms",
+      "action_taken": "Already fixed. Lines 56-80 now include both infinitive and imperative forms: budować/buduj/zbuduj, usunąć/usuń, przesunąć/przesuń, przenieść/przenieś, grać/graj, zagrać/zagraj.",
+      "evidence": [
+        "src/application/polish_intent_extractor.gd:56-80"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 6,
+      "severity": "medium",
+      "message": "transcribe() mutates _language instance state as side effect",
+      "action_taken": "Already fixed in LocalSTTAdapter. Line 14-15 now uses: var effective_language := language if language != \"\" else _language (local variable, no mutation). CloudSTTAdapter was already correct.",
+      "evidence": [
+        "src/adapters/outbound/local_stt_adapter.gd:14-15"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 7,
+      "severity": "low",
+      "message": "PackedByteArray().fill(1, 250) is incorrect GDScript API",
+      "action_taken": "Already fixed. Lines 34-35 now correctly use: longer_audio.resize(250); longer_audio.fill(1)",
+      "evidence": [
+        "tests/adapters/test_local_stt_adapter.gd:34-35"
+      ],
+      "status": "resolved"
+    },
+    {
+      "finding_index": 8,
+      "severity": "low",
+      "message": "No dedicated unit test for CloudSTTAdapter consent enforcement",
+      "action_taken": "Already exists. tests/adapters/test_cloud_stt_adapter.gd has comprehensive consent tests: test_empty_profile_blocks_transcription() (line 48-54), test_consent_required_for_cloud() (line 56-62), test_consent_granted_allows_transcription() (line 64-70).",
+      "evidence": [
+        "tests/adapters/test_cloud_stt_adapter.gd:48-70"
+      ],
+      "status": "resolved"
+    }
+  ],
+  "additional_changes": [],
+  "checklist": {
+    "acceptance_criteria": {
+      "polish_recognition_tuned_for_children": "PASS - Local adapter defaults to pl-PL. Normalization uses word-boundary regex. Intent extraction includes imperative verb forms.",
+      "cloud_fallback_requires_parent_opt_in": "PASS - CloudSTTAdapter checks _profile_id != \"\" AND has_consent before transcription (fail-closed)."
+    },
+    "hexagonal_boundaries": "PASS - STTFallbackChain now depends on SpeechToTextPort interface only. CloudSTTAdapter.transcribe() signature matches port contract.",
+    "kid_safety_and_parental_controls": "PASS - Consent is required for cloud STT. Empty profile_id blocks transcription. No fail-open patterns.",
+    "polish_localization": "PASS - Good Polish defaults. Normalization uses word-boundary matching to avoid corrupting common words.",
+    "cross_agent_review": "RESPONSE - All findings resolved. Ready for re-review."
+  },
+  "summary": "All 9 findings (3 high, 4 medium, 2 low) have been resolved. The code now: (1) requires explicit profile_id and consent for cloud STT (fail-closed), (2) uses correct AgeBand enum values, (3) maintains port contract signatures, (4) uses port interfaces instead of concrete types, (5) uses word-boundary matching for Polish normalization, (6) includes imperative verb forms, (7) avoids state mutation, (8) uses correct GDScript API in tests, and (9) has dedicated consent tests. Ready for claude re-review."
+}

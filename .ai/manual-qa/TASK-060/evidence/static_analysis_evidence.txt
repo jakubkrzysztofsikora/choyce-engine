@@ -1,0 +1,10 @@
+Manual QA Verification Evidence for TASK-060
+Date: 2026-07-18
+Tester: Claude (Junior Coder Mode)
+Commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+Method: Static verification of ManageDataLifecycleService, SetParentalControlsService, and LocalConsentStore in main.gd.
+Verification Logs:
+- Checked ManageDataLifecycleService requests (request_export, request_delete, update_retention).
+- Confirmed role verification and authorization check on each service endpoint.
+- Identified that ManageDataLifecycleService is missing from _build_default_ports() in main.gd (F-060-01).
+- Confirmed LocalConsentStore is initialized in-memory (F-060-02).

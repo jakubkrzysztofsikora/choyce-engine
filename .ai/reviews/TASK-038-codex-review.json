@@ -1,0 +1,52 @@
+{
+  "task_id": "TASK-038",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Domain isolation gate implemented via check-domain-isolation.sh which scans src/domain/ for forbidden runtime/network coupling patterns (scene classes, HTTP/network APIs, filesystem/runtime adapter references). Fails fast with offending lines.",
+      "path": "scripts/ci/check-domain-isolation.sh"
+    },
+    {
+      "severity": "info",
+      "message": "Prompt regression quality gate implemented via run_prompt_regression_tests.gd which loads prompt fixtures from data/ai/prompt_regression_fixtures.json, resolves templates through registry adapter, and verifies expected markers per fixture including kid locale guard (en-US request -> pl-PL resolution).",
+      "path": "tests/safety/run_prompt_regression_tests.gd, scripts/ci/run-prompt-regression.sh"
+    },
+    {
+      "severity": "info",
+      "message": "Safety red-team quality gate implemented via run_safety_redteam_tests.gd with representative adversarial checks: moderation blocks unsafe text categories, kid disallowed-tool request rejected (script_edit), unsafe voice transcript blocked by voice moderation pipeline.",
+      "path": "tests/safety/run_safety_redteam_tests.gd, scripts/ci/run-safety-gates.sh"
+    },
+    {
+      "severity": "info",
+      "message": "Unified local gate entrypoint scripts/run-quality-gates.sh executes domain isolation gate, prompt regression gate, safety red-team gate, and focused baseline suites (TASK-027, TASK-032) for prompt/safety behavior.",
+      "path": "scripts/run-quality-gates.sh"
+    },
+    {
+      "severity": "info",
+      "message": "GitHub Actions workflow .github/workflows/quality-gates.yml triggers on pull_request and push to main/master, installs Godot via firebelley/setup-godot@v1, and executes ./scripts/run-quality-gates.sh.",
+      "path": ".github/workflows/quality-gates.yml"
+    },
+    {
+      "severity": "info",
+      "message": "Local validation confirms all gates passed: check-domain-isolation.sh, run-prompt-regression.sh, run-safety-gates.sh, and run-quality-gates.sh all executed successfully.",
+      "path": "scripts/ci/check-domain-isolation.sh, scripts/ci/run-prompt-regression.sh, scripts/ci/run-safety-gates.sh, scripts/run-quality-gates.sh"
+    },
+    {
+      "severity": "info",
+      "message": "Documentation updated: README.md and backlog.yaml updated to reflect TASK-038 implementation.",
+      "path": "README.md, .ai/tasks/backlog.yaml"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "domain_test_isolation": "PASS - CI enforces high domain test isolation from engine runtime and network dependencies via dedicated isolation gate",
+      "safety_suites_gate_changes": "PASS - Safety red-team and AI regression suites gate model and policy changes via integrated runners"
+    },
+    "ci_integration": "PASS - GitHub Actions workflow properly configured with triggers and Godot setup",
+    "local_validation": "PASS - All gates pass locally: domain isolation, prompt regression, safety red-team, quality gates",
+    "test_coverage": "PASS - Prompt regression fixtures, safety red-team scenarios, and domain isolation checks provide comprehensive coverage"
+  },
+  "summary": "APPROVE. TASK-038 implementation is complete and production-ready. CI quality gate scaffolding with domain isolation, prompt regression, and safety red-team suites are fully implemented and integrated into GitHub Actions workflow. All acceptance criteria are met: CI enforces domain test isolation, safety suites gate model/policy changes. All gates pass locally."
+}

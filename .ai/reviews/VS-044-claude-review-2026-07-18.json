@@ -1,0 +1,117 @@
+{
+  "task_id": "VS-044",
+  "reviewer": "claude",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "River-volume segmentation is partially implemented but visible water and physics still diverge away from bridge. The fixed 22m-wide rectangular Area at z=-24 needs to be fully replaced with sampled/segmented volumes following _river_bank_pair().",
+      "resolution": "Complete the _build_meandering_water_volumes implementation and verify enter/exit at bridge and meander extrema."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "Opening composition still reads as sparse prototype. Forest mass begins too far behind river; close/mid-ground foliage and understory are insufficient to frame the opening as a layered, human-scale grove.",
+      "resolution": "Add coherent close/mid-ground foliage clusters outside route corridors and recapture the opening with bridge-to-forest child-height traversal."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/shaders/forest_foliage.gdshader",
+      "message": "Photographic leaf textures on rounded low-poly canopy meshes remain visibly incompatible with toy silhouettes, striped trunks, ground textures, and character art style. This violates the cohesive material/asset-language gate.",
+      "resolution": "Replace with stylized foliage material compatible with existing mesh style, or swap trees with compatible textured models from Kenney/Quaternius packs."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/shaders/adventure_water.gdshader",
+      "message": "River reads as visually flat dark-cyan strip with hard shoreline edges. Shallow-bank/deep-channel and current cues are not legible in live third-person evidence.",
+      "resolution": "Strengthen visible shore/depth contrast and motion. Adjust DUDV mapping to show flow direction and vary color by depth."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "Bridge stairs and rails use generic collider boxes rather than matching collision geometry. Visual bridge mesh does not align with physical collision.",
+      "resolution": "Replace with authored dimensions or limited static mesh shapes for bridge collision. Add bidirectional CharacterBody3D physics traversal coverage."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "Wet-bank ribbon globally offset by 0.208m and floats above terrain outside flat opening. Visual bank props are not terrain-grounded.",
+      "resolution": "Terrain-ground the outer bank and lift only inner edge to water surface. Ensure visual-only riverbank props terrain-ground independently and test against imported terrain height."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd",
+      "message": "Default blue-uniform hero contradicts approved Ziemek/Gniewko direction. VS-046 must deliver concept-derived rig appearances.",
+      "resolution": "Blocked on VS-046: Requires rig-compatible authored garment/child-hero assets for both Ziemek (turquoise graphic hoodie, dark trousers, backpack) and Gniewko (light top, dark trousers) plus close and third-person captures."
+    },
+    {
+      "severity": "high",
+      "status": "partially_addressed",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd",
+      "message": "Safety ground collider must be retained until live terrain ray contacts prove spawn and bridge bank are backed by Terrain3D collision.",
+      "resolution": "Do not remove safety ground collider merely because Terrain3D rebuild was requested. Use session token mechanism (commit c602197) to prevent stale probes from disabling safety floor."
+    },
+    {
+      "severity": "medium",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "Bridge coverage proves node existence only, not actual traversal. Deck/ramp seam, rail overlap, or terrain mismatch can block player while tests pass.",
+      "resolution": "Add bidirectional CharacterBody3D physics traversal coverage with live walk evidence from both bridge approaches."
+    },
+    {
+      "severity": "medium",
+      "status": "addressed",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:972-978",
+      "message": "FillLight (0.62 intensity) is active throughout day and night without time-of-day responsiveness.",
+      "resolution": "Addressed: _update_adventure_fill_light() makes FillLight time-of-day responsive (energy 0.62/color cool blue at night, energy 0.24/color warm white at day). Night route readability capture still needed."
+    },
+    {
+      "severity": "medium",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/shaders/adventure_water.gdshader",
+      "message": "Camera evidence still reads as flat dark river strip. Shallow/deep contrast and directional motion not visible from shore, bridge, and in-water viewpoints.",
+      "resolution": "Adjust water shader to show visible depth variation and current direction. Capture evidence from multiple viewpoints."
+    },
+    {
+      "severity": "medium",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "Cyan foliage artifacts, broad empty lawn, incompatible asset families keep visual gate open.",
+      "resolution": "Replace cyan foliage with compatible stylized assets. Add foreground density and varied asset families to achieve natural opening composition."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/shaders/adventure_water.gdshader",
+      "message": "Normalized full-river UVs leave no legible flow pattern in bridge camera. DUDV mapping needs local/world meter derivation.",
+      "resolution": "Derive DUDV from local/world metres to create visible flow pattern. Retain temporal runtime evidence of water movement."
+    },
+    {
+      "severity": "medium",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/shaders/adventure_water.gdshader",
+      "message": "Cosmetic vertex-wave amplitude may exceed fixed water-volume contact tolerance.",
+      "resolution": "Reduce or recalibrate vertex-wave amplitude to match physical water volume dimensions."
+    }
+  ],
+  "summary": "VS-044 has made substantial progress with river-volume segmentation, forest clustering, and bridge collision improvements. However, the visual gate remains OPEN due to: (1) incompatible foliage material language, (2) incomplete river/physics cohesion, (3) sparse opening composition, (4) missing hero direction (VS-046 blocker), and (5) outstanding time-of-day lighting issues. Multiple HIGH severity findings must be addressed before this task can be approved. REQUEST_CHANGES with priority focus on visual asset cohesion and final composition capture.",
+  "blockers": [
+    "VS-046: Hero asset creation (Blender) - child-proportioned rigs with Ziemek/Gniewko concept-derived appearances required",
+    "Visual art direction: Cohesive stylized foliage materials needed to match existing toy-style assets",
+    "Final composition: Layered grove/clearing with bridge-to-forest traversal not yet achieved"
+  ],
+  "notes": [
+    "Commend progress on forest cluster placement (z=-36,-37,-39,-40) and native GLTF bridge collision",
+    "Terrain3D session token mechanism (commit c602197) prevents stale collision probe issues",
+    "Water shader has DUDV flow and fragment channel depth but needs visible depth variation",
+    "All structural tests pass but visual acceptance gate remains the blocker"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "task_id": "VS-044/VS-013",
+  "reviewer": "Einstein",
+  "decision": "request_changes",
+  "evidence": "/tmp/choyce-opening-bridge-home-v7.jpg",
+  "findings": [
+    {
+      "severity": "high",
+      "finding": "PlayerController overrode the 55-degree scene lens with a 64-degree base FOV and 70-degree sprint FOV.",
+      "status": "addressed",
+      "resolution": "Set runtime BASE_FOV to 55 and SPRINT_FOV to 59; added the live-controller FOV regression assertion."
+    },
+    {
+      "severity": "high",
+      "finding": "The bridge faced the homestead rear wall while the usable door faced away from the bridge.",
+      "status": "addressed",
+      "resolution": "Moved the front facade, physical doorway and approach trail to the +Z bridge side; retained modular shell and door coverage."
+    },
+    {
+      "severity": "high",
+      "finding": "Cyan foliage artifacts, broad empty lawn, incompatible asset families and insufficient traversal evidence keep the visual gate open.",
+      "status": "open",
+      "next_step": "Build a coherent 30-50m bridge-to-door courtyard and forest threshold from one selected material language; capture spawn, bridge, door and interior traversal."
+    }
+  ]
+}

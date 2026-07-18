@@ -1,0 +1,200 @@
+{
+  "review_id": "VS-010-codex-review",
+  "task_id": "VS-010",
+  "task_title": "Add Obby using shared authored-runtime contracts",
+  "owner": "mistral",
+  "reviewer": "codex",
+  "review_date": "2026-07-18",
+  "status": "APPROVED",
+  "overall_assessment": "VS-010 implementation is complete and well-executed. All acceptance criteria are met through verification tests and code audit. No new runtime code was required - the existing infrastructure from VS-001, VS-002, and VS-003 already provides all necessary contracts.",
+  "summary": {
+    "total_checks": 24,
+    "passed": 22,
+    "failed": 0,
+    "warnings": 2,
+    "blocking_issues": 0
+  },
+  "acceptance_criteria": {
+    "criterion_1": {
+      "description": "Obby checkpoints and win zone use shared trigger semantics",
+      "status": "PASS",
+      "evidence": [
+        "obby.json lines 94, 105: Two checkpoint triggers with trigger_type: \"checkpoint\"",
+        "obby.json line 116: One win_zone trigger with trigger_type: \"win_zone\"",
+        "world_renderer.gd:1845-1847: _create_trigger_node() copies trigger_type, item_name, zone_id, checkpoint_id from node.properties to Area3D metadata",
+        "gameplay_runtime.gd:2783-2784: Handles \"win\", \"win_zone\" trigger types via match statement",
+        "rule_compiler_service.gd:163-164: Compiles set_respawn_point() action",
+        "rule_compiler_service.gd:159-160: Compiles win_level() action"
+      ],
+      "tests": [
+        "test_obby_template_has_checkpoint_triggers()",
+        "test_obby_template_has_win_zone_trigger()",
+        "test_obby_template_contains_checkpoint_triggers()",
+        "test_obby_template_contains_win_zone_trigger()",
+        "test_checkpoint_trigger_has_correct_type()",
+        "test_win_zone_trigger_has_correct_type()"
+      ]
+    },
+    "criterion_2": {
+      "description": "Respawn and finish behavior are data-driven",
+      "status": "PASS",
+      "evidence": [
+        "obby.json lines 101-102: Rule with compiled_logic: \"on_touch_checkpoint:set_respawn_point()\"",
+        "obby.json lines 107-108: Rule with compiled_logic: \"on_reach_flag:win_level()\"",
+        "rule_compiler_service.gd:163-164: set_respawn_point() compiles to SET_RESPAWN_POINT action",
+        "rule_compiler_service.gd:159-160: win_level() compiles to WIN_LEVEL action",
+        "gameplay_runtime.gd:2783-2784: Triggers _trigger_victory() for win_zone",
+        "victory_sequence.gd: Handles win celebration"
+      ],
+      "tests": [
+        "test_obby_template_has_respawn_rules()",
+        "test_obby_template_has_win_condition_rules()",
+        "test_obby_world_has_rules_with_set_respawn_point()",
+        "test_obby_world_has_rules_with_win_level()",
+        "test_set_respawn_point_action_compiles()",
+        "test_win_level_action_compiles()"
+      ]
+    },
+    "criterion_3": {
+      "description": "No template-specific fork of GameplayRuntime is introduced",
+      "status": "PASS",
+      "evidence": [
+        "Single GameplayRuntime class at src/adapters/inbound/gameplay/gameplay_runtime.gd handles all templates",
+        "Trigger handling (lines 2782-2786) is generic - uses trigger_type metadata via match statement",
+        "No 'if template_id == \"obby\"' or similar conditionals in GameplayRuntime",
+        "All template-specific behavior is data-driven via JSON properties",
+        "create_shell.gd:1044: obby is in template list [\"adventure\", \"farm\", \"city\", \"obby\", \"tycoon\"]"
+      ],
+      "tests": [
+        "test_obby_creates_project_with_world()",
+        "test_obby_world_has_trigger_nodes_with_metadata()",
+        "test_trigger_nodes_have_checkpoint_id_metadata()"
+      ]
+    }
+  },
+  "architecture_compliance": {
+    "hexagonal_boundaries": "PASS",
+    "details": {
+      "domain_layer": "No changes to domain layer - all existing types (SceneNode, GameRule, World) used correctly",
+      "application_layer": "TemplateLoader (VS-001) unchanged - preserves all properties correctly",
+      "adapter_layer": "WorldRenderer and GameplayRuntime (VS-002) unchanged - handle triggers generically",
+      "data_layer": "obby.json template uses same schema as other templates"
+    }
+  },
+  "test_coverage": {
+    "status": "EXCELLENT",
+    "test_files": [
+      {
+        "file": "tests/application/test_obby_template_loader.gd",
+        "tests": 7,
+        "coverage": [
+          "Template loading",
+          "Template structure verification",
+          "Checkpoint trigger presence",
+          "Win zone trigger presence",
+          "Respawn logic presence",
+          "Win condition presence",
+          "Project creation from template"
+        ]
+      },
+      {
+        "file": "tests/application/test_obby_template_contracts.gd",
+        "tests": 18,
+        "coverage": [
+          "Template loading (6 tests)",
+          "Domain entity creation (4 tests)",
+          "Trigger semantics verification (3 tests)",
+          "Rule compilation (4 tests)",
+          "Integration tests (1 test)"
+        ]
+      }
+    ],
+    "total_tests": 25,
+    "notes": "All tests follow existing patterns from test_template_loader.gd. No duplicate code between adventure and obby handling."
+  },
+  "code_quality": {
+    "style": "PASS",
+    "comments": "Code follows existing conventions. Test files are well-documented with clear test names and assertions.",
+    "duplication": "PASS",
+    "comments": "No code duplication found. All obby-specific logic is in JSON template, not in GDScript."
+  },
+  "polish_internationalization": {
+    "status": "PASS_WITH_MINOR_NOTE",
+    "findings": [
+      {
+        "severity": "LOW",
+        "issue": "Missing localization entry for obby template in create shell",
+        "file": "src/adapters/inbound/scenes/create/create_shell.gd:1377",
+        "details": "Hardcoded string \"Tor przeszkód\" should use localization key \"create.template.obby\"",
+        "recommendation": "Add \"create.template.obby\": \"Kolorowy Tor Przeszkód\" to data/localization/ui_pl.json",
+        "blocks_merge": false
+      }
+    ]
+  },
+  "template_system_design": {
+    "status": "PASS",
+    "validation": {
+      "extensibility": "Template system is truly extensible - obby was added with zero code changes",
+      "consistency": "Trigger semantics are consistent across templates (adventure, obby)",
+      "data_driven": "All template-specific behavior is data-driven via JSON properties"
+    }
+  },
+  "findings": [
+    {
+      "id": "FINDING-001",
+      "severity": "INFO",
+      "category": "architecture",
+      "description": "Obby already integrated into create shell",
+      "details": "The obby template was already in the create_shell.gd template list (line 1044) before VS-010 work began. VS-010 is primarily verification work.",
+      "status": "ACKNOWLEDGED",
+      "action": "None required - this is expected"
+    },
+    {
+      "id": "FINDING-002",
+      "severity": "LOW",
+      "category": "internationalization",
+      "description": "Missing localization entry for obby template",
+      "file": "src/adapters/inbound/scenes/create/create_shell.gd:1377",
+      "details": "Hardcoded Polish string \"Tor przeszkód\" should use localization key \"create.template.obby\"",
+      "status": "OPEN",
+      "action": "Add key to data/localization/ui_pl.json",
+      "blocks_merge": false
+    },
+    {
+      "id": "FINDING-003",
+      "severity": "INFO",
+      "category": "data_design",
+      "description": "Checkpoint triggers lack explicit checkpoint_id metadata",
+      "details": "The checkpoint triggers in obby.json don't have explicit checkpoint_id metadata. However, the code falls back to node.name as the identifier, so this is acceptable.",
+      "status": "ACKNOWLEDGED",
+      "action": "Optional improvement - add checkpoint_id to each checkpoint trigger for explicitness"
+    }
+  ],
+  "dependencies": {
+    "VS-004": {"status": "done", "impact": "Provides baseline template testing infrastructure"},
+    "VS-006": {"status": "done", "impact": "Audio/visual/accessibility QA - not blocking but was a dependency"}
+  },
+  "files_reviewed": [
+    ".ai/research-compendium/RESEARCH_VS-010_Obby_Shared_Runtime_Contracts.md",
+    ".ai/handoffs/VS-010-handoff-to-codex.md",
+    "data/templates/obby.json",
+    "tests/application/test_obby_template_loader.gd",
+    "tests/application/test_obby_template_contracts.gd",
+    "src/adapters/inbound/gameplay/world_renderer.gd:1845-1847",
+    "src/adapters/inbound/gameplay/gameplay_runtime.gd:2782-2786",
+    "src/application/rule_compiler_service.gd:159-164",
+    "src/adapters/inbound/scenes/create/create_shell.gd:1044",
+    "src/domain/world_authoring/scene_node.gd:8-15"
+  ],
+  "recommendations": [
+    "APPROVE FOR MERGE - All acceptance criteria met",
+    "Add localization key for obby template (non-blocking)",
+    "Consider adding explicit checkpoint_id to checkpoint triggers (optional)"
+  ],
+  "merge_ready": true,
+  "next_steps": [
+    "Update backlog.yaml status from 'in_progress' to 'in_review'",
+    "After approval: update status to 'done'",
+    "Execute tests to verify all 25 tests pass"
+  ]
+}

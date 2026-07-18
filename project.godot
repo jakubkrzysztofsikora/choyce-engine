@@ -1,45 +1,37 @@
 ; Engine configuration file.
-; Minimal project bootstrap for headless script execution and tests.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
 [application]
-config/name="Choyce Engine"
-config/features=PackedStringArray("4.6")
+
+config/name="Ziemek i Gniewko: Demo"
 run/main_scene="res://src/adapters/inbound/main.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="choyce_engine"
+config/features=PackedStringArray("4.6")
+
+[autoload]
+
+InputMapInitializer="*res://src/adapters/inbound/shared/input_map_initializer.gd"
+ButtonFeel="*res://src/adapters/inbound/shared/ui/button_feel.gd"
+AudioBank="*res://src/adapters/inbound/shared/audio/audio_bank.gd"
 
 [display]
+
 window/size/viewport_width=1600
 window/size/viewport_height=960
 window/size/mode=2
-window/size/resizable=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/stretch/scale=1.0
-window/subwindows/embed_subwindows=true
-window/per_pixel_transparency/allowed=false
-
-[rendering]
-renderer/rendering_method="forward_plus"
-textures/vram_compression/import_etc2_astc=true
-; Shader compiler cache (Godot 4.4+ default on, declared explicitly for
-; clean-clone determinism). Halves boot time after first run.
-shader_compiler/shader_cache/enabled=true
-
-[physics]
-; Jolt Physics (Godot 4.4+ built-in). 2-5× faster than DEFAULT engine
-; for 3D scenes; better CharacterBody3D ghost-collision behavior. The
-; only known caveat is SoftBody3D which requires DEFAULT — not used in
-; choyce-engine yet. AAA Wave 0 prerequisite (synthesis 2026-05-19).
-3d/physics_engine="Jolt Physics"
 
 [importer_defaults]
-; glTF importer tuning — saves ~50% boot time on ~1000 Kenney props
-; per assets-research doc §2.6. LOD generation + UV2 light-baking
-; unwrap + shadow-mesh build are wasted on flat-shaded low-poly props
-; with no PBR maps and no lightmaps planned for MVP.
+
 scene={
 "animation/fps": 30,
 "animation/import": true,
@@ -62,7 +54,10 @@ scene={
 "skins/use_named_skins": true
 }
 
-[autoload]
-InputMapInitializer="*res://src/adapters/inbound/shared/input_map_initializer.gd"
-ButtonFeel="*res://src/adapters/inbound/shared/ui/button_feel.gd"
-AudioBank="*res://src/adapters/inbound/shared/audio/audio_bank.gd"
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true

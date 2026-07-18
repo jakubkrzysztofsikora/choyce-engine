@@ -19,6 +19,7 @@ extends RefCounted
 enum Mode {
 	BUILD,    ## block in active slot → LMB=break, RMB=place
 	COMBAT,   ## weapon in active slot → LMB=attack, RMB=camera
+	TOOL,     ## axe/pickaxe → LMB=use matching resource tool
 	NEUTRAL,  ## nothing held (or unknown id) → LMB=attack (safer default)
 }
 
@@ -35,6 +36,8 @@ func current_mode(active_slot_kind: String) -> Mode:
 		return Mode.BUILD
 	if _is_weapon_kind(active_slot_kind):
 		return Mode.COMBAT
+	if _is_tool_kind(active_slot_kind):
+		return Mode.TOOL
 	return Mode.NEUTRAL
 
 
@@ -48,6 +51,8 @@ func lmb_action_for(mode: Mode) -> String:
 			return "break_block"
 		Mode.COMBAT:
 			return "attack"
+		Mode.TOOL:
+			return "use_tool"
 		_:
 			return "attack"   ## fallback: empty hand still swings
 
@@ -80,3 +85,7 @@ func _is_weapon_kind(s: String) -> bool:
 		"fist", "stick", "sword_iron", "sword_epic",
 	]
 	return s in WEAPON_IDS
+
+
+func _is_tool_kind(s: String) -> bool:
+	return s in ["tool_axe", "tool_pickaxe"]

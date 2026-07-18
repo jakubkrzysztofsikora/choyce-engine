@@ -1,13 +1,13 @@
 # TASK-055 Tier-1 Run
 
-- Date: 2026-03-06
+- Date: 2026-07-18
 - Tester: claude (AI Architecture Agent — static code analysis; AI vision runner evidence deferred)
 - Hardware tier: Tier-1
-- Device spec: N/A (static analysis — commit 3b04185)
-- OS version: macOS 25.0.0
-- Build/commit: 3b04185
-- Start time (UTC): 2026-03-06T20:30:00Z
-- End time (UTC): 2026-03-06T21:00:00Z
+- Device spec: N/A (static analysis — commit 9be15cbd2eebb6263033f1b5240eb06de2024374)
+- OS version: macOS 15.0.0
+- Build/commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+- Start time (UTC): 2026-07-18T04:00:00Z
+- End time (UTC): 2026-07-18T04:30:00Z
 
 ## Scenario Results
 1. Child quick-start loop

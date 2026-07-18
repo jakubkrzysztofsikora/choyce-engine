@@ -1,0 +1,27 @@
+{
+  "task_id": "VS-044",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/shaders/forest_foliage.gdshader",
+      "message": "The initial black-crown failure is fixed, but the forest still needs deeper material variation and stronger environmental integration to stop reading as a uniform tree wall."
+    },
+    {
+      "severity": "high",
+      "path": "/tmp/choyce-forest-readable-shore-rocks.png",
+      "message": "The white shoreline cube is removed, but the opening remains a broad bare lawn with a flat water band and sparse foreground. Add terrain-conforming bank and layered low/mid vegetation, then retain a bridge-to-forest child-height traversal capture."
+    },
+    {
+      "severity": "medium",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "Scale the chosen trunk profile with each generated visual scale; fixed world-space contact was incorrect for 2.45–3.95x tree variation."
+    },
+    {
+      "severity": "medium",
+      "path": "tests/adapters/inbound/test_world_renderer_toon_shader.gd",
+      "message": "Use instantiated material and collider assertions rather than text-only path checks; live rendered evidence remains the acceptance authority."
+    }
+  ]
+}

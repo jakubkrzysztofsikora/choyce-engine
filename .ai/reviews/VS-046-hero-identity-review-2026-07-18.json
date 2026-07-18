@@ -1,0 +1,35 @@
+{
+  "task_id": "VS-046",
+  "reviewer": "Einstein (independent adversarial subagent)",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "status": "addressed",
+      "path": "src/domain/gameplay/character_customization.gd; src/adapters/inbound/gameplay/gameplay_runtime.gd",
+      "message": "Identity and wardrobe override were not persisted; load always forced the preset.",
+      "resolution": "CharacterCustomization now persists hero_identity and use_signature_outfit; legacy saves retain swatches and a child changing a swatch opts out of the first-run preset."
+    },
+    {
+      "severity": "high",
+      "status": "addressed",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd",
+      "message": "Face swaps removed held tool visuals and retained a stale bone-anchor reference.",
+      "resolution": "The visual tier is cached, the anchor is cleared during the rig replacement, and the tool is rebuilt on the replacement skeleton; focused coverage proves it."
+    },
+    {
+      "severity": "high",
+      "status": "open",
+      "path": "src/adapters/inbound/gameplay/shaders/hero_clothing.gdshader; /tmp/choyce-ziemek-identity-current.png",
+      "message": "UV/colour heuristics and the generic source rig cannot meet the supplied patterned-hoodie, detailed-backpack, child-proportioned concept bar.",
+      "resolution": "Requires a rig-compatible authored garment/child-hero asset plus close and third-person captures for both heroes."
+    },
+    {
+      "severity": "medium",
+      "status": "partially_addressed",
+      "path": "tests/adapters/inbound/test_hero_identity_layer.gd; tests/adapters/inbound/test_split_screen_hero_pairing.gd",
+      "message": "Initial coverage lacked tool-replacement and split-player identity checks.",
+      "resolution": "Added held-tool-after-face-swap and P2/Gniewko grounded split-screen contracts. Rendered close-up and speech evidence remain open."
+    }
+  ]
+}

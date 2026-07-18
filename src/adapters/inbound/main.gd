@@ -3,6 +3,19 @@ extends Control
 
 const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const ShellTransition = preload("res://src/adapters/inbound/shared/ui/shell_transition.gd")
+## Explicit preload keeps the first-run demo independent of Godot's global
+## class cache, which can lag behind a newly added persistence adapter.
+const FilesystemSessionProgressStoreAdapter = preload("res://src/adapters/outbound/filesystem_session_progress_store.gd")
+const FilesystemSandboxStoreClass = preload("res://src/adapters/outbound/filesystem_sandbox_store.gd")
+const SandboxPersistenceServiceClass = preload("res://src/application/sandbox_persistence_service.gd")
+
+# VS-016: Preload evidence capture classes
+const ScreenshotCaptureClass = preload("res://src/adapters/outbound/evidence/screenshot_capture.gd")
+const PerformanceMonitorClass = preload("res://src/adapters/outbound/evidence/performance_monitor.gd")
+const HardwareTierClass = preload("res://src/adapters/outbound/evidence/hardware_tier.gd")
+const VisualQACheckerClass = preload("res://src/adapters/outbound/evidence/visual_qa_checker.gd")
+const EvidenceManagerClass = preload("res://src/adapters/outbound/evidence/evidence_manager.gd")
+
 const SHELL_LANDING := "landing"
 const SHELL_CREATE := "create"
 const SHELL_PLAY := "play"
@@ -41,6 +54,7 @@ signal ports_ready
 
 var _navigator := ShellNavigator.new()
 var _ports: Dictionary = {}
+var _llm_port: LLMPort = null
 var _feature_flags: FeatureFlagService
 var _localization_policy: LocalizationPolicyPort
 var _accessibility_policy: AccessibilityPolicyPort
@@ -65,6 +79,7 @@ var _phase1_tool_gateway: DeterministicToolExecutionGateway
 ## filesystem-backed implementations.
 var _phase1_audit_ledger: AuditLedgerPort
 var _phase1_policy_store: ParentalPolicyStorePort
+var _phase1_sandbox_persistence: SandboxPersistenceService
 
 @onready var _nav_bar: PanelContainer = $Layout/NavBar
 @onready var _nav_pill: HBoxContainer = $Layout/NavBar/NavPill
@@ -75,12 +90,14 @@ var _phase1_policy_store: ParentalPolicyStorePort
 @onready var _active_indicator: PanelContainer = $ActiveIndicator
 @onready var _title_label: Label = $Layout/NavBar/NavPill/TitleLabel
 
-@onready var _mascot: Mascot = $MascotOverlay
+@onready var _mascot: Mascot = get_node_or_null("MascotOverlay")
 @onready var _landing_shell: LandingScreen = $Layout/Body/LandingShell
 @onready var _create_shell: CreateShell = $Layout/Body/CreateShell
 @onready var _play_shell: PlayShell = $Layout/Body/PlayShell
 @onready var _library_shell: LibraryShell = $Layout/Body/LibraryShell
 @onready var _parent_shell: ParentZoneShell = $Layout/Body/ParentZoneShell
+
+var _launcher: LauncherOverlay = null
 
 # Accessibility UI
 var _nav_a11y: Button
@@ -92,6 +109,15 @@ var _check_captions: CheckBox
 var _shell_transition: ShellTransition
 var _nav_buttons: Dictionary = {}
 var _accent_color := Color8(120, 210, 255)
+
+## VS-016: Evidence capture components
+var _evidence_manager: EvidenceManager
+var _screenshot_capture: ScreenshotCapture
+var _performance_monitor: PerformanceMonitor
+var _hardware_tier: HardwareTier
+# The Play shell can appear before a world is selected; retain the specific
+# runtime we wired so the delayed world launch connects exactly once.
+var _evidence_runtime_listener: Node = null
 
 
 func _process(delta: float) -> void:
@@ -158,8 +184,89 @@ func _ensure_voxel_body_bg() -> void:
 	move_child(scan, 1)  # just above bg, below Layout
 
 
+## VS-016: Evidence capture component setup
+func _setup_evidence_components() -> void:
+	# Add HardwareTier for startup detection
+	var hardware_tier = HardwareTierClass.new()
+	add_child(hardware_tier)
+	hardware_tier.detect_tier()
+	
+	# Add PerformanceMonitor for game loop monitoring
+	var perf_monitor = PerformanceMonitorClass.new()
+	add_child(perf_monitor)
+	perf_monitor.start()
+	
+	# Add ScreenshotCapture for capture events
+	var screenshot_capture = ScreenshotCaptureClass.new()
+	add_child(screenshot_capture)
+	
+	# Add EvidenceManager to coordinate everything
+	var evidence_manager = EvidenceManagerClass.new()
+	add_child(evidence_manager)
+	
+	# Wire up evidence manager with its components
+	evidence_manager.screenshot_capture = screenshot_capture
+	evidence_manager.performance_monitor = perf_monitor
+	
+	# Connect screenshot capture to evidence manager
+	screenshot_capture.screenshot_captured.connect(evidence_manager._on_screenshot)
+	
+	# Connect to shell navigator for capture triggers
+	if _navigator != null:
+		_navigator.shell_changed.connect(_capture_shell_evidence.bind(evidence_manager, screenshot_capture))
+	
+	# Store references for later use
+	_evidence_manager = evidence_manager
+	_screenshot_capture = screenshot_capture
+	_performance_monitor = perf_monitor
+	_hardware_tier = hardware_tier
+
+
+## VS-016: Handle shell changes for evidence capture
+func _capture_shell_evidence(shell_id: String, evidence_manager: EvidenceManager, screenshot_capture: ScreenshotCapture) -> void:
+	# Only the Play shell is an honest shell-level capture point. Guide,
+	# transition and combat evidence must come from the corresponding gameplay
+	# events after the streamed opening has settled.
+	# Start evidence collection when entering Play shell
+	if shell_id == "play":
+		evidence_manager.start_collection()
+		# A runtime may already be present when returning to the Play shell. New
+		# launches are wired by PlayShell.gameplay_runtime_created below.
+		_connect_gameplay_evidence_after_play_launch(evidence_manager, screenshot_capture)
+
+
+func _connect_gameplay_evidence_after_play_launch(
+		evidence_manager: EvidenceManager,
+		screenshot_capture: ScreenshotCapture
+	) -> void:
+	var gameplay_runtime = get_node_or_null("/root/GameplayRuntime")
+	if gameplay_runtime == null or not gameplay_runtime.has_signal("evidence_capture_requested"):
+		return
+	_connect_gameplay_evidence_runtime(gameplay_runtime, screenshot_capture)
+
+
+func _on_play_shell_gameplay_runtime_created(gameplay_runtime: GameplayRuntime) -> void:
+	if gameplay_runtime == null or _screenshot_capture == null:
+		return
+	_connect_gameplay_evidence_runtime(gameplay_runtime, _screenshot_capture)
+
+
+func _connect_gameplay_evidence_runtime(gameplay_runtime: Node, screenshot_capture: ScreenshotCapture) -> void:
+	if gameplay_runtime == null or not gameplay_runtime.has_signal("evidence_capture_requested"):
+		return
+	if gameplay_runtime == _evidence_runtime_listener:
+		return
+	var on_capture := func(capture_point: int) -> void:
+		screenshot_capture.capture(capture_point, {"trigger": "gameplay_event"})
+	gameplay_runtime.evidence_capture_requested.connect(on_capture)
+	_evidence_runtime_listener = gameplay_runtime
+
+
 func _ready() -> void:
 	_ensure_voxel_body_bg()
+	# VS-016: Initialize evidence capture components
+	_setup_evidence_components()
+	
 	# Apply ultra-wide responsive constraint to the root Layout so
 	# NavBar + shells don't stretch edge-to-edge on 3440×1440 screens.
 	# Helper preserves the $Layout node identity → @onready paths
@@ -188,6 +295,7 @@ func _ready() -> void:
 	_apply_localized_text()
 	_setup_transitions()
 	_navigator.show_shell(SHELL_LANDING)
+	_show_launcher()
 
 	# Phase 8d: schedule heavy-I/O adapter initialisation for the next frame so
 	# the first frame returns quickly. Shells remain in the ports_ready=false gate
@@ -288,7 +396,12 @@ func _build_default_ports() -> Dictionary:
 	# TASK-025 carry-over closure: progression/clone/remix wired into the
 	# default composition root so Library save/load and remix flows reach
 	# real services instead of NotImplemented push_errors.
-	var progress_store: SessionProgressStorePort = InMemorySessionProgressStore.new().setup()
+	var progress_store: SessionProgressStorePort = FilesystemSessionProgressStoreAdapter.new().setup()
+	
+	# VS-026: Wire up sandbox persistence for full save/load
+	var sandbox_store := FilesystemSandboxStoreClass.new().setup()
+	var sandbox_persistence := SandboxPersistenceServiceClass.new().setup(sandbox_store, clock)
+	
 	var clone_service := CloneWorldService.new()
 	var remix_service := RemixWorldService.new().setup(progress_store, event_bus)
 	var progression_service := ManageProgressionService.new().setup(progress_store, event_bus)
@@ -299,7 +412,12 @@ func _build_default_ports() -> Dictionary:
 	event_bus.subscribe_all(Callable(ai_performance, "update_from_event"))
 	event_bus.subscribe_all(Callable(kid_status, "update_from_event"))
 
-	var llm := OllamaLLMAdapter.new().setup(consent_store_stub)
+	var base_url := OS.get_environment("ANTHROPIC_BASE_URL")
+	if not base_url.is_empty():
+		_llm_port = LiteLLMAdapter.new().setup()
+	else:
+		_llm_port = OllamaLLMAdapter.new().setup(consent_store_stub)
+	var llm := _llm_port
 	var tool_gateway := DeterministicToolExecutionGateway.new().setup()
 
 	var data_lifecycle := ManageDataLifecycleService.new().setup(
@@ -324,6 +442,7 @@ func _build_default_ports() -> Dictionary:
 	_phase1_tool_gateway = tool_gateway
 	_phase1_audit_ledger = audit_ledger_stub
 	_phase1_policy_store = policy_store_stub
+	_phase1_sandbox_persistence = sandbox_persistence
 
 	return {
 		KEY_CREATE_PORT: CreateProjectService.new().setup(project_store, clock),
@@ -433,7 +552,12 @@ func _build_default_ports_phase_2() -> void:
 	if parent_audit != null and parent_audit.has_method("setup"):
 		parent_audit.setup(audit_ledger, clock)
 
-	var llm := OllamaLLMAdapter.new().setup(consent_store)
+	var base_url := OS.get_environment("ANTHROPIC_BASE_URL")
+	if not base_url.is_empty():
+		_llm_port = LiteLLMAdapter.new().setup()
+	else:
+		_llm_port = OllamaLLMAdapter.new().setup(consent_store)
+	var llm := _llm_port
 
 	var data_lifecycle_adapter := FilesystemDataLifecycleAdapter.new().setup(
 		project_store,
@@ -530,6 +654,11 @@ func _build_default_ports_phase_2() -> void:
 	if is_node_ready():
 		_wire_shell_dependencies()
 
+	# VS-026: Sandbox persistence — swap the Phase 1 stub (if it was in-memory)
+	# with a filesystem-backed store so saves survive app restarts.
+	var sandbox_store := FilesystemSandboxStore.new().setup("user://sandbox_saves")
+	_phase1_sandbox_persistence = SandboxPersistenceService.new().setup(sandbox_store, clock)
+
 	_ports_phase_2_done = true
 
 	# Notify all listening shells that ports are ready.
@@ -550,6 +679,96 @@ func _build_default_ports_phase_2() -> void:
 ## that pre-existing projects (e.g. older local_kid_1_starter_canvas entries)
 ## do not block the 3 current starter worlds from appearing.
 func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -> void:
+	# All starter worlds must come from the same authored template path used by
+	# creation. This prevents the launcher demo from silently bypassing node
+	# properties, rules, goals, and trigger metadata.
+	_seed_starter_content_from_templates(store, clock)
+	return
+
+
+func _seed_starter_content_from_templates(store: ProjectStorePort, clock: ClockPort) -> void:
+	if store == null:
+		return
+	var existing_projects: Dictionary = {}
+	for entry in store.list_projects():
+		if entry is Project and entry.owner_profile_id == _profile.profile_id:
+			existing_projects[entry.project_id] = entry
+
+	var template_loader := TemplateLoader.new().setup(store, clock)
+	var starters := [
+		{"id": "starter_adventure", "template": "adventure", "title": "Wyspa skarbów"},
+		{"id": "starter_farm", "template": "farm", "title": "Mała farma"},
+		{"id": "starter_city", "template": "city", "title": "Miasto neonów"},
+	]
+	var seeded_count := 0
+	for seed in starters:
+		var project_id := "%s_%s" % [_profile.profile_id, seed["id"]]
+		var existing: Project = existing_projects.get(project_id, null)
+		if existing != null and not _needs_starter_template_migration(existing):
+			continue
+		var project := template_loader.create_project_from_template(
+			String(seed["template"]), _profile, project_id
+		)
+		if project == null:
+			push_warning("Could not seed template %s" % seed["template"])
+			continue
+		project.title = String(seed["title"])
+		project.description = String(seed["title"])
+		for world_variant in project.worlds:
+			if world_variant is World:
+				var world: World = world_variant
+				world.is_playable = true
+				world.theme = String(seed["template"])
+		store.save_project(project)
+		seeded_count += 1
+	if seeded_count > 0:
+		push_warning("Seeded %d canonical starter worlds for profile %s" % [seeded_count, _profile.profile_id])
+
+
+func _needs_starter_template_migration(project: Project) -> bool:
+	if project == null or project.worlds.is_empty():
+		return true
+	# The adventure vertical slice intentionally moved from the old 13-node
+	# editor-block starter to a continuous procedural island. Existing local
+	# profiles receive that authored change once; otherwise the renderer keeps
+	# loading the obsolete floating boxes forever. A project that has already
+	# been edited is never silently replaced: its updated timestamp is the
+	# preservation boundary and the owner can keep their authored world.
+	if project.template_id == "adventure" and project.updated_at == project.created_at:
+		for world_variant in project.worlds:
+			if not (world_variant is World):
+				continue
+			var world: World = world_variant as World
+			if world.scene_nodes.size() > 2 or world.game_rules.size() > 0:
+				return true
+			for node_variant in world.scene_nodes:
+				if not (node_variant is SceneNode):
+					continue
+				var node: SceneNode = node_variant as SceneNode
+				if node.node_type != SceneNode.NodeType.TERRAIN:
+					continue
+				var size: Variant = node.properties.get("size", [])
+				if size is Array and (size as Array).size() >= 3 and float((size as Array)[0]) < 2400.0:
+					return true
+	# The previous launcher seed contained only display names and transforms.
+	# Migrate only that recognizable shape; never overwrite a project carrying
+	# authored properties or rules.
+	for world_variant in project.worlds:
+		if not (world_variant is World):
+			return true
+		var world: World = world_variant
+		if not world.game_rules.is_empty():
+			return false
+		for node_variant in world.scene_nodes:
+			if node_variant is SceneNode and not (node_variant as SceneNode).properties.is_empty():
+				return false
+	return true
+
+
+## Legacy hand-authored seed retained temporarily for migration reference.
+## It is unreachable; remove it after VS-004 evidence confirms existing local
+## profiles migrate cleanly to canonical template-backed projects.
+func _seed_legacy_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -> void:
 	if store == null:
 		return
 	var now := clock.now_iso() if clock != null else ""
@@ -847,6 +1066,67 @@ func _on_transition_requested(from_shell_id: String, to_shell_id: String) -> voi
 
 func _on_shell_changed(shell_id: String) -> void:
 	_update_active_indicator(shell_id)
+	# The think-demo uses the cinematic/guide rather than the legacy drawn ninja.
+	# Keeping this mascot visible in any shell made both the launcher and 3D
+	# session read as a prototype overlay, so it is disabled for this slice.
+	if _mascot != null:
+		_mascot.visible = false
+
+
+## Thin launcher: the first screen. A big PLAY that drops straight into the
+## Adventure world, reusing the direct-launch path. Skipped under autoplay so
+## the headless smoke probe isn't blocked waiting for a human tap.
+func _show_launcher() -> void:
+	var env := OSEnvironmentAdapter.new()
+	if not env.get_env("CHOYCE_AUTOPLAY").strip_edges().is_empty():
+		return
+	_launcher = LauncherOverlay.new().setup(_localization_policy)
+	_launcher.play_pressed.connect(_on_launcher_play)
+	add_child(_launcher)
+
+
+func _on_launcher_play() -> void:
+	# VS-016: Capture launcher screenshot before removing launcher
+	if _screenshot_capture != null:
+		_screenshot_capture.capture(ScreenshotCaptureClass.CapturePoint.LAUNCHER, {"trigger": "launcher_play"})
+	
+	_launcher = null
+	# The launcher must be a reliable one-press route into the demo, even when
+	# it is tapped during startup before the deferred persistence pass has seeded
+	# its starter projects. Resolve (and if required seed) the Adventure project
+	# immediately instead of assuming a stale hard-coded id already exists.
+	var adventure_project_id := _resolve_launcher_adventure_project_id()
+	if adventure_project_id.is_empty():
+		push_error("Launcher could not resolve the Adventure demo project")
+		return
+	_on_world_card_pressed(adventure_project_id, "")
+
+
+func _resolve_launcher_adventure_project_id() -> String:
+	if _phase1_project_store == null:
+		return ""
+	var kid_id := _profile.profile_id if _profile != null else "local_kid_1"
+	var expected_id := "%s_starter_adventure" % kid_id
+	var expected: Project = _phase1_project_store.load_project(expected_id)
+	if expected != null and not expected.worlds.is_empty():
+		return expected.project_id
+	# Safe and idempotent: this creates only missing starter ids and never
+	# overwrites a child-authored project. It closes the race with Phase 2 and
+	# repairs a missing demo folder without clearing saved sandbox progress.
+	if _phase1_clock != null:
+		_seed_starter_content_from_templates(_phase1_project_store, _phase1_clock)
+		expected = _phase1_project_store.load_project(expected_id)
+		if expected != null and not expected.worlds.is_empty():
+			return expected.project_id
+	# A parent or test profile may already own a valid Adventure project under a
+	# non-standard id. Prefer that playable world over an empty generic Play tab.
+	for project_variant in _phase1_project_store.list_projects():
+		if not (project_variant is Project):
+			continue
+		var project := project_variant as Project
+		if project.owner_profile_id == kid_id and project.template_id == "adventure" and not project.worlds.is_empty():
+			return project.project_id
+	return ""
 
 
 func _on_world_card_pressed(project_id: String, world_id: String) -> void:
@@ -878,7 +1158,8 @@ func _wire_shell_dependencies() -> void:
 		_ports.get(KEY_APPLY_WORLD_EDIT_PORT, null),
 		_ports.get(KEY_REQUEST_AI_HELP_PORT, null),
 		_ports.get(KEY_SPEECH_TO_TEXT_PORT, null),
-		_feature_flags
+		_feature_flags,
+		_phase1_event_bus
 	)
 	_play_shell.setup(
 		_navigator,
@@ -889,8 +1170,12 @@ func _wire_shell_dependencies() -> void:
 		func() -> World:
 			if _create_shell.has_method("get_active_world"):
 				return _create_shell.get_active_world()
-			return null
+			return null,
+		_llm_port,
+		_phase1_moderation
 	)
+	if not _play_shell.gameplay_runtime_created.is_connected(_on_play_shell_gameplay_runtime_created):
+		_play_shell.gameplay_runtime_created.connect(_on_play_shell_gameplay_runtime_created)
 	# Wire project_store so LandingScreen world-card clicks can resolve the
 	# project + launch directly via PlayShell.launch_world_by_id. Without
 	# this _on_world_card_pressed silently no-ops.
@@ -915,9 +1200,9 @@ func _wire_shell_dependencies() -> void:
 	# fan out to the desktop UI. Bridge is null unless CHOYCE_SHELL_BRIDGE=1.
 	if _play_shell.has_method("setup_shell_bridge"):
 		_play_shell.setup_shell_bridge(_ports.get(KEY_SHELL_BRIDGE_PORT, null))
-	# Wave 3 W3-A/B: inject the goal pipeline so adventure + obby
-	# template packs evaluate their default_goal + lose_conditions and
-	# emit a WinOutcome at session end.
+	# Wave 3 W3-A/B: inject the optional goal pipeline. Adventure is
+	# intentionally sandbox/free-play at this stage; goal-bearing templates
+	# such as Obby can still use the shared evaluator without forking runtime.
 	if _play_shell.has_method("setup_goal_pipeline"):
 		var template_loader := TemplateLoader.new().setup(
 			_phase1_project_store, _phase1_clock
@@ -926,6 +1211,9 @@ func _wire_shell_dependencies() -> void:
 	# Wave 3 W3-A3: NPC roster per template.
 	if _play_shell.has_method("setup_npc_pipeline"):
 		_play_shell.setup_npc_pipeline(NPCDialogueLoader.new())
+	# VS-026: Inject sandbox persistence for auto-save/load
+	if _play_shell.has_method("setup_sandbox_persistence"):
+		_play_shell.setup_sandbox_persistence(_phase1_sandbox_persistence)
 	_library_shell.setup(
 		_navigator,
 		_profile,

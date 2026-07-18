@@ -1,0 +1,2034 @@
+# PLAN-016: Identity/Ownership - Character Customization System - Deep Research Compendium
+
+**Status**: done  
+**Specialty**: godot-character-customization  
+**Gate**: VS-022 (PLAN.md Line 331-333)  
+**Priority**: HIGH  
+**Last Updated**: 2026-07-18  
+**Child-Safety Consideration**: All customization options must be child-appropriate, with no disturbing or mature content; all changes are local-only and never affect gameplay stats
+**Enrichment**: Loop 8 - Added 50+ new resources: official docs for Skeleton3D/BoneAttachment/MeshInstance3D/StandardMaterial3D, tutorials from UhiyamaLab/GDQuest/Reddit/StackExchange, CC0 modular character packs from Quaternius/Kenney, accessibility tools and patterns
+
+---
+
+## Table of Contents
+
+1. [Task Overview](#task-overview)
+2. [Character Customization Architecture](#character-customization-architecture)
+3. [Modular Character System Design](#modular-character-system-design)
+4. [Skeleton3D & Bone Attachment](#skeleton3d--bone-attachment)
+5. [Color Customization System](#color-customization-system)
+6. [Part Swapping Implementation](#part-swapping-implementation)
+7. [Swatch-Based Color Selection](#swatch-based-color-selection)
+8. [Persistence System](#persistence-system)
+9. [Child-Safe Customization Guidelines](#child-safe-customization-guidelines)
+10. [CC0 Character & Part Assets](#cc0-character--part-assets)
+11. [Code Samples & Implementation Patterns](#code-samples--implementation-patterns)
+12. [Testing & Validation Checklist](#testing--validation-checklist)
+13. [Learning Resources](#learning-resources)
+14. [Accessibility Considerations](#accessibility-considerations)
+
+---
+
+## Task Overview
+
+### Objective
+
+Implement a **character customization system** (Identity/Ownership - VS-022) for Choyce Engine that:
+- Provides **compact bounded swatches/face variants** for skin, hair, face, top, pants, and shoes
+- Applies customization to the **actual third-person rig**
+- **Persists locally** between sessions
+- **Never affects gameplay stats** (cosmetic-only)
+- Is **child-safe** with appropriate options
+- Uses existing **Quaternius ninja.glb** as base character
+
+### Source Reference
+
+From PLAN.md (line 331-333):
+> **Identity/ownership (VS-022):** compact bounded swatches/face variants for skin, hair, face, top, pants and shoes **apply to the actual third-person rig, persist locally and never affect gameplay stats.**
+
+From PLAN.md (line 339-342):
+> Acceptance requires a rendered child flow: find an axe → cut a tree → receive wood → find/make a pickaxe → mine stone; find, enter, drive and exit a rare vehicle; **safely restore bulldozer changes; see a chosen character look after a full replay**; and encounter an optional, readable, non-gory liminal creature.
+
+### Key Requirements
+
+- ✅ **6 customizable categories**: Skin, Hair, Face, Top, Pants, Shoes
+- ✅ **Swatch-based selection**: Visual color picker for each category
+- ✅ **Part swapping**: Different mesh variants (hair styles, clothing)
+- ✅ **Applies to 3D rig**: Changes affect the actual third-person character
+- ✅ **Local persistence**: Saves between game sessions
+- ✅ **Cosmetic only**: No gameplay impact
+- ✅ **Child-safe**: All options appropriate for children 5-8
+- ✅ **Reversible**: Can always reset to defaults
+
+### Acceptance Criteria
+
+1. Player can customize skin color from predefined swatches
+2. Player can customize hair style and color
+3. Player can customize face variants
+4. Player can customize top (shirt) variants
+5. Player can customize pants variants
+6. Player can customize shoes variants
+7. Customization applies to the 3D character in-game
+8. Customization persists across game sessions
+9. Customization doesn't affect gameplay (speed, health, etc.)
+10. All customization options are child-appropriate
+11. Player can see their chosen character after replay
+
+---
+
+## Character Customization Architecture
+
+### High-Level Architecture
+
+```
+CharacterCustomizationManager (Singleton)
+├── CharacterRig (Skeleton3D + MeshInstances)
+│   ├── Body (MeshInstance3D)
+│   ├── Head (MeshInstance3D)
+│   ├── Hair (MeshInstance3D)
+│   ├── Top (MeshInstance3D)
+│   ├── Pants (MeshInstance3D)
+│   └── Shoes (MeshInstance3D)
+├── CustomizationData (Resource)
+│   ├── skin_color: Color
+│   ├── hair_style: String
+│   ├── hair_color: Color
+│   ├── face_variant: String
+│   ├── top_variant: String
+│   └── pants_variant: String
+│   └── shoes_variant: String
+├── CustomizationUI (CanvasLayer)
+│   ├── SkinSwatches (HFlowContainer)
+│   ├── HairStyleSelector (HFlowContainer)
+│   ├── HairColorSwatches (HFlowContainer)
+│   ├── FaceVariantSelector (HFlowContainer)
+│   ├── TopVariantSelector (HFlowContainer)
+│   ├── PantsVariantSelector (HFlowContainer)
+│   └── ShoesVariantSelector (HFlowContainer)
+└── Persistence (ConfigFile/JSON)
+```
+
+### Node Tree Structure
+
+```
+Character (Node3D)
+├── Skeleton3D (Bones: head, torso, arms, legs, etc.)
+│   ├── BoneAttachment3D (for head attachments)
+│   │   └── Hair (MeshInstance3D)
+│   ├── BoneAttachment3D (for torso attachments)
+│   │   └── Top (MeshInstance3D)
+│   ├── BoneAttachment3D (for leg attachments)
+│   │   └── Pants (MeshInstance3D)
+│   └── BoneAttachment3D (for foot attachments)
+│       └── Shoes (MeshInstance3D)
+├── Body (MeshInstance3D, uses skin material)
+└── Head (MeshInstance3D, uses face material)
+```
+
+### Data Flow
+
+```
+User Interaction (UI Click)
+    → CustomizationUI receives input
+    → CustomizationManager updates data
+    → CharacterRig updates visuals
+    → Persistence saves to disk
+
+Game Load
+    → Persistence loads from disk
+    → CustomizationManager applies data
+    → CharacterRig updates visuals
+```
+
+---
+
+## Modular Character System Design
+
+### Design Principles
+
+1. **Shared Skeleton**: All character parts use the same Skeleton3D
+2. **Bone Attachment**: Parts attached to specific bones via BoneAttachment3D
+3. **Visibility Control**: Show/hide parts to swap variants
+4. **Material Override**: Change colors via material_override
+5. **Modular Assets**: Each part is a separate mesh that can be swapped
+
+### Part Categories
+
+| Category | Customization Type | Implementation |
+|----------|---------------------|----------------|
+| **Skin** | Color swatches | Material albedo_color |
+| **Hair** | Style + Color | Mesh swap + material color |
+| **Face** | Variant textures | Material albedo_texture |
+| **Top** | Clothing variant | Mesh swap |
+| **Pants** | Clothing variant | Mesh swap |
+| **Shoes** | Footwear variant | Mesh swap |
+
+### Modular Approach vs. Combined Mesh
+
+| Approach | Pros | Cons | Recommendation |
+|----------|------|------|----------------|
+| **Combined Mesh** | Single draw call, better performance | Harder to customize, less flexible | ❌ Not recommended |
+| **Modular Parts** | Full customization, flexible | More draw calls, more complex | ✅ **Recommended** |
+| **Hybrid** | Best of both (base + overlays) | More complex setup | ⚠️ Consider for optimization |
+
+---
+
+## Skeleton3D & Bone Attachment
+
+### Setting Up the Skeleton
+
+**Step 1: Import or Create Base Skeleton**
+```gdscript
+# Using existing ninja.glb from Quaternius
+var skeleton_scene := preload("res://data/models/quaternius/ninja.glb")
+var skeleton := skeleton_scene.instantiate()
+add_child(skeleton)
+
+# Get the Skeleton3D node
+var skeleton_3d := skeleton.find_child("Skeleton3D") as Skeleton3D
+```
+
+**Step 2: Verify Bone Structure**
+```gdscript
+# Print all bone names
+func print_bone_structure(skeleton: Skeleton3D) -> void:
+    var bone_count := skeleton.get_bone_count()
+    for i in range(bone_count):
+        var bone_name := skeleton.get_bone_name(i)
+        var parent_bone := skeleton.get_bone_parent(i)
+        var parent_name := skeleton.get_bone_name(parent_bone) if parent_bone >= 0 else "Root"
+        print("%d: %s (parent: %s)" % [i, bone_name, parent_name])
+```
+
+### Bone Attachment for Character Parts
+
+**Key Bones for Attachment:**
+
+| Part | Attachment Bone | Purpose |
+|------|-----------------|---------|
+| Hair | `head` or `Head` | Attaches hair to head |
+| Hat | `head` or `Head` | Attaches hats/helmets |
+| Top (Shirt) | `torso`, `spine`, or `Torso` | Attaches upper clothing |
+| Jacket | `torso` or `Torso` | Attaches outerwear |
+| Pants | `pelvis` or `Hips` | Attaches lower clothing |
+| Shoes | `foot.L`, `foot.R` | Attaches to feet |
+| Gloves | `hand.L`, `hand.R` | Attaches to hands |
+
+**Code Example: Attaching a Part**
+```gdscript
+func attach_part(part_mesh: MeshInstance3D, skeleton: Skeleton3D, bone_name: String) -> BoneAttachment3D:
+    var bone_idx := skeleton.find_bone(bone_name)
+    if bone_idx == -1:
+        push_error("Bone '%s' not found in skeleton" % bone_name)
+        return null
+    
+    var attachment := BoneAttachment3D.new()
+    attachment.bone_name = bone_name
+    skeleton.add_child(attachment)
+    attachment.add_child(part_mesh)
+    
+    return attachment
+```
+
+### Complete Character Assembly
+
+```gdscript
+# character_assembler.gd
+
+class_name CharacterAssembler
+
+@export var skeleton_scene: PackedScene
+@export var default_materials: Dictionary
+
+var skeleton: Skeleton3D
+var parts: Dictionary = {}
+
+func _ready() -> void:
+    _setup_skeleton()
+    _setup_default_parts()
+
+func _setup_skeleton() -> void:
+    var instance := skeleton_scene.instantiate()
+    skeleton = instance.find_child("Skeleton3D") as Skeleton3D
+    if not skeleton:
+        skeleton = instance.find_child("*") as Skeleton3D
+    add_child(instance)
+
+func _setup_default_parts() -> void:
+    # Setup body (direct child of skeleton)
+    var body := _find_mesh(instance, "Body")
+    if not body:
+        body = _find_mesh(instance, "MeshInstance3D")
+    parts["body"] = body
+    
+    # Setup other parts with bone attachments
+    # These would be added dynamically
+
+func _find_mesh(node: Node, name_pattern: String) -> MeshInstance3D:
+    if node is MeshInstance3D and node.name.match(name_pattern):
+        return node
+    for child in node.get_children():
+        var found := _find_mesh(child, name_pattern)
+        if found:
+            return found
+    return null
+
+func attach_hair(hair_scene: PackedScene) -> void:
+    var hair_instance := hair_scene.instantiate()
+    var attachment := attach_part(hair_instance, skeleton, "head")
+    parts["hair"] = hair_instance
+
+func attach_top(top_scene: PackedScene) -> void:
+    var top_instance := top_scene.instantiate()
+    var attachment := attach_part(top_instance, skeleton, "torso")
+    parts["top"] = top_instance
+
+func set_skin_color(color: Color) -> void:
+    if parts.has("body"):
+        var material := parts["body"].material_override
+        if not material:
+            material = parts["body"].material_0.duplicate()
+            parts["body"].material_override = material
+        if material is StandardMaterial3D:
+            material.albedo_color = color
+```
+
+---
+
+## Color Customization System
+
+### Color Categories
+
+**Swatch-Based Colors for Choyce:**
+
+| Category | Swatch Count | Color Options |
+|----------|--------------|---------------|
+| **Skin** | 8 | Light, medium, dark tones |
+| **Hair** | 12 | Blonde, brown, black, red, etc. |
+| **Face** | N/A (uses texture variants) | Different face textures |
+| **Top** | N/A (uses mesh variants) | Different shirt models |
+| **Pants** | N/A (uses mesh variants) | Different pants models |
+| **Shoes** | N/A (uses mesh variants) | Different shoe models |
+
+### Child-Safe Color Palette
+
+```gdscript
+const SKIN_COLORS := [
+    Color(0.95, 0.85, 0.75),   # Light skin
+    Color(0.85, 0.75, 0.65),   # Medium-light skin
+    Color(0.75, 0.65, 0.55),   # Medium skin
+    Color(0.65, 0.55, 0.45),   # Medium-dark skin
+    Color(0.55, 0.45, 0.35),   # Dark skin
+    Color(0.90, 0.75, 0.60),   # Light warm
+    Color(0.70, 0.55, 0.40),   # Warm medium
+    Color(0.50, 0.40, 0.30)    # Warm dark
+]
+
+const HAIR_COLORS := [
+    Color(0.95, 0.85, 0.60),   # Blonde
+    Color(0.85, 0.65, 0.40),   # Light brown
+    Color(0.65, 0.45, 0.25),   # Brown
+    Color(0.45, 0.25, 0.10),   # Dark brown
+    Color(0.25, 0.10, 0.05),   # Black
+    Color(0.90, 0.40, 0.30),   # Red
+    Color(0.70, 0.30, 0.20),   # Auburn
+    Color(0.90, 0.70, 0.40),   # Light red
+    Color(0.60, 0.50, 0.40),   # Gray
+    Color(0.30, 0.30, 0.30),   # Dark gray
+    Color(0.95, 0.90, 0.80),   # Platinum
+    Color(0.50, 0.40, 0.30)    # Chestnut
+]
+```
+
+### Material Color Application
+
+```gdscript
+func apply_skin_color(color: Color) -> void:
+    var body := parts.get("body")
+    if body:
+        var material := _get_or_create_material(body)
+        if material is StandardMaterial3D:
+            material.albedo_color = color
+
+func apply_hair_color(color: Color) -> void:
+    var hair := parts.get("hair")
+    if hair:
+        var material := _get_or_create_material(hair)
+        if material is StandardMaterial3D:
+            material.albedo_color = color
+
+func _get_or_create_material(mesh: MeshInstance3D) -> BaseMaterial3D:
+    if mesh.material_override:
+        return mesh.material_override
+    
+    # Use first surface material or create new
+    if mesh.get_surface_material_count() > 0:
+        var surface_mat := mesh.get_surface_material(0)
+        if surface_mat:
+            mesh.material_override = surface_mat.duplicate()
+            return mesh.material_override
+    
+    # Create new material
+    var new_mat := StandardMaterial3D.new()
+    mesh.material_override = new_mat
+    return new_mat
+```
+
+---
+
+## Part Swapping Implementation
+
+### Part Variant System
+
+**Part Definitions:**
+
+```gdscript
+# character_parts.gd
+
+const HAIR_STYLES := [
+    {"id": "short", "scene": "res://assets/characters/hair/short.tscn", "icon": "res://assets/ui/icons/hair_short.png"},
+    {"id": "long", "scene": "res://assets/characters/hair/long.tscn", "icon": "res://assets/ui/icons/hair_long.png"},
+    {"id": "ponytail", "scene": "res://assets/characters/hair/ponytail.tscn", "icon": "res://assets/ui/icons/hair_ponytail.png"},
+    {"id": "braids", "scene": "res://assets/characters/hair/braids.tscn", "icon": "res://assets/ui/icons/hair_braids.png"}
+]
+
+const FACE_VARIANTS := [
+    {"id": "default", "texture": "res://assets/characters/faces/default_albedo.png"},
+    {"id": "smile", "texture": "res://assets/characters/faces/smile_albedo.png"},
+    {"id": "serious", "texture": "res://assets/characters/faces/serious_albedo.png"}
+]
+
+const TOP_VARIANTS := [
+    {"id": "tshirt", "scene": "res://assets/characters/tops/tshirt.tscn", "icon": "res://assets/ui/icons/top_tshirt.png"},
+    {"id": "shirt", "scene": "res://assets/characters/tops/shirt.tscn", "icon": "res://assets/ui/icons/top_shirt.png"},
+    {"id": "hoodie", "scene": "res://assets/characters/tops/hoodie.tscn", "icon": "res://assets/ui/icons/top_hoodie.png"},
+    {"id": "jacket", "scene": "res://assets/characters/tops/jacket.tscn", "icon": "res://assets/ui/icons/top_jacket.png"}
+]
+
+const PANTS_VARIANTS := [
+    {"id": "shorts", "scene": "res://assets/characters/pants/shorts.tscn", "icon": "res://assets/ui/icons/pants_shorts.png"},
+    {"id": "jeans", "scene": "res://assets/characters/pants/jeans.tscn", "icon": "res://assets/ui/icons/pants_jeans.png"},
+    {"id": "skirt", "scene": "res://assets/characters/pants/skirt.tscn", "icon": "res://assets/ui/icons/pants_skirt.png"}
+]
+
+const SHOES_VARIANTS := [
+    {"id": "sneakers", "scene": "res://assets/characters/shoes/sneakers.tscn", "icon": "res://assets/ui/icons/shoes_sneakers.png"},
+    {"id": "boots", "scene": "res://assets/characters/shoes/boots.tscn", "icon": "res://assets/ui/icons/shoes_boots.png"},
+    {"id": "sandals", "scene": "res://assets/characters/shoes/sandals.tscn", "icon": "res://assets/ui/icons/shoes_sandals.png"}
+]
+```
+
+### Part Swapping Code
+
+```gdscript
+# character_part_swapper.gd
+
+func swap_hair(style_id: String) -> bool:
+    var style_data := _find_style(HAIR_STYLES, style_id)
+    if not style_data:
+        return false
+    
+    # Remove current hair if exists
+    if parts.has("hair") and parts["hair"]:
+        parts["hair"].get_parent().remove_child(parts["hair"])
+    
+    # Load and attach new hair
+    var hair_scene := load(style_data["scene"])
+    if hair_scene:
+        var hair_instance := hair_scene.instantiate()
+        var attachment := attach_part(hair_instance, skeleton, "head")
+        parts["hair"] = hair_instance
+        
+        # Apply current hair color
+        if CustomizationData.hair_color != null:
+            apply_hair_color(CustomizationData.hair_color)
+        
+        return true
+    return false
+
+func swap_face(variant_id: String) -> bool:
+    var variant_data := _find_style(FACE_VARIANTS, variant_id)
+    if not variant_data:
+        return false
+    
+    # Update face texture on head material
+    var head := parts.get("head")
+    if head:
+        var material := _get_or_create_material(head)
+        if material is StandardMaterial3D and variant_data.has("texture"):
+            material.albedo_texture = load(variant_data["texture"])
+            return true
+    return false
+
+func swap_top(variant_id: String) -> bool:
+    return _swap_part("top", TOP_VARIANTS, variant_id, "torso")
+
+func swap_pants(variant_id: String) -> bool:
+    return _swap_part("pants", PANTS_VARIANTS, variant_id, "pelvis")
+
+func swap_shoes(variant_id: String) -> bool:
+    return _swap_part("shoes", SHOES_VARIANTS, variant_id, "foot")
+
+func _swap_part(part_type: String, variants: Array, variant_id: String, bone_name: String) -> bool:
+    var variant_data := _find_style(variants, variant_id)
+    if not variant_data:
+        return false
+    
+    # Remove current part if exists
+    if parts.has(part_type) and parts[part_type]:
+        parts[part_type].get_parent().remove_child(parts[part_type])
+    
+    # Load and attach new part
+    var part_scene := load(variant_data["scene"])
+    if part_scene:
+        var part_instance := part_scene.instantiate()
+        
+        # For shoes, we need to attach to both feet
+        if part_type == "shoes":
+            _attach_to_both_feet(part_instance, skeleton)
+        else:
+            var attachment := attach_part(part_instance, skeleton, bone_name)
+        
+        parts[part_type] = part_instance
+        return true
+    return false
+
+func _attach_to_both_feet(shoes: Node3D, skeleton: Skeleton3D) -> void:
+    # Shoes typically come as a pair
+    # If they're separate left/right, handle accordingly
+    # For now, assume shoes are a single mesh for both feet
+    var attachment := attach_part(shoes, skeleton, "pelvis")  # or "foot.L" parent
+    
+    # If shoes need to be split, create separate attachments
+    # This depends on how the shoe models are structured
+
+func _find_style(variants: Array, id: String) -> Dictionary:
+    for variant in variants:
+        if variant.get("id") == id:
+            return variant
+    return null
+```
+
+---
+
+## Swatch-Based Color Selection
+
+### Swatch UI Component
+
+**Scene Structure:**
+```
+SwatchSelector (HFlowContainer)
+├── Swatch01 (ColorRect)
+├── Swatch02 (ColorRect)
+├── Swatch03 (ColorRect)
+└── ...
+```
+
+**Implementation:**
+
+```gdscript
+# swatch_selector.gd
+
+extends HFlowContainer
+
+signal color_selected(color: Color, category: String)
+
+@export var category: String = "skin"
+@export var swatch_size: Vector2 = Vector2(40, 40)
+@export var swatch_margin: int = 5
+
+func _ready() -> void:
+    _setup_swatches()
+
+func _setup_swatches() -> void:
+    var colors := _get_colors_for_category(category)
+    
+    for color in colors:
+        var swatch := ColorRect.new()
+        swatch.color = color
+        swatch.custom_minimum_size = swatch_size
+        swatch.mouse_filter = MOUSE_FILTER_PASS  # Allow clicks to pass through
+        
+        # Create a button for interaction
+        var button := Button.new()
+        button.custom_minimum_size = swatch_size
+        button.mouse_filter = MOUSE_FILTER_STOP
+        button.modulate = color
+        button.pressed.connect(_on_swatch_pressed.bind(color))
+        
+        add_child(button)
+
+func _on_swatch_pressed(color: Color) -> void:
+    emit_signal("color_selected", color, category)
+
+func _get_colors_for_category(category: String) -> Array[Color]:
+    match category:
+        "skin":
+            return SKIN_COLORS
+        "hair":
+            return HAIR_COLORS
+        _:
+            return SKIN_COLORS
+```
+
+### Complete Customization UI
+
+```gdscript
+# character_customization_ui.gd
+
+extends CanvasLayer
+
+@onready var skin_swatches: SwatchSelector
+@onready var hair_swatches: SwatchSelector
+@onready var hair_style_selector: PartVariantSelector
+@onready var face_variant_selector: PartVariantSelector
+@onready var top_variant_selector: PartVariantSelector
+@onready var pants_variant_selector: PartVariantSelector
+@onready var shoes_variant_selector: PartVariantSelector
+
+func _ready() -> void:
+    # Connect signals
+    skin_swatches.color_selected.connect(_on_color_selected)
+    hair_swatches.color_selected.connect(_on_color_selected)
+    hair_style_selector.part_selected.connect(_on_part_selected)
+    face_variant_selector.part_selected.connect(_on_part_selected)
+    top_variant_selector.part_selected.connect(_on_part_selected)
+    pants_variant_selector.part_selected.connect(_on_part_selected)
+    shoes_variant_selector.part_selected.connect(_on_part_selected)
+    
+    # Load current customization
+    _load_current_customization()
+
+func _on_color_selected(color: Color, category: String) -> void:
+    match category:
+        "skin":
+            CharacterAssembler.apply_skin_color(color)
+            CustomizationData.skin_color = color
+        "hair":
+            CharacterAssembler.apply_hair_color(color)
+            CustomizationData.hair_color = color
+    
+    # Save changes
+    PersistenceManager.save_customization(CustomizationData)
+
+func _on_part_selected(variant_id: String, category: String) -> void:
+    var success := false
+    match category:
+        "hair_style":
+            success = CharacterAssembler.swap_hair(variant_id)
+            if success:
+                CustomizationData.hair_style = variant_id
+        "face":
+            success = CharacterAssembler.swap_face(variant_id)
+            if success:
+                CustomizationData.face_variant = variant_id
+        "top":
+            success = CharacterAssembler.swap_top(variant_id)
+            if success:
+                CustomizationData.top_variant = variant_id
+        "pants":
+            success = CharacterAssembler.swap_pants(variant_id)
+            if success:
+                CustomizationData.pants_variant = variant_id
+        "shoes":
+            success = CharacterAssembler.swap_shoes(variant_id)
+            if success:
+                CustomizationData.shoes_variant = variant_id
+    
+    if success:
+        PersistenceManager.save_customization(CustomizationData)
+
+func _load_current_customization() -> void:
+    var data := PersistenceManager.load_customization()
+    if data:
+        # Apply colors
+        if data.skin_color:
+            skin_swatches.select_color(data.skin_color)
+            CharacterAssembler.apply_skin_color(data.skin_color)
+        if data.hair_color:
+            hair_swatches.select_color(data.hair_color)
+            CharacterAssembler.apply_hair_color(data.hair_color)
+        
+        # Apply parts
+        if data.hair_style:
+            hair_style_selector.select_variant(data.hair_style)
+            CharacterAssembler.swap_hair(data.hair_style)
+        if data.face_variant:
+            face_variant_selector.select_variant(data.face_variant)
+            CharacterAssembler.swap_face(data.face_variant)
+        if data.top_variant:
+            top_variant_selector.select_variant(data.top_variant)
+            CharacterAssembler.swap_top(data.top_variant)
+        if data.pants_variant:
+            pants_variant_selector.select_variant(data.pants_variant)
+            CharacterAssembler.swap_pants(data.pants_variant)
+        if data.shoes_variant:
+            shoes_variant_selector.select_variant(data.shoes_variant)
+            CharacterAssembler.swap_shoes(data.shoes_variant)
+```
+
+---
+
+## Persistence System
+
+### Customization Data Resource
+
+```gdscript
+# customization_data.gd
+
+extends Resource
+
+class_name CustomizationData
+
+# Colors
+@export var skin_color: Color = Color(0.85, 0.75, 0.65)  # Default: medium-light skin
+@export var hair_color: Color = Color(0.65, 0.45, 0.25)  # Default: brown
+
+# Part variants
+@export var hair_style: String = "short"
+@export var face_variant: String = "default"
+@export var top_variant: String = "tshirt"
+@export var pants_variant: String = "jeans"
+@export var shoes_variant: String = "sneakers"
+
+func to_dict() -> Dictionary:
+    return {
+        "skin_color": skin_color.to_rgba32(),
+        "hair_color": hair_color.to_rgba32(),
+        "hair_style": hair_style,
+        "face_variant": face_variant,
+        "top_variant": top_variant,
+        "pants_variant": pants_variant,
+        "shoes_variant": shoes_variant
+    }
+
+func from_dict(data: Dictionary) -> void:
+    if data.has("skin_color"):
+        skin_color = Color.from_rgba32(data["skin_color"])
+    if data.has("hair_color"):
+        hair_color = Color.from_rgba32(data["hair_color"])
+    if data.has("hair_style"):
+        hair_style = data["hair_style"]
+    if data.has("face_variant"):
+        face_variant = data["face_variant"]
+    if data.has("top_variant"):
+        top_variant = data["top_variant"]
+    if data.has("pants_variant"):
+        pants_variant = data["pants_variant"]
+    if data.has("shoes_variant"):
+        shoes_variant = data["shoes_variant"]
+```
+
+### Persistence Manager
+
+```gdscript
+# persistence_manager.gd
+
+extends Node
+
+const SAVE_FILE := "user://customization.json"
+
+static var instance: PersistenceManager
+
+func _ready() -> void:
+    instance = self
+
+static func save_customization(data: CustomizationData) -> void:
+    var file := FileAccess.open(SAVE_FILE, FileAccess.WRITE)
+    if file:
+        file.store_string(JSON.stringify(data.to_dict()))
+        file.close()
+        return
+    push_error("Could not save customization data")
+
+static func load_customization() -> CustomizationData:
+    var data := CustomizationData.new()
+    
+    if FileAccess.file_exists(SAVE_FILE):
+        var file := FileAccess.open(SAVE_FILE, FileAccess.READ)
+        if file:
+            var json := JSON.new()
+            var parse_result := json.parse(file.get_as_text())
+            if parse_result == OK:
+                data.from_dict(json.get_data())
+            file.close()
+    
+    return data
+
+static func reset_customization() -> void:
+    var default_data := CustomizationData.new()
+    save_customization(default_data)
+```
+
+### Alternative: ConfigFile Persistence
+
+```gdscript
+# config_persistence.gd
+
+extends Node
+
+const SAVE_FILE := "user://customization.cfg"
+
+static func save_with_config(data: CustomizationData) -> void:
+    var config := ConfigFile.new()
+    
+    # Save colors (ConfigFile handles Color natively)
+    config.set_value("Colors", "skin", data.skin_color)
+    config.set_value("Colors", "hair", data.hair_color)
+    
+    # Save variant strings
+    config.set_value("Parts", "hair_style", data.hair_style)
+    config.set_value("Parts", "face_variant", data.face_variant)
+    config.set_value("Parts", "top_variant", data.top_variant)
+    config.set_value("Parts", "pants_variant", data.pants_variant)
+    config.set_value("Parts", "shoes_variant", data.shoes_variant)
+    
+    config.save(SAVE_FILE)
+
+static func load_with_config() -> CustomizationData:
+    var data := CustomizationData.new()
+    
+    if FileAccess.file_exists(SAVE_FILE):
+        var config := ConfigFile.new()
+        config.load(SAVE_FILE)
+        
+        # Load colors
+        if config.has_section_key("Colors", "skin"):
+            data.skin_color = config.get_value("Colors", "skin")
+        if config.has_section_key("Colors", "hair"):
+            data.hair_color = config.get_value("Colors", "hair")
+        
+        # Load variants
+        if config.has_section_key("Parts", "hair_style"):
+            data.hair_style = config.get_value("Parts", "hair_style")
+        if config.has_section_key("Parts", "face_variant"):
+            data.face_variant = config.get_value("Parts", "face_variant")
+        if config.has_section_key("Parts", "top_variant"):
+            data.top_variant = config.get_value("Parts", "top_variant")
+        if config.has_section_key("Parts", "pants_variant"):
+            data.pants_variant = config.get_value("Parts", "pants_variant")
+        if config.has_section_key("Parts", "shoes_variant"):
+            data.shoes_variant = config.get_value("Parts", "shoes_variant")
+    
+    return data
+```
+
+---
+
+## Child-Safe Customization Guidelines
+
+### Content Restrictions
+
+**Allowed:**
+- ✅ Various skin tones (light to dark)
+- ✅ Natural hair colors (blonde, brown, black, red, etc.)
+- ✅ Fantasy hair colors (pastel pink, blue, green - but not neon)
+- ✅ Simple face variants (smile, neutral, serious)
+- ✅ Casual clothing (t-shirts, jeans, shorts, skirts)
+- ✅ Age-appropriate footwear (sneakers, boots, sandals)
+- ✅ Simple accessories (baseball caps, beanies)
+
+**Not Allowed:**
+- ❌ Realistic injuries or scars
+- ❌ Tattoos or body modifications
+- ❌ Suggestive or revealing clothing
+- ❌ Military or violent-themed items
+- ❌ Scary or monster-themed items
+- ❌ Brand logos or copyrighted designs
+- ❌ Weapons or weapon accessories
+- ❌ Neon or eye-straining colors
+
+### Design Guidelines
+
+**DO:**
+- ✅ Use bright, friendly colors
+- ✅ Keep designs simple and cartoony
+- ✅ Use rounded, soft shapes
+- ✅ Limit the number of options (8-12 per category max)
+- ✅ Make swatches large enough for touch/click
+- ✅ Provide clear visual feedback on selection
+- ✅ Allow easy reset to defaults
+- ✅ Test on various screen sizes
+
+**DON'T:**
+- ❌ Use realistic human proportions
+- ❌ Include mature themes
+- ❌ Use complex or confusing UI
+- ❌ Require precise clicking
+- ❌ Hide the reset option
+- ❌ Make customization permanent
+
+### Age-Appropriate Customization
+
+**For 5-8 year olds:**
+- Focus on **colors** rather than complex shapes
+- Use **large, clear swatches**
+- Provide **visual previews** of changes
+- Keep the **number of options limited**
+- Make the **UI intuitive and forgiving**
+
+---
+
+## CC0 Character & Part Assets
+
+### Existing Assets in Choyce
+
+```
+data/models/quaternius/
+├── ninja.glb          # Base character (457KB) - Primary candidate
+└── ...
+```
+
+**Current Ninja Model:**
+- Already imported into Godot
+- Has a skeleton with bones
+- Can be used as the base character
+- Needs customization parts created
+
+### Recommended CC0 Sources for Parts
+
+#### 1. Kenney Character Packs
+
+| Pack | Description | Download | Use Case |
+|------|-------------|----------|----------|
+| **Toon Characters 1** | 16 animated characters | [kenney.nl/assets/toon-characters-1](https://kenney.nl/assets/toon-characters-1) | Base body parts |
+| **Toon Characters 2** | Additional characters | [kenney.nl/assets/toon-characters-2](https://kenney.nl/assets/toon-characters-2) | More variants |
+| **Racing Pack** | Car + driver characters | [kenney.nl/assets/racing-pack](https://kenney.nl/assets/racing-pack) | Clothing ideas |
+
+**Extracting Parts from Kenney Packs:**
+```bash
+# Download Kenney Toon Characters
+wget https://kenney.nl/assets/download/toon-characters-1.zip
+unzip toon-characters-1.zip
+
+# Extract individual parts in Blender:
+# 1. Import all meshes
+# 2. Separate by loose parts (P → Separate → By Loose Parts)
+# 3. Rig each part to your base skeleton
+# 4. Export each part separately
+```
+
+#### 2. Mixamo Characters (CC0 via Adobe)
+
+**Website**: [mixamo.com](https://www.mixamo.com/)
+
+**Note**: Mixamo characters are free to use, but check licensing for your use case. Many are CC0 or free for game development.
+
+**Workflow:**
+1. Download base character from Mixamo
+2. Import into Blender
+3. Separate into parts (head, torso, arms, legs)
+4. Create clothing/hair variations
+5. Rig all to the same skeleton
+6. Export as separate GLB files
+
+#### 3. Quaternius Additional Models
+
+**Website**: [quaternius.com](https://quaternius.com/)
+
+**Search for:**
+- Hair styles
+- Hats and accessories
+- Clothing items
+- Shoes and footwear
+
+**Recommended Models:**
+- Hair: various styles (short, long, ponytail, braids)
+- Hats: baseball cap, beanie, top hat
+- Clothing: t-shirts, jackets, pants, skirts
+- Shoes: sneakers, boots, sandals
+
+#### 4. Blend Swap (CC0 Characters)
+
+**Website**: [blendswap.com](https://www.blendswap.com/)
+
+**Filter by:**
+- License: CC0
+- Category: Characters
+- Rigged: Yes
+
+#### 5. Create Your Own (Simple Approach)
+
+For Choyce's needs, you may want to create **simple, stylized parts** rather than realistic ones:
+
+**Tools:**
+- **Blender** (free) - Full 3D modeling
+- **MagicaVoxel** (free) - Voxel-based models
+- **Tinkercad** (free, browser) - Simple 3D shapes
+- **BlocksCAD** (free, browser) - Code-based modeling
+
+**Simple Hair Creation:**
+```
+1. Create a simple capsule for the head
+2. Add a larger capsule for hair volume
+3. Shape with proportional editing
+4. Subdivide for smoothness
+5. Assign to "head" bone
+6. Export as separate mesh
+```
+
+**Simple Clothing Creation:**
+```
+1. Create a cylinder for torso
+2. Extrude sleeves
+3. Shape to match character
+4. Assign to "torso" bone
+5. Export as separate mesh
+```
+
+### Creating Parts from Existing Ninja Model
+
+Since we already have `ninja.glb`, we can extract parts from it:
+
+**Blender Workflow:**
+```
+1. Import ninja.glb into Blender
+2. Enter Edit Mode
+3. Select hair vertices (by material or manual selection)
+4. Press P → Separate → By Loose Parts or By Material
+5. Move separated part to a new layer/collection
+6. Create a new armature matching the original skeleton
+7. Parent the hair part to the new armature
+8. Export as separate GLB (hair.glb)
+9. Repeat for other parts (hat, top, pants, shoes)
+```
+
+---
+
+## Code Samples & Implementation Patterns
+
+### Complete Character Customizer
+
+```gdscript
+# character_customizer.gd - Singleton
+extends Node
+
+@onready var skeleton: Skeleton3D
+@onready var character_assembler: CharacterAssembler
+@onready var customization_data: CustomizationData
+
+# Part references
+var parts: Dictionary = {}
+
+func _ready() -> void:
+    _setup_skeleton()
+    _load_customization()
+
+func _setup_skeleton() -> void:
+    # Load base skeleton from ninja.glb
+    var ninja_scene := preload("res://data/models/quaternius/ninja.glb")
+    var ninja_instance := ninja_scene.instantiate()
+    add_child(ninja_instance)
+    
+    # Find skeleton
+    skeleton = ninja_instance.find_child("*Skeleton*") as Skeleton3D
+    if not skeleton:
+        skeleton = ninja_instance.find_child("Skeleton3D") as Skeleton3D
+    
+    if not skeleton:
+        push_error("No Skeleton3D found in ninja.glb")
+        return
+    
+    # Extract and hide original parts
+    _extract_original_parts(ninja_instance)
+    
+    # Load default customization parts
+    _load_default_parts()
+
+func _extract_original_parts(ninja_instance: Node) -> void:
+    # Find all MeshInstance3D nodes
+    var meshes := ninja_instance.find_children("*").filter(func(n): return n is MeshInstance3D)
+    
+    for mesh in meshes:
+        var mesh_name := mesh.name.to_lower()
+        
+        # Categorize based on name
+        if "hair" in mesh_name or "head" in mesh_name:
+            parts["original_hair"] = mesh
+            mesh.visible = false
+        elif "body" in mesh_name or "torso" in mesh_name:
+            parts["body"] = mesh
+        elif "pants" in mesh_name or "leg" in mesh_name:
+            parts["original_pants"] = mesh
+            mesh.visible = false
+        elif "shoe" in mesh_name or "foot" in mesh_name:
+            parts["original_shoes"] = mesh
+            mesh.visible = false
+
+func _load_default_parts() -> void:
+    # Load default parts
+    _load_part("hair", "res://assets/characters/hair/short.tscn", "head")
+    _load_part("top", "res://assets/characters/tops/tshirt.tscn", "torso")
+    _load_part("pants", "res://assets/characters/pants/jeans.tscn", "pelvis")
+    _load_part("shoes", "res://assets/characters/shoes/sneakers.tscn", "pelvis")
+    
+    # Apply default colors
+    apply_skin_color(customization_data.skin_color)
+    apply_hair_color(customization_data.hair_color)
+
+func _load_part(part_type: String, scene_path: String, bone_name: String) -> void:
+    if not ResourceLoader.exists(scene_path):
+        return
+    
+    var scene := load(scene_path)
+    var instance := scene.instantiate()
+    
+    if bone_name != "":
+        var attachment := CharacterAssembler.attach_part(instance, skeleton, bone_name)
+    else:
+        skeleton.add_child(instance)
+    
+    parts[part_type] = instance
+
+func _load_customization() -> void:
+    customization_data = PersistenceManager.load_customization()
+    
+    # Apply saved customization
+    if customization_data:
+        # Load parts
+        if customization_data.hair_style:
+            _load_part("hair", _get_part_scene("hair", customization_data.hair_style), "head")
+        if customization_data.top_variant:
+            _load_part("top", _get_part_scene("top", customization_data.top_variant), "torso")
+        if customization_data.pants_variant:
+            _load_part("pants", _get_part_scene("pants", customization_data.pants_variant), "pelvis")
+        if customization_data.shoes_variant:
+            _load_part("shoes", _get_part_scene("shoes", customization_data.shoes_variant), "pelvis")
+        
+        # Apply colors
+        apply_skin_color(customization_data.skin_color)
+        apply_hair_color(customization_data.hair_color)
+
+func _get_part_scene(part_type: String, variant_id: String) -> String:
+    var variants := _get_variants_for_type(part_type)
+    for variant in variants:
+        if variant.get("id") == variant_id:
+            return variant.get("scene", "")
+    return ""
+
+func _get_variants_for_type(part_type: String) -> Array:
+    match part_type:
+        "hair":
+            return HAIR_STYLES
+        "top":
+            return TOP_VARIANTS
+        "pants":
+            return PANTS_VARIANTS
+        "shoes":
+            return SHOES_VARIANTS
+        _:
+            return []
+
+# Public API
+func set_skin_color(color: Color) -> void:
+    customization_data.skin_color = color
+    apply_skin_color(color)
+    PersistenceManager.save_customization(customization_data)
+
+func set_hair_color(color: Color) -> void:
+    customization_data.hair_color = color
+    apply_hair_color(color)
+    PersistenceManager.save_customization(customization_data)
+
+func set_hair_style(style_id: String) -> bool:
+    if customization_data.hair_style == style_id:
+        return true
+    
+    if _swap_part("hair", style_id, "head"):
+        customization_data.hair_style = style_id
+        PersistenceManager.save_customization(customization_data)
+        return true
+    return false
+
+func set_top_variant(variant_id: String) -> bool:
+    if customization_data.top_variant == variant_id:
+        return true
+    
+    if _swap_part("top", variant_id, "torso"):
+        customization_data.top_variant = variant_id
+        PersistenceManager.save_customization(customization_data)
+        return true
+    return false
+
+func set_pants_variant(variant_id: String) -> bool:
+    if customization_data.pants_variant == variant_id:
+        return true
+    
+    if _swap_part("pants", variant_id, "pelvis"):
+        customization_data.pants_variant = variant_id
+        PersistenceManager.save_customization(customization_data)
+        return true
+    return false
+
+func set_shoes_variant(variant_id: String) -> bool:
+    if customization_data.shoes_variant == variant_id:
+        return true
+    
+    if _swap_part("shoes", variant_id, "pelvis"):
+        customization_data.shoes_variant = variant_id
+        PersistenceManager.save_customization(customization_data)
+        return true
+    return false
+
+func reset_to_defaults() -> void:
+    customization_data = CustomizationData.new()
+    _load_default_parts()
+    apply_skin_color(customization_data.skin_color)
+    apply_hair_color(customization_data.hair_color)
+    PersistenceManager.save_customization(customization_data)
+
+# Helper functions
+func apply_skin_color(color: Color) -> void:
+    var body := parts.get("body")
+    if body:
+        var material := _get_or_create_material(body)
+        if material is StandardMaterial3D:
+            material.albedo_color = color
+
+func apply_hair_color(color: Color) -> void:
+    var hair := parts.get("hair")
+    if hair:
+        var material := _get_or_create_material(hair)
+        if material is StandardMaterial3D:
+            material.albedo_color = color
+
+func _swap_part(part_type: String, variant_id: String, bone_name: String) -> bool:
+    # Remove current part
+    if parts.has(part_type) and parts[part_type]:
+        parts[part_type].get_parent().remove_child(parts[part_type])
+    
+    # Load and attach new part
+    var scene_path := _get_part_scene(part_type, variant_id)
+    if scene_path == "":
+        return false
+    
+    var scene := load(scene_path)
+    if not scene:
+        return false
+    
+    var instance := scene.instantiate()
+    
+    if bone_name != "":
+        var attachment := CharacterAssembler.attach_part(instance, skeleton, bone_name)
+    else:
+        skeleton.add_child(instance)
+    
+    parts[part_type] = instance
+    return true
+
+func _get_or_create_material(mesh: MeshInstance3D) -> BaseMaterial3D:
+    if mesh.material_override:
+        return mesh.material_override
+    
+    if mesh.get_surface_material_count() > 0:
+        var surface_mat := mesh.get_surface_material(0)
+        if surface_mat:
+            mesh.material_override = surface_mat.duplicate()
+            return mesh.material_override
+    
+    var new_mat := StandardMaterial3D.new()
+    mesh.material_override = new_mat
+    return new_mat
+```
+
+### Part Variant Selector UI
+
+```gdscript
+# part_variant_selector.gd
+
+extends HFlowContainer
+
+signal part_selected(variant_id: String, category: String)
+
+@export var category: String = "hair_style"
+@export var icon_size: Vector2 = Vector2(64, 64)
+@export var icon_margin: int = 10
+
+func _ready() -> void:
+    _setup_variants()
+
+func _setup_variants() -> void:
+    var variants := _get_variants()
+    
+    for variant in variants:
+        var icon := TextureButton.new()
+        icon.custom_minimum_size = icon_size
+        icon.texture_normal = load(variant.get("icon", ""))
+        icon.tooltip_text = variant.get("id", "Unknown").to_pascal_case()
+        icon.pressed.connect(_on_variant_selected.bind(variant.get("id")))
+        
+        add_child(icon)
+
+func _on_variant_selected(variant_id: String) -> void:
+    emit_signal("part_selected", variant_id, category)
+
+func _get_variants() -> Array:
+    match category:
+        "hair_style":
+            return HAIR_STYLES
+        "face":
+            return FACE_VARIANTS
+        "top":
+            return TOP_VARIANTS
+        "pants":
+            return PANTS_VARIANTS
+        "shoes":
+            return SHOES_VARIANTS
+        _:
+            return []
+
+func select_variant(variant_id: String) -> void:
+    for child in get_children():
+        if child is TextureButton:
+            var current_id := child.get_meta("variant_id", "")
+            if current_id == variant_id:
+                # Highlight selected
+                child.modulate = Color(1, 1, 1)
+            else:
+                child.modulate = Color(0.7, 0.7, 0.7)
+
+### BoneAttachment3D Usage for Accessories
+
+```gdscript
+# bone_attachment_manager.gd
+# Attach accessories (hats, glasses, etc.) to specific bones
+
+func attach_to_bone(part_scene: PackedScene, bone_name: String, parent: Node3D) -> Node3D:
+    var part_instance := part_scene.instantiate()
+    parent.add_child(part_instance)
+    
+    # Create BoneAttachment3D
+    var attachment := BoneAttachment3D.new()
+    attachment.bone_name = bone_name
+    part_instance.add_child(attachment)
+    
+    # Position the part at the attachment point
+    part_instance.position = Vector3.ZERO
+    part_instance.rotation = Vector3.ZERO
+    
+    return part_instance
+
+func attach_hat(hat_scene: PackedScene) -> void:
+    var hat := attach_to_bone(hat_scene, "head", skeleton)
+    parts["hat"] = hat
+    
+    # Adjust position/rotation as needed
+    hat.position.y = 0.2  # Slightly above head
+
+func attach_glasses(glasses_scene: PackedScene) -> void:
+    var glasses := attach_to_bone(glasses_scene, "head", skeleton)
+    parts["glasses"] = glasses
+    
+    # Position in front of face
+    glasses.position.z = -0.1
+```
+
+### Material Override for Color Changes
+
+```gdscript
+# material_color_manager.gd
+# Different approaches to change mesh colors
+
+# Method 1: Using modulate (simple tinting)
+func set_modulate_color(mesh: MeshInstance3D, color: Color) -> void:
+    mesh.modulate = color
+
+# Method 2: Creating new StandardMaterial3D
+func create_colored_material(color: Color) -> StandardMaterial3D:
+    var material := StandardMaterial3D.new()
+    material.albedo_color = color
+    material.metallic = 0.0
+    material.roughness = 0.8
+    material.transmission = 0.0
+    return material
+
+# Method 3: Override specific surface material
+func set_surface_color(mesh: MeshInstance3D, surface_index: int, color: Color) -> void:
+    var materials := []
+    var material_count := mesh.get_surface_material_count()
+    
+    # Copy existing materials
+    for i in range(material_count):
+        var existing_mat := mesh.get_surface_material(i)
+        if i == surface_index and existing_mat:
+            var new_mat := existing_mat.duplicate()
+            if new_mat is StandardMaterial3D:
+                new_mat.albedo_color = color
+            materials.append(new_mat)
+        else:
+            materials.append(existing_mat)
+    
+    # Apply all materials
+    mesh.surface_material_override = materials
+
+# Method 4: Using ShaderMaterial for advanced color control
+func create_shader_material(base_color: Color, hue_shift: float = 0.0) -> ShaderMaterial:
+    var shader := preload("res://shaders/color_adjust.shader")
+    var material := ShaderMaterial.new()
+    material.shader = shader
+    material.set_shader_param("base_color", base_color)
+    material.set_shader_param("hue_shift", hue_shift)
+    return material
+```
+
+### Resource-Based Persistence with ResourceSaver
+
+```gdscript
+# resource_persistence.gd
+# Using ResourceSaver/ResourceLoader for robust persistence
+
+const SAVE_PATH := "user://character_customization.tres"
+
+func save_with_resources(data: CustomizationData) -> bool:
+    # ResourceSaver can save any Resource to a .tres file
+    var error := ResourceSaver.save(data, SAVE_PATH)
+    if error == OK:
+        print("Customization saved successfully")
+        return true
+    else:
+        print("Error saving customization: ", error)
+        return false
+
+func load_with_resources() -> CustomizationData:
+    if ResourceLoader.exists(SAVE_PATH):
+        var data := ResourceLoader.load(SAVE_PATH)
+        if data:
+            return data as CustomizationData
+    
+    # Return defaults if not found
+    return CustomizationData.new()
+
+# Custom Resource class for type safety
+class_name CharacterCustomizationResource extends Resource
+    @export var skin_color: Color
+    @export var hair_color: Color
+    @export var hair_style: String
+    @export var face_variant: String
+    @export var top_variant: String
+    @export var pants_variant: String
+    @export var shoes_variant: String
+    @export var last_updated: String
+```
+
+### Part Preview System (Show/Hide Parts)
+
+```gdscript
+# part_preview_manager.gd
+# Allows previewing parts before applying
+
+@onready var preview_parts: Dictionary = {}
+
+func preview_part(part_type: String, variant_id: String) -> void:
+    # Hide current part
+    hide_current_part(part_type)
+    
+    # Load and show preview
+    var preview_scene := _get_part_scene(part_type, variant_id)
+    if preview_scene:
+        var preview_instance := preview_scene.instantiate()
+        _setup_preview_part(part_type, preview_instance)
+        preview_parts[part_type] = preview_instance
+
+func apply_preview(part_type: String) -> void:
+    if preview_parts.has(part_type):
+        # Make preview permanent
+        var preview := preview_parts[part_type]
+        parts[part_type] = preview
+        preview_parts.erase(part_type)
+        
+        # Update data
+        _update_customization_data(part_type, _get_variant_id_from_preview(preview))
+
+func cancel_preview(part_type: String) -> void:
+    if preview_parts.has(part_type):
+        preview_parts[part_type].queue_free()
+        preview_parts.erase(part_type)
+        
+        # Restore original part
+        show_current_part(part_type)
+```
+
+### Animation State Management
+
+```gdscript
+# character_animator.gd
+# Ensures animations work correctly with customization
+
+@onready var animation_tree: AnimationTree
+@onready var animation_player: AnimationPlayer
+
+func _ready() -> void:
+    animation_tree = $AnimationTree
+    animation_player = $AnimationPlayer
+    
+    # Setup animation tree
+    if animation_tree:
+        animation_tree.active = true
+
+func play_animation(anim_name: String) -> void:
+    if animation_player:
+        animation_player.play(anim_name)
+    elif animation_tree:
+        animation_tree.set("parameters/play", anim_name)
+
+func update_animation_for_parts() -> void:
+    # Some parts may need special animation handling
+    # For example, long hair might need different physics
+    if parts.has("hair"):
+        var hair_type := customization_data.hair_style
+        if hair_type == "long":
+            _enable_hair_physics()
+        else:
+            _disable_hair_physics()
+```
+
+### Touch/Controller-Friendly UI
+
+```gdscript
+# touch_friendly_ui.gd
+# Makes customization UI work well on touch and controller
+
+const MIN_BUTTON_SIZE := Vector2(64, 64)
+const MIN_SPACING := 8
+
+func _ready() -> void:
+    _make_ui_touch_friendly()
+
+func _make_ui_touch_friendly() -> void:
+    var swatch_containers := get_tree().get_nodes_in_group("swatch_container")
+    
+    for container in swatch_containers:
+        # Ensure minimum size for buttons
+        for child in container.get_children():
+            if child is Button or child is TextureButton:
+                child.custom_minimum_size = MIN_BUTTON_SIZE
+                
+        # Add spacing
+        if container is HBoxContainer:
+            container.constant_separation = MIN_SPACING
+        elif container is VBoxContainer:
+            container.constant_separation = MIN_SPACING
+
+# Add controller navigation
+func add_controller_navigation(ui_node: Control) -> void:
+    ui_node.add_to_group("ui_navigation")
+    ui_node.can_focus = true
+    
+    # Connect focus signals for visual feedback
+    ui_node.connect("focus_entered", _on_focus_entered.bind(ui_node))
+    ui_node.connect("focus_exited", _on_focus_exited.bind(ui_node))
+
+func _on_focus_entered(node: Control) -> void:
+    node.modulate = Color(1.2, 1.2, 1.0)
+
+func _on_focus_exited(node: Control) -> void:
+    node.modulate = Color(1.0, 1.0, 1.0)
+```
+
+---
+
+## Testing & Validation Checklist
+
+### Functional Tests
+
+- [ ] All 6 customization categories are available
+- [ ] Skin color swatches change body color
+- [ ] Hair style swatches change hair mesh
+- [ ] Hair color swatches change hair color
+- [ ] Face variant swatches change face texture
+- [ ] Top variant swatches change shirt
+- [ ] Pants variant swatches change pants
+- [ ] Shoes variant swatches change shoes
+- [ ] Changes apply to 3D character in real-time
+- [ ] Changes persist across game sessions
+- [ ] Reset to defaults works
+- [ ] All customization is cosmetic-only (no gameplay changes)
+
+### Visual Tests
+
+- [ ] Colors look consistent across all lighting
+- [ ] Parts align correctly with body
+- [ ] Parts move correctly with animations
+- [ ] No clipping between parts
+- [ ] No floating parts (all properly attached)
+- [ ] Colors are child-appropriate
+- [ ] UI is clear and intuitive
+
+### Technical Tests
+
+- [ ] No runtime errors during customization
+- [ ] No memory leaks from part swapping
+- [ ] Performance is acceptable with all parts visible
+- [ ] Skeleton animations work with all part combinations
+- [ ] Save/load works correctly
+- [ ] File paths are correct for all assets
+
+### Child-Safety Tests
+
+- [ ] No scary or disturbing options
+- [ ] All colors are appropriate for children
+- [ ] All part shapes are appropriate for children
+- [ ] No mature themes in customization
+- [ ] Customization is optional (can be skipped)
+- [ ] Parent can reset customization
+
+### Integration Tests
+
+- [ ] Customization works in create mode
+- [ ] Customization works in play mode
+- [ ] Customization persists in adventure mode
+- [ ] Character looks correct in all camera views
+- [ ] Customization doesn't interfere with gameplay
+
+---
+
+## Learning Resources
+
+### Official Godot Documentation
+
+**Core 3D & Character Classes:**
+- [Skeleton3D](https://docs.godotengine.org/en/stable/classes/class_skeleton3d.html) - Skeleton reference and bone hierarchy
+- [BoneAttachment3D](https://docs.godotengine.org/en/stable/classes/class_boneattachment3d.html) - Bone attachment for accessories
+- [MeshInstance3D](https://docs.godotengine.org/en/stable/classes/class_meshinstance3d.html) - Mesh instance and material assignment
+- [StandardMaterial3D](https://docs.godotengine.org/en/stable/classes/class_standardmaterial3d.html) - PBR material properties
+- [ShaderMaterial](https://docs.godotengine.org/en/stable/classes/class_shadermaterial.html) - Custom shader materials
+- [SkeletonModifier3D](https://docs.godotengine.org/en/stable/classes/class_skeletonmodifier3d.html) - Bone pose modifications
+- [Skin](https://docs.godotengine.org/en/stable/classes/class_skin.html) - Skin reference for bone attachment
+
+**UI & Controls:**
+- [Control](https://docs.godotengine.org/en/stable/classes/class_control.html) - Base UI control class
+- [PanelContainer](https://docs.godotengine.org/en/stable/classes/class_panelcontainer.html) - Styled panel containers
+- [HBoxContainer](https://docs.godotengine.org/en/stable/classes/class_hboxcontainer.html) - Horizontal layout for swatches
+- [VBoxContainer](https://docs.godotengine.org/en/stable/classes/class_vboxcontainer.html) - Vertical layout organization
+- [HFlowContainer](https://docs.godotengine.org/en/stable/classes/class_hflowcontainer.html) - Flow layout for color swatches
+- [ColorRect](https://docs.godotengine.org/en/stable/classes/class_colorrect.html) - Color display and selection
+- [TextureButton](https://docs.godotengine.org/en/stable/classes/class_texturebutton.html) - Textured buttons for part selection
+- [Button](https://docs.godotengine.org/en/stable/classes/class_button.html) - Standard button implementation
+
+**Data & Persistence:**
+- [FileAccess](https://docs.godotengine.org/en/stable/classes/class_fileaccess.html) - File I/O operations
+- [ConfigFile](https://docs.godotengine.org/en/stable/classes/class_configfile.html) - Configuration file handling
+- [JSON](https://docs.godotengine.org/en/stable/classes/class_json.html) - JSON parsing and serialization
+- [Resource](https://docs.godotengine.org/en/stable/classes/class_resource.html) - Base resource class for data
+- [ResourceSaver](https://docs.godotengine.org/en/stable/classes/class_resourcesaver.html) - Save custom resources to disk
+- [ResourceLoader](https://docs.godotengine.org/en/stable/classes/class_resourceLoader.html) - Load custom resources from disk
+
+**Animation:**
+- [AnimationPlayer](https://docs.godotengine.org/en/stable/classes/class_animationplayer.html) - Animation playback
+- [AnimationTree](https://docs.godotengine.org/en/stable/classes/class_animationtree.html) - State machine for animations
+- [AnimationLibrary](https://docs.godotengine.org/en/stable/classes/class_animationlibrary.html) - Animation resource management
+
+### Tutorials and Guides
+
+**Skeleton3D & Bone Attachment:**
+- [3D Skeletal Animation in Godot: AnimationPlayer and AnimationTree](https://uhiyama-lab.com/en/notes/godot/3d-skeletal-animation/) - Comprehensive guide to skeletal animation
+- [Design of the Skeleton Modifier 3D](https://godotengine.org/article/design-of-the-skeleton-modifier-3d/) - Advanced bone manipulation
+- [Godot Docs: 3D Skeletal Animation](https://docs.godotengine.org/en/stable/tutorials/3d/skeletal_animation/index.html) - Official skeletal animation tutorial
+- [BoneAttachment3D Class Reference (ROKOJORI Labs)](https://rokojori.com/en/labs/godot/docs/4.3/boneattachment3d-class) - Alternative documentation
+
+**Character Customization Systems:**
+- [3D Character Customization System in Godot 4](https://www.youtube.com/watch?v=RXEx7hSkK4c) - YouTube tutorial for 3D customization
+- [How to swap skinned meshes for a customizable character](https://gamedev.stackexchange.com/questions/205470/how-to-swap-skinned-meshes-for-a-customizable-character-in-godot) - Stack Exchange Q&A
+- [Modular Player Character in Godot](https://www.reddit.com/r/godot/comments/1ha6l11/how_to_make_a_modular_player_character/) - Reddit discussion with architectural approaches
+- [Character Customization 3D - Godot Forum](https://forum.godotengine.org/t/character-customization-3d/38766) - Community solutions and code examples
+- [Character Customization in Godot 3D - Old Forum](https://forum.godotengine.org/t/character-customization-in-godot-3d/59840) - Historical discussion with useful patterns
+
+**2D & UI-Based Customization:**
+- [GDQuest: Character Customization Tutorial](https://www.gdquest.com/tutorial/godot/2d/character-customization/) - Menu-based customization system
+- [YouTube: Godot 4 Character Customization Tutorial (Color Changes)](https://www.youtube.com/watch?v=lw67gmbd4wY) - Color change basics
+- [YouTube: Modular 2D Character Customization in Godot 4](https://www.youtube.com/watch?v=XLWVh-b9_6Y) - Sprite-based modular parts
+- [Reddit: Build a Godot Character Creator with Modular Parts and Color Picker](https://www.reddit.com/r/godot/comments/1oqwjc0/tutorial_build_a_godot_character_creator_with_me/) - Community tutorial series
+- [YouTube Playlist: Godot Character Customization Tutorial Series](https://www.youtube.com/playlist?list=PLfLRcdsmWP2T0F2lNNyboAHUh3nt6YU4T&cbrd=1) - Step-by-step comprehensive series
+
+**Color & Shader Techniques:**
+- [Reddit: Shader tutorial - How to swap colors like on a character creation screen](https://www.reddit.com/r/godot/comments/jp91vk/shader_tutorial_how_to_swap_colors_like_on_a/) - Color swapping with shaders
+- [GDQuest: UI System in Godot 4](https://www.gdquest.com/tutorial/godot/ui/) - UI system fundamentals
+- [GDQuest: Heads Up Display](https://www.gdquest.com/tutorial/godot/2d/hud/) - HUD implementation patterns
+- [GDQuest: UI Containers Overview](https://school.gdquest.com/courses/learn_2d_gamedev_godot_4/start_a_dialogue/all_the_containers) - Container usage for swatches
+
+**Save/Load Systems:**
+- [Save/Load Systems in Godot 4](https://uhiyama-lab.com/en/notes/godot/save-load-system/) - Comprehensive save system guide
+- [GDQuest: Saving and Loading Games in Godot 4 (with resources)](https://www.gdquest.com/library/save_game_godot4/) - Resource-based save/load
+- [Ezcha: Custom Resources are OP in Godot 4](https://ezcha.net/news/3-1-23-custom-resources-are-op-in-godot-4) - Custom resource workflow
+- [The Shaggy Dev: A brief look at custom resources in Godot 4](https://shaggydev.com/2026/04/08/godot-custom-resources/) - Custom resource overview
+- [Godot Recipes: Saving/loading data](https://kidscancode.org/godot_recipes/4.x/basics/file_io/index.html) - File I/O patterns
+- [GDScript Solutions: How to Save and Load Godot Game Data](https://gdscript.com/solutions/how-to-save-and-load-godot-game-data/) - Practical save/load examples
+
+**Color Swatch Implementation:**
+- [Reddit: Instead of using ColorPicker, how can I use ColorRect and Button in GDScript?](https://www.reddit.com/r/godot/comments/194bvd9/instead_of_using_colorpicker_how_can_i_use/) - ColorRect-based swatch picker
+- [YouTube: Godot 4.4 Dynamic UI Scaling](https://www.youtube.com/watch?v=N8fQeB56yN4) - Responsive UI for customization menus
+
+### Community Resources
+
+**Forums & Discussions:**
+- [r/godot - Character Customization](https://www.reddit.com/r/godot/search/?q=character+customization) - Community discussions and troubleshooting
+- [Godot Forum - Character Customization Section](https://forum.godotengine.org/c/questions/11?search=character+customization) - Official forum discussions
+- [Godot Forum: Character customization (3D)](https://forum.godotengine.org/t/character-customization-3d/38766) - Specific 3D character customization thread
+- [Reddit: Guys help I can't attach a 3D object to my character's hand](https://www.reddit.com/r/godot/comments/17cmlds/guys_help_i_cant_attach_a_3d_object_to_my/) - BoneAttachment3D troubleshooting
+
+**Asset Libraries:**
+- [Godot Asset Library - Character](https://godotengine.org/asset-library/?search=character) - Character assets and plugins
+- [Godot Asset Library - 3D Models](https://godotengine.org/asset-library/?search=3d) - 3D model collection
+- [Godot Asset Library - UI](https://godotengine.org/asset-library/?search=ui) - UI components for customization menus
+
+**GitHub Repositories:**
+- [Godot Theme Generator](https://github.com/Calinou/godot-theme-generator) - Generate themes for customization UI
+- [GDQuest UI Framework](https://github.com/GDQuest/godot-ui-framework) - UI utilities and components
+
+### CC0 Asset Sources
+
+**Character & Modular Parts:**
+- [Kenney Toon Characters 1](https://kenney.nl/assets/toon-characters-1) - Base character parts with multiple variations
+- [Kenney Toon Characters 2](https://kenney.nl/assets/toon-characters-2) - Additional toon-style characters
+- [Kenney 3D Kit](https://kenney.nl/assets/3d-kit) - Various props, clothing, and accessories
+- [Kenney RPG Kit](https://kenney.nl/assets/rpg-kit) - Character sprites with equipment parts
+- [Quaternius](https://quaternius.com/) - CC0 3D models including hair, hats, clothing, and accessories
+- [Quaternius Modular Character Outfits - Fantasy](https://quaternius.com/packs/modularcharacteroutfitsfantasy.html) - 12 character outfits from 62 separate modular parts
+- [Quaternius Universal Base Characters](https://quaternius.com/packs/universalbasecharacters.html) - Base characters compatible with Mixamo rig
+- [Quaternius Universal Animation Library](https://quaternius.itch.io/universal-animation-library) - 120+ animations for universal humanoid rig
+- [Quaternius Modular Scifi Pack - Godot Asset Library](https://godotengine.org/asset-library/asset/1671) - Modular sci-fi parts with Godot integration
+
+**General CC0 Sources:**
+- [Mixamo](https://www.mixamo.com/) - Free rigged characters (Adobe license - check compatibility)
+- [Blend Swap](https://www.blendswap.com/) - CC0 Blender models for character parts
+- [OpenGameArt.org](https://opengameart.org/) - Community-contributed CC0 assets
+- [OpenGameArt CC0 Resources](https://opengameart.org/content/cc0-resources) - Filtered CC0 assets
+- [Poly Haven](https://polyhaven.com/) - CC0 textures and materials
+- [Texture Haven](https://texturehaven.com/) - CC0 PBR textures for clothing and accessories
+
+**Aggregated Lists:**
+- [GamineAI: 20 Best Free Game Assets](https://gamineai.com/blog/20-best-free-game-assets-every-developer-should-know-about) - Curated list of free asset sources
+- [AssetHoard: 15 Best Free HD Asset Sites](https://assethoard.com/blog/where-to-find-free-game-assets-2026) - 2026 guide to asset sources
+- [Hackingtons Free Game Art](https://www.hackingtons.com/free-game-art.html) - Aggregated free game art resources
+
+### Tools
+
+**3D Modeling & Animation:**
+- [Blender](https://www.blender.org/) - Full-featured 3D modeling, rigging, and part extraction
+- [Blender Manual: Rigging](https://docs.blender.org/manual/en/latest/rigging/index.html) - Official rigging documentation
+- [MagicaVoxel](https://ephtracy.github.io/) - Voxel-based modeling for simple parts
+- [Tinkercad](https://www.tinkercad.com/) - Simple 3D modeling (browser-based, child-friendly)
+
+**Godot-Specific Tools:**
+- [Godot Palette Tools](https://godotengine.org/asset-library/asset/1635) - Color palette management for swatches
+- [ColorBlind Accessibility Tool - Godot Asset Library](https://godotengine.org/asset-library/asset/gosjlP/colorblind-accesibility-tool) - Colorblind simulation for testing
+- [ColorBlind Accessibility Tool](https://godotassetlibrary.com/asset/3460) - Alternative link for colorblind filters
+
+**Code & Productivity:**
+- [GDQuest Learning Paths](https://gdquest.github.io/learn-gdscript/) - Interactive GDScript learning
+- [Godot Editor Plugins](https://godotengine.org/asset-library/asset?category=editor) - Editor extensions for character customization workflows
+
+---
+
+## Accessibility Considerations
+
+### Color Vision Deficiency Support
+
+Character customization systems must be accessible to children with color vision deficiencies (CVD). Implement the following strategies:
+
+**1. Colorblind-Safe Palette:**
+```gdscript
+# colorblind_safe_palette.gd
+# Color palette tested for deuteranopia (red-green), protanopia (red-green), and tritanopia (blue-yellow)
+
+const COLORBLIND_SAFE := {
+    "skin_light": Color(0.95, 0.82, 0.72),
+    "skin_medium": Color(0.75, 0.62, 0.52),
+    "skin_dark": Color(0.45, 0.32, 0.22),
+    "hair_blonde": Color(0.95, 0.80, 0.55),
+    "hair_brown": Color(0.55, 0.35, 0.20),
+    "hair_black": Color(0.20, 0.12, 0.08),
+    "hair_red": Color(0.70, 0.25, 0.20),
+    "top_blue": Color(0.30, 0.50, 0.80),
+    "top_green": Color(0.25, 0.60, 0.40),
+    "pants_brown": Color(0.50, 0.40, 0.30),
+    "shoes_black": Color(0.15, 0.12, 0.10)
+}
+
+# These colors maintain sufficient contrast in all forms of CVD
+# Test with: https://www.color-oracle.com/ or https://colorable.jxnblk.com/
+```
+
+**2. Pattern and Texture Differentiation:**
+
+Since color alone may not be sufficient, add subtle patterns or texture variations:
+
+```gdscript
+# texture_variations.gd
+
+const PATTERN_TYPES := {
+    "none": "",
+    "dots": "res://assets/textures/patterns/dots.png",
+    "stripes": "res://assets/textures/patterns/stripes.png",
+    "checker": "res://assets/textures/patterns/checker.png"
+}
+
+# Apply pattern to material
+func apply_pattern_to_material(material: StandardMaterial3D, pattern_type: String) -> void:
+    if PATTERN_TYPES.has(pattern_type) and pattern_type != "none":
+        var pattern_tex := load(PATTERN_TYPES[pattern_type])
+        material.albedo_texture = pattern_tex
+        material.albedo_color = Color.WHITE  # Neutral base for patterns
+```
+
+**3. Colorblind Simulation for Testing:**
+
+Use Godot Asset Library tools to simulate CVD during development:
+- Install [ColorBlind Accessibility Tool](https://godotengine.org/asset-library/asset/gosjlP/colorblind-accesibility-tool)
+- Test all customization options with deuteranopia, protanopia, and tritanopia filters
+- Ensure minimum 4.5:1 contrast ratio for all UI elements
+
+### High Contrast Mode
+
+For children with low vision, provide a high contrast mode:
+
+```gdscript
+# high_contrast_manager.gd
+
+enum ContrastMode { NORMAL, HIGH, MAXIMUM }
+
+const HIGH_CONTRAST_SETTINGS := {
+    "bg_color": Color(0.0, 0.0, 0.0),
+    "text_color": Color(1.0, 1.0, 1.0),
+    "selected_color": Color(1.0, 1.0, 0.0),
+    "border_color": Color(1.0, 1.0, 1.0),
+    "swatch_size_multiplier": 1.5,
+    "spacing_multiplier": 2.0
+}
+
+func apply_high_contrast(mode: ContrastMode) -> void:
+    match mode:
+        ContrastMode.HIGH:
+            _apply_contrast_settings(HIGH_CONTRAST_SETTINGS)
+        ContrastMode.MAXIMUM:
+            var max_settings := HIGH_CONTRAST_SETTINGS.duplicate()
+            max_settings["bg_color"] = Color.BLACK
+            max_settings["text_color"] = Color.WHITE
+            max_settings["swatch_size_multiplier"] = 2.0
+            _apply_contrast_settings(max_settings)
+        _:
+            _reset_to_defaults()
+```
+
+### Motor Accessibility
+
+Ensure customization UI is accessible to children with motor challenges:
+
+**1. Large Touch Targets:**
+```gdscript
+# touch_target_config.gd
+
+const MIN_TOUCH_SIZE := Vector2(72, 72)  # Minimum 72x72 pixels
+const MIN_TOUCH_SPACING := 16  # Minimum spacing between touch targets
+
+func validate_touch_targets(container: Control) -> bool:
+    for child in container.get_children():
+        if child is Button or child is TextureButton:
+            if child.custom_minimum_size.x < MIN_TOUCH_SIZE.x or \
+               child.custom_minimum_size.y < MIN_TOUCH_SIZE.y:
+                print("Warning: Button ", child.name, " is too small for touch")
+                return false
+    return true
+```
+
+**2. Sticky Keys / Delayed Input:**
+
+For children who may accidentally double-tap:
+
+```gdscript
+# debounced_input.gd
+
+const DEBOUNCE_DELAY := 0.5  # Seconds
+
+@onready var debounce_timers: Dictionary = {}
+
+func on_swatch_selected(swatch_id: String) -> void:
+    # Prevent rapid repeated selections
+    if debounce_timers.has(swatch_id):
+        debounce_timers[swatch_id].timeout.disconnect(_apply_selection.bind(swatch_id))
+    
+    var timer := get_tree().create_timer(DEBOUNCE_DELAY)
+    timer.timeout.connect(_apply_selection.bind(swatch_id))
+    debounce_timers[swatch_id] = timer
+
+func _apply_selection(swatch_id: String) -> void:
+    # Apply the selection
+    print("Selected: ", swatch_id)
+    debounce_timers.erase(swatch_id)
+```
+
+**3. Controller/Keyboard Navigation:**
+
+Ensure all customization options are keyboard-accessible:
+
+```gdscript
+# keyboard_navigation.gd
+
+func _ready() -> void:
+    _setup_keyboard_navigation()
+
+func _setup_keyboard_navigation() -> void:
+    # Add all swatch buttons to focus chain
+    var swatches := get_tree().get_nodes_in_group("color_swatch")
+    for swatch in swatches:
+        swatch.can_focus = true
+        swatch.focus_mode = FOCUS_ALL
+        
+        # Add visual feedback
+        swatch.connect("focus_entered", _on_swatch_focused.bind(swatch))
+        swatch.connect("focus_exited", _on_swatch_unfocused.bind(swatch))
+
+func _on_swatch_focused(swatch: Control) -> void:
+    swatch.scale = Vector2(1.1, 1.1)
+    swatch.modulate = Color(1.2, 1.2, 1.0)
+
+func _on_swatch_unfocused(swatch: Control) -> void:
+    swatch.scale = Vector2(1.0, 1.0)
+    swatch.modulate = Color(1.0, 1.0, 1.0)
+```
+
+**4. Reduced Motion Support:**
+
+Respect the system reduce motion preference:
+
+```gdscript
+# reduce_motion_support.gd
+
+func _ready() -> void:
+    _check_reduce_motion()
+
+func _check_reduce_motion() -> void:
+    # Check Godot's built-in reduce motion setting
+    # Or use OS-level detection via native library
+    if ProjectSettings.get("input/reduce_motion"):
+        _disable_animations()
+    
+    # Also check via environment variable
+    if OS.has_environment("REDUCE_MOTION"):
+        _disable_animations()
+
+func _disable_animations() -> void:
+    # Disable all Tween nodes
+    for child in get_tree().get_nodes_in_group("customization_animations"):
+        if child is Tween:
+            child.pause()
+    
+    # Use static positions instead of animations
+    $ColorSwatches/SelectionIndicator.visible = false
+```
+
+### Cognitive Accessibility
+
+**1. Limited Choices:**
+
+Avoid overwhelming children with too many options:
+
+```gdscript
+# cognitive_load_manager.gd
+
+const MAX_OPTIONS_PER_CATEGORY := 12
+const MAX_CATEGORIES_VISIBLE := 4
+
+func validate_cognitive_load() -> bool:
+    var categories := get_tree().get_nodes_in_group("customization_category")
+    
+    if categories.size() > MAX_CATEGORIES_VISIBLE:
+        print("Warning: Too many customization categories visible at once")
+        return false
+    
+    for category in categories:
+        var options := category.get_children().filter(func(n): return n is TextureButton)
+        if options.size() > MAX_OPTIONS_PER_CATEGORY:
+            print("Warning: Category ", category.name, " has too many options")
+            return false
+    
+    return true
+```
+
+**2. Clear Visual Feedback:**
+
+Ensure every action has immediate, clear feedback:
+
+```gdscript
+# visual_feedback.gd
+
+func show_selection_feedback(part_type: String, variant: String) -> void:
+    # Visual confirmation
+    var feedback := FeedbackLabel.new()
+    feedback.text = "Selected: %s - %s" % [part_type.capitalize(), variant.capitalize()]
+    feedback.position = Vector2(0, -200)
+    $HUD.add_child(feedback)
+    
+    # Animate in
+    var tween := create_tween()
+    tween.tween_property(feedback, "modulate:a", 1.0, 0.3)
+    tween.tween_property(feedback, "modulate:a", 0.0, 0.7).set_delay(1.0)
+    tween.tween_callback(feedback, "queue_free").set_delay(1.3)
+
+# Audio feedback (optional, with volume control)
+func play_selection_sound() -> void:
+    if AudioServer.is_sfx_enabled():
+        $SelectionSound.play()
+```
+
+**3. Undo/Reset Always Available:**
+
+Children should always be able to undo mistakes:
+
+```gdscript
+# undo_system.gd
+
+@onready var undo_stack: Array = []
+@onready var max_undo_steps := 10
+
+func record_change(old_value: Variant, new_value: Variant) -> void:
+    undo_stack.append({"old": old_value, "new": new_value})
+    
+    # Limit stack size
+    if undo_stack.size() > max_undo_steps:
+        undo_stack.remove_at(0)
+
+func undo_last_change() -> bool:
+    if undo_stack.is_empty():
+        return false
+    
+    var change := undo_stack.pop_back()
+    # Restore old value
+    _apply_value(change["old"])
+    return true
+
+func reset_all() -> void:
+    undo_stack.clear()
+    _load_defaults()
+```
+
+---
+
+## Summary
+
+This research compendium provides a comprehensive guide to implementing the **Identity/Ownership Character Customization System** (VS-022) in Godot 4.x for the Choyce Engine.
+
+**Key Takeaways:**
+
+1. **Modular Design**: Use separate mesh parts rigged to a shared Skeleton3D
+2. **Bone Attachment**: Attach parts to specific bones using BoneAttachment3D
+3. **Swatch Selection**: Use ColorRect or TextureButton for visual color selection
+4. **Part Swapping**: Show/hide or load/unload different mesh variants
+5. **Persistence**: Save customization data to user:// using JSON or ConfigFile
+6. **Child-Safety**: All options must be appropriate for children 5-8
+7. **Cosmetic Only**: Customization never affects gameplay stats
+
+**Implementation Strategy:**
+1. Extract parts from existing ninja.glb or create new modular parts
+2. Set up shared skeleton with BoneAttachment3D for each part type
+3. Create swatch-based UI for color selection
+4. Create variant-based UI for part selection
+5. Implement persistence system
+6. Test thoroughly for child-safety and technical correctness
+
+**Integration:** Works with existing Choyce character system and ensures players can see their chosen character throughout the game, as required by PLAN.md acceptance criteria.
+
+---
+
+*Generated for Choyce Engine - PLAN-016 Identity/Ownership Character Customization*
+*Last updated: 2026-07-18*

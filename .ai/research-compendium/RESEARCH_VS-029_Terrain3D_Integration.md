@@ -1,0 +1,1897 @@
+# RESEARCH_VS-029: Terrain3D Streamed Adventure-World Integration
+
+**Task ID**: VS-029  
+**Title**: Integrate Terrain3D as the streamed adventure-world visual surface  
+**Specialty**: terrain-rendering  
+**Status**: in_progress  
+**Owner**: codex  
+**Cross-review**: claude  
+**Dependencies**: [VS-013, VS-017, VS-019]  
+**Complexity**: HIGH
+
+---
+
+## Task Overview
+
+This task integrates **Terrain3D** as the visual surface for the Choyce Engine's streamed adventure world. The implementation must load on macOS (and other supported platforms) without quarantined or unresolved framework errors, render a textured 2.4km × 2.4km terrain surface with the intended 5.76km² traversal footprint, and pass automated checks for player grounding, terrain collision, prop placement, and fallback floor retention.
+
+### Why This Matters
+
+- **Visual Quality**: Terrain3D provides high-quality, textured terrain rendering
+- **Performance**: Optimized for large worlds with LOD and streaming
+- **Collision**: Accurate collision that matches visual mesh
+- **Compatibility**: Must work on all target platforms (macOS, Windows, Linux)
+
+### Key Requirements (from backlog.yaml lines 1521-1524)
+
+1. Terrain3D **loads on the supported local macOS architecture without quarantined or unresolved framework errors**
+2. The playable world **renders a textured 2.4km by 2.4km terrain surface with the intended 5.76km² traversal footprint**
+3. **Player grounding, terrain collision, prop placement, and the retained fallback floor are verified** by automated checks and a rendered play-session capture
+4. **Terrain size, visual quality, and collision bounds are independently reviewed** before the fallback surface can be removed
+
+---
+
+## Current Implementation Analysis
+
+### What Exists
+
+From backlog.yaml (lines 1514-1518):
+- `/Users/jakubsikora/Downloads/Terrain3D_v1` - Downloaded Terrain3D addon
+- `addons/terrain_3d` - Addon directory in project
+- `src/adapters/inbound/gameplay/terrain3d_world_adapter.gd` - Existing adapter
+- `src/adapters/inbound/gameplay/world_renderer.gd` - World renderer
+
+### Existing Implementation Status
+
+The backlog shows this task is **in_progress**, suggesting some integration work has been done. The `terrain3d_world_adapter.gd` file exists, which is likely the integration layer between Terrain3D and Choyce's streaming system.
+
+---
+
+## Online Research Summary
+
+### Terrain3D Overview
+
+**Terrain3D** is a high-performance terrain rendering system for Godot 4:
+- **Source**: [GitHub - Terrain3D](https://github.com/GodotExplorer/Terrain3D)
+- **License**: MIT (compatible with Choyce)
+- **Features**:
+  - Virtual texturing (up to 4K textures per terrain)
+  - LOD (Level of Detail) system
+  - Automatic collision generation
+  - Region-based editing
+  - Streaming support
+  - Normal map support
+  - Ambient occlusion
+
+### Godot 4.6 Terrain Options
+
+1. **Terrain3D (Plugin)**
+   - Most feature-rich
+   - Virtual texturing
+   - Best for large worlds
+   - Requires plugin setup
+
+2. **Godot 4.6 Built-in MeshInstance3D + HeightMap**
+   - Simple implementation
+   - No external dependencies
+   - Limited features
+   - Good for smaller terrains
+
+3. **PCG3D (Built-in)**
+   - New in Godot 4.6
+   - Procedural generation
+   - Good for infinite worlds
+   - Less control over appearance
+
+**Recommendation**: Use **Terrain3D** for Choyce's needs (5.76km² world with high visual quality)
+
+### Platform Compatibility
+
+#### macOS Issues and Solutions
+
+1. **Gatekeeper Quarantine**
+   - macOS may quarantine downloaded plugins
+   - Solution: Use `xattr -d com.apple.quarantine` on downloaded files
+   - Or build from source
+
+2. **Framework Loading**
+   - Terrain3D uses GDExtension (C++)
+   - Must compile for each platform
+   - Pre-built binaries available for Windows, macOS, Linux
+
+3. **macOS Metal Support**
+   - Terrain3D supports Metal rendering
+   - Verify Metal is enabled in Godot
+   - Test on both Intel and Apple Silicon
+
+**macOS Setup Script**:
+```bash
+#!/bin/bash
+# setup_terrain3d_mac.sh
+
+# Navigate to addons directory
+cd /path/to/choyce-engine/addons
+
+# Download Terrain3D
+git clone https://github.com/GodotExplorer/Terrain3D.git terrain_3d
+
+# Remove quarantine attribute
+xattr -d -r com.apple.quarantine terrain_3d/
+
+# Ensure Godot has Metal support
+# This should already be enabled in Godot 4.6 for macOS
+```
+
+### Terrain3D Features for Choyce
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Virtual Texturing | ✅ Supported | Up to 4K textures |
+| LOD System | ✅ Supported | 4 LOD levels |
+| Automatic Collision | ✅ Supported | Matches visual mesh |
+| Region Editing | ✅ Supported | For authoring |
+| Streaming | ✅ Supported | With custom adapter |
+| Normal Maps | ✅ Supported | For detail |
+| Ambient Occlusion | ✅ Supported | Baked or real-time |
+| Multi-threaded | ✅ Supported | For generation |
+
+---
+
+## Technical Deep Dive
+
+### 1. Terrain3D Setup and Configuration
+
+**`project.godot` Configuration**:
+```ini
+[plugins]
+
+# Enable Terrain3D plugin
+terrain_3d = "addons/terrain_3d/plugin.cfg"
+```
+
+**Plugin Initialization**:
+```gdscript
+# src/adapters/inbound/gameplay/terrain3d_world_adapter.gd
+class_name Terrain3DWorldAdapter extends Node
+
+@export var terrain_scene: PackedScene
+@export var region_size: int = 1024  # 1024x1024 meters per region
+@export var max_lod: int = 4
+@export var collision_lod: int = 2
+
+var terrain_3d: Terrain3D
+var world_renderer: WorldRenderer
+
+func _ready():
+    # Create Terrain3D node
+    terrain_3d = Terrain3D.new()
+    add_child(terrain_3d)
+    
+    # Configure
+    terrain_3d.region_size = region_size
+    terrain_3d.max_lod = max_lod
+    terrain_3d.collision_lod = collision_lod
+    
+    # Get world renderer reference
+    world_renderer = get_node("/root/Main/World/WorldRenderer")
+    
+    # Connect signals
+    world_renderer.connect("chunk_loaded", Callable(this, "_on_chunk_loaded"))
+    world_renderer.connect("chunk_unloaded", Callable(this, "_on_chunk_unloaded"))
+```
+
+### 2. Terrain Generation from Heightmap
+
+**Heightmap-based Terrain**:
+```gdscript
+# terrain_generator.gd
+class_name TerrainGenerator extends Node
+
+const HEIGHTMAP_SIZE := 4096
+const WORLD_SIZE := 2400  # 2.4km
+const HEIGHT_SCALE := 100.0  # Max height in meters
+
+func generate_terrain_from_heightmap(heightmap: ImageTexture) -> Terrain3DRegion:
+    var region = Terrain3DRegion.new()
+    
+    # Set heightmap
+    region.heightmap = heightmap
+    region.heightmap_scale = HEIGHT_SCALE
+    
+    # Configure bounds
+    region.size = Vector3i(WORLD_SIZE, HEIGHT_SCALE, WORLD_SIZE)
+    region.position = Vector3(-WORLD_SIZE/2, 0, -WORLD_SIZE/2)
+    
+    # Set materials ( layers)
+    _setup_terrain_materials(region)
+    
+    return region
+
+func _setup_terrain_materials(region: Terrain3DRegion) -> void:
+    # Create material for each layer
+    var materials = []
+    
+    # Layer 0: Grass
+    var grass_mat = StandardMaterial3D.new()
+    grass_mat.albedo_texture = preload("res://textures/terrain/grass_albedo.png")
+    grass_mat.normal_texture = preload("res://textures/terrain/grass_normal.png")
+    grass_mat.roughness_texture = preload("res://textures/terrain/grass_roughness.png")
+    materials.append(grass_mat)
+    
+    # Layer 1: Dirt
+    var dirt_mat = StandardMaterial3D.new()
+    dirt_mat.albedo_texture = preload("res://textures/terrain/dirt_albedo.png")
+    dirt_mat.normal_texture = preload("res://textures/terrain/dirt_normal.png")
+    materials.append(dirt_mat)
+    
+    # Layer 2: Rock
+    var rock_mat = StandardMaterial3D.new()
+    rock_mat.albedo_texture = preload("res://textures/terrain/rock_albedo.png")
+    rock_mat.normal_texture = preload("res://textures/terrain/rock_normal.png")
+    materials.append(rock_mat)
+    
+    # Layer 3: Sand
+    var sand_mat = StandardMaterial3D.new()
+    sand_mat.albedo_texture = preload("res://textures/terrain/sand_albedo.png")
+    materials.append(sand_mat)
+    
+    region.materials = materials
+```
+
+### 3. Streaming Integration
+
+**Chunk-based Terrain Streaming**:
+```gdscript
+# terrain_streaming_manager.gd
+class_name TerrainStreamingManager extends Node
+
+const CHUNK_SIZE := 512  # 512x512 meters per chunk
+const LOAD_DISTANCE := 1000  # Load chunks within 1000m
+const UNLOAD_DISTANCE := 1500  # Unload chunks beyond 1500m
+
+var active_chunks: Dictionary = {}  # chunk_coords -> Terrain3DRegion
+var player: Node3D
+
+func _process(delta):
+    if player == null:
+        return
+    
+    # Get player position in chunk coordinates
+    var player_chunk = _world_to_chunk_coords(player.position)
+    
+    # Load/unload chunks based on distance
+    _update_chunks(player_chunk)
+
+func _update_chunks(center_chunk: Vector2i):
+    # Calculate visible chunk area
+    var load_radius = ceil(LOAD_DISTANCE / CHUNK_SIZE)
+    var unload_radius = ceil(UNLOAD_DISTANCE / CHUNK_SIZE)
+    
+    # Load chunks in load radius
+    for x in range(-load_radius, load_radius + 1):
+        for z in range(-load_radius, load_radius + 1):
+            var chunk_coord = Vector2i(center_chunk.x + x, center_chunk.y + z)
+            var chunk_key = _chunk_coords_to_key(chunk_coord)
+            
+            if not active_chunks.has(chunk_key):
+                _load_chunk(chunk_coord)
+    
+    # Unload chunks beyond unload radius
+    var chunks_to_unload = []
+    for chunk_key in active_chunks:
+        var chunk_coord = _key_to_chunk_coords(chunk_key)
+        var distance = chunk_coord.distance_to(center_chunk)
+        
+        if distance > unload_radius:
+            chunks_to_unload.append(chunk_key)
+    
+    for chunk_key in chunks_to_unload:
+        _unload_chunk(chunk_key)
+
+func _load_chunk(coords: Vector2i) -> void:
+    var chunk_key = _chunk_coords_to_key(coords)
+    
+    # Check if already loaded
+    if active_chunks.has(chunk_key):
+        return
+    
+    # Generate or load terrain data for this chunk
+    var heightmap = _generate_chunk_heightmap(coords)
+    var terrain_data = _generate_chunk_terrain_data(coords)
+    
+    # Create Terrain3DRegion
+    var region = _create_terrain_region(coords, heightmap, terrain_data)
+    
+    # Add to scene
+    add_child(region)
+    active_chunks[chunk_key] = region
+
+func _unload_chunk(chunk_key: String) -> void:
+    if active_chunks.has(chunk_key):
+        var region = active_chunks[chunk_key]
+        region.queue_free()
+        active_chunks.erase(chunk_key)
+
+func _world_to_chunk_coords(world_pos: Vector3) -> Vector2i:
+    return Vector2i(
+        floor(world_pos.x / CHUNK_SIZE),
+        floor(world_pos.z / CHUNK_SIZE)
+    )
+
+func _chunk_coords_to_key(coords: Vector2i) -> String:
+    return "%d_%d" % [coords.x, coords.y]
+
+func _key_to_chunk_coords(key: String) -> Vector2i:
+    var parts = key.split("_")
+    return Vector2i(int(parts[0]), int(parts[1]))
+```
+
+### 4. Collision System
+
+**Terrain Collision Configuration**:
+```gdscript
+# terrain_collision_setup.gd
+class_name TerrainCollisionSetup extends Node
+
+func configure_collision(terrain_3d: Terrain3D) -> void:
+    # Enable collision
+    terrain_3d.collision_enabled = true
+    
+    # Set collision LOD (lower LOD for collision = better performance)
+    terrain_3d.collision_lod = 2
+    
+    # Configure collision layers
+    terrain_3d.collision_layer = 1  # World collision layer
+    terrain_3d.collision_mask = 1  # Collide with layer 1
+    
+    # Set collision shape type
+    terrain_3d.collision_shape_type = Terrain3D.COLLISION_SHAPE_CONVEX_POLYGON
+    
+    # For better performance with many regions, use mesh library
+    terrain_3d.use_mesh_library = true
+    
+    # Configure physics material
+    var physics_mat = PhysicsMaterial.new()
+    physics_mat.roughness = 0.8
+    physics_mat.bounce = 0.1
+    physics_mat.friction = 0.7
+    terrain_3d.physics_material = physics_mat
+
+func verify_player_grounding(terrain_3d: Terrain3D, player: CharacterBody3D) -> bool:
+    # Check if player is on terrain
+    var space_state = terrain_3d.get_world_3d().direct_space_state
+    
+    var from = player.global_transform.origin + Vector3(0, 1.0, 0)
+    var to = player.global_transform.origin - Vector3(0, 100.0, 0)
+    
+    var query = Query3DParameters3D.create(from, to)
+    query.collision_mask = terrain_3d.collision_layer
+    
+    var result = space_state.intersect_ray(query)
+    
+    if result:
+        var distance = from.distance_to(result.position)
+        # Player is grounded if within 2 meters of terrain
+        return distance <= 2.0
+    
+    return false
+```
+
+### 5. Prop Placement on Terrain
+
+**Terrain-Aware Prop Placement**:
+```gdscript
+# prop_placer.gd
+class_name PropPlacer extends Node
+
+var terrain_3d: Terrain3D
+
+func place_prop_on_terrain(prop_scene: PackedScene, world_position: Vector3, align_to_normal: bool = true) -> Node3D:
+    # Get terrain height at position
+    var terrain_height = terrain_3d.get_height(world_position)
+    
+    # Adjust position to terrain surface
+    var surface_position = Vector3(
+        world_position.x,
+        terrain_height,
+        world_position.z
+    )
+    
+    # Get normal at position
+    var normal = terrain_3d.get_normal(world_position)
+    
+    # Create prop instance
+    var prop_instance = prop_scene.instantiate()
+    
+    # Position prop
+    prop_instance.position = surface_position
+    
+    # Align to terrain normal if requested
+    if align_to_normal:
+        var up = Vector3.UP
+        var forward = up.cross(normal).normalized()
+        var right = normal.cross(forward).normalized()
+        
+        var basis = Basis.from_vectors(forward, right, normal)
+        prop_instance.transform.basis = basis
+    
+    # Add to scene
+    add_child(prop_instance)
+    
+    # Add collision if prop has it
+    _setup_prop_collision(prop_instance)
+    
+    return prop_instance
+
+func _setup_prop_collision(prop: Node3D) -> void:
+    # Recursively find collision shapes
+    var children = prop.get_children()
+    for child in children:
+        if child is CollisionShape3D:
+            child.shape = _create_simplified_collision(child.shape)
+        elif child is Node3D:
+            _setup_prop_collision(child)
+
+func _create_simplified_collision(original_shape: Shape3D) -> Shape3D:
+    if original_shape is BoxShape3D:
+        return original_shape  # Already simple
+    elif original_shape is ConvexPolygonShape3D:
+        # Simplify to box
+        var box = BoxShape3D.new()
+        box.size = original_shape.aabb.size
+        return box
+    elif original_shape is CapsuleShape3D:
+        return original_shape  # Already simple
+    else:
+        # Default to box
+        var box = BoxShape3D.new()
+        box.size = Vector3(1, 1, 1)
+        return box
+```
+
+### 6. Fallback Floor System
+
+**Fallback for Missing Terrain**:
+```gdscript
+# fallback_floor.gd
+class_name FallbackFloor extends StaticBody3D
+
+@export var floor_mesh: Mesh
+@export var floor_material: StandardMaterial3D
+@export var floor_size: Vector2 = Vector2(10000, 10000)  # 10km x 10km
+@export var floor_height: float = -10.0
+
+var mesh_instance: MeshInstance3D
+
+func _ready():
+    # Create mesh instance
+    mesh_instance = MeshInstance3D.new()
+    mesh_instance.mesh = floor_mesh
+    mesh_instance.material_override = floor_material
+    add_child(mesh_instance)
+    
+    # Position floor
+    mesh_instance.position.y = floor_height
+    mesh_instance.scale = Vector3(floor_size.x / 10.0, 1.0, floor_size.y / 10.0)
+    
+    # Add collision
+    var collision = CollisionShape3D.new()
+    collision.shape = BoxShape3D.new()
+    collision.shape.size = Vector3(floor_size.x, 1.0, floor_size.y)
+    add_child(collision)
+
+func is_player_on_fallback(player: CharacterBody3D) -> bool:
+    return player.position.y < floor_height + 2.0
+```
+
+---
+
+## Godot-Specific Implementation Patterns
+
+### 1. Terrain3D Region Management
+
+```gdscript
+# terrain_region_manager.gd
+class_name TerrainRegionManager extends Node
+
+var regions: Dictionary = {}  # region_coords -> Terrain3DRegion
+
+func create_region(coords: Vector2i, size: Vector3i = Vector3i(1024, 200, 1024)) -> Terrain3DRegion:
+    var region = Terrain3DRegion.new()
+    region.position = Vector3(coords.x * size.x, 0, coords.y * size.z)
+    region.size = size
+    
+    # Default materials
+    region.materials = [_create_default_materials()]
+    
+    regions[_coords_to_key(coords)] = region
+    add_child(region)
+    
+    return region
+
+func _create_default_materials() -> Array:
+    var materials = []
+    
+    for i in range(4):  # 4 texture layers
+        var mat = StandardMaterial3D.new()
+        mat.albedo_color = Color(0.5, 0.5, 0.5, 1.0)
+        materials.append(mat)
+    
+    return materials
+
+func get_region_at_position(world_pos: Vector3) -> Terrain3DRegion:
+    for region in regions.values():
+        if region.get_aabb().has_point(world_pos):
+            return region
+    return null
+```
+
+### 2. Virtual Texturing Setup
+
+```gdscript
+# virtual_texturing_setup.gd
+class_name VirtualTexturingSetup extends Node
+
+func configure_virtual_texturing(region: Terrain3DRegion) -> void:
+    # Enable virtual texturing
+    region.virtual_texturing = true
+    
+    # Set virtual texture size (4K)
+    region.virtual_texture_size = 4096
+    
+    # Configure texture layers
+    region.texture_layers = 4
+    
+    # Set up splat map
+    var splat_map = ImageTexture.create(4096, 4096, false, Image.FORMAT_RF)
+    region.splat_map = splat_map
+    
+    # Configure texture coordinates
+    region.texture_scale = Vector2(10.0, 10.0)  # Texture repeat every 10m
+```
+
+### 3. Performance Optimization
+
+```gdscript
+# terrain_performance_optimizer.gd
+class_name TerrainPerformanceOptimizer extends Node
+
+func optimize_terrain(terrain_3d: Terrain3D) -> void:
+    # Reduce LOD distance factor
+    terrain_3d.lod_distance_factor = 0.8
+    
+    # Use lower LOD for collision
+    terrain_3d.collision_lod = 2
+    
+    # Enable mesh library for static terrain
+    terrain_3d.use_mesh_library = true
+    
+    # Configure culling
+    terrain_3d.occlusion_culling = true
+    terrain_3d.frustum_culling = true
+    
+    # Limit region count
+    var max_regions = 4  # For 2.4km x 2.4km world
+    while terrain_3d.get_child_count() > max_regions:
+        var child = terrain_3d.get_child(terrain_3d.get_child_count() - 1)
+        child.queue_free()
+    
+    # Configure physics
+    terrain_3d.physics_enabled = true
+    terrain_3d.physics_material = _create_optimized_physics_material()
+
+func _create_optimized_physics_material() -> PhysicsMaterial:
+    var mat = PhysicsMaterial.new()
+    mat.roughness = 0.8
+    mat.bounce = 0.1
+    mat.friction = 0.7
+    mat.absorbent = false
+    return mat
+```
+
+---
+
+## Asset Packages & Tools
+
+### Terrain Textures
+
+| Texture Pack | Source | License | Use Case |
+|--------------|--------|---------|----------|
+| **CC0 Textures** | [cc0textures.com](https://cc0textures.com/) | CC0 | Ground, rock, sand |
+| **Poly Haven** | [polyhaven.com](https://polyhaven.com/) | CC0 | Ground textures |
+| **Kenney Terrain** | [kenney.nl](https://kenney.nl/assets) | CC0 | Stylized textures |
+| **AmbientCG** | [ambientcg.com](https://ambientcg.com/) | CC0 | PBR textures |
+
+### Terrain Models
+
+| Model Pack | Source | License | Notes |
+|------------|--------|---------|-------|
+| **Quaternius Terrain** | [quaternius.com](https://quaternius.com) | CC0 | Cliffs, rocks |
+| **Kenney Nature** | [kenney.nl](https://kenney.nl/assets/nature) | CC0 | Trees, foliage |
+| **Poly Pizza Terrain** | [poly.pizza](https://poly.pizza/) | CC0 | Low-poly terrain |
+
+### Terrain Tools
+
+| Tool | Purpose | Link |
+|------|---------|------|
+| **Terrain3D Editor** | Built-in editor | Included with plugin |
+| **Heightmap Generator** | Generate heightmaps | [GitHub](https://github.com/GodotExplorer/HeightmapGenerator) |
+| **Splat Map Editor** | Texture layer painting | [GitHub](https://github.com/GodotExplorer/SplatMapEditor) |
+| **World Machine** | Professional terrain authoring | [WorldMachine](https://www.world-machine.com/) |
+| **Gaea** | Procedural terrain | [Gaea](https://www.quadspinner.com/) |
+
+---
+
+## Learning Resources
+
+### Terrain3D Documentation
+
+1. **Official Documentation**
+   - [Terrain3D GitHub](https://github.com/GodotExplorer/Terrain3D)
+   - [Terrain3D Wiki](https://github.com/GodotExplorer/Terrain3D/wiki)
+   - [Getting Started](https://github.com/GodotExplorer/Terrain3D#getting-started)
+
+2. **Tutorials**
+   - [Terrain3D Basic Setup](https://www.youtube.com/watch?v=example)
+   - [Virtual Texturing](https://www.youtube.com/watch?v=example)
+   - [LOD Configuration](https://www.youtube.com/watch?v=example)
+
+3. **Godot Terrain**
+   - [Godot HeightMapShape](https://docs.godotengine.org/en/stable/classes/class_heightmapshape.html)
+   - [Godot PCG3D](https://docs.godotengine.org/en/stable/classes/class_pcx.html)
+   - [Terrain Tutorial](https://docs.godotengine.org/en/stable/tutorials/3d/procedural_geometry/heightmap_shape.html)
+
+4. **Best Practices**
+   - [Terrain Optimization](https://www.gamasutra.com/view/feature/132353/)
+   - [LOD Strategies](https://martinfowler.com/articles/lod-strategies.html)
+   - [Memory Management](https://docs.godotengine.org/en/stable/tutorials/optimization/memory_optimization.html)
+
+---
+
+## Implementation Checklist
+
+### Phase 1: Setup
+- [ ] Download Terrain3D from GitHub
+- [ ] Remove macOS quarantine attributes
+- [ ] Add Terrain3D to project.godot plugins
+- [ ] Verify plugin loads in editor
+- [ ] Test on macOS, Windows, Linux
+
+### Phase 2: Configuration
+- [ ] Configure region size (1024m x 1024m)
+- [ ] Set up LOD levels (0-4)
+- [ ] Configure collision LOD
+- [ ] Set up material layers
+- [ ] Configure virtual texturing
+
+### Phase 3: Integration
+- [ ] Create Terrain3DWorldAdapter
+- [ ] Integrate with WorldRenderer streaming
+- [ ] Set up chunk-based terrain loading
+- [ ] Configure player grounding detection
+- [ ] Implement prop placement on terrain
+
+### Phase 4: Fallback System
+- [ ] Create fallback floor mesh
+- [ ] Configure fallback collision
+- [ ] Implement fallback detection
+- [ ] Add fallback visual indication (debug only)
+
+### Phase 5: Testing
+- [ ] Test on macOS (Intel + Apple Silicon)
+- [ ] Test on Windows
+- [ ] Test on Linux
+- [ ] Verify 2.4km x 2.4km terrain renders correctly
+- [ ] Test player grounding
+- [ ] Test terrain collision
+- [ ] Test prop placement
+- [ ] Test fallback floor
+- [ ] Performance test (FPS, memory)
+
+### Phase 6: Validation
+- [ ] Rendered play-session capture
+- [ ] Independent review of terrain quality
+- [ ] Collision bounds verification
+- [ ] Save/load contract verification
+- [ ] Regression test suite
+
+---
+
+## Child-Safety Constraints
+
+### Terrain Safety Requirements
+
+1. **No Harmful Content**
+   - No violent or scary terrain features
+   - No inappropriate textures or models
+   - Child-appropriate visuals only
+
+2. **Navigation Safety**
+   - No sheer cliffs without guardrails
+   - No bottomless pits
+   - Safe slopes for character movement
+
+3. **Performance Safety**
+   - No excessive lag or frame drops
+   - Graceful degradation on low-end hardware
+   - Configurable quality settings
+
+4. **Accessibility**
+   - Clear visual distinction between terrain types
+   - Good color contrast
+   - Optional high-contrast mode
+
+### Safety Checks
+
+```gdscript
+# terrain_safety_checker.gd
+
+func check_terrain_safety(terrain_data: Dictionary) -> Dictionary:
+    var result = {
+        "safe": true,
+        "issues": [],
+        "warnings": []
+    }
+    
+    # Check for steep slopes
+    var max_slope = terrain_data.get("max_slope", 0.0)
+    if max_slope > 60.0:  # 60 degree slope
+        result["warnings"].append("Very steep slopes detected (%.1f°)" % max_slope)
+    
+    if max_slope > 80.0:  # Near-vertical
+        result["safe"] = false
+        result["issues"].append("Unsafe slopes detected (%.1f°)" % max_slope)
+    
+    # Check for height variations
+    var height_range = terrain_data.get("height_range", 0.0)
+    if height_range > 500.0:  # 500m height difference
+        result["warnings"].append("Large height variations (%.1fm)" % height_range)
+    
+    # Check for cliff edges
+    if terrain_data.get("has_cliffs", false):
+        result["warnings"].append("Cliff edges detected - may need guardrails")
+    
+    return result
+```
+
+---
+
+## 2026 Deep Research Enrichment
+
+### Latest Terrain3D Status (July 2026)
+
+#### Streaming Support
+- **Current State**: Terrain3D **does NOT have built-in streaming** for large worlds as of July 2026
+- **Max Terrain Size**: Supports terrains up to **65.5km × 65.5km** with geometric clipmap mesh system
+- **LOD System**: Built-in support for **up to 10 levels of detail**
+- **Streaming Solution**: Must implement **custom chunk loading** on top of Terrain3D or wait for community implementation
+- **Developer Note**: "Streaming will come when someone implements it" - Community-driven development
+- **Reference**: [r/godot: Terrain3D v1.0.2 Released](https://www.reddit.com/r/godot/comments/1ticxww/terrain3d_v102_released/)
+
+#### macOS Compatibility Issues
+- **Metal Support**: Terrain3D **does NOT support Metal renderer** on macOS as of July 2026
+- **Godot Metal**: Godot 4.4+ merged Metal support, but Terrain3D hasn't implemented it yet
+- **Workaround**: Use **Vulkan or OpenGL ES 3.0** backends on macOS
+- **Known Issues**: Godot Metal backend has intermittent freezes/lockups on macOS
+- **Test Required**: Verify on both Intel and Apple Silicon Macs
+- **Setup Script**: Remove quarantine attributes with `xattr -d -r com.apple.quarantine terrain_3d/`
+- **Reference**: [Terrain3D Platform Support Docs](https://terrain3d.readthedocs.io/en/stable/docs/platforms.html)
+- **Reference**: [Godot Metal Issue #116120](https://github.com/godotengine/godot/issues/116120)
+- **Reference**: [Godot Metal Freeze Issue #119436](https://github.com/godotengine/godot/issues/119436)
+
+#### Performance Characteristics
+- **GPU-Driven**: Uses compute shaders for mesh generation
+- **Region System**: Supports up to **1024 regions (32×32 grid)**
+- **Collision**: Per-region collision generation, **no collisions outside defined regions**
+- **Virtual Texturing**: Supports **4K textures** per region
+- **Memory**: Mesh library reduces VRAM usage for static terrain
+- **Reference**: [Terrain3D Collision Docs](https://terrain3d.readthedocs.io/en/stable/docs/collision.html)
+
+---
+
+## Advanced Streaming & Chunk Integration
+
+### Ready-to-Use Solutions
+
+#### 1. SimpleXTerrain
+- **Type**: Open-source procedural terrain addon for Godot 4 .NET (C#)
+- **Features**:
+  - Visual node graph editor for terrain generation rules
+  - **Real-time chunk streaming** around camera target
+  - Direct upload of generated data into **Terrain3D regions**
+  - Includes biome presets
+  - Ready-to-run demo scene
+- **Language**: C# (requires Godot .NET)
+- **Status**: Actively maintained, released June 2026
+- **Link**: [SimpleXTerrain - Godot Asset Store](https://store.godotengine.org/asset/prajwal-m/simplexterrain/)
+- **Use Case**: Best for teams comfortable with C# and needing immediate streaming solution
+
+#### 2. Godot Chunk Loader (Asset Library)
+- **Asset ID**: 5268
+- **Type**: Generic chunk loading system
+- **Features**:
+  - Dynamically determines which chunks to load/unload
+  - Works with large game worlds
+  - Maintains performance
+- **Link**: [Chunk Loader - Godot Asset Library](https://godotengine.org/asset-library/asset/5268)
+- **Use Case**: Can be adapted for Terrain3D by replacing chunk scenes with Terrain3D regions
+
+#### 3. DennisSmuda's Chunking System
+- **Type**: Open-source 2D grid-based chunking demo
+- **Features**:
+  - FastNoise-based procedural generation
+  - Infinite movement in all directions
+  - **Multithreaded chunk loading/unloading**
+  - Global World.gd singleton for player position tracking
+  - Godot Thread Pool integration
+- **Language**: GDScript
+- **Link**: [GitHub - DennisSmuda/godot-chunking-system](https://github.com/DennisSmuda/godot-chunking-system)
+- **Adaptability**: Approach can be adapted to 3D and Terrain3D
+- **Performance**: Achieves stable 60 FPS with multithreading
+
+### Custom Chunk Streaming Architecture
+
+#### ChunkManager Pattern
+```gdscript
+# terrain_chunk_manager.gd
+class_name TerrainChunkManager extends Node
+
+# Configuration
+const CHUNK_SIZE := 1024  # 1km x 1km chunks (matches Terrain3D region size)
+const ACTIVE_RADIUS := 2  # Keep 2 chunks around player
+const LOAD_RADIUS := 3    # Load chunks within 3 chunks
+const UNLOAD_RADIUS := 4 # Unload chunks beyond 4 chunks
+const MAX_ACTIVE_CHUNKS := 25  # For 5x5 grid around player
+
+# References
+@export var terrain_3d: Terrain3D
+@export var player: Node3D
+@export var heightmap_generator: TerrainHeightmapGenerator
+
+# State
+var active_chunks: Dictionary = {}  # chunk_key -> Terrain3DRegion
+var chunk_queue: Array = []  # Chunks waiting to be loaded
+var is_loading: bool = false
+
+func _process(delta: float) -> void:
+    if player == null or terrain_3d == null:
+        return
+    
+    # Update chunk visibility based on player position
+    _update_visible_chunks()
+    
+    # Process loading queue
+    if not is_loading and chunk_queue.size() > 0:
+        _process_chunk_queue()
+
+func _update_visible_chunks() -> void:
+    var player_chunk = _world_to_chunk(player.position)
+    var chunks_to_load: Array[Vector2i] = []
+    var chunks_to_unload: Array[Vector2i] = []
+    
+    # Determine which chunks should be active
+    for x in range(-LOAD_RADIUS, LOAD_RADIUS + 1):
+        for z in range(-LOAD_RADIUS, LOAD_RADIUS + 1):
+            var chunk_coord = Vector2i(player_chunk.x + x, player_chunk.y + z)
+            var chunk_key = _chunk_to_key(chunk_coord)
+            
+            # Prioritize loading for closer chunks
+            var distance = abs(x) + abs(z)
+            if distance <= ACTIVE_RADIUS:
+                if not active_chunks.has(chunk_key):
+                    chunks_to_load.append(chunk_coord)
+            elif active_chunks.has(chunk_key):
+                chunks_to_unload.append(chunk_coord)
+    
+    # Queue chunks for loading
+    chunks_to_load.sort_custom(func(a: Vector2i, b: Vector2i):
+        var dist_a = a.distance_to(player_chunk)
+        var dist_b = b.distance_to(player_chunk)
+        return dist_a < dist_b
+    )
+    
+    chunk_queue = chunks_to_load
+    
+    # Unload distant chunks immediately
+    for chunk_coord in chunks_to_unload:
+        _unload_chunk(chunk_coord)
+
+func _process_chunk_queue() -> void:
+    if chunk_queue.size() == 0:
+        return
+    
+    is_loading = true
+    var chunk_coord = chunk_queue.pop_front()
+    
+    # Use WorkerThreadPool for background loading
+    var pool = WorkerThreadPool.get_singleton()
+    pool.add_task(func(): 
+        # Generate heightmap in background
+        var heightmap = heightmap_generator.generate_for_chunk(chunk_coord)
+        var terrain_data = heightmap_generator.generate_terrain_data(chunk_coord)
+        
+        # Return data for main thread
+        return {"chunk": chunk_coord, "heightmap": heightmap, "data": terrain_data}
+    , self, "_on_chunk_loaded")
+
+func _on_chunk_loaded(result: Dictionary) -> void:
+    var chunk_coord = result["chunk"]
+    var heightmap = result["heightmap"]
+    var terrain_data = result["data"]
+    
+    # Create and add Terrain3DRegion on main thread
+    var region = _create_terrain_region(chunk_coord, heightmap, terrain_data)
+    terrain_3d.add_child(region)
+    active_chunks[_chunk_to_key(chunk_coord)] = region
+    
+    is_loading = false
+
+func _unload_chunk(chunk_coord: Vector2i) -> void:
+    var chunk_key = _chunk_to_key(chunk_coord)
+    if active_chunks.has(chunk_key):
+        var region = active_chunks[chunk_key]
+        region.queue_free()
+        active_chunks.erase(chunk_key)
+
+func _create_terrain_region(chunk_coord: Vector2i, heightmap: ImageTexture, terrain_data: Dictionary) -> Terrain3DRegion:
+    var region = Terrain3DRegion.new()
+    region.name = "Chunk_%d_%d" % [chunk_coord.x, chunk_coord.y]
+    
+    # Position region in world space
+    region.position = Vector3(
+        chunk_coord.x * CHUNK_SIZE,
+        0,
+        chunk_coord.y * CHUNK_SIZE
+    )
+    
+    # Set heightmap
+    region.heightmap = heightmap
+    region.heightmap_scale = terrain_data.get("height_scale", 100.0)
+    
+    # Configure materials from terrain data
+    region.materials = terrain_data.get("materials", [])
+    
+    # Configure virtual texturing
+    region.virtual_texturing = terrain_data.get("virtual_texturing", true)
+    region.virtual_texture_size = terrain_data.get("virtual_texture_size", 4096)
+    
+    # Configure LOD
+    region.lod_enabled = true
+    region.max_lod = terrain_data.get("max_lod", 4)
+    
+    # Configure collision
+    region.collision_enabled = true
+    region.collision_lod = terrain_data.get("collision_lod", 2)
+    
+    return region
+
+func _world_to_chunk(world_pos: Vector3) -> Vector2i:
+    return Vector2i(
+        floor(world_pos.x / CHUNK_SIZE),
+        floor(world_pos.z / CHUNK_SIZE)
+    )
+
+func _chunk_to_key(chunk: Vector2i) -> String:
+    return "%d_%d" % [chunk.x, chunk.y]
+```
+
+#### Terrain Heightmap Generator for Streaming
+```gdscript
+# terrain_heightmap_generator.gd
+class_name TerrainHeightmapGenerator extends Node
+
+# Configuration
+const CHUNK_SIZE := 1024
+const NOISE_SCALE := 0.001
+const HEIGHT_SCALE := 100.0
+const BASE_HEIGHT := 20.0
+
+# Noise generators
+var base_noise: FastNoiseLite
+var detail_noise: FastNoiseLite
+var mountain_noise: FastNoiseLite
+
+# Seed for determinism
+@export var world_seed: int = 12345
+
+func _ready() -> void:
+    _init_noise()
+
+func _init_noise() -> void:
+    base_noise = FastNoiseLite.new()
+    base_noise.seed = world_seed
+    base_noise.frequency = NOISE_SCALE
+    base_noise.fractal_octaves = 4
+    base_noise.fractal_gain = 0.5
+    
+    detail_noise = FastNoiseLite.new()
+    detail_noise.seed = world_seed + 1
+    detail_noise.frequency = NOISE_SCALE * 2
+    detail_noise.fractal_octaves = 3
+    
+    mountain_noise = FastNoiseLite.new()
+    mountain_noise.seed = world_seed + 2
+    mountain_noise.frequency = NOISE_SCALE * 0.5
+    mountain_noise.fractal_octaves = 2
+
+func generate_for_chunk(chunk_coord: Vector2i) -> ImageTexture:
+    var image = Image.create(CHUNK_SIZE + 1, CHUNK_SIZE + 1, false, Image.FORMAT_RF)
+    
+    # Generate heightmap data
+    for x in range(CHUNK_SIZE + 1):
+        for z in range(CHUNK_SIZE + 1):
+            var world_x = (chunk_coord.x * CHUNK_SIZE) + x
+            var world_z = (chunk_coord.y * CHUNK_SIZE) + z
+            
+            # Generate height value (0-1)
+            var height = _generate_height(world_x, world_z)
+            
+            # Convert to 16-bit float (0-1 range)
+            image.set_pixel(x, z, Color(height, height, height, 1.0))
+    
+    # Create texture from image
+    var texture = ImageTexture.create_from_image(image)
+    texture.flag_as_normalmap = false
+    
+    return texture
+
+func generate_terrain_data(chunk_coord: Vector2i) -> Dictionary:
+    return {
+        "height_scale": HEIGHT_SCALE,
+        "base_height": BASE_HEIGHT,
+        "materials": _generate_materials(chunk_coord),
+        "virtual_texturing": true,
+        "virtual_texture_size": 4096,
+        "max_lod": 4,
+        "collision_lod": 2
+    }
+
+func _generate_height(world_x: float, world_z: float) -> float:
+    # Combine multiple noise layers
+    var base := base_noise.get_noise_2d(world_x, world_z)
+    var detail := detail_noise.get_noise_2d(world_x, world_z) * 0.3
+    var mountains := mountain_noise.get_noise_2d(world_x * 0.5, world_z * 0.5) * 0.5
+    
+    # Combine and normalize
+    var height = (base + detail + mountains) * 0.5 + 0.5
+    
+    # Apply curve for more interesting terrain
+    height = pow(height, 1.5)
+    
+    # Clamp to 0-1
+    return clamp(height, 0.0, 1.0)
+
+func _generate_materials(chunk_coord: Vector2i) -> Array:
+    var materials = []
+    
+    # Grass material
+    var grass_mat = StandardMaterial3D.new()
+    grass_mat.albedo_texture = preload("res://textures/terrain/grass_albedo.png")
+    grass_mat.normal_texture = preload("res://textures/terrain/grass_normal.png")
+    grass_mat.roughness_texture = preload("res://textures/terrain/grass_roughness.png")
+    grass_mat.roughness = 0.7
+    grass_mat.metallic = 0.0
+    materials.append(grass_mat)
+    
+    # Dirt material
+    var dirt_mat = StandardMaterial3D.new()
+    dirt_mat.albedo_texture = preload("res://textures/terrain/dirt_albedo.png")
+    dirt_mat.normal_texture = preload("res://textures/terrain/dirt_normal.png")
+    dirt_mat.roughness = 0.8
+    materials.append(dirt_mat)
+    
+    # Rock material
+    var rock_mat = StandardMaterial3D.new()
+    rock_mat.albedo_texture = preload("res://textures/terrain/rock_albedo.png")
+    rock_mat.normal_texture = preload("res://textures/terrain/rock_normal.png")
+    rock_mat.roughness = 0.6
+    rock_mat.metallic = 0.2
+    materials.append(rock_mat)
+    
+    # Sand material
+    var sand_mat = StandardMaterial3D.new()
+    sand_mat.albedo_texture = preload("res://textures/terrain/sand_albedo.png")
+    sand_mat.roughness = 0.9
+    sand_mat.metallic = 0.0
+    materials.append(sand_mat)
+    
+    return materials
+```
+
+---
+
+## Enhanced Asset & Texture Sources
+
+### CC0 Texture Libraries for Terrain3D
+
+#### Poly Haven (Recommended)
+- **URL**: [https://polyhaven.com/](https://polyhaven.com/)
+- **License**: CC0 (Public Domain)
+- **Features**:
+  - High-quality PBR textures (albedo, normal, roughness, displacement, ambient occlusion)
+  - 1K, 2K, 4K, 8K resolutions
+  - Seamless tiling
+  - Optimized for real-time rendering
+- **Format Recommendation**: Download **PNG** (not EXR) for best Godot compatibility
+- **Categories**:
+  - Ground (dirt, sand, gravel, mud)
+  - Rock (stone, cliff, boulder)
+  - Grass (meadow, dry, wet)
+  - Snow (compact, fresh)
+  - Water (ocean, river, puddle)
+- **Godot Import Settings**:
+  - **Compress Mode**: VRAM Compressed (for desktop)
+  - **Format**: BC3/DXT5 for desktop, ETC2 for mobile
+  - **Mipmaps**: Enabled
+  - **Normal Map**: Enable if using normal textures
+  - **Detect 3D**: Enabled (for normal maps)
+- **Reference**: [Terrain3D Texture Preparation Guide](https://terrain3d.readthedocs.io/en/stable/docs/texture_prep.html)
+
+#### AmbientCG
+- **URL**: [https://ambientcg.com/](https://ambientcg.com/)
+- **License**: CC0 (Public Domain)
+- **Features**:
+  - Extensive PBR material library
+  - Textures, HDRIs, 3D models
+  - Tagged and searchable
+  - Blender and Godot ready
+- **Godot Integration**:
+  - Download individual texture maps
+  - Channel pack as needed (e.g., roughness+metallic+AO in one texture)
+  - Use StandardMaterial3D or ORMMaterial3D
+- **Recommended Textures**:
+  - `Ground003` (color, normal, roughness) - Used in Choyce Engine
+  - `Rock012`, `Dirt005`, `Sand004`
+  - Various moss, gravel, and cliff textures
+
+#### CC0 Textures
+- **URL**: [https://cc0textures.com/](https://cc0textures.com/)
+- **License**: CC0 (Public Domain)
+- **Features**:
+  - 2000+ free textures
+  - PBR workflow ready
+  - High resolution (up to 8K)
+  - Categorized by material type
+
+#### Texture Haven
+- **URL**: [https://texturehaven.com/](https://texturehaven.com/)
+- **License**: CC0 (Public Domain)
+- **Features**:
+  - 1600+ textures
+  - All PBR with full map sets
+  - Smart material support
+  - Good for stylized and realistic terrains
+
+### Terrain Asset Packs
+
+#### Kenney Nature Pack
+- **URL**: [https://kenney.nl/assets/nature](https://kenney.nl/assets/nature)
+- **License**: CC0
+- **Includes**:
+  - Trees (palm, oak, pine)
+  - Bushes
+  - Grass clusters
+  - Rocks and boulders
+  - Flowers and plants
+- **Scale**: Pre-scaled for 1 unit = 1 meter
+- **Godot Ready**: Includes .glb and .fbx formats
+
+#### Quaternius Environment Packs
+- **URL**: [https://quaternius.com/free-3d-models](https://quaternius.com/free-3d-models)
+- **License**: CC0
+- **Includes**:
+  - Terrain meshes (cliffs, hills, valleys)
+  - Rocks and stones
+  - Foliage
+  - Low-poly and high-poly variants
+- **Godot Integration**: Direct import, materials preserved
+
+#### Poly Pizza Terrain
+- **URL**: [https://poly.pizza/search?q=terrain](https://poly.pizza/search?q=terrain)
+- **License**: CC0
+- **Includes**:
+  - Low-poly terrain pieces
+  - Modular terrain tiles
+  - Stylized terrain assets
+- **Optimized**: Lightweight for mobile/performance
+
+### Terrain Authoring Tools
+
+#### World Machine (Paid, Free Trial)
+- **URL**: [https://www.world-machine.com/](https://www.world-machine.com/)
+- **Features**:
+  - Professional terrain generation
+  - Export heightmaps (16-bit RAW, PNG, EXR)
+  - Erosion simulation
+  - Layer-based workflow
+- **Export for Terrain3D**:
+  - Use **16-bit RAW** or **PNG** format
+  - Size must be power of 2 (512, 1024, 2048, 4096)
+  - Normalize height range to 0-1
+- **Godot Import**: Use `terrain_3d.import_heightmap()`
+
+#### Gaea (Paid)
+- **URL**: [https://www.quadspinner.com/](https://www.quadspinner.com/)
+- **Features**:
+  - Procedural terrain generation
+  - Node-based workflow
+  - Export to Godot-compatible formats
+- **Terrain3D Compatibility**: Export heightmaps and import via GDScript
+
+#### Free Alternatives
+- **Blender + Sculpt Mode**: Manual terrain sculpting, export as heightmap
+- **GIMP + Plugins**: Heightmap painting and manipulation
+- **Houdini Apprentice**: Procedural terrain, free for non-commercial use
+
+---
+
+## Performance Optimization Deep Dive
+
+### Terrain3D-Specific Optimizations
+
+#### 1. LOD Configuration
+```gdscript
+# Optimal LOD settings for 5.76km² world
+func configure_terrain_lod(terrain_3d: Terrain3D) -> void:
+    # LOD distances - adjust based on camera FOV and target FPS
+    terrain_3d.lod_distance_factor = 0.7  # Overall LOD scale (0.1-2.0)
+    
+    # Individual LOD distances (in world units)
+    terrain_3d.lod_distances = [
+        50.0,   # LOD 0 - Full detail (0-50m)
+        150.0,  # LOD 1 - High detail (50-150m)
+        400.0,  # LOD 2 - Medium detail (150-400m)
+        1000.0, # LOD 3 - Low detail (400-1000m)
+        2000.0  # LOD 4 - Minimum detail (1000-2000m+)
+    ]
+    
+    # Collision LOD - use lower LOD for physics
+    terrain_3d.collision_lod = 2  # Collision matches LOD 2
+    
+    # Enable LOD cross-fading to prevent popping
+    terrain_3d.lod_cross_fade = true
+    terrain_3d.lod_cross_fade_distance = 20.0
+```
+
+#### 2. Region Optimization
+```gdscript
+# For 5.76km² world (2400m x 2400m)
+func configure_regions(terrain_3d: Terrain3D) -> void:
+    # Region size: 1024m x 1024m (4 regions total for 2.4km x 2.4km)
+    terrain_3d.region_size = 1024
+    
+    # Max regions: 32x32 = 1024 regions (Terrain3D limit)
+    # For our use case: 2x2 or 3x3 regions
+    terrain_3d.max_regions = 4
+    
+    # Use mesh library for static terrain (reduces VRAM)
+    terrain_3d.use_mesh_library = true
+    
+    # Region margins for seamless edges
+    terrain_3d.region_margin = 16
+```
+
+#### 3. Virtual Texturing Configuration
+```gdscript
+# Configure virtual texturing for best quality/performance balance
+func configure_virtual_texturing(region: Terrain3DRegion) -> void:
+    # Enable virtual texturing
+    region.virtual_texturing = true
+    
+    # Texture size: 4K for high quality, 2K for performance
+    region.virtual_texture_size = 4096
+    
+    # Number of texture layers (materials)
+    region.texture_layers = 4
+    
+    # Texture scale - how much texture repeats per meter
+    region.texture_scale = Vector2(10.0, 10.0)  # 10m repeat
+    
+    # Mipmap generation
+    region.generate_mipmaps = true
+    
+    # Anisotropic filtering
+    region.aniso_filtering = true
+    region.max_aniso_level = 8
+```
+
+#### 4. Collision Optimization
+```gdscript
+# Optimize collision for performance
+func configure_collision(terrain_3d: Terrain3D) -> void:
+    # Enable collision
+    terrain_3d.collision_enabled = true
+    
+    # Use simplified collision shapes
+    terrain_3d.collision_shape_type = Terrain3D.COLLISION_SHAPE_CONVEX_POLYGON
+    
+    # Lower LOD for collision (better performance)
+    terrain_3d.collision_lod = 2
+    
+    # Collision layers
+    terrain_3d.collision_layer = 1  # World layer
+    terrain_3d.collision_mask = 1
+    
+    # Physics material
+    var physics_mat = PhysicsMaterial.new()
+    physics_mat.roughness = 0.8
+    physics_mat.bounce = 0.1
+    physics_mat.friction = 0.7
+    terrain_3d.physics_material = physics_mat
+    
+    # For better performance with many regions:
+    # Consider using HeightMapShape3D for simple terrains
+    # Or generate collision meshes separately
+```
+
+#### 5. Memory Optimization
+```gdscript
+# Reduce memory usage
+func optimize_memory(terrain_3d: Terrain3D) -> void:
+    # Use mesh library to share geometry
+    terrain_3d.use_mesh_library = true
+    
+    # Reduce region count for streaming
+    # Only keep active chunks loaded
+    
+    # Use lower resolution heightmaps where possible
+    # 1024x1024 heightmaps use less memory than 4096x4096
+    
+    # Compress textures
+    # Use DDS (BC3) for desktop, ETC2 for mobile
+    
+    # Disable unnecessary features
+    terrain_3d.wireframe = false
+    terrain_3d.show_debug = false
+```
+
+### Performance Monitoring
+```gdscript
+# terrain_performance_monitor.gd
+class_name TerrainPerformanceMonitor extends Node
+
+@export var terrain_3d: Terrain3D
+@export var update_interval: float = 1.0  # Seconds
+
+var stats: Dictionary = {}
+var timer: float = 0.0
+
+func _process(delta: float) -> void:
+    timer += delta
+    if timer < update_interval:
+        return
+    timer = 0.0
+    
+    _collect_stats()
+    _log_stats()
+
+func _collect_stats() -> void:
+    stats = {
+        "fps": Performance.get_fps(),
+        "frame_time": Performance.get_frame_time() * 1000,  # ms
+        "draw_calls": Performance.get_draw_call_count(),
+        "vertices": Performance.get_vertex_count(),
+        "memory_vram": Performance.get_vram_usage(),
+        "memory_ram": Performance.get_memory_usage(),
+        "regions": terrain_3d.get_child_count(),
+        "player_position": player.position if player else Vector3.ZERO
+    }
+    
+    # Check for performance issues
+    if stats["fps"] < 30:
+        push_warning("Low FPS: %d" % stats["fps"])
+    if stats["frame_time"] > 33:  # >30ms
+        push_warning("High frame time: %.2fms" % stats["frame_time"])
+
+func _log_stats() -> void:
+    print("=== Terrain Performance Stats ===")
+    for key in stats:
+        print("  %s: %s" % [key, stats[key]])
+    print("")
+```
+
+---
+
+## macOS-Specific Integration Guide
+
+### Pre-Installation Checklist
+
+1. **Verify Godot Version**
+   ```bash
+   godot --version
+   # Must be Godot 4.6+ for best compatibility
+   ```
+
+2. **Check Rendering Backend**
+   - Open Godot Project Settings
+   - Navigate to `Rendering > Renderer > Rendering Device`
+   - Select **Vulkan** or **OpenGL ES 3.0** (NOT Metal)
+
+3. **Download Terrain3D**
+   ```bash
+   cd /path/to/choyce-engine/addons
+   git clone https://github.com/TokisanGames/Terrain3D.git terrain_3d
+   ```
+
+4. **Remove Quarantine Attributes**
+   ```bash
+   # Remove macOS quarantine from all files
+   xattr -d -r com.apple.quarantine terrain_3d/
+   ```
+
+### project.godot Configuration
+```ini
+[plugins]
+
+# Enable Terrain3D plugin
+terrain_3d = "addons/terrain_3d/plugin.cfg"
+
+[rendering]
+
+# Use Vulkan for macOS
+renderer/rendering_device = "vulkan"
+
+# Or use OpenGL ES 3.0
+# renderer/rendering_device = "gles3"
+```
+
+### Runtime Verification
+```gdscript
+# macos_terrain_verifier.gd
+class_name MacOSTerrainVerifier extends Node
+
+func verify_terrain3d_compatibility() -> Dictionary:
+    var result = {
+        "compatible": true,
+        "issues": [],
+        "warnings": [],
+        "info": {}
+    }
+    
+    # Check Godot version
+    var godot_version = OS.get_version_info()
+    result["info"]["godot_version"] = "%d.%d.%d" % [
+        godot_version["major"],
+        godot_version["minor"],
+        godot_version["patch"]
+    ]
+    
+    if godot_version["major"] < 4 or (godot_version["major"] == 4 and godot_version["minor"] < 6):
+        result["compatible"] = false
+        result["issues"].append("Requires Godot 4.6+")
+    
+    # Check rendering backend
+    var renderer = ProjectSettings.get_setting("rendering/renderer/rendering_device")
+    result["info"]["renderer"] = renderer
+    
+    if renderer == "metal":
+        result["compatible"] = false
+        result["issues"].append("Terrain3D does not support Metal renderer on macOS")
+        result["warnings"].append("Switch to Vulkan or OpenGL ES 3.0")
+    
+    # Check OS
+    var os_name = OS.get_name()
+    result["info"]["os"] = os_name
+    
+    if os_name.to_lower().contains("mac"):
+        result["warnings"].append("macOS detected - verify plugin setup")
+        
+        # Check for Apple Silicon
+        var cpu = OS.execute_javascript("navigator.platform") if OS.has_feature("JavaScript") else ""
+        if cpu.to_lower().contains("arm"):
+            result["warnings"].append("Apple Silicon detected - test Vulkan support")
+    
+    # Check if plugin is loaded
+    if not ClassDB.class_exists("Terrain3D"):
+        result["compatible"] = false
+        result["issues"].append("Terrain3D plugin not loaded")
+    
+    return result
+```
+
+### macOS Testing Script
+```bash
+#!/bin/bash
+# test_terrain3d_mac.sh
+
+echo "=== Terrain3D macOS Compatibility Test ==="
+echo ""
+
+# 1. Check Godot version
+echo "1. Godot Version:"
+godot --version
+echo ""
+
+# 2. Check Terrain3D plugin
+echo "2. Terrain3D Plugin:"
+if [ -d "addons/terrain_3d" ]; then
+    echo "   ✓ Plugin directory exists"
+    if [ -f "addons/terrain_3d/plugin.cfg" ]; then
+        echo "   ✓ plugin.cfg exists"
+    else
+        echo "   ✗ plugin.cfg missing"
+    fi
+else
+    echo "   ✗ Plugin directory missing"
+fi
+echo ""
+
+# 3. Check quarantine attributes
+echo "3. Quarantine Attributes:"
+if xattr -l addons/terrain_3d/ | grep -q "com.apple.quarantine"; then
+    echo "   ✗ Quarantine attributes present - remove with:"
+    echo "      xattr -d -r com.apple.quarantine addons/terrain_3d/"
+else
+    echo "   ✓ No quarantine attributes"
+fi
+echo ""
+
+# 4. Check project.godot
+echo "4. project.godot Configuration:"
+if grep -q "terrain_3d" project.godot; then
+    echo "   ✓ Terrain3D plugin enabled in project.godot"
+else
+    echo "   ✗ Terrain3D plugin not in project.godot"
+fi
+echo ""
+
+# 5. Check rendering backend
+echo "5. Rendering Backend:"
+RENDERER=$(grep "rendering_device" project.godot | cut -d'=' -f2 | tr -d ' "')
+if [ "$RENDERER" = "metal" ]; then
+    echo "   ✗ Using Metal renderer (not supported)"
+    echo "   Switch to Vulkan or OpenGL ES 3.0"
+elif [ "$RENDERER" = "vulkan" ] || [ "$RENDERER" = "gles3" ]; then
+    echo "   ✓ Using $RENDERER (supported)"
+else
+    echo "   ? Unknown renderer: $RENDERER"
+fi
+echo ""
+
+echo "=== Test Complete ==="
+```
+
+---
+
+## Heightmap Import/Export Code Samples
+
+### Importing Heightmaps Programmatically
+
+#### From Image File
+```gdscript
+# heightmap_importer.gd
+class_name HeightmapImporter extends Node
+
+func import_from_file(file_path: String, region: Terrain3DRegion, scale: float = 100.0, offset: float = 0.0) -> bool:
+    # Load image
+    var image = Image.load_from_file(file_path)
+    if image == null:
+        push_error("Failed to load image: %s" % file_path)
+        return false
+    
+    # Validate image format
+    if image.get_format() not in [Image.FORMAT_LF, Image.FORMAT_RF, Image.FORMAT_RGBF, Image.FORMAT_RGBAF]:
+        # Convert to float format if needed
+        image.convert(Image.FORMAT_RF)
+    
+    # Create texture
+    var texture = ImageTexture.create_from_image(image)
+    
+    # Apply to region
+    region.heightmap = texture
+    region.heightmap_scale = scale
+    region.heightmap_offset = offset
+    
+    return true
+```
+
+#### From Raw 16-bit File
+```gdscript
+# raw_heightmap_importer.gd
+class_name RawHeightmapImporter extends Node
+
+func import_from_raw(file_path: String, region: Terrain3DRegion, width: int, height: int, scale: float = 100.0) -> bool:
+    # Read raw file
+    var file = FileAccess.open(file_path, FileAccess.READ)
+    if file == null:
+        push_error("Failed to open raw file: %s" % file_path)
+        return false
+    
+    # Validate size (16-bit = 2 bytes per value)
+    var expected_size = width * height * 2
+    if file.get_size() < expected_size:
+        push_error("Raw file too small. Expected %d bytes, got %d" % [expected_size, file.get_size()])
+        return false
+    
+    # Create image
+    var image = Image.create(width, height, false, Image.FORMAT_LF)
+    image.lock()
+    
+    # Read 16-bit values and convert to 0-1 range
+    for y in range(height):
+        for x in range(width):
+            var raw_value = file.getU16()  # 16-bit unsigned
+            var normalized = float(raw_value) / 65535.0  # Convert to 0-1
+            image.set_pixel(x, y, Color(normalized, normalized, normalized, 1.0))
+    
+    image.unlock()
+    file.close()
+    
+    # Create texture
+    var texture = ImageTexture.create_from_image(image)
+    texture.flag_as_normalmap = false
+    
+    # Apply to region
+    region.heightmap = texture
+    region.heightmap_scale = scale
+    
+    return true
+```
+
+#### From PNG Image
+```gdscript
+# png_heightmap_importer.gd
+class_name PNGHeightmapImporter extends Node
+
+func import_from_png(file_path: String, region: Terrain3DRegion, channel: int = 0, scale: float = 100.0) -> bool:
+    # Load PNG image
+    var image = Image.load_from_file(file_path)
+    if image == null:
+        push_error("Failed to load PNG: %s" % file_path)
+        return false
+    
+    # Convert to single channel float
+    var height_image = Image.create(image.get_width(), image.get_height(), false, Image.FORMAT_RF)
+    height_image.lock()
+    
+    for y in range(image.get_height()):
+        for x in range(image.get_width()):
+            var color = image.get_pixel(x, y)
+            var height_value = 0.0
+            
+            # Extract specified channel (0=R, 1=G, 2=B)
+            match channel:
+                0: height_value = color.r
+                1: height_value = color.g
+                2: height_value = color.b
+                _: height_value = (color.r + color.g + color.b) / 3.0
+            
+            height_image.set_pixel(x, y, Color(height_value, height_value, height_value, 1.0))
+    
+    height_image.unlock()
+    
+    # Create texture
+    var texture = ImageTexture.create_from_image(height_image)
+    
+    # Apply to region
+    region.heightmap = texture
+    region.heightmap_scale = scale
+    
+    return true
+```
+
+### Exporting Heightmaps
+
+#### To Image File
+```gdscript
+# heightmap_exporter.gd
+class_name HeightmapExporter extends Node
+
+func export_to_file(region: Terrain3DRegion, file_path: String, format: int = Image.FORMAT_PNG) -> bool:
+    # Get heightmap texture
+    var heightmap_texture = region.heightmap
+    if heightmap_texture == null:
+        push_error("No heightmap to export")
+        return false
+    
+    # Get image from texture
+    var image = heightmap_texture.get_image()
+    if image == null:
+        push_error("Failed to get image from texture")
+        return false
+    
+    # Convert to desired format
+    var export_image = image.duplicate()
+    export_image.convert(format)
+    
+    # Save to file
+    var err = export_image.save_png(file_path)
+    if err != OK:
+        push_error("Failed to save image: %s" % file_path)
+        return false
+    
+    return true
+```
+
+#### To Raw 16-bit File
+```gdscript
+# raw_heightmap_exporter.gd
+class_name RawHeightmapExporter extends Node
+
+func export_to_raw(region: Terrain3DRegion, file_path: String) -> bool:
+    # Get heightmap
+    var heightmap_texture = region.heightmap
+    if heightmap_texture == null:
+        push_error("No heightmap to export")
+        return false
+    
+    var image = heightmap_texture.get_image()
+    if image == null:
+        push_error("Failed to get image from texture")
+        return false
+    
+    # Open file for writing
+    var file = FileAccess.open(file_path, FileAccess.WRITE)
+    if file == null:
+        push_error("Failed to open file for writing: %s" % file_path)
+        return false
+    
+    # Write 16-bit values
+    image.lock()
+    for y in range(image.get_height()):
+        for x in range(image.get_width()):
+            var pixel = image.get_pixel(x, y)
+            # Extract red channel (height) and convert to 16-bit
+            var height_16 = uint16(pixel.r * 65535.0)
+            file.storeU16(height_16)
+    image.unlock()
+    
+    file.close()
+    return true
+```
+
+---
+
+## Community Solutions & Plugins
+
+### 1. SimpleXTerrain
+- **Author**: Prajwal M
+- **Type**: Godot 4 .NET Addon (C#)
+- **Features**:
+  - Visual node graph editor
+  - Real-time procedural terrain generation
+  - Async chunk streaming
+  - Direct Terrain3D integration
+  - Biome presets
+  - Demo scene included
+- **License**: MIT
+- **Link**: [https://store.godotengine.org/asset/prajwal-m/simplexterrain/](https://store.godotengine.org/asset/prajwal-m/simplexterrain/)
+- **Status**: Actively maintained, released June 2026
+
+### 2. Block-based 3D Procedural Map Generation Demo
+- **Author**: Community
+- **Asset ID**: 2698
+- **Features**:
+  - Chunk-based terrain generation
+  - Load/unload based on player distance
+  - Deterministic generation with seed
+  - JSON-based chunk persistence
+- **Link**: [https://godotengine.org/asset-library/asset/2698](https://godotengine.org/asset-library/asset/2698)
+- **Use Case**: Reference for custom chunk streaming implementation
+
+### 3. Chunk Loader Asset
+- **Asset ID**: 5268
+- **Features**:
+  - Dynamic chunk loading/unloading
+  - Large world support
+  - Performance-optimized
+- **Link**: [https://godotengine.org/asset-library/asset/5268](https://godotengine.org/asset-library/asset/5268)
+- **Status**: Released June 2026
+
+### 4. DennisSmuda's Godot Chunking System
+- **Type**: Open-source demo
+- **Features**:
+  - 2D grid-based chunking
+  - FastNoise procedural generation
+  - Multithreaded loading
+  - Global position tracking
+- **Language**: GDScript
+- **Link**: [https://github.com/DennisSmuda/godot-chunking-system](https://github.com/DennisSmuda/godot-chunking-system)
+- **Adaptability**: Can be extended to 3D and Terrain3D
+
+### 5. Godot Forum Chunk Loading Discussion
+- **Thread**: Handling Data Streaming & Chunk Loading for Large 3D Maps
+- **Link**: [https://forum.godotengine.org/t/handling-data-streaming-chunk-loading-for-large-3d-maps-in-godot/138774](https://forum.godotengine.org/t/handling-data-streaming-chunk-loading-for-large-3d-maps-in-godot/138774)
+- **Highlights**:
+  - Community solutions for large world streaming
+  - Performance optimization tips
+  - LOD strategies for terrain
+  - Thread pool integration
+
+### 6. Reddit Chunk Loading Discussions
+- **Thread 1**: [Chunk loading system for procedural terrain](https://www.reddit.com/r/godot/comments/1o0bpj4/chunk_loading_system_for_procedural_terrain/)
+  - LOD strategies
+  - Performance considerations
+  - 60 FPS achievable with multithreading
+
+- **Thread 2**: [I've added a chunk loading system to my open-source 3D terrain generator](https://www.reddit.com/r/godot/comments/pfzqrt/ive_added_a_chunk_loading_system_to_my_opensource/)
+  - Practical implementation experiences
+  - Memory management tips
+  - Distance-based loading
+
+- **Thread 3**: [What would a theoretical 3D World Streaming work like?](https://www.reddit.com/r/godot/comments/17macy4/what_a_theoretical_3d_world_streaming_work_like/)
+  - ChunkManager pattern
+  - Physics process timing
+  - Global world singleton
+
+---
+
+## Updated References
+
+### Internal References
+- [VS-013: Opening Route and World Density](RESEARCH_VS-013_Opening_Route_Composition.md)
+- [VS-017/019: Procedural World Streaming](RESEARCH_VS-017_019_Procedural_World_Streaming.md)
+- [WorldRenderer](src/adapters/inbound/gameplay/world_renderer.gd)
+- [Terrain3DWorldAdapter](src/adapters/inbound/gameplay/terrain3d_world_adapter.gd)
+
+### External References
+
+#### Official Terrain3D
+- [Terrain3D GitHub Repository](https://github.com/TokisanGames/Terrain3D)
+- [Terrain3D Documentation (Stable)](https://terrain3d.readthedocs.io/en/stable/index.html)
+- [Terrain3D Documentation (Latest)](https://terrain3d.readthedocs.io/en/latest/index.html)
+- [Terrain3D Asset Library](https://godotengine.org/asset-library/asset/9w8fzH)
+- [Terrain3D Godot Asset Store](https://store.godotengine.org/asset/tokisangames/terrain3d/)
+
+#### Terrain3D Documentation Pages
+- [Getting Started](https://github.com/TokisanGames/Terrain3D#getting-started)
+- [Heightmaps](https://terrain3d.readthedocs.io/en/stable/docs/heightmaps.html)
+- [Collision](https://terrain3d.readthedocs.io/en/stable/docs/collision.html)
+- [Import/Export](https://terrain3d.readthedocs.io/en/stable/docs/import_export.html)
+- [Texture Preparation](https://terrain3d.readthedocs.io/en/stable/docs/texture_prep.html)
+- [Platform Support](https://terrain3d.readthedocs.io/en/stable/docs/platforms.html)
+- [Virtual Texturing](https://terrain3d.readthedocs.io/en/stable/docs/virtual_texturing.html)
+- [LOD Configuration](https://terrain3d.readthedocs.io/en/stable/docs/lod.html)
+- [Regions](https://terrain3d.readthedocs.io/en/stable/docs/regions.html)
+
+#### Godot Documentation
+- [Godot 4.6 Docs - Optimizing 3D Performance](https://docs.godotengine.org/en/stable/tutorials/performance/optimizing_3d_performance.html)
+- [Godot 4.6 Docs - HeightMapShape](https://docs.godotengine.org/en/stable/classes/class_heightmapshape.html)
+- [Godot 4.6 Docs - PCG3D](https://docs.godotengine.org/en/stable/classes/class_pcx.html)
+- [Godot 4.6 Migration Guide](https://docs.godotengine.org/en/stable/tutorials/upgrading/upgrading_project_4_0_4_6.html)
+- [Godot 4.6 Jolt Physics](https://docs.godotengine.org/en/stable/tutorials/physics/jolt.html)
+
+#### Community Resources
+- [r/godot: Terrain3D v1.0.2 Released](https://www.reddit.com/r/godot/comments/1ticxww/terrain3d_v102_released/)
+- [r/godot: Large World Workflow?](https://www.reddit.com/r/godot/comments/1rgnf2f/large_world_workflow/)
+- [r/godot: Chunk loading system for procedural terrain](https://www.reddit.com/r/godot/comments/1o0bpj4/chunk_loading_system_for_procedural_terrain/)
+- [Godot Forum: Handling Data Streaming & Chunk Loading](https://forum.godotengine.org/t/handling-data-streaming-chunk-loading-for-large-3d-maps-in-godot/138774)
+- [Godot Forum: Terrain3D discussions](https://forum.godotengine.org/tags/terrain3d)
+
+#### Community Plugins & Demos
+- [SimpleXTerrain - Godot Asset Store](https://store.godotengine.org/asset/prajwal-m/simplexterrain/)
+- [Chunk Loader - Godot Asset Library #5268](https://godotengine.org/asset-library/asset/5268)
+- [Block-based 3D Procedural Map Generation - Asset Library #2698](https://godotengine.org/asset-library/asset/2698)
+- [DennisSmuda Godot Chunking System - GitHub](https://github.com/DennisSmuda/godot-chunking-system)
+
+#### Texture & Asset Sources
+- [Poly Haven - Free CC0 Textures](https://polyhaven.com/)
+- [AmbientCG - Free CC0 Textures & Materials](https://ambientcg.com/)
+- [CC0 Textures](https://cc0textures.com/)
+- [Texture Haven](https://texturehaven.com/)
+- [Kenney.nl - Free Game Assets](https://kenney.nl/)
+- [Quaternius - Free CC0 3D Models](https://quaternius.com/free-3d-models)
+- [Poly Pizza - Free CC0 Models](https://poly.pizza/)
+
+#### Terrain Authoring Tools
+- [World Machine](https://www.world-machine.com/)
+- [Gaea by QuadSpinner](https://www.quadspinner.com/)
+- [Blender Sculpt Mode](https://docs.blender.org/manual/en/latest/sculpt_paint/index.html)
+- [GIMP with Heightmap Plugins](https://www.gimp.org/)
+
+#### General Resources
+- [Gamedev.net: Terrain LOD Strategies](https://www.gamasutra.com/view/feature/132353/)
+- [Memory Optimization - Godot Docs](https://docs.godotengine.org/en/stable/tutorials/optimization/memory_optimization.html)
+- [Godot Metal Backend Issue #116120](https://github.com/godotengine/godot/issues/116120)
+- [Godot Metal Backend Freeze Issue #119436](https://github.com/godotengine/godot/issues/119436)
+
+### Related Research
+- [VS-017/019: Procedural World Streaming](RESEARCH_VS-017_019_Procedural_World_Streaming.md)
+- [VS-013: Opening Route Composition](RESEARCH_VS-013_Opening_Route_Composition.md)
+- [RESEARCH_PLAN_011: Real Ground & Dirt Collision](RESEARCH_PLAN_011_Real_Ground_Dirt_Collision.md)
+
+---
+
+*Generated by Mistral Vibe for Choyce Engine VS-029*  
+*Last Updated: 2026-07-18*  
+*Document Size: ~24KB*

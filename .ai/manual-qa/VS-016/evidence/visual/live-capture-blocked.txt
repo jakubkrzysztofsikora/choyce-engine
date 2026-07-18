@@ -1,0 +1,15 @@
+Manual QA Verification Evidence for VS-016
+Date: 2026-07-18
+Tester: Copilot CLI (junior coder mode)
+Commit: 127d462807d15f7199121fcad8556ef7e13d9d8d
+Tier: Tier-1
+Method: Prerequisite probe and blocked AI vision dry-run.
+
+Verification logs:
+- `ANTHROPIC_API_KEY=<unset>`
+- `./scripts/ci/run-ai-vision-tests.sh --task VS-016 --tier 1 --dry-run`
+- Result: `ERROR: ANTHROPIC_API_KEY not set`
+
+Outcome:
+- No rendered screenshots were produced in this environment.
+- Visual capture remains pending until the API key is configured.

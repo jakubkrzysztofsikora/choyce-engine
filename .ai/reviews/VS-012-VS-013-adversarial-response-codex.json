@@ -1,0 +1,134 @@
+{
+  "task_id": "VS-012/VS-013",
+  "reviewer": "codex",
+  "response_to": ["VS-012-VS-013-current-opening-adversarial-review.json", "VS-012-VS-013-water-bridge-adversarial-review.json"],
+  "decision": "changes_planned",
+  "findings": [
+    {
+      "severity": "blocker",
+      "message": "Addressing: Incompatible terrain, foliage, architecture, character, and prop material languages",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Apply unified Choyce color palette (#D4C4A8, #8FA68A, #B8D8D8, #8B6B51, #A66B5A, #E8A862) to all materials in opening scene",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "blocker",
+      "message": "Addressing: Overlapping fixed-height route planes pasted onto terrain",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Replace fixed-height planes with terrain-conforming mesh paths using PCG3D or manual sculpting. Remove duplicate geometry layers.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "blocker",
+      "message": "Addressing: Bridge approaches and rectangular river/bank presentation insufficiently authored",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Replace primitive bridge geometry with authored bridge model from Kenney Nature Pack. Add proper bank shading, erosion textures, and pebble/sand transition materials. Ensure bridge rails have collision.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "blocker",
+      "message": "Addressing: Bridge reads as primitive deck geometry with disconnected stair chunks",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Import Kenney bridge model (bridgeWood.glb) with proper deck, rails, and support beams. Connect stairs with smooth transitions. Add wood material with correct PBR values (metallic: 0.0, roughness: 0.6).",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "high",
+      "message": "Addressing: 2.3km water surface has insufficient mesh density for wave frequency",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Increase water mesh subdivision to 256x256. Apply proper normal map for wave detail. Adjust wave scale and speed parameters for convincing water movement.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "high",
+      "message": "Addressing: Water surface lacks convincing shore/depth treatment",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Add shore gradient: shallow (#D0E8E8) -> medium (#B8D8D8) -> deep (#8AABA8). Implement foam particles at shore edges. Add subtle depth fog under water.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "high",
+      "message": "Addressing: Vegetation scale/density insufficient for child-facing opening",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Increase tree scale to 1.5x-2.0x. Use Kenney Nature Pack trees with proper LOD. Add underbrush clusters. Implement density gradient (dense near paths, sparse at edges).",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "high",
+      "message": "Addressing: Object grounding issues",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Enable contact shadows for all props. Add small ground displacement under objects. Implement ambient occlusion bake for static props.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "high",
+      "message": "Addressing: Persistent HUD chrome visible in opening",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd",
+      "status": "PLANNED",
+      "action": "Hide HUD elements during opening cinematic. Implement fade-in after player control begins. Remove debug text overlays.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "high",
+      "message": "Addressing: First-action affordance not readable for children",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd",
+      "status": "PLANNED",
+      "action": "Add glowing interaction prompt for first action. Implement hand icon cursor change on hover. Add subtle pulsing animation to interactable objects.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "high",
+      "message": "Addressing: Missing bidirectional player traversal validation for bridge",
+      "path": "tests/adapters/inbound/test_world_traversal.gd",
+      "status": "PLANNED",
+      "action": "Create automated test: player walks from bank A to bank B, verifies dry deck, checks rail collision, confirms bidirectionality.",
+      "eta": "2026-07-19"
+    },
+    {
+      "severity": "medium",
+      "message": "Addressing: Path overlays use hard-edged fixed-height planes breaking at bridge approaches",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "status": "PLANNED",
+      "action": "Replace path planes with decal-based or mesh-based paths that conform to terrain. Use soft-edge textures with alpha blending.",
+      "eta": "2026-07-19"
+    }
+  ],
+  "checklist": {
+    "material_compatibility": {
+      "unified_palette": "PLANNED - Apply Choyce color palette to all opening assets",
+      "pbr_materials": "PLANNED - Ensure all materials use StandardMaterial3D with correct PBR values",
+      "no_mixed_packs": "PLANNED - Verify no disconnected asset packs in same composition"
+    },
+    "geometry_quality": {
+      "bridge_model": "PLANNED - Replace primitive geometry with Kenney bridge model",
+      "water_mesh": "PLANNED - Increase subdivision and add proper materials",
+      "path_system": "PLANNED - Replace fixed-height planes with terrain-conforming paths",
+      "bank_transitions": "PLANNED - Add proper shore/depth treatment"
+    },
+    "visual_fidelity": {
+      "vegetation_scale": "PLANNED - Increase tree and bush scale for readability",
+      "object_grounding": "PLANNED - Add contact shadows and ground displacement",
+      "no_hud_chrome": "PLANNED - Hide HUD during opening cinematic",
+      "affordance_clarity": "PLANNED - Add clear first-action visual cues"
+    },
+    "testing_coverage": {
+      "bridge_traversal": "PLANNED - Automated bidirectional traversal test",
+      "water_validation": "PLANNED - Water mesh density and wave validation",
+      "path_continuity": "PLANNED - Path overlay continuity at bridge approaches"
+    }
+  },
+  "summary": "Codex response to adversarial visual review. All blocker and high-severity findings acknowledged with concrete remediation plans. Unified color palette, proper bridge/water geometry, terrain-conforming paths, vegetation scaling, object grounding, HUD cleanup, and first-action affordance all planned for implementation by 2026-07-19. Automated tests will validate fixes before resubmission for re-review.",
+  "date": "2026-07-18",
+  "research_docs": [
+    ".ai/research-compendium/RESEARCH_VS-012_Visual_Art_Direction.md",
+    ".ai/research-compendium/RESEARCH_VS-013_Opening_Route_Composition.md"
+  ]
+}

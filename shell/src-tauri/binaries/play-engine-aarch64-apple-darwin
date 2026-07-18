@@ -1,0 +1,5 @@
+#!/bin/sh
+echo "[shell_bridge] auth_token=mock_sidecar_token_1234567890 port=9876"
+while true; do
+  sleep 1
+done

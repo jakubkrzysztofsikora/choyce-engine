@@ -3,16 +3,30 @@ extends CharacterBody3D
 
 const WALK_SPEED := 5.0
 const SPRINT_SPEED := 10.0
+const MOVEMENT_DECELERATION := 20.0
 const JUMP_VELOCITY := 4.5
 const MOUSE_SENSITIVITY := 0.003
 const VERTICAL_LOOK_LIMIT := 1.2
 const COYOTE_TIME := 0.1
 const JUMP_BUFFER_TIME := 0.1
 const FOOTSTEP_INTERVAL := 0.4
-const BASE_FOV := 75.0
-const SPRINT_FOV := 82.0
+# Match the composed third-person opening camera. A 64–70° lens made the
+# real bridge and 12m home read as tiny props surrounded by empty lawn; 55°
+# still left the live frame feeling like a small diorama. A restrained 50°
+# lens gives the opening destination and child hero a more legible scale.
+const BASE_FOV := 50.0
+const SPRINT_FOV := 54.0
 const GRAVITY_RISE_MULTIPLIER := 1.0
 const GRAVITY_FALL_MULTIPLIER := 1.35
+const BUILD_RAY_RANGE := 8.0
+const WATER_MOVE_MULTIPLIER := 0.48
+const WATER_SINK_SPEED := 0.18
+const WATER_SWIM_UP_VELOCITY := 3.4
+const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
+const HERO_CLOTHING_SHADER := preload("res://src/adapters/inbound/gameplay/shaders/hero_clothing.gdshader")
+const KENNEY_TOON_COLORMAP := preload("res://data/models/kenney/toon_characters/Models/GLB format/Textures/colormap.png")
+const KENNEY_BAG_SCENE := preload("res://data/models/kenney/food_kit/GLB/bag.glb")
+const ZIEMEK_HOODIE_PATTERN := preload("res://data/textures/generated/ziemek-hoodie-fabric-v1.png")
 
 signal footstep
 signal landed
@@ -24,6 +38,11 @@ signal attacked(damage: int, hit_position: Vector3)
 ## attack origin so the kid hears their fist cutting air (otherwise
 ## misses are silent and a 7yo thinks the button is broken).
 signal swing_missed(attack_origin: Vector3)
+## Optional sandbox gag. The runtime owns its VFX, SFX and NPC social response.
+signal farted(effect_origin: Vector3)
+## Tool use stays distinct from bare-hand combat. Runtime resolves the resource
+## hit/reward; this controller owns the input, aim and visible swing.
+signal tool_used(tool_id: String, effect_origin: Vector3, forward: Vector3)
 signal hp_changed(current: int, max_hp: int)
 signal player_defeated
 
@@ -36,10 +55,49 @@ const ATTACK_ARC_RADIANS := 1.4   ## ~80° front cone
 const STARTER_WEAPON_DAMAGE := 4
 const PLAYER_MAX_HP := 100
 const PLAYER_REGEN_PER_SEC := 2.0
+## Adv Y M3 fix: combo-window cooldown system
+const COMBO_WINDOW_SEC := 0.5
+const COMBO_COOLDOWN := 0.18
+const COMBO_RECOVERY_SEC := 0.6
+const MAX_COMBO_SWINGS := 2
+const SILLY_FART_COOLDOWN := 2.5
 
 var _health: HealthState
 var _attack_cooldown: float = 0.0
 var _equipped_weapon_damage: int = STARTER_WEAPON_DAMAGE
+var _last_swing_time: float = 0.0
+var _combo_count: int = 0
+var _silly_fart_cooldown := 0.0
+## Input action prefix for local co-op. "" = player 1 (default, solo path
+## unchanged). "p2_" routes movement/jump/sprint/attack to the P2 action set
+## the split-screen runtime registers (arrow keys / RCtrl / RShift).
+var _act_prefix: String = ""
+
+
+## Route this controller's input to a distinct action set (local co-op P2).
+## Call before the first physics tick. Empty prefix keeps the P1 bindings.
+func set_action_prefix(prefix: String) -> void:
+	_act_prefix = prefix
+
+
+func _act(name: String) -> String:
+	return _act_prefix + name
+
+
+var _input_disabled: bool = false
+
+func set_input_disabled(disabled: bool) -> void:
+	_input_disabled = disabled
+	if disabled:
+		# Release mouse capture so user can click chat LineEdit
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	else:
+		# Capture mouse again for 3D navigation
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+func is_input_disabled() -> bool:
+	return _input_disabled
+
 
 # Procedural Muay Thai fight animation state. No skeletal-bone work
 # required — animates the existing _character_mesh wrapper via tween
@@ -53,8 +111,12 @@ const MUAY_THAI_FORWARD_LEAN := 0.10 ## ~6° permanent forward stance
 const MUAY_THAI_BOUNCE_AMP := 0.04
 const MUAY_THAI_BOUNCE_FREQ := 1.6   ## Hz
 const MUAY_THAI_POSE_LERP := 6.0
+## Adv Y M4 fix: increased squash for visible punch feedback
+## Was (1.08, 0.94, 1.08) — too small to read at speed
+const PUNCH_SQUASH_SCALE := Vector3(1.18, 0.86, 1.18)
 
 var _punch_phase: int = 0           ## 0=jab(R), 1=cross(L), 2=elbow(R)…
+var _last_attack_style: String = "punch"
 var _is_punching: bool = false
 var _muay_thai_t: float = 0.0
 var _punch_tween: Tween = null
@@ -65,6 +127,7 @@ var _punch_tween: Tween = null
 var _build_grid: BuildGrid = null
 var _hotbar: Array = []        ## Array[String] block_ids
 var _active_slot: int = 0      ## 0-based index into _hotbar
+var _equipped_tool_id := ""
 
 ## Game-mode resolver — equipped-slot kind drives whether LMB
 ## breaks blocks (build mode) or attacks (combat mode). Lazy-init
@@ -89,12 +152,47 @@ var _head_bob_time: float = 0.0
 var _base_scale: Vector3 = Vector3.ONE
 var _camera_base_y: float = 1.6
 var _character_mesh: Node3D
+# The imported Kenney rig's visual feet do not share the CharacterBody origin.
+# Keep the calibrated resting offset separately: transient combat/fart/sit poses
+# must return to this value, never to y=0 (which reintroduces visible hovering).
+var _character_visual_ground_y := 0.0
+var _facial_performance
 var _anim_player: AnimationPlayer
+## The starting Adventure hero is Ziemek.  These are wearable pieces mounted
+## below the imported character root rather than a second character/face mesh:
+## the same rig continues to drive locomotion, tool sockets and facial acting.
+## A later local-co-op spawn can select Gniewko through the same seam.
+const HERO_IDENTITY_ZIEMEK := "ziemek"
+const HERO_IDENTITY_GNIEWKO := "gniewko"
+const ZIEMEK_HOODIE := Color("#27b8b4")
+const ZIEMEK_HOODIE_DARK := Color("#126f76")
+const ZIEMEK_CARGO := Color("#20252d")
+const ZIEMEK_SHOE := Color("#263b3e")
+const ZIEMEK_LIME := Color("#9ac941")
+const GNIEWKO_POLO := Color("#e9e1d2")
+const GNIEWKO_NAVY := Color("#202e43")
+var _hero_identity := HERO_IDENTITY_ZIEMEK
 var _current_anim: String = ""
+var _world_interaction_lock: float = 0.0
+var _in_water: bool = false
+const VOID_RECOVERY_Y := -28.0
+var _last_safe_ground_position := Vector3.ZERO
+var _sit_collision_layer: int = 0
+var _sit_collision_mask: int = 0
+var _sitting_collision_disabled := false
+## Optional runtime cache used by the nutrition/training extension. Keep the
+## controller independent from GameplayRuntime at compile time.
+var _gameplay_runtime: Object = null
 const WALK_VELOCITY_THRESHOLD := 0.5
 
 func _ready() -> void:
+	# Gentle ground snap makes authored stair wedges and terrain seams feel like
+	# a continuous walkable surface instead of a sequence of tiny collision lips.
+	floor_max_angle = deg_to_rad(52.0)
+	floor_snap_length = 0.34
+	safe_margin = 0.025
 	_health = HealthState.new(PLAYER_MAX_HP)
+	_last_safe_ground_position = global_position
 	hp_changed.emit(_health.current_hp, _health.max_hp)
 	_build_ghost_preview()
 	_camera = $Camera3D
@@ -116,6 +214,10 @@ func _ready() -> void:
 	_character_mesh = get_node_or_null("CharacterMesh")
 	if _character_mesh != null:
 		_character_mesh.rotation.y = PI
+		_ground_character_visual()
+		# Imported Kenney characters have no reliable facial blend-shapes. Add a
+		# small local face rig so the player blinks and visibly reacts to play.
+		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(_character_mesh)
 		# Kenney GLB embeds an AnimationPlayer with idle/walk/sprint/jump/fall.
 		_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		if _anim_player != null:
@@ -147,9 +249,68 @@ func _ready() -> void:
 			# Return to velocity-driven movement anim when the clip finishes.
 			if not _anim_player.animation_finished.is_connected(_on_anim_finished):
 				_anim_player.animation_finished.connect(_on_anim_finished)
+		# Make the authored protagonist readable even before the gameplay runtime
+		# loads the saved customization.  That later pass keeps this layer and can
+		# recolor it when the player deliberately changes a cosmetic choice.
+		_apply_hero_identity_layer()
+
+
+## Imported character scenes are not consistent about their root origin. The
+## old model's feet were authored above its scene root, so physics put the
+## capsule on the terrain while the visible child hovered in mid-air. Measure
+## the real mesh bounds in CharacterMesh-local coordinates and place its lowest
+## point at the capsule's actual floor-contact plane.
+func _ground_character_visual() -> void:
+	if _character_mesh == null:
+		return
+	var lowest_y := INF
+	for mesh_variant in _character_mesh.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := mesh_variant as MeshInstance3D
+		if mesh_instance == null or mesh_instance.mesh == null:
+			continue
+		var mesh_aabb := mesh_instance.get_aabb()
+		for corner_index in range(8):
+			var local_corner := mesh_aabb.get_endpoint(corner_index)
+			var character_local_corner := _character_mesh.to_local(mesh_instance.to_global(local_corner))
+			lowest_y = minf(lowest_y, character_local_corner.y)
+	if is_finite(lowest_y):
+		_character_mesh.position.y += _controller_floor_local_y() - lowest_y
+		_character_visual_ground_y = _character_mesh.position.y
+
+
+## CharacterBody3D's origin is not necessarily its floor. Keep this derived
+## from the collision shape: with the current capsule (centre +0.8, height
+## 1.8), the physical floor is y=-0.1—not y=0. Aligning to the root caused a
+## subtle but very visible hover in the third-person camera.
+func _controller_floor_local_y() -> float:
+	var collision := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision == null or collision.shape == null:
+		return 0.0
+	if collision.shape is CapsuleShape3D:
+		return collision.position.y - (collision.shape as CapsuleShape3D).height * 0.5
+	if collision.shape is BoxShape3D:
+		return collision.position.y - (collision.shape as BoxShape3D).size.y * 0.5
+	if collision.shape is SphereShape3D:
+		return collision.position.y - (collision.shape as SphereShape3D).radius
+	return 0.0
 
 func _physics_process(delta: float) -> void:
+	if global_position.y < VOID_RECOVERY_Y:
+		_recover_from_void()
+		return
 	if not is_processing():
+		return
+	if _input_disabled:
+		var gravity := ProjectSettings.get_setting("physics/3d/default_gravity") as float
+		if not is_on_floor():
+			velocity.y -= gravity * delta
+		velocity.x = move_toward(velocity.x, 0, MOVEMENT_DECELERATION * delta)
+		velocity.z = move_toward(velocity.z, 0, MOVEMENT_DECELERATION * delta)
+		move_and_slide()
+		return
+	if _world_interaction_lock > 0.0:
+		_world_interaction_lock -= delta
+		velocity = Vector3.ZERO
 		return
 
 	# Coyote time
@@ -159,30 +320,39 @@ func _physics_process(delta: float) -> void:
 		_coyote_time -= delta
 
 	# Jump buffer
-	if Input.is_action_just_pressed("jump"):
+	if Input.is_action_just_pressed(_act("jump")):
 		_jump_buffer = JUMP_BUFFER_TIME
 	else:
 		_jump_buffer -= delta
 
-	# Better gravity curve
+	# Better gravity curve. Water is an Area3D volume, not an invisible wall:
+	# gravity turns into a gentle sink and jump becomes a small swim stroke.
 	var gravity := ProjectSettings.get_setting("physics/3d/default_gravity") as float
-	if not is_on_floor():
+	if _in_water:
+		velocity.y = move_toward(velocity.y, -WATER_SINK_SPEED, gravity * 0.42 * delta)
+	elif not is_on_floor():
 		var gravity_mult := GRAVITY_RISE_MULTIPLIER if velocity.y > 0 else GRAVITY_FALL_MULTIPLIER
 		velocity.y -= gravity * gravity_mult * delta
 
 	# Jump with coyote time and buffering
-	if _jump_buffer > 0.0 and _coyote_time > 0.0:
+	if _in_water and _jump_buffer > 0.0:
+		velocity.y = WATER_SWIM_UP_VELOCITY
+		_jump_buffer = 0.0
+		jumped.emit()
+	elif _jump_buffer > 0.0 and _coyote_time > 0.0:
 		velocity.y = JUMP_VELOCITY
 		_jump_buffer = 0.0
 		_coyote_time = 0.0
 		jumped.emit()
 
 	# Movement
-	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input_dir := Input.get_vector(_act("move_left"), _act("move_right"), _act("move_forward"), _act("move_back"))
 	var direction := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
-	var is_sprinting := Input.is_action_pressed("sprint")
+	var is_sprinting := Input.is_action_pressed(_act("sprint"))
 	var speed := SPRINT_SPEED if is_sprinting else WALK_SPEED
+	if _in_water:
+		speed *= WATER_MOVE_MULTIPLIER
 
 	if direction.length() > 0:
 		velocity.x = direction.x * speed
@@ -198,16 +368,22 @@ func _physics_process(delta: float) -> void:
 		_health.tick(delta, PLAYER_REGEN_PER_SEC)
 		hp_changed.emit(_health.current_hp, _health.max_hp)
 	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
+	_silly_fart_cooldown = maxf(_silly_fart_cooldown - delta, 0.0)
 	# Route LMB / "attack" action through GameModeService — block in
 	# active slot → break; weapon in slot → attack. Matches
 	# Minecraft Bedrock; dissolves Adv 5 #1 mouse-rebind concern.
-	if Input.is_action_just_pressed("attack") and _attack_cooldown <= 0.0:
+	if Input.is_action_just_pressed(_act("attack")) and _attack_cooldown <= 0.0:
 		_dispatch_lmb()
+	if Input.is_action_just_pressed("silly_fart") and _silly_fart_cooldown <= 0.0:
+		_perform_silly_fart()
 	# Place still bound to dedicated action (K) AND right mouse in
 	# build mode. _process_build_input handles K + 1-5.
 	_process_build_input()
 	_update_ghost_preview()
 	_update_muay_thai_idle(delta)
+
+	# VS-025: Handle nutrition and training input actions
+	_process_nutrition_training_input(delta)
 
 	# Landing detection and squash
 	if is_on_floor() and not _was_on_floor:
@@ -217,6 +393,10 @@ func _physics_process(delta: float) -> void:
 			_hard_landing_feedback()
 		_check_spring_block_launch()
 	_was_on_floor = is_on_floor()
+	if is_on_floor() and global_position.y >= VOID_RECOVERY_Y:
+		_last_safe_ground_position = global_position
+	if global_position.y < VOID_RECOVERY_Y:
+		_recover_from_void()
 
 	# Footstep rhythm
 	if is_on_floor() and direction.length() > 0:
@@ -249,6 +429,21 @@ func _physics_process(delta: float) -> void:
 		elif horiz > WALK_VELOCITY_THRESHOLD:
 			want = "sprint" if is_sprinting else "walk"
 		_play_anim(want)
+
+
+## Called by the renderer's authored water volumes. This stays on the player
+## adapter so physics response is owned by movement rather than a scenery prop.
+func set_in_water(active: bool) -> void:
+	_in_water = active
+
+
+## Dynamic Terrain3D collision can momentarily be unavailable at a streamed
+## tile boundary. Recover to the latest real floor contact instead of letting
+## a child fall forever through a visual-only gap.
+func _recover_from_void() -> void:
+	global_position = _last_safe_ground_position + Vector3.UP * 0.35
+	velocity = Vector3.ZERO
+	_in_water = false
 
 
 ## Fires when the AnimationPlayer finishes a one-shot clip (mainly
@@ -316,10 +511,11 @@ var _mouse_dragging: bool = false
 func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
+	if _input_disabled:
+		return
 
-	# FPS-style mouselook: mouse motion alone rotates the camera (no
-	# hold-to-look needed). The cursor is captured for the 3D session
-	# so motion deltas are raw. ESC releases capture so the kid can
+	# Mouse motion alone rotates the camera. The cursor is captured for the
+	# 3D session so motion deltas are raw. ESC releases capture so the kid can
 	# click HUD (back button, hotbar). LMB swings only when captured;
 	# LMB while cursor is visible falls through to HUD click handlers
 	# (Adv C B2 fix — was capturing cursor on every LMB regardless of
@@ -336,6 +532,17 @@ func _input(event: InputEvent) -> void:
 				Input.action_press("attack")
 			else:
 				Input.action_release("attack")
+			return
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			# Building was advertised as right-click but was only routed through a
+			# synthetic Input action. That action can miss the physics tick entirely,
+			# leaving a perfectly aimed ghost with no block ever placed. Place on the
+			# press event itself; UI controls consume their own pointer events before
+			# this gameplay handler receives them.
+			var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
+			if _ensure_game_mode_service().current_mode(active_kind) == GameModeService.Mode.BUILD:
+				if event.pressed:
+					_try_place_block()
 			return
 
 	if event is InputEventMouseMotion:
@@ -372,6 +579,7 @@ func _process(delta: float) -> void:
 
 func spawn_at(pos: Vector3) -> void:
 	global_position = pos
+	_last_safe_ground_position = pos
 	velocity = Vector3.ZERO
 	_was_on_floor = false
 	_coyote_time = 0.0
@@ -385,19 +593,101 @@ func spawn_at(pos: Vector3) -> void:
 		print("[player_controller] spawn_at: player=%s camera=%s current=%s" %
 			[global_position, _camera.global_position, _camera.current])
 
+
+func play_sit_at(pos: Vector3) -> void:
+	# Never disable the controller collision for a furniture pose. The former
+	# approach made a chair interaction a route through Terrain3D's streamed
+	# floor, so a child could fall forever from a perfectly ordinary table.
+	# Keep the physical body grounded; only the visible rig performs the sit.
+	_restore_sit_collision()
+	var grounded_seat := pos
+	grounded_seat.y = maxf(pos.y, _last_safe_ground_position.y)
+	global_position = grounded_seat
+	_last_safe_ground_position = grounded_seat
+	velocity = Vector3.ZERO
+	_world_interaction_lock = 1.7
+	if _character_mesh == null:
+		return
+	var standing_mesh_y := _character_mesh.position.y
+	var tween := create_tween()
+	tween.tween_property(_character_mesh, "position:y", standing_mesh_y - 0.32, 0.18)
+	tween.parallel().tween_property(_character_mesh, "rotation:x", -0.35, 0.18)
+	tween.tween_interval(1.15)
+	tween.tween_property(_character_mesh, "position:y", standing_mesh_y, 0.22)
+	tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.22)
+
+
+func _restore_sit_collision() -> void:
+	if not _sitting_collision_disabled:
+		return
+	collision_layer = _sit_collision_layer
+	collision_mask = _sit_collision_mask
+	_sitting_collision_disabled = false
+
+
+## A short, optional G-key gag with a clear cooldown. This deliberately only
+## animates the player wrapper; it does not change combat state or affect any
+## other character physically.
+func _perform_silly_fart() -> void:
+	_silly_fart_cooldown = SILLY_FART_COOLDOWN
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.SURPRISED, 0.65)
+	if _character_mesh != null and is_instance_valid(_character_mesh):
+		var tween := create_tween()
+		tween.tween_property(_character_mesh, "position:y", _character_visual_ground_y - 0.055, 0.07)
+		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.10, 0.07)
+		tween.tween_property(_character_mesh, "position:y", _character_visual_ground_y, 0.16)
+		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.16)
+	# This is intentionally the avatar's rear hip, not its face/front. The old
+	# camera-friendly offset made the green cloud read as a burp. A short rear
+	# offset and waist-height origin keep the gag legible in third person while
+	# still clearly originating from the correct end of the character.
+	var effect_origin := global_position + global_transform.basis.z * 0.52 + Vector3(0.0, 0.72, 0.0)
+	farted.emit(effect_origin)
+
+
 ## Sweep the front cone for enemies. Hit each EnemyController within
 ## ATTACK_RANGE + ATTACK_ARC. Emit `attacked` signal so gameplay
 ## runtime can spawn swing VFX / SFX.
 func _perform_attack() -> void:
-	_attack_cooldown = ATTACK_COOLDOWN
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.FOCUSED, 0.38)
+	# Adv Y M3 fix: combo-window cooldown system
+	var now := Time.get_ticks_msec() / 1000.0
+	var in_combo_window := now - _last_swing_time < COMBO_WINDOW_SEC
+	_last_swing_time = now
+	
+	# Reset combo if outside window or at max swings
+	if not in_combo_window:
+		_combo_count = 0
+	
+	# After phase 3 (kick-left), enforce hard recovery
+	# Check if this was the last swing in the combo
+	var is_last_combo_swing := _punch_phase % 4 == 3  # phase 3 is the last in 0-3 cycle
+	
+	if is_last_combo_swing:
+		# Hard recovery after kick
+		_attack_cooldown = COMBO_RECOVERY_SEC
+		_combo_count = 0
+	elif _combo_count < MAX_COMBO_SWINGS and in_combo_window:
+		# Fast combo swing
+		_attack_cooldown = COMBO_COOLDOWN
+		_combo_count += 1
+	else:
+		# Normal cooldown
+		_attack_cooldown = ATTACK_COOLDOWN
+		_combo_count = 1
+	
 	# Squash on the MESH, not on `self` (CharacterBody3D parent of
 	# Camera3D). Was scaling self → camera scaled with it →
 	# whole-screen "wobble". Cosmetic-only on mesh keeps camera
 	# steady. (User reported "screen jumps weirdly when punching".)
 	if _character_mesh != null:
 		var attack_tween := create_tween()
+		# Adv Y M4 fix: bigger squash for visible punch feedback
+		# Was (1.08, 0.94, 1.08) — too small to read at speed
 		attack_tween.tween_property(_character_mesh, "scale",
-			Vector3(1.08, 0.94, 1.08), 0.06)
+			PUNCH_SQUASH_SCALE, 0.08)
 		attack_tween.tween_property(_character_mesh, "scale",
 			Vector3.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
@@ -417,11 +707,41 @@ func _perform_attack() -> void:
 		if cam_fwd.length_squared() > 0.0001:
 			forward = cam_fwd.normalized()
 	var hit_point := hit_origin + forward * (ATTACK_RANGE * 0.5)
+	# Adv BB P0-3 fix: soft aim assist for 7yo
+	# Find nearest enemy in expanded cone and rotate toward it
+	var tree := get_tree()
+	if tree != null:
+		var best_enemy: EnemyController = null
+		var best_angle := ATTACK_ARC_RADIANS * 0.5
+		var best_distance := ATTACK_RANGE * 1.4
+		for body in tree.get_nodes_in_group("enemies"):
+			if not (body is EnemyController):
+				continue
+			var to_enemy: Vector3 = body.global_position - global_position
+			to_enemy.y = 0.0
+			var distance := to_enemy.length()
+			if distance > ATTACK_RANGE * 1.4:
+				continue
+			var angle := forward.angle_to(to_enemy.normalized())
+			if angle > ATTACK_ARC_RADIANS * 1.5:
+				continue
+			if best_enemy == null or angle < best_angle or (angle == best_angle and distance < best_distance):
+				best_enemy = body as EnemyController
+				best_angle = angle
+				best_distance = distance
+		if best_enemy != null and absf(best_angle) < 0.5:  # ~28°
+			var to_e := (best_enemy.global_position - global_position)
+			to_e.y = 0.0
+			var assist_yaw := forward.signed_angle_to(to_e.normalized(), Vector3.UP)
+			if absf(assist_yaw) < 0.5:
+				rotate_y(assist_yaw * 0.6)  # 60% of the way — visible but not robotic
+				forward = -transform.basis.z.normalized()  # Update forward after rotation
+				hit_point = hit_origin + forward * (ATTACK_RANGE * 0.5)
+	
 	attacked.emit(_equipped_weapon_damage, hit_point)
 
 	# Hit-detect: scan scene tree for EnemyControllers in arc.
 	# (Cheap O(N) — kid maps will rarely hold > 20 enemies.)
-	var tree := get_tree()
 	if tree == null:
 		return
 	var hit_count := 0
@@ -436,7 +756,8 @@ func _perform_attack() -> void:
 		var angle := forward.angle_to(to_enemy.normalized())
 		if angle > ATTACK_ARC_RADIANS * 0.5:
 			continue
-		(body as EnemyController).apply_damage(_equipped_weapon_damage, global_position)
+		# Adv Y H5 fix: pass attack style for 2x kick knockback
+		(body as EnemyController).apply_damage(_equipped_weapon_damage, global_position, _last_attack_style)
 		hit_count += 1
 	# Adv Y C2 fix — whoosh on miss (no enemy in cone). Routed via
 	# signal so audio plumbing stays in gameplay_runtime; this layer
@@ -466,11 +787,12 @@ func _trigger_punch_animation() -> void:
 		_punch_tween.kill()
 	if _character_mesh != null:
 		_character_mesh.rotation = Vector3(0, PI, 0)
-		_character_mesh.position = Vector3.ZERO
+		_character_mesh.position = Vector3(0.0, _character_visual_ground_y, 0.0)
 
 	_is_punching = true
 	var phase := _punch_phase % ATTACK_ANIMS.size()
 	_punch_phase += 1
+	_last_attack_style = "kick" if phase >= 2 else "punch"
 	var clip: String = ATTACK_ANIMS[phase]
 
 	# Restart even when the previous clip name matches (rapid LMB on
@@ -499,6 +821,10 @@ func _trigger_punch_animation() -> void:
 	if anim != null:
 		anim_len = anim.length + 0.1
 	get_tree().create_timer(anim_len, true, false, true).timeout.connect(_on_punch_watchdog)
+
+
+func get_last_attack_style() -> String:
+	return _last_attack_style
 
 
 func _on_punch_watchdog() -> void:
@@ -543,6 +869,8 @@ func apply_damage_from_enemy(amount: int, source_position: Vector3) -> void:
 		return
 	if not _health.apply_damage(amount):
 		return
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.HURT, 0.68)
 	hp_changed.emit(_health.current_hp, _health.max_hp)
 	# Knockback away from source. Add to existing horizontal velocity
 	# (not overwrite) and only boost Y if the kid isn't already
@@ -562,6 +890,122 @@ func get_health() -> HealthState:
 
 func equip_weapon_damage(damage: int) -> void:
 	_equipped_weapon_damage = maxi(damage, 1)
+
+
+const _SWORD_1H := "res://data/models/kaykit/adventurers/assets/sword_1handed.gltf"
+const _SWORD_2H := "res://data/models/kaykit/adventurers/assets/sword_2handed.gltf"
+const _AXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-axe.glb"
+const _PICKAXE := "res://data/models/kenney/survival_kit/Models/GLB format/tool-pickaxe.glb"
+var _held_weapon: Node3D = null
+var _held_item_anchor: BoneAttachment3D = null
+var _held_visual_tier_id := ""
+
+## Show a real weapon model in the kid's hand for sword tiers. Bare hand
+## (fist/stick) keeps the Muay Thai animation with nothing held. The 2-handed
+## "epic" sword reads as the FF-style big blade. Silent no-op if the model or
+## the character mesh is missing (procedural fallback stays bare-hand).
+func set_weapon_visual(tier_id: String) -> void:
+	_held_visual_tier_id = tier_id
+	if _held_weapon != null and is_instance_valid(_held_weapon):
+		_held_weapon.queue_free()
+		_held_weapon = null
+	if _character_mesh == null:
+		return
+	var model_path := ""
+	match tier_id:
+		"sword_iron": model_path = _SWORD_1H
+		"sword_epic": model_path = _SWORD_2H
+		"tool_axe": model_path = _AXE
+		"tool_pickaxe": model_path = _PICKAXE
+		_:
+			_held_visual_tier_id = ""
+			return  # fist / stick — bare-handed Muay Thai
+	if not ResourceLoader.exists(model_path):
+		return
+	var packed: PackedScene = load(model_path)
+	if packed == null:
+		return
+	_held_weapon = packed.instantiate()
+	var anchor := _ensure_held_item_anchor()
+	(anchor if anchor != null else _character_mesh).add_child(_held_weapon)
+	# This compact rig has no separate hand bone: `arm-right` is the final bone
+	# in the real skin hierarchy. Keep the grip inside that bone's local frame
+	# so idle, walk and attack animation carry the tool instead of letting it
+	# orbit the character as a world-space prop.
+	_held_weapon.position = Vector3(0.0, -0.115, 0.018)
+	_held_weapon.rotation_degrees = Vector3(0.0, 0.0, -12.0)
+	_held_weapon.scale = Vector3.ONE * (0.88 if tier_id.begins_with("tool_") else 1.0)
+
+
+func _ensure_held_item_anchor() -> BoneAttachment3D:
+	if _held_item_anchor != null and is_instance_valid(_held_item_anchor):
+		return _held_item_anchor
+	if _character_mesh == null:
+		return null
+	var skeleton := _character_mesh.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton == null or skeleton.find_bone("arm-right") < 0:
+		return null
+	_held_item_anchor = BoneAttachment3D.new()
+	_held_item_anchor.name = "HeldItemArmRightAnchor"
+	_held_item_anchor.bone_name = "arm-right"
+	skeleton.add_child(_held_item_anchor)
+	return _held_item_anchor
+
+
+func equip_tool(tool_id: String) -> void:
+	if tool_id not in ["tool_axe", "tool_pickaxe"]:
+		return
+	var slot := _hotbar.find(tool_id)
+	if slot < 0:
+		if _hotbar.is_empty():
+			_hotbar.append(tool_id)
+			slot = 0
+		else:
+			_hotbar[0] = tool_id
+			slot = 0
+	_select_hotbar_slot(slot)
+
+
+func has_equipped_tool(tool_id: String) -> bool:
+	return _equipped_tool_id == tool_id
+
+
+func get_hotbar_items() -> Array:
+	return _hotbar.duplicate()
+
+
+func get_active_hotbar_item() -> String:
+	return String(_hotbar[_active_slot]) if _active_slot >= 0 and _active_slot < _hotbar.size() else ""
+
+
+func _select_hotbar_slot(slot: int) -> void:
+	if slot < 0 or slot >= _hotbar.size():
+		return
+	_active_slot = slot
+	var item := String(_hotbar[_active_slot])
+	if item in ["tool_axe", "tool_pickaxe"]:
+		_equipped_tool_id = item
+		set_weapon_visual(item)
+	else:
+		_equipped_tool_id = ""
+		set_weapon_visual("")
+	hotbar_changed.emit(_active_slot, item)
+
+
+func select_creative_build_item(item_id: String) -> void:
+	if item_id in ["tool_axe", "tool_pickaxe"]:
+		equip_tool(item_id)
+		return
+	var catalog_ids: Array[String] = []
+	for kind in BlockKind.default_catalog():
+		catalog_ids.append((kind as BlockKind).block_id)
+	if item_id not in catalog_ids:
+		return
+	if _hotbar.size() < 2:
+		_hotbar.append(item_id)
+	else:
+		_hotbar[1] = item_id
+	_select_hotbar_slot(1)
 
 
 ## Build a translucent BoxMesh that shows where the next block will
@@ -636,8 +1080,34 @@ func _dispatch_lmb() -> void:
 		GameModeService.Mode.BUILD:
 			_try_break_block()
 			_attack_cooldown = ATTACK_COOLDOWN * 0.5  ## faster mining than swinging
+		GameModeService.Mode.TOOL:
+			_perform_tool_action(active_kind)
 		_:
 			_perform_attack()
+
+
+func _perform_tool_action(tool_id: String) -> void:
+	_attack_cooldown = ATTACK_COOLDOWN
+	_last_attack_style = "axe" if tool_id == "tool_axe" else "pickaxe"
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.FOCUSED, 0.35)
+	_trigger_tool_animation(tool_id)
+	var forward := -transform.basis.z
+	if _camera != null:
+		forward = -_camera.global_transform.basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.0001:
+		forward = -transform.basis.z
+	forward = forward.normalized()
+	tool_used.emit(tool_id, global_position + Vector3.UP * 0.85 + forward * 0.9, forward)
+
+
+func _trigger_tool_animation(tool_id: String = "") -> void:
+	# Never tween the model independently of the limb. That made the axe look
+	# like it was flying by itself. The tool is bone-attached, and this uses the
+	# same real skeletal strike clip that moves the right arm.
+	_trigger_punch_animation()
+	_last_attack_style = "axe" if tool_id == "tool_axe" else "pickaxe"
 
 
 func _ensure_game_mode_service() -> GameModeService:
@@ -653,13 +1123,10 @@ func _ensure_game_mode_service() -> GameModeService:
 ## 4 blocks from the catalog. Number keys 1..5 cycle.
 func setup_build_grid(grid: BuildGrid) -> void:
 	_build_grid = grid
-	var default := BlockKind.default_catalog()
-	_hotbar.clear()
-	_hotbar.append("fist")   ## slot 0 = weapon → COMBAT mode default
-	for i in mini(default.size(), 4):
-		_hotbar.append((default[i] as BlockKind).block_id)
-	_active_slot = 0
-	hotbar_changed.emit(_active_slot, _hotbar[_active_slot])
+	# Creative starts with real tools and materials. Selecting a material stows
+	# the tool without deleting it, so the five slots always remain dependable.
+	_hotbar = ["tool_axe", "tool_pickaxe", "grass", "wood_oak", "stone"]
+	_select_hotbar_slot(0)
 
 
 func _process_build_input() -> void:
@@ -667,42 +1134,80 @@ func _process_build_input() -> void:
 		return
 	# Hotbar slot selection.
 	for i in range(_hotbar.size()):
-		if Input.is_action_just_pressed("hotbar_%d" % (i + 1)):
-			_active_slot = i
-			hotbar_changed.emit(_active_slot, _hotbar[i])
+		if Input.is_action_just_pressed(_act("hotbar_%d" % (i + 1))):
+			_select_hotbar_slot(i)
 	# Place or break — raycast 6m ahead.
-	if Input.is_action_just_pressed("place_block"):
+	if Input.is_action_just_pressed(_act("place_block")):
 		_try_place_block()
-	if Input.is_action_just_pressed("break_block"):
+	if Input.is_action_just_pressed(_act("break_block")):
 		_try_break_block()
+	if Input.is_action_just_pressed(_act("undo")) or Input.is_action_just_pressed("undo"):
+		_try_undo()
+
+
+func _try_undo() -> void:
+	if _build_grid != null:
+		_build_grid.undo_last_action()
 
 
 func _build_raycast() -> Dictionary:
 	if _build_grid == null:
 		return {}
-	var origin := global_position + Vector3(0, 0.8, 0)
+	# TPP placement must follow the camera's composition, never the character's
+	# hips. The old body-forward ray put the block beside the thing the child was
+	# visibly pointing at, which made building feel arbitrary.
+	var origin := global_position + Vector3(0, 1.0, 0)
 	var forward := -transform.basis.z.normalized()
-	var end := origin + forward * 6.0
+	if _camera != null:
+		var viewport := _camera.get_viewport()
+		if viewport != null:
+			var screen_center := viewport.get_visible_rect().size * 0.5
+			origin = _camera.project_ray_origin(screen_center)
+			forward = _camera.project_ray_normal(screen_center).normalized()
+	var end := origin + forward * BUILD_RAY_RANGE
 	var space := get_world_3d().direct_space_state
 	var params := PhysicsRayQueryParameters3D.create(origin, end, 1, [self])
-	return space.intersect_ray(params)
+	var hit := space.intersect_ray(params)
+	if not hit.is_empty():
+		return hit
+	# Terrain3D can be briefly absent from a forward ray while a tile streams in.
+	# Resolve the same camera aim against a vertical ground probe before using the
+	# old y=0 fallback; otherwise every creative block silently appeared buried
+	# whenever the surrounding terrain was raised above the global origin.
+	var probe_distance := BUILD_RAY_RANGE * 0.72
+	if absf(forward.y) > 0.01:
+		probe_distance = clampf(absf(origin.y / forward.y), 2.0, BUILD_RAY_RANGE)
+	var probe_center := origin + forward * probe_distance
+	var probe_top := Vector3(probe_center.x, maxf(origin.y + 18.0, probe_center.y + 18.0), probe_center.z)
+	var probe_bottom := probe_top + Vector3.DOWN * 140.0
+	var probe_params := PhysicsRayQueryParameters3D.create(probe_top, probe_bottom, 1, [self])
+	var ground_hit := space.intersect_ray(probe_params)
+	if not ground_hit.is_empty():
+		return ground_hit
+	# When the camera looks over empty ground, retain an intuitive TPP target
+	# rather than falling back to a body-relative guess. The visual ghost makes
+	# the exact snapped cell explicit before the child clicks.
+	if absf(forward.y) > 0.0001:
+		var distance_to_ground := -origin.y / forward.y
+		if distance_to_ground > 0.0 and distance_to_ground <= BUILD_RAY_RANGE:
+			return {"position": origin + forward * distance_to_ground, "normal": Vector3.UP}
+	return {}
 
 
 func _try_place_block() -> void:
+	var active_kind := get_active_hotbar_item()
+	if _ensure_game_mode_service().current_mode(active_kind) != GameModeService.Mode.BUILD:
+		return
 	var hit := _build_raycast()
 	var cell: Vector3i
 	if hit.is_empty():
-		# No hit — place at point 3m ahead, snapped to ground level.
-		var forward := -transform.basis.z.normalized()
-		var pos := global_position + forward * 3.0
-		pos.y = global_position.y - 0.5  ## one cell below player feet
-		cell = _build_grid.world_to_cell(pos)
+		return
 	else:
 		# Place adjacent to hit face — use normal to offset.
 		var hit_pos: Vector3 = hit.get("position", global_position)
 		var normal: Vector3 = hit.get("normal", Vector3.UP)
 		cell = _build_grid.world_to_cell(hit_pos + normal * 0.5)
-	_build_grid.place_block(cell, _hotbar[_active_slot])
+	_build_grid.place_block(cell, active_kind)
 
 
 ## On landing, check whether the cell directly below the player is a
@@ -741,3 +1246,534 @@ func _landing_squash() -> void:
 
 func _hard_landing_feedback() -> void:
 	hard_landed.emit()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Character customization (VS-022). Cosmetic only — no stat or balance impact.
+# Driven by CharacterCustomization domain type; persisted via that class.
+# ──────────────────────────────────────────────────────────────────────────────
+
+const _KENNEY_MALE_DIR := "res://data/models/kenney/toon_characters/Models/GLB format"
+const _KENNEY_FEMALE_DIR := "res://data/models/kenney/toon_characters/Models/GLB format"
+var _active_face_variant: String = "a"
+var _active_face_set: String = "male"
+
+
+## Swap the visible face/character by loading a different Kenney GLB.
+## Live at runtime so the customization panel can change the kid's look
+## mid-session without restarting the game.
+func set_face_variant(variant: String, set: String = "male") -> void:
+	if not _is_valid_face_variant(variant, set):
+		return
+	if variant == _active_face_variant and set == _active_face_set and _character_mesh != null and is_instance_valid(_character_mesh):
+		return  # no-op if same face is already mounted
+	_active_face_variant = variant
+	_active_face_set = set
+	var dir := _KENNEY_MALE_DIR if set == "male" else _KENNEY_FEMALE_DIR
+	_swap_character_glb("%s/character-%s-%s.glb" % [dir, set, variant])
+
+
+## Apply a saved/edited CharacterCustomization to the live character.
+## Handles both the face swap and the per-body-part color overrides.
+## Safe to call multiple times; subsequent calls just re-tint.
+func apply_customization(c: CharacterCustomization, enforce_hero_preset: bool = false) -> void:
+	if c == null:
+		return
+	c.clamp_in_place()
+	set_hero_identity(c.hero_identity)
+	var use_signature := enforce_hero_preset or c.use_signature_outfit
+	set_face_variant(c.face, _active_face_set)
+	_apply_customization_colors(c, use_signature)
+	_apply_hero_identity_layer(c, use_signature)
+
+
+## Select the visual identity without replacing the underlying animated rig.
+## This is intentionally cosmetic: input, save data and gameplay stats remain
+## separate from which of the two boys is shown.
+func set_hero_identity(identity: String) -> void:
+	if identity not in [HERO_IDENTITY_ZIEMEK, HERO_IDENTITY_GNIEWKO]:
+		return
+	_hero_identity = identity
+	_apply_hero_identity_layer()
+
+
+func _is_valid_face_variant(variant: String, set: String) -> bool:
+	if set != "male" and set != "female":
+		return false
+	return variant in CharacterCustomization.FACE_VARIANTS
+
+
+func _swap_character_glb(path: String) -> void:
+	if not ResourceLoader.exists(path):
+		push_warning("[player_controller] missing face GLB: %s" % path)
+		return
+	var restore_visual := _held_visual_tier_id
+	_held_item_anchor = null
+	if _character_mesh != null and is_instance_valid(_character_mesh):
+		# Remove synchronously before mounting the next GLB.  Leaving the old
+		# queued-for-deletion node in place created two CharacterMesh children for
+		# a frame, so path-based callers could pick the retired face rig.
+		remove_child(_character_mesh)
+		_character_mesh.queue_free()
+		_character_mesh = null
+	if _facial_performance != null and is_instance_valid(_facial_performance):
+		_facial_performance.queue_free()
+		_facial_performance = null
+	if _held_weapon != null and is_instance_valid(_held_weapon):
+		_held_weapon.queue_free()
+		_held_weapon = null
+	var packed := load(path) as PackedScene
+	if packed == null:
+		push_warning("[player_controller] failed to load face GLB: %s" % path)
+		return
+	var new_mesh := packed.instantiate() as Node3D
+	if new_mesh == null:
+		return
+	new_mesh.name = "CharacterMesh"
+	add_child(new_mesh)
+	_character_mesh = new_mesh
+	_setup_character_appearance()
+	if not restore_visual.is_empty():
+		set_weapon_visual(restore_visual)
+
+
+func _setup_character_appearance() -> void:
+	if _character_mesh == null or not is_instance_valid(_character_mesh):
+		return
+	_character_mesh.rotation.y = PI
+	_ground_character_visual()
+	_facial_performance = FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(_character_mesh)
+	_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if _anim_player == null:
+		return
+	for anim_name in _anim_player.get_animation_list():
+		var src := _anim_player.get_animation(anim_name)
+		if src == null:
+			continue
+		var dup := src.duplicate() as Animation
+		var lname := String(anim_name).to_lower()
+		var is_attack := String(anim_name) in ATTACK_ANIMS
+		var is_loop := false
+		if not is_attack:
+			for ln in LOOPING_ANIMS:
+				if lname.begins_with(ln):
+					is_loop = true
+					break
+		dup.loop_mode = Animation.LOOP_LINEAR if is_loop else Animation.LOOP_NONE
+		var lib := _anim_player.get_animation_library("")
+		if lib != null:
+			lib.remove_animation(anim_name)
+			lib.add_animation(anim_name, dup)
+	_play_anim("idle")
+	if not _anim_player.animation_finished.is_connected(_on_anim_finished):
+		_anim_player.animation_finished.connect(_on_anim_finished)
+	_apply_hero_identity_layer()
+
+
+func _apply_customization_colors(c: CharacterCustomization, enforce_hero_preset: bool = false) -> void:
+	if _character_mesh == null or not is_instance_valid(_character_mesh):
+		return
+	var body := _find_mesh_by_name(_character_mesh, "body-mesh")
+	if body != null:
+		# Keep the original skinned material until the hero shader is installed
+		# below.  It selectively recolours garment swatches instead of tinting
+		# skin, hair and trousers together like the old uniform treatment.
+		body.material_override = null
+	var head := _find_mesh_by_name(_character_mesh, "head-mesh")
+	if head != null:
+		_tint_mesh(head, CharacterCustomization.SKIN_PALETTE[c.skin])
+
+
+func _hero_top_color(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> Color:
+	if enforce_hero_preset or c == null:
+		return ZIEMEK_HOODIE if _hero_identity == HERO_IDENTITY_ZIEMEK else GNIEWKO_POLO
+	return CharacterCustomization.TOP_PALETTE[c.top]
+
+
+func _hero_pants_color(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> Color:
+	if enforce_hero_preset or c == null:
+		return ZIEMEK_CARGO if _hero_identity == HERO_IDENTITY_ZIEMEK else GNIEWKO_NAVY
+	return CharacterCustomization.PANTS_PALETTE[c.pants]
+
+
+func _hero_shoe_color(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> Color:
+	if enforce_hero_preset or c == null:
+		return ZIEMEK_SHOE if _hero_identity == HERO_IDENTITY_ZIEMEK else GNIEWKO_NAVY.darkened(0.25)
+	return CharacterCustomization.SHOES_PALETTE[c.shoes]
+
+
+## Recolour the real skinned garment mesh and add only a ready-made backpack.
+## The previous capsule-based clothes looked like rigid armour in third-person
+## play, so no primitive torso/leg stand-ins are kept here.
+func _apply_hero_identity_layer(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> void:
+	if _character_mesh == null or not is_instance_valid(_character_mesh):
+		return
+	var previous := _character_mesh.get_node_or_null("HeroIdentityLayer")
+	if previous != null:
+		# Detach synchronously so the replacement keeps the canonical name, then
+		# let the renderer release the old GLB materials at the end of the frame.
+		# Immediate free() was producing material-null churn while a Forward+
+		# frame still referenced the old backpack surface overrides.
+		_character_mesh.remove_child(previous)
+		previous.queue_free()
+	var layer := Node3D.new()
+	layer.name = "HeroIdentityLayer"
+	_character_mesh.add_child(layer)
+
+	var top := _hero_top_color(c, enforce_hero_preset)
+	var pants := _hero_pants_color(c, enforce_hero_preset)
+	var use_ziemek_pattern := _hero_identity == HERO_IDENTITY_ZIEMEK and (enforce_hero_preset or c == null)
+	_apply_hero_clothing_material(top, pants, use_ziemek_pattern)
+
+	# Ziemek's backpack is a supplied, textured Kenney mesh, scaled from its
+	# source bounds to sit within the child's shoulders. It reads from behind
+	# without becoming a rigid body proxy.
+	if _hero_identity == HERO_IDENTITY_ZIEMEK:
+		var backpack := KENNEY_BAG_SCENE.instantiate() as Node3D
+		if backpack == null:
+			return
+		backpack.name = "ZiemekBackpack"
+		# The source character faces +Z, while CharacterMesh rotates 180° for
+		# gameplay; its camera-visible back is therefore local -Z. Keep the bag
+		# fully outside the body depth instead of embedding it in the torso.
+		backpack.position = Vector3(0.0, 0.20, -0.33)
+		backpack.scale = Vector3.ONE * 0.34
+		_tint_identity_meshes(backpack, Color("#30373a"))
+		layer.add_child(backpack)
+		var patch := BoxMesh.new()
+		patch.size = Vector3(0.065, 0.058, 0.012)
+		_add_identity_mesh(layer, "ZiemekBackpackBadge", patch, ZIEMEK_LIME, Vector3(0.0, 0.287, -0.49))
+
+
+func _apply_hero_clothing_material(top_color: Color, pants_color: Color, use_ziemek_pattern: bool = false) -> void:
+	var body_meshes := _find_meshes_by_name_token(_character_mesh, "body-mesh")
+	if body_meshes.is_empty():
+		return
+	# Kenney GLBs split the animated torso, sleeves and lower body across several
+	# mesh instances. Applying the hoodie shader only to the first `body-mesh`
+	# left a grey torso beside turquoise sleeves in the live third-person view.
+	for body in body_meshes:
+		var material := ShaderMaterial.new()
+		material.shader = HERO_CLOTHING_SHADER
+		material.set_shader_parameter("source_albedo", KENNEY_TOON_COLORMAP)
+		material.set_shader_parameter("garment_color", top_color)
+		material.set_shader_parameter("trouser_color", pants_color)
+		material.set_shader_parameter("hoodie_pattern", ZIEMEK_HOODIE_PATTERN)
+		material.set_shader_parameter("hoodie_pattern_strength", 0.72 if use_ziemek_pattern else 0.0)
+		body.material_override = material
+
+
+func _tint_identity_meshes(root: Node, color: Color) -> void:
+	if root is MeshInstance3D:
+		_apply_identity_material(root as MeshInstance3D, color)
+	for candidate in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := candidate as MeshInstance3D
+		if mesh != null:
+			_apply_identity_material(mesh, color)
+
+
+## Some imported GLB props carry per-surface materials that survive a plain
+## material_override in the Forward+ renderer.  Override each surface too so
+## Ziemek's supplied backpack cannot fall back to the food-kit's yellow pickup
+## palette in the live third-person view.
+func _apply_identity_material(mesh: MeshInstance3D, color: Color) -> void:
+	if mesh == null:
+		return
+	var material := _flat_identity_material(color)
+	mesh.material_override = material
+	if mesh.mesh == null:
+		return
+	for surface_index in mesh.mesh.get_surface_count():
+		mesh.set_surface_override_material(surface_index, material)
+
+
+func _flat_identity_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 0.64
+	return material
+
+
+func _add_identity_mesh(parent: Node3D, node_name: String, mesh: PrimitiveMesh, color: Color, local_position: Vector3) -> MeshInstance3D:
+	var instance := MeshInstance3D.new()
+	instance.name = node_name
+	instance.mesh = mesh
+	instance.material_override = _flat_identity_material(color)
+	instance.position = local_position
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(instance)
+	return instance
+
+
+func _find_mesh_by_name(root: Node, mesh_name: String) -> MeshInstance3D:
+	if root == null:
+		return null
+	if root is MeshInstance3D and root.name == mesh_name:
+		return root
+	for child in root.get_children():
+		var found := _find_mesh_by_name(child, mesh_name)
+		if found != null:
+			return found
+	return null
+
+
+func _find_meshes_by_name_token(root: Node, token: String) -> Array[MeshInstance3D]:
+	var matches: Array[MeshInstance3D] = []
+	if root == null:
+		return matches
+	var normalized_token := token.to_lower()
+	if root is MeshInstance3D and root.name.to_lower().contains(normalized_token):
+		matches.append(root as MeshInstance3D)
+	for candidate in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := candidate as MeshInstance3D
+		if mesh != null and mesh.name.to_lower().contains(normalized_token):
+			matches.append(mesh)
+	return matches
+
+
+## Tints a mesh while preserving its imported texture: duplicates the active
+## material, swaps albedo_color, installs as material_override. Falls back to
+## a flat material if the GLB mesh has no usable StandardMaterial3D.
+func _tint_mesh(mesh: MeshInstance3D, color: Color) -> void:
+	if mesh == null:
+		return
+	var active := mesh.get_active_material(0)
+	if active is StandardMaterial3D:
+		var tint := (active as StandardMaterial3D).duplicate() as StandardMaterial3D
+		tint.albedo_color = color
+		mesh.material_override = tint
+	else:
+		var fallback := StandardMaterial3D.new()
+		fallback.albedo_color = color
+		fallback.metallic = 0.0
+		fallback.roughness = 0.6
+		mesh.material_override = fallback
+
+
+## VS-025: Process nutrition and training input actions
+func _process_nutrition_training_input(_delta: float) -> void:
+	# Find food action - scan for nearby food items
+	if Input.is_action_just_pressed("find_food"):
+		_try_find_food()
+	
+	# Training actions - perform training when player presses training keys
+	# and is near training equipment
+	if Input.is_action_just_pressed("train_jump") and _is_near_training_equipment("jump"):
+		_perform_training("jump")
+	if Input.is_action_just_pressed("train_run") and _is_near_training_equipment("run"):
+		_perform_training("run")
+	if Input.is_action_just_pressed("train_climb") and _is_near_training_equipment("climb"):
+		_perform_training("climb")
+	if Input.is_action_just_pressed("train_push") and _is_near_training_equipment("push"):
+		_perform_training("push")
+	if Input.is_action_just_pressed("train_pull") and _is_near_training_equipment("pull"):
+		_perform_training("pull")
+	if Input.is_action_just_pressed("train_balance") and _is_near_training_equipment("balance"):
+		_perform_training("balance")
+
+
+## VS-025: Try to find and collect nearby food
+func _try_find_food() -> void:
+	# Scan for nearby food items in the world
+	var nearest_food := _find_nearest_food()
+	if nearest_food != null:
+		var food_type: String = String(nearest_food.get_meta("resource_item_id", ""))
+		if food_type != "":
+			# Consume the food
+			var category: int = _get_food_category(food_type)
+			if category >= 0:
+				# Add to nutrition
+				var nutrition_added := _add_food_to_nutrition(food_type, category)
+				if nutrition_added:
+					# Remove the food from the world
+					nearest_food.queue_free()
+					# Show feedback
+					_show_food_feedback(food_type)
+
+
+## VS-025: Find nearest food item
+func _find_nearest_food() -> Node3D:
+	var nearest: Node3D = null
+	var nearest_dist := float(INF)
+	var search_radius := 5.0  # 5 meter radius
+	
+	# Search for food items in the world
+	for child_variant in get_tree().get_nodes_in_group("world_interactable"):
+		var child := child_variant as Area3D
+		if child != null:
+			# Check if this is a food item
+			var item_id: String = String(child.get_meta("resource_item_id", ""))
+			if item_id != "" and item_id.begins_with("food_"):
+				var dist := global_position.distance_to(child.global_position)
+				if dist < search_radius and dist < nearest_dist:
+					nearest = child
+					nearest_dist = dist
+					search_radius = dist  # Optimize: don't search beyond nearest
+	
+	return nearest
+
+
+## VS-025: Get food category from item_id
+func _get_food_category(item_id: String) -> int:
+	# Import Nutrition at runtime to avoid circular dependency
+	if "apple" in item_id:
+		return 1  # PROTEIN
+	elif "egg" in item_id:
+		return 1  # PROTEIN
+	elif "bread" in item_id or "rice" in item_id or "grains" in item_id:
+		return 2  # CARBOHYDRATE
+	elif "banana" in item_id or "grapes" in item_id:
+		return 3  # FRUIT
+	elif "carrot" in item_id or "potato" in item_id:
+		return 4  # VEGETABLE
+	return -1
+
+
+## VS-025: Add food to nutrition tracking
+func _add_food_to_nutrition(item_id: String, category: int) -> bool:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return false
+	var nutrition: Variant = runtime.get("_nutrition")
+	if nutrition == null:
+		return false
+	
+	# Map category to food type
+	var food_type := ""
+	match category:
+		1:
+			food_type = "apple"  # PROTEIN
+		2:
+			food_type = "bread"  # CARBOHYDRATE
+		3:
+			food_type = "banana"  # FRUIT
+		4:
+			food_type = "carrot"  # VEGETABLE
+		_:
+			return false
+	
+	# Add food to nutrition
+	var success: bool = bool(nutrition.call("add_food", food_type, 1))
+	if success:
+		# Consume the food (this increases nutrition levels)
+		nutrition.call("consume_food", food_type, 1)
+		# Refresh HUD
+		runtime.call("_refresh_nutrition_hud")
+			
+		# Check if nutrition level reached threshold for body progression
+		if float(nutrition.call("average_nutrition")) >= 50.0:
+			# Progress body level
+			var progression: Variant = runtime.get("_body_progression")
+			if progression != null:
+				progression.call("progress_level")
+			runtime.call("_refresh_nutrition_hud")
+			
+	return success
+
+
+## VS-025: Check if player is near training equipment
+func _is_near_training_equipment(training_type: String) -> bool:
+	var search_radius := 5.0  # 5 meter radius
+	
+	# Check for training equipment areas
+	for child_variant in get_tree().get_nodes_in_group("world_interactable"):
+		var child := child_variant as Area3D
+		if child != null:
+			var action: String = String(child.get_meta("resource_action", ""))
+			if action != "" and action.begins_with("train_"):
+				# Check if this is the right type of training equipment
+				var expected_action := "train_%s" % training_type
+				if action == expected_action:
+					var dist := global_position.distance_to(child.global_position)
+					if dist <= search_radius:
+						return true
+	
+	return false
+
+
+## VS-025: Perform training
+func _perform_training(training_type: String) -> void:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return
+	var training: Variant = runtime.get("_training")
+	if training == null:
+		return
+	
+	# Perform training
+	var success: bool = bool(training.call("perform_training", training_type))
+	if success:
+		# Update body progression based on training
+		var total_sessions: int = int(training.call("total_sessions"))
+		var body_level := int(total_sessions / 5)
+		var progression: Variant = runtime.get("_body_progression")
+		if progression != null and body_level > int(progression.call("get_body_level")):
+			progression.call("set_body_level", body_level)
+			
+		# Refresh HUD
+		runtime.call("_refresh_nutrition_hud")
+			
+		# Show feedback
+		_show_training_feedback(training_type)
+
+
+## VS-025: Show food collection feedback
+func _show_food_feedback(food_type: String) -> void:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return
+	var prompt_label := runtime.get("_interaction_prompt_label") as Label
+	var prompt_panel := runtime.get("_interaction_prompt_panel") as Control
+	if prompt_label == null or prompt_panel == null:
+		return
+	
+	# Show feedback message
+	prompt_label.text = "Znaleziono %s!" % food_type
+	runtime.set("_interaction_feedback_until", 2.0)
+	prompt_panel.visible = true
+
+
+## VS-025: Show training feedback
+func _show_training_feedback(training_type: String) -> void:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return
+	var prompt_label := runtime.get("_interaction_prompt_label") as Label
+	var prompt_panel := runtime.get("_interaction_prompt_panel") as Control
+	if prompt_label == null or prompt_panel == null:
+		return
+	
+	# Show feedback message
+	var training_name := ""
+	match training_type:
+		"jump":
+			training_name = "skok"
+		"run":
+			training_name = "bieg"
+		"climb":
+			training_name = "wspinaczkę"
+		"push":
+			training_name = "pchanie"
+		"pull":
+			training_name = "ciągnięcie"
+		"balance":
+			training_name = "równowagę"
+		_:
+			training_name = "trening"
+	
+	prompt_label.text = "Trenowano %s!" % training_name
+	runtime.set("_interaction_feedback_until", 2.0)
+	prompt_panel.visible = true
+
+## VS-025: Helper to get GameplayRuntime reference
+func get_gameplay_runtime() -> Object:
+	if _gameplay_runtime != null and is_instance_valid(_gameplay_runtime):
+		return _gameplay_runtime
+	# Try to find GameplayRuntime in the scene tree
+	if has_node("/root/GameplayRuntime"):
+		_gameplay_runtime = get_node("/root/GameplayRuntime")
+	elif get_parent() != null and get_parent().has_node("GameplayRuntime"):
+		_gameplay_runtime = get_parent().get_node("GameplayRuntime")
+	elif get_tree() != null and get_tree().root.get_node_or_null("GameplayRuntime") != null:
+		_gameplay_runtime = get_tree().root.get_node_or_null("GameplayRuntime")
+	return _gameplay_runtime

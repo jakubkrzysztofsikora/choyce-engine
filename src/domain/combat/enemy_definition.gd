@@ -61,10 +61,10 @@ static func slime_green() -> EnemyDefinition:
 	d.contact_damage = 5
 	d.move_speed = 2.0
 	d.aggro_radius = 5.0
-	## Slimes are procedural spheres — adapter generates SphereMesh + tint.
-	## No glb needed (and no kid-trauma-risk asset like orc/zombie used).
-	d.mesh_asset_id = ""
-	d.tint = Color(0.4, 0.85, 0.4)
+	## The runtime renders this as an original liminal watcher using the
+	## approved local low-poly rig — never an unexplained coloured ball.
+	d.mesh_asset_id = "res://data/models/quaternius/szkielet.glb"
+	d.tint = Color(0.34, 0.50, 0.66)
 	d.loot_table = [
 		{"item_id": "slime_gel", "min": 1, "max": 2, "chance": 1.0},
 		{"item_id": "coin", "min": 1, "max": 3, "chance": 0.8},
@@ -79,7 +79,8 @@ static func slime_blue() -> EnemyDefinition:
 	d.max_hp = 18
 	d.contact_damage = 7
 	d.move_speed = 2.5
-	d.tint = Color(0.35, 0.55, 0.95)
+	d.mesh_asset_id = "res://data/models/quaternius/szkielet.glb"
+	d.tint = Color(0.42, 0.36, 0.68)
 	d.loot_table = [
 		{"item_id": "slime_gel", "min": 1, "max": 3, "chance": 1.0},
 		{"item_id": "coin", "min": 2, "max": 5, "chance": 0.9},
@@ -105,8 +106,8 @@ static func big_slime() -> EnemyDefinition:
 	d.contact_damage = 10
 	d.move_speed = 1.5
 	d.aggro_radius = 9.0
-	d.mesh_asset_id = ""
-	d.tint = Color(0.6, 0.35, 0.85)   ## purple — visually distinct
+	d.mesh_asset_id = "res://data/models/quaternius/szkielet.glb"
+	d.tint = Color(0.46, 0.28, 0.55)
 	d.loot_table = [
 		{"item_id": "slime_gel", "min": 3, "max": 5, "chance": 1.0},
 		{"item_id": "ore_iron", "min": 2, "max": 4, "chance": 1.0},
@@ -124,9 +125,10 @@ static func bouncer() -> EnemyDefinition:
 	d.contact_damage = 6
 	d.move_speed = 3.5
 	d.aggro_radius = 8.0
-	## Bouncers are also procedural — capsule mesh, springy tint.
-	d.mesh_asset_id = ""
-	d.tint = Color(0.95, 0.55, 0.75)
+	## Uses the same coherent watcher rig with a distinct eye colour; its
+	## hopping behaviour is a motion variant, not a pink capsule placeholder.
+	d.mesh_asset_id = "res://data/models/quaternius/szkielet.glb"
+	d.tint = Color(0.56, 0.40, 0.28)
 	d.loot_table = [
 		{"item_id": "spring_coil", "min": 1, "max": 1, "chance": 1.0},
 		{"item_id": "coin", "min": 1, "max": 4, "chance": 1.0},
