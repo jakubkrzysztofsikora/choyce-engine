@@ -85,7 +85,40 @@ func _run() -> void:
 				var shader := material.shader as Shader
 				_assert(shader != null, "Water material should have shader")
 	
+	# Physics traversal test: verify a CharacterBody3D can cross the bridge
+	var body := CharacterBody3D.new()
+	body.name = "TraversalTestBody"
+	var body_shape := CapsuleShape3D.new()
+	body_shape.radius = 0.35
+	body_shape.height = 1.8
+	var body_collision := CollisionShape3D.new()
+	body_collision.shape = body_shape
+	body.add_child(body_collision)
+	world.add_child(body)
+	
+	# Start at south of bridge
+	body.global_position = Vector3(0.0, 2.0, -38.0)
+	await physics_frame
+	
+	# Move north across the bridge
+	var target_positions := [
+		Vector3(0.0, 2.0, -35.0),  # south ramp
+		Vector3(0.0, 2.0, -24.0),  # bridge center
+		Vector3(0.0, 2.0, -15.0),  # north ramp
+	]
+	
+	for target in target_positions:
+		body.velocity = (target - body.global_position).normalized() * 5.0
+		body.move_and_slide()
+		await physics_frame
+		# Verify body can reach each target position (with some tolerance for collision)
+		var distance := body.global_position.distance_to(target)
+		_assert(distance < 2.0,
+			"CharacterBody3D can traverse to %s (reached within %.2fm)" % [target, distance])
+	
+	body.queue_free()
+	
 	# Cleanup
 	world.queue_free()
-	
+
 	quit(_exit_code)
