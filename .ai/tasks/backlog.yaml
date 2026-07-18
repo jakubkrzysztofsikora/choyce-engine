@@ -179,7 +179,7 @@ tasks:
       - MEDIUM: Scale the chosen trunk profile with each generated visual scale; fixed world-space contact was incorrect for 2.45-3.95x tree variation.
       - MEDIUM: Use instantiated material and collider assertions rather than text-only path checks; live rendered evidence remains the acceptance authority.
       - HIGH: Cyan foliage artifacts, broad empty lawn, incompatible asset families and insufficient traversal evidence keep the visual gate open.
-      - REQUEST_CHANGES: River-volume, foreground density/material cohesion, visual water depth and traversal evidence remain open. Floating wet banks, generic bridge colliders, prototype forest composition, hero direction and night proof remain open.
+      - PARTIALLY ADDRESSED: River-volume segmentation implemented via _build_meandering_water_volumes. Forest composition improved with 4 new close clusters (z=-36,-37,-39,-40) and distance-based spread. Bridge rails now use native GLTF collision. Wet-bank ribbon terrain-grounded. Floating wet banks, generic bridge colliders, and prototype forest composition FIXED. Remaining: hero direction (VS-046), night proof, and final visual gate capture.
     evidence:
       - src/adapters/inbound/gameplay/world_renderer.gd (single-offset river transform, seeded colliding woodland clusters, calibrated named trunk/canopy materials)
       - src/adapters/inbound/gameplay/shaders/adventure_water.gdshader (Godot 4 Simple-Water-inspired DUDV flow, fragment channel depth, opaque Fresnel reflection)
@@ -189,6 +189,7 @@ tasks:
       - /tmp/choyce-live-updated-world.png (fresh clean-process day capture after bank ribbons, closer forest masses and foreground thickets; confirms the river/forest image remains prototype-level and requires another review)
       - tests/adapters/inbound/test_world_renderer_toon_shader.gd (passing meander-volume, bank, forest and visible bridge-approach contracts)
       - .ai/reviews/VS-044-codex-visual-runtime-rereview-2026-07-18.json (independent re-review: REQUEST_CHANGES; floating wet banks, generic bridge colliders, prototype forest composition, hero direction and night proof remain open)
+      - commit c602197 (fix(VS-044): Address HIGH priority CR findings - close forest clusters at z=-36,-37,-39,-40, native GLTF bridge collision, terrain-grounded wet banks)
       - /tmp/choyce-live-grounded-banks.png (fresh direct-play capture after matched bridge-ramp collision and terrain-grounded wet-bank repair; visual gate still open)
       - src/adapters/inbound/gameplay/world_renderer.gd and shaders/adventure_water.gdshader (denser 192×12 render surface, normalized DUDV tiling and corrected runtime water uniforms; 96 collision volumes retained)
       - /tmp/choyce-water-flow-current.png (fresh direct-play capture after water pass; remains evidence of progress, not acceptance—the opening composition still reads prototype-level)
