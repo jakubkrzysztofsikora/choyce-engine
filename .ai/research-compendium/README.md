@@ -224,6 +224,34 @@ These documents provide comprehensive research for PLAN.md gate-specific technic
 - **Complexity**: HIGH
 - **Key Technologies**: Area3D blade collision, DestructionManager singleton, tag-based filtering, restoration stack, command pattern, child-safe rate limiting
 
+### PLAN-011: Real Ground & Dirt Collision System (Foundation) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_PLAN_011_Real_Ground_Dirt_Collision.md](./RESEARCH_PLAN_011_Real_Ground_Dirt_Collision.md)
+- **Focus**: World-scale collision (1 unit = 1 meter), accurate terrain collision, mesh-based collision with simplified shapes, dirt/sand/snow variation, contact shadows and grounding
+- **Status**: done
+- **Complexity**: HIGH
+- **Key Technologies**: MeshInstance3D, CollisionShape3D, ConvexPolygonShape3D, HeightmapShape3D, Terrain3D, PhysicsServer3D, contact shadows, child-safe forgiving physics
+
+### PLAN-012: Continuous Exploration Music System (Foundation) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_PLAN_012_Continuous_Exploration_Music.md](./RESEARCH_PLAN_012_Continuous_Exploration_Music.md)
+- **Focus**: Seamless looping music, singleton pattern for persistence, crossfading between tracks, zone-based music transitions, AudioStreamInteractive adaptive music, CC0 music asset sourcing
+- **Status**: done
+- **Complexity**: HIGH
+- **Key Technologies**: AudioStreamPlayer, AnimationPlayer, Area3D zones, singleton/autoload pattern, OGG Vorbis format, Kenney audio packs, child-safe calming music
+
+### PLAN-013: Legacy Ninja Overlay Removal & Modern UI Replacement (Foundation) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_PLAN_013_Legacy_Ninja_Overlay_Removal.md](./RESEARCH_PLAN_013_Legacy_Ninja_Overlay_Removal.md)
+- **Focus**: Replace 2D _draw() primitives with 3D SubViewport or Sprite2D, use existing ninja.glb model, implement clean HUD with Control nodes, remove legacy greeting, modern theming system
+- **Status**: done
+- **Complexity**: HIGH
+- **Key Technologies**: SubViewport, Camera3D, MeshInstance3D, CanvasLayer, Control nodes, PanelContainer, StyleBoxFlat, Theme system, responsive design, accessibility
+
+### PLAN-014: Audio Bus Architecture & Mixing System (Gate 3 & Foundation) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_PLAN_014_Audio_Bus_Architecture.md](./RESEARCH_PLAN_014_Audio_Bus_Architecture.md)
+- **Focus**: Explicit bus routing (Master, Music, SFX, Dialogue, Ambience, UI), bus effects (EQ, Compressor, Reverb, Limiter), volume management, ducking, environment-based audio, child-safe volume balancing
+- **Status**: done
+- **Complexity**: HIGH
+- **Key Technologies**: AudioServer, AudioEffectEQ10, AudioEffectCompressor, AudioEffectReverb, AudioEffectLimiter, AudioStreamPlayer, bus volume control, AudioSettings persistence
+
 ---
 
 ## Task Research Index
