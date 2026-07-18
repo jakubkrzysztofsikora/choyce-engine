@@ -1026,6 +1026,15 @@ func _build_modular_starter_house_shell(center: Vector3, door: StaticBody3D) -> 
 	var window_wall := QUATERNIUS_VILLAGE + "Wall_Plaster_Window_Wide_Flat.gltf"
 	var solid_wall := QUATERNIUS_VILLAGE + "Wall_Plaster_Straight.gltf"
 	var door_wall := QUATERNIUS_VILLAGE + "Wall_Plaster_Door_Flat.gltf"
+	var floor_tile := QUATERNIUS_VILLAGE + "Floor_WoodDark.gltf"
+	# The kit floor is a 2m square. A full 6×6 field turns the room into an
+	# actual interior rather than grass/terrain showing underneath the furniture;
+	# the single HomeFloor physics body above remains the collision authority.
+	for x in range(-5, 6, 2):
+		for z in range(-5, 6, 2):
+			_add_visual_asset("HomeFloorTile_%d_%d" % [x, z],
+				center + Vector3(float(x), 0.02, float(z)), Vector3.ONE,
+				0.0, floor_tile, false)
 	# Street facade: four window bays and a true central doorway establish a
 	# human-scale front that reads from the opening trail.
 	for bay in range(5):

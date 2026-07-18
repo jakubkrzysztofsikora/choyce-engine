@@ -37,6 +37,7 @@ func _test_supplied_visual_assets_exist() -> void:
 		VILLAGE + "Wall_Plaster_Window_Wide_Flat.gltf",
 		VILLAGE + "Wall_Plaster_Door_Flat.gltf",
 		VILLAGE + "Wall_Plaster_Straight.gltf",
+		VILLAGE + "Floor_WoodDark.gltf",
 		VILLAGE + "Roof_RoundTiles_8x10.gltf",
 		VILLAGE + "Prop_Chimney.gltf",
 		VILLAGE + "Door_2_Flat.gltf",
@@ -64,6 +65,14 @@ func _test_homestead_has_complete_shell_and_playable_collision() -> void:
 	_assert(renderer.get_node_or_null("HomeGabledRoof") != null,
 		"home has a full gabled roof rather than a flat debug slab")
 	_assert(renderer.get_node_or_null("HomeChimney") != null, "home has a chimney silhouette")
+	# The individual tiles deliberately do not join a gameplay group: they are
+	# decorative PBR surfaces while HomeFloor owns the physical surface.
+	var floor_tile_count := 0
+	for x in range(-5, 6, 2):
+		for z in range(-5, 6, 2):
+			if renderer.get_node_or_null("HomeFloorTile_%d_%d" % [x, z]) != null:
+				floor_tile_count += 1
+	_assert(floor_tile_count == 36, "home has a complete 6x6 textured wood floor")
 
 	var door := renderer.get_node_or_null("HomeDoor") as StaticBody3D
 	_assert(door != null and door.is_in_group("world_interactable"),
