@@ -1,0 +1,37 @@
+{
+  "task_id": "VS-044",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd:1760-1773,1813-1822",
+      "message": "The visible river meanders, but swimming uses one fixed 22m-wide rectangular Area at z=-24. Away from the bridge, visible water and water physics diverge. Replace it with sampled/segmented volumes following _river_bank_pair(), then test enter/exit at bridge and meander extrema."
+    },
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd:651-726,821-868; /tmp/choyce-world-audit-house-caps.png",
+      "message": "The capture still reads as a huge empty lawn with isolated toy trees. The forest mass begins too far behind the river to frame the opening, so the required layered, human-scale grove is not achieved. Add coherent close/mid-ground foliage and understory outside the route corridors, then recapture the opening."
+    },
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd:300-312,474-483; /tmp/choyce-world-audit-house-caps.png",
+      "message": "Photographic leaf texture on rounded low-poly canopy meshes remains visibly incompatible with the toy silhouettes, striped trunks, ground, and characters. This fails the cohesive material/asset-language gate. Use a stylized foliage material compatible with the mesh, or replace the trees with compatible textured models."
+    },
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/shaders/adventure_water.gdshader:48-77; /tmp/choyce-world-audit-house-caps.png",
+      "message": "The river remains a visually flat dark-cyan strip with hard shoreline edges; shallow-bank/deep-channel and current cues are not legible in the live third-person evidence. Strengthen visible shore/depth contrast and motion, then retain evidence from both bridge approaches."
+    },
+    {
+      "severity": "medium",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd:1122-1143; tests/adapters/inbound/test_world_renderer_toon_shader.gd:422-463",
+      "message": "Bridge coverage proves node existence only, not traversal. A deck/ramp seam, rail overlap, or terrain mismatch can still block the real player while all tests pass. Add bidirectional CharacterBody3D physics traversal coverage and live walk evidence."
+    },
+    {
+      "severity": "low",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd:1696-1731; /tmp/choyce-world-audit-house-caps.png",
+      "message": "The roof caps visibly improve the gable, but the distant capture does not show the door or verify its 2.2m collision alignment. Add a close open/closed door capture plus player passage test before claiming the house repair verified."
+    }
+  ]
+}

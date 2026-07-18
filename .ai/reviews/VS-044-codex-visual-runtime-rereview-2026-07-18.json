@@ -1,0 +1,42 @@
+{
+  "task_id": "VS-044",
+  "reviewer": "codex",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd:1173-1187,2030-2094",
+      "message": "Visible bridge stairs and rails use generic collider boxes rather than matching collision geometry; replace them with authored dimensions or limited static mesh shapes and add bidirectional traversal coverage."
+    },
+    {
+      "severity": "high",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd:1911-1939",
+      "message": "The wet-bank ribbon is globally offset by 0.208m and floats above terrain outside the flat opening; terrain-ground the outer bank and lift only the inner edge to the water surface."
+    },
+    {
+      "severity": "high",
+      "path": "/tmp/choyce-live-updated-world.png",
+      "message": "The opening still reads as a sparse prototype: bare repeated ground, lollipop-tree rows and test-piece shrubs do not meet the layered forest clearing criterion."
+    },
+    {
+      "severity": "high",
+      "path": "/tmp/choyce-live-updated-world.png; .ai/tasks/backlog.yaml",
+      "message": "The default blue-uniform hero contradicts the approved Ziemek/Gniewko direction; VS-046 must deliver concept-derived rig appearances and live captures."
+    },
+    {
+      "severity": "medium",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd",
+      "message": "A 0.62 shadowless FillLight is active throughout the day as well as night; make it time-of-day responsive and prove night route readability in rendered evidence."
+    },
+    {
+      "severity": "medium",
+      "path": "src/adapters/inbound/gameplay/shaders/adventure_water.gdshader",
+      "message": "The camera evidence still reads as a flat dark river strip; make shallow/deep contrast and directional motion visible from shore, bridge and in-water viewpoints."
+    },
+    {
+      "severity": "low",
+      "path": "tests/adapters/inbound",
+      "message": "Focused structural tests pass but emit cleanup warnings and do not prove bridge traversal; live evidence remains the acceptance authority."
+    }
+  ]
+}
