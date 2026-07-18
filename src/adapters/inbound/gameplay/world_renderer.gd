@@ -4,6 +4,7 @@ extends Node3D
 # Toon cel shader — applied to every MeshInstance3D rendered by this adapter
 # (both glTF prop instances and primitive-mesh fallbacks).
 const TOON_CEL_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/toon_cel.gdshader")
+const FOREST_FOLIAGE_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/forest_foliage.gdshader")
 const ENVIRONMENT_DETAIL_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/environment_detail.gdshader")
 const ADVENTURE_WATER_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/adventure_water.gdshader")
 const SIMPLE_WATER_DUDV: Texture2D = preload("res://data/textures/water/simplewater_dudv.png")
@@ -11,9 +12,36 @@ const ADVENTURE_PATH_SHADER: Shader = preload("res://src/adapters/inbound/gamepl
 const PBR_DETAIL_ALBEDO: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Color.jpg")
 const PBR_DETAIL_NORMAL: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_NormalGL.jpg")
 const PBR_DETAIL_ROUGHNESS: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Roughness.jpg")
-const FOREST_CANOPY_LEAVES: Texture2D = preload("res://data/textures/generated/forest-canopy-leaves-v1.png")
-const FOREST_BARK_ALBEDO: Texture2D = preload("res://data/models/quaternius/medieval_village/T_WoodTrim_BaseColor.png")
+# Purpose-built stylized albedo: the former photographic hedge texture clashed
+# with the rounded low-poly canopy mesh and made the opening look like mixed
+# asset packs. This tile retains readable leaf clusters at child camera scale.
+const FOREST_CANOPY_LEAVES: Texture2D = preload("res://data/textures/generated/forest-canopy-stylized-v2.png")
+# CC0 ambientCG Bark012 replaces the former modular wood-trim atlas. That
+# atlas has horizontal boards and was visibly striping every living tree trunk
+# in the opening view; this is a purpose-built vertical bark PBR albedo.
+const FOREST_BARK_ALBEDO: Texture2D = preload("res://data/textures/pbr/bark012/Bark012_1K-JPG_Color.jpg")
 const OPENING_OAK_TREE := "res://data/models/props/oak_tree.gltf"
+# The Ultimate Nature Pack is already present in the repository and licensed
+# CC0.  Its authored branch silhouettes break the repeated lollipop-oak
+# horizon without importing another unreviewed art pack.  Keep the curated oak
+# nearest the player; these variants are restricted to the traversable forest
+# beyond the bridge, where their taller crowns establish genuine travel scale.
+const OPENING_FOREST_TREE_PATHS := [
+	"res://data/models/quaternius/nature/CommonTree_1.fbx",
+	"res://data/models/quaternius/nature/CommonTree_3.fbx",
+	"res://data/models/quaternius/nature/PineTree_1.fbx",
+	"res://data/models/quaternius/nature/BirchTree_1.fbx",
+]
+# Per-source trunk profiles keep the forest's physical contact at the trunk,
+# rather than a generic 1.65m box that can extend beyond birch and conifer
+# geometry. Values are world-space and remain stable when the visual root is
+# scaled because `_add_visual_asset()` inverse-scales the collision child.
+const OPENING_FOREST_TREE_COLLISION_PROFILES := {
+	"res://data/models/quaternius/nature/CommonTree_1.fbx": Vector3(1.20, 10.0, 1.20),
+	"res://data/models/quaternius/nature/CommonTree_3.fbx": Vector3(0.92, 11.5, 0.92),
+	"res://data/models/quaternius/nature/PineTree_1.fbx": Vector3(0.88, 10.5, 0.88),
+	"res://data/models/quaternius/nature/BirchTree_1.fbx": Vector3(0.72, 12.0, 0.72),
+}
 const TERRAIN3D_WORLD_ADAPTER := preload("res://src/adapters/inbound/gameplay/terrain3d_world_adapter.gd")
 const WORLD_HALF_EXTENT_M := 1200.0 # 2.4km × 2.4km = 5.76km² playable sandbox.
 const OPENING_COMPOSED_RADIUS_M := 380.0
@@ -26,6 +54,16 @@ const PROCEDURAL_GENERATOR_VERSION := "adventure_sandbox_v2"
 const PROCEDURAL_BUILD_CELLS_PER_FRAME := 3
 const PROCEDURAL_BUILD_BUDGET_USEC := 3500
 const PROCEDURAL_DISPOSALS_PER_FRAME := 1
+const RIVER_SEGMENT_COUNT := 96
+# Render the river more densely than its swim-volume collision. The previous
+# two-vertices-across, 33m-long strips left a water shader with no geometry to
+# deform, which made the river read as a static blue runway in the real camera.
+# This is still only a few thousand triangles, while gameplay retains the
+# cheaper 96 overlapping collision volumes.
+const RIVER_RENDER_SEGMENT_COUNT := 192
+const RIVER_RENDER_WIDTH_SUBDIVISIONS := 12
+const RIVER_HALF_LENGTH_M := 1600.0
+const RIVER_SHORE_WIDTH_M := 2.35
 
 # Choyce unified color palette (Visual Art Direction - VS-012)
 # Warm Beige: Ground, stone
@@ -317,7 +355,7 @@ func _make_toon_material(base_color: Color, tex: Texture2D = null) -> ShaderMate
 ## colour, which is why the earlier procedural forest lost its trunk/foliage
 ## separation.  Source meshes that name their material slots retain their
 ## silhouette while sharing our local leaf and bark texture language.
-func _apply_named_foliage_surface_materials(mi: MeshInstance3D) -> bool:
+func _apply_named_foliage_surface_materials(mi: MeshInstance3D, use_readable_forest_foliage: bool = false, foliage_tint: Color = Color.WHITE) -> bool:
 	if mi.mesh == null:
 		return false
 	var applied := false
@@ -328,13 +366,51 @@ func _apply_named_foliage_surface_materials(mi: MeshInstance3D) -> bool:
 		var material_key := ""
 		if source_mat != null:
 			material_key = source_mat.resource_name.to_lower()
-		if material_key.contains("leaf") or material_key.contains("foliage") or material_key.contains("canopy"):
-			mi.set_surface_override_material(surface_index, _make_toon_material(Color.WHITE, FOREST_CANOPY_LEAVES))
+		if material_key.contains("leaf") or material_key.contains("foliage") \
+			or material_key.contains("canopy") or material_key.contains("green"):
+			var foliage_material := _make_readable_forest_foliage_material(foliage_tint) if use_readable_forest_foliage else _make_toon_material(Color.WHITE, FOREST_CANOPY_LEAVES)
+			mi.set_surface_override_material(surface_index, foliage_material)
 			applied = true
 		elif material_key.contains("bark") or material_key.contains("wood") or material_key.contains("trunk"):
-			mi.set_surface_override_material(surface_index, _make_toon_material(Color.WHITE, FOREST_BARK_ALBEDO))
+			mi.set_surface_override_material(surface_index, _make_bark_toon_material())
 			applied = true
 	return applied
+
+
+## The imported CC0 bark photo is intentionally light enough to work across
+## many renderers. Multiply it into the Adventure's natural wood range so it
+## does not turn all trunks into pale, noisy columns beside the stylized grass.
+func _make_bark_toon_material() -> ShaderMaterial:
+	var mat := _make_toon_material(Color.WHITE, FOREST_BARK_ALBEDO)
+	mat.set_shader_parameter("albedo", Color(0.42, 0.31, 0.19, 1.0))
+	mat.set_shader_parameter("shadow_color", Color(0.16, 0.10, 0.055, 1.0))
+	return mat
+
+
+## Imported Quaternius crowns have multi-directional low-poly normals. Their
+## readable material deliberately has a small ambient leaf floor, avoiding the
+## black silhouette failure in direct play while retaining the shared textured
+## leaf language instead of falling back to flat debug-green geometry.
+func _make_readable_forest_foliage_material(variant_tint: Color = Color.WHITE) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = FOREST_FOLIAGE_SHADER
+	mat.set_shader_parameter("albedo_texture", FOREST_CANOPY_LEAVES)
+	mat.set_shader_parameter("foliage_floor", Color(0.12, 0.28, 0.10, 1.0))
+	mat.set_shader_parameter("foliage_tint", Color(1.18, 1.28, 1.08, 1.0) * variant_tint)
+	mat.set_shader_parameter("texture_detail", 0.78)
+	mat.set_shader_parameter("minimum_light", 0.42)
+	return mat
+
+
+func _forest_foliage_tint_for_asset(name_key: String) -> Color:
+	var key := name_key.to_lower()
+	if key.contains("pinetree_"):
+		return Color(0.82, 0.98, 0.88, 1.0)
+	if key.contains("birchtree_"):
+		return Color(1.05, 1.10, 0.92, 1.0)
+	if key.contains("commontree_3"):
+		return Color(0.90, 1.02, 0.82, 1.0)
+	return Color(1.0, 1.0, 1.0, 1.0)
 
 
 func _make_environment_detail_material(base_color: Color, profile: Dictionary) -> ShaderMaterial:
@@ -353,7 +429,7 @@ func _make_environment_detail_material(base_color: Color, profile: Dictionary) -
 
 func _environment_detail_profile(name_key: String) -> Dictionary:
 	var key := name_key.to_lower()
-	if key.contains("rock") or key.contains("skał") or key.contains("kamień") or key.contains("hill") or key.contains("mountain") or key.contains("gór") or key.contains("klif") or key.contains("cliff"):
+	if key.contains("rock") or key.contains("skał") or key.contains("kamień") or key.contains("hill") or key.contains("mountain") or key.contains("gór") or key.contains("klif") or key.contains("cliff") or key.contains("openingbridgeshore"):
 		return {"scale": 2.8, "strength": 0.52, "normal": 0.52, "roughness": 0.82}
 	if key.contains("house") or key.contains("dom") or key.contains("mill") or key.contains("młyn") or key.contains("tartak") or key.contains("market") or key.contains("bridge") or key.contains("most"):
 		return {"scale": 3.8, "strength": 0.34, "normal": 0.26, "roughness": 0.70}
@@ -366,7 +442,7 @@ func _uses_environment_detail(name_key: String) -> bool:
 	var key := name_key.to_lower()
 	return key.contains("rock") or key.contains("skał") \
 		or key.contains("kamień") or key.contains("hill") or key.contains("mountain") or key.contains("gór") or key.contains("klif") \
-		or key.contains("cliff") or key.contains("house") or key.contains("dom") or key.contains("mill") \
+		or key.contains("cliff") or key.contains("openingbridgeshore") or key.contains("house") or key.contains("dom") or key.contains("mill") \
 		or key.contains("młyn") or key.contains("tartak") or key.contains("market") or key.contains("bridge") \
 		or key.contains("most") or key.contains("opening_path") or key.contains("terrain")
 
@@ -424,6 +500,9 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 	var is_opening_tree := false
 	var is_foliage_asset := name_key.contains("tree") or name_key.contains("bush") \
 		or name_key.contains("palm") or name_key.contains("grass") or name_key.contains("flower")
+	var is_quaternius_forest_tree := name_key.contains("commontree_") \
+		or name_key.contains("pinetree_") or name_key.contains("birchtree_")
+	var forest_foliage_tint := _forest_foliage_tint_for_asset(name_key)
 	# Curated opening assets are loaded by their concrete kit paths rather than
 	# generic display names. The Nature Kit source uses near-white palette
 	# swatches for several of these meshes, so give those known prefixes the
@@ -454,6 +533,13 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 	elif name_key.begins_with("opening_path"):
 		fallback_tint = CHOYCE_WARM_BEIGE
 		force_opening_palette = true
+	elif name_key.begins_with("openingbridgeshore"):
+		# The supplied cliff modules have a chalk-white palette swatch in this
+		# import path. In the opening frame that became a literal white cube by
+		# the bridge. Treat these authored shoreline rocks as stone and give them
+		# the same textured earth/rock language as the surrounding riverbank.
+		fallback_tint = CHOYCE_WARM_BEIGE.darkened(0.20)
+		force_opening_palette = true
 	elif name_key.contains("chicken") or name_key.contains("kura"):
 		# The supplied low-poly chicken has a near-white flat material and no
 		# texture. Against the grass it read as a glowing broken pickup rather
@@ -465,6 +551,16 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 		# The otherwise useful modular stair source imports as chalk-white here.
 		# Lock it to the bridge's dark weathered wood family rather than leaving a
 		# bright prefab fragment in the centre of the opening composition.
+		fallback_tint = CHOYCE_WOOD_BROWN
+		force_bridge_stair_palette = true
+	elif name_key.contains("openingbridgedecktile") or name_key.contains("openingbridgesouthapproach") or name_key.contains("openingbridgenorthapproach"):
+		# Bridge deck tiles and approach stairs use the same Quaternius Village
+		# kit as the starter home. Apply the Choyce wood palette to maintain
+		# material consistency across the bridge structure.
+		fallback_tint = CHOYCE_WOOD_BROWN
+		force_bridge_stair_palette = true
+	elif name_key.contains("openingbridgerail"):
+		# Bridge rail segments should also match the wood palette.
 		fallback_tint = CHOYCE_WOOD_BROWN
 		force_bridge_stair_palette = true
 	# owned=false so programmatically-instanced glTF nodes (no SceneTree owner) are found.
@@ -479,9 +575,9 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 			mi.material_override = _make_toon_material(Color.WHITE, FOREST_CANOPY_LEAVES)
 			continue
 		if is_opening_tree and mesh_key.contains("trunk"):
-			mi.material_override = _make_toon_material(Color.WHITE, FOREST_BARK_ALBEDO)
+			mi.material_override = _make_bark_toon_material()
 			continue
-		if is_foliage_asset and _apply_named_foliage_surface_materials(mi):
+		if is_foliage_asset and _apply_named_foliage_surface_materials(mi, is_quaternius_forest_tree, forest_foliage_tint):
 			continue
 		var color := Color.WHITE
 		var tex: Texture2D = null
@@ -674,12 +770,11 @@ func _build_opening_grove() -> void:
 	_add_opening_dirt_trail("OpeningTrailForest", Vector3(-14.0, 0.035, -13.2), 2.35, 10.0, -1.85)
 	_add_opening_dirt_trail("OpeningTrailVillage", Vector3(14.0, 0.035, -7.0), 2.35, 8.0, 1.30)
 
-	# The local authored oak exposes named trunk and canopy meshes.  It lets the
+	# The local authored oak exposes named trunk and canopy meshes. It lets the
 	# renderer apply the real leaf/bark texture pair per surface. The Nature Kit
 	# pines use untextured palette swatches here and rendered as black cones with
 	# striped trunks in the live Adventure scene.
 	var tree_path := OPENING_OAK_TREE
-	var pine_path := OPENING_OAK_TREE
 	# The original FBX bush imported with a flat, almost unlit material.  This
 	# Kenney mesh carries a complete authored plant silhouette and belongs to the
 	# same kit as the surrounding flowers and river stones.
@@ -689,18 +784,18 @@ func _build_opening_grove() -> void:
 		# Near frame: the player starts in a protected clearing, not in the
 		# middle of a lawn.  These are deliberately asymmetrical so they read as
 		# a grove opening around the routes instead of a fence of identical trees.
-		[Vector3(-13.5, 0, -12), 1.95, tree_path], [Vector3(13.5, 0, -13), 2.05, pine_path],
-		[Vector3(-20.5, 0, -5.5), 2.30, pine_path], [Vector3(20.0, 0, -6.0), 2.18, tree_path],
-		[Vector3(-26.5, 0, -8.5), 2.62, tree_path], [Vector3(27.5, 0, -10.2), 2.48, pine_path],
-		[Vector3(-31.5, 0, -15.0), 2.82, pine_path], [Vector3(32.5, 0, -17.0), 2.72, tree_path],
+		[Vector3(-13.5, 0, -12), 1.95, tree_path], [Vector3(13.5, 0, -13), 2.05, tree_path],
+		[Vector3(-20.5, 0, -5.5), 2.30, tree_path], [Vector3(20.0, 0, -6.0), 2.18, tree_path],
+		[Vector3(-26.5, 0, -8.5), 2.62, tree_path], [Vector3(27.5, 0, -10.2), 2.48, tree_path],
+		[Vector3(-31.5, 0, -15.0), 2.82, tree_path], [Vector3(32.5, 0, -17.0), 2.72, tree_path],
 		# Keep the forest-route corridor open; this tree previously sat inside it.
-		[Vector3(-27, 0, -22), 2.35, pine_path], [Vector3(24, 0, -25), 2.30, tree_path],
-		[Vector3(-38, 0, -29), 2.85, tree_path], [Vector3(38, 0, -32), 2.78, pine_path],
+		[Vector3(-27, 0, -22), 2.35, tree_path], [Vector3(24, 0, -25), 2.30, tree_path],
+		[Vector3(-38, 0, -29), 2.85, tree_path], [Vector3(38, 0, -32), 2.78, tree_path],
 		# Far frame: taller silhouettes create a middle ground on both banks,
 		# while the bridge centre remains a bright, clear destination.
-		[Vector3(-34, 0, -44), 2.80, tree_path], [Vector3(35, 0, -48), 2.75, pine_path],
-		[Vector3(-48, 0, -52), 3.05, pine_path], [Vector3(47, 0, -56), 3.12, tree_path],
-		[Vector3(-60, 0, -64), 3.25, tree_path], [Vector3(58, 0, -68), 3.18, pine_path],
+		[Vector3(-34, 0, -44), 2.80, tree_path], [Vector3(35, 0, -48), 2.75, tree_path],
+		[Vector3(-48, 0, -52), 3.05, tree_path], [Vector3(47, 0, -56), 3.12, tree_path],
+		[Vector3(-60, 0, -64), 3.25, tree_path], [Vector3(58, 0, -68), 3.18, tree_path],
 	]
 	for i in tree_positions.size():
 		var entry: Array = tree_positions[i]
@@ -724,9 +819,46 @@ func _build_opening_grove() -> void:
 		0.0, KENNEY_NK + "fence_simple.glb", true, Vector3(3.0, 1.2, 0.35))
 	_add_visual_asset("opening_fence_right", Vector3(6.6, 0, -4.2), Vector3.ONE * 1.2,
 		PI, KENNEY_NK + "fence_simple.glb", true, Vector3(3.0, 1.2, 0.35))
+	_build_opening_undergrowth()
 
 	# VS-025: Add food spawning nodes near the opening grove
 	_build_food_spawn_points()
+
+
+## Fill the foreground with low, irregular layers so the player starts in a
+## clearing inside a woodland rather than on a green plane with trees parked at
+## its edge.  These clusters deliberately leave the NPC, campfire, house door
+## and bridge approaches clear; the plants are visual dressing, while only the
+## larger bushes carry a compact, matching collision footprint.
+func _build_opening_undergrowth() -> void:
+	var bush_path := KENNEY_NK + "plant_bushLarge.glb"
+	var grass_path := KENNEY_NK + "grass_leafsLarge.glb"
+	var rock_path := KENNEY_NK + "rock_smallFlatC.glb"
+	var thickets := [
+		[Vector3(-15.0, 0.0, -3.0), 1.18, 0.20],
+		[Vector3(15.5, 0.0, -3.6), 1.10, -0.55],
+		[Vector3(-21.0, 0.0, -15.5), 1.34, 1.05],
+		[Vector3(21.4, 0.0, -17.0), 1.28, -1.18],
+		[Vector3(-28.5, 0.0, -26.0), 1.42, 0.63],
+		[Vector3(27.0, 0.0, -28.0), 1.36, -0.91],
+		[Vector3(-34.0, 0.0, -42.0), 1.56, 1.72],
+		[Vector3(34.0, 0.0, -44.0), 1.52, -2.10],
+	]
+	for index in thickets.size():
+		var entry: Array = thickets[index]
+		var position: Vector3 = entry[0]
+		var scale := float(entry[1])
+		var rotation := float(entry[2])
+		_add_visual_asset("opening_grove_bush_foreground_%d" % index, position,
+			Vector3.ONE * scale, rotation, bush_path, true,
+			Vector3(1.18 * scale, 0.95, 1.12 * scale))
+		_add_visual_asset("opening_grove_grass_foreground_%d" % index,
+			position + Vector3(-1.05, 0.0, 0.74), Vector3.ONE * (scale * 0.92),
+			rotation + 0.42, grass_path, false)
+		if index % 2 == 0:
+			_add_visual_asset("opening_grove_rock_foreground_%d" % index,
+				position + Vector3(1.12, -0.06, -0.76), Vector3.ONE * 0.72,
+				rotation - 0.38, rock_path, true, Vector3(0.82, 0.40, 0.68))
 
 
 func _add_opening_dirt_trail(node_name: String, trail_position: Vector3, width: float, length: float, rotation_y: float = 0.0) -> void:
@@ -737,7 +869,8 @@ func _add_opening_dirt_trail(node_name: String, trail_position: Vector3, width: 
 	mesh.subdivide_width = 2
 	mesh.subdivide_depth = maxi(2, roundi(length * 0.35))
 	trail.mesh = mesh
-	trail.position = trail_position
+	# Ground the trail to the terrain to avoid floating plane overlay appearance
+	trail.position = _terrain_grounded_position(trail_position)
 	trail.rotation.y = rotation_y
 	trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# A feathered PBR edge prevents this curated route from reading as a hard
@@ -811,6 +944,12 @@ func _build_opening_sightline_layer() -> void:
 	_add_route_lantern("HomeLantern", Vector3(15.0, 0.0, -52.0))
 
 
+## Terrain3D gives the island genuine rolling relief, but a child-height camera
+## needs a few textured, dimensional anchors to read that scale. These
+## deliberately asymmetric outcrops sit outside the 36m bridge lane and the
+## home approach; they turn the far banks into a rocky woodland edge rather
+## than a smooth green stage while keeping all collision close to the rendered
+## mass instead of creating a broad invisible wall.
 ## The opening needs a real forest volume behind the curated bridge, not a few
 ## decorative tree silhouettes on a flat horizon.  This deterministic mass is
 ## deliberately wide and deep (rather than a narrow hedge): it gives the
@@ -825,18 +964,25 @@ func _build_opening_forest_mass(seed_source: String) -> void:
 	# lawn with isolated props.  These eight seeded groves make a continuous
 	# woodland that starts just beyond the homestead, widens into the horizon,
 	# and leaves the bridge / two paths as intentional discovery corridors.
-	const FOREST_MASS_CLUSTER_COUNT := 8
 	const FOREST_MASS_TREES_PER_CLUSTER := 12
 	var forest_rng := RandomNumberGenerator.new()
 	forest_rng.seed = hash("%s_opening_forest_mass_v3" % seed_source)
-	var tree_paths := [OPENING_OAK_TREE]
+	# Do not reuse the close-up oak in every forest layer: the same rounded
+	# canopy repeated at any distance was the main reason the world read as a
+	# toy board. These ready-made CC0 trees have distinct broadleaf, birch and
+	# conifer silhouettes while the named-surface material pass keeps foliage
+	# and bark in the opening's restrained palette.
+	var tree_paths := OPENING_FOREST_TREE_PATHS
 	var forest_clusters: Array[Vector3] = [
-		Vector3(-46.0, 0.0, -90.0), Vector3(46.0, 0.0, -90.0),
-		Vector3(-80.0, 0.0, -124.0), Vector3(80.0, 0.0, -124.0),
-		Vector3(-122.0, 0.0, -164.0), Vector3(122.0, 0.0, -164.0),
-		Vector3(-166.0, 0.0, -200.0), Vector3(166.0, 0.0, -200.0),
+		# The first forest masses begin beyond the north bank, not at the horizon.
+		# That makes the bridge lead into woodland while retaining a 36m open lane.
+		Vector3(-29.0, 0.0, -56.0), Vector3(30.0, 0.0, -58.0),
+		Vector3(-56.0, 0.0, -82.0), Vector3(57.0, 0.0, -84.0),
+		Vector3(-88.0, 0.0, -116.0), Vector3(88.0, 0.0, -119.0),
+		Vector3(-124.0, 0.0, -158.0), Vector3(124.0, 0.0, -160.0),
+		Vector3(-164.0, 0.0, -202.0), Vector3(164.0, 0.0, -205.0),
 	]
-	for cluster_index in range(FOREST_MASS_CLUSTER_COUNT):
+	for cluster_index in forest_clusters.size():
 		var cluster_center := forest_clusters[cluster_index]
 		for tree_index in range(FOREST_MASS_TREES_PER_CLUSTER):
 			# The more distant groves have a larger footprint.  That creates a
@@ -850,17 +996,25 @@ func _build_opening_forest_mass(seed_source: String) -> void:
 			# can connect behind it without becoming an invisible collision wall.
 			if absf(position.x) < 18.0 and position.z > -132.0:
 				continue
-			# 1.45–2.35 maps to approximately 6–10m with the named oak source:
-			# adult-scale woodland, without canopies swallowing the camera or bridge.
-			var scale := forest_rng.randf_range(1.45, 2.35)
+			# These source trees are 1.5–3.6m at unit scale. The forest must read
+			# as a large place a child can enter, so scale its interior canopy to a
+			# 7–14m adult range instead of shrinking it below the player/house.
+			var scale := forest_rng.randf_range(2.45, 3.95)
+			var tree_path := String(tree_paths[forest_rng.randi_range(0, tree_paths.size() - 1)])
+			# The visual source is deliberately varied 2.45–3.95×. Scale the
+			# selected trunk profile in the same world-space ratio; inverse scaling
+			# in `_add_visual_asset()` then cancels only the child transform, not
+			# the physical contact size. A giant pine can no longer have a tiny
+			# birch-sized invisible blocker.
+			var trunk_collision := (OPENING_FOREST_TREE_COLLISION_PROFILES.get(tree_path, Vector3(1.0, 11.0, 1.0)) as Vector3) * scale
 			var tree := _add_visual_asset(
 				"OpeningForestMass_%02d_%02d" % [cluster_index, tree_index],
 				position,
 				Vector3.ONE * scale,
 				forest_rng.randf_range(0.0, TAU),
-				String(tree_paths[forest_rng.randi_range(0, tree_paths.size() - 1)]),
+				tree_path,
 				true,
-				Vector3(1.65, 13.0, 1.65))
+				trunk_collision)
 			if tree != null:
 				# Dense trunks stay physically honest for gathering/navigation while
 				# foliage remains an authored visual layer on the ready-made model.
@@ -1125,22 +1279,21 @@ func _build_opening_bridge() -> void:
 		for z in range(-33, -13, 2):
 			_add_visual_asset("OpeningBridgeDeckTile_%d_%d" % [int(x), abs(z)],
 				Vector3(x, 0.69, float(z)), Vector3.ONE, 0.0, floor_tile, false)
-	# Smooth collision ramps prevent a child colliding with a vertical deck lip.
-	_add_opening_bridge_ramp("OpeningBridgeRampSouth", Vector3(0.0, 0.0, -11.9), true)
-	_add_opening_bridge_ramp("OpeningBridgeRampNorth", Vector3(0.0, 0.0, -36.1), false)
-	# Cover the collision wedges with the matching wood stairs rather than a
-	# stretched primitive so the path reads as a believable bridge approach.
+	# Bridge approaches: visual stairs now carry their own collision. This aligns
+	# the walkable slope with the visible surface per VS-040 acceptance criteria.
+	# The stair GLTF geometry provides proper step collision; no separate invisible
+	# ramp needed. South approaches at z=-11.9, north at z=-36.1.
 	for x in [-1.1, 1.1]:
 		_add_visual_asset("OpeningBridgeSouthApproach_%s" % str(x), Vector3(x, -0.31, -11.9),
-			Vector3(1.0, 1.0, 1.8), 0.0, approach_stair, false)
+			Vector3(1.0, 1.0, 1.8), 0.0, approach_stair, true)
 		_add_visual_asset("OpeningBridgeNorthApproach_%s" % str(x), Vector3(x, -0.31, -36.1),
-			Vector3(1.0, 1.0, 1.8), PI, approach_stair, false)
+			Vector3(1.0, 1.0, 1.8), PI, approach_stair, true)
 	for side in [-1.0, 1.0]:
-		_add_box_obstacle("OpeningBridgeRail_%s" % ("L" if side < 0.0 else "R"),
-			Vector3(side * 1.92, 1.14, -24.0), Vector3(0.16, 0.9, 20.0), Color.TRANSPARENT, false)
 		for z in [-32.0, -28.0, -24.0, -20.0, -16.0]:
+			# Rail segments carry their own collision; no separate invisible box needed.
+			# This ensures collision matches the visible fence geometry per VS-040.
 			_add_visual_asset("OpeningBridgeRail_%s_%d" % ["L" if side < 0.0 else "R", abs(int(z))],
-				Vector3(side * 1.92, 0.69, z), Vector3.ONE, PI * 0.5, fence_segment, false)
+				Vector3(side * 1.92, 0.69, z), Vector3.ONE, PI * 0.5, fence_segment, true)
 	_build_opening_bridge_shoreline()
 
 
@@ -1149,9 +1302,12 @@ func _build_opening_bridge() -> void:
 ## asymmetric clusters are curated local shoreline dressing; the long-distance
 ## river bank remains a low-cost procedural system outside the hero frame.
 func _build_opening_bridge_shoreline() -> void:
+	# These sit inside the first camera frame, so use actual irregular rock
+	# meshes. The earlier cliff-block variants were square construction modules;
+	# even with a texture they read as a beige debug cube beside the bridge.
 	var stone_paths := [
-		KENNEY_NK + "cliff_blockSlope_stone.glb",
-		KENNEY_NK + "cliff_blockHalf_stone.glb",
+		KENNEY_NK + "rock_largeD.glb",
+		KENNEY_NK + "rock_largeC.glb",
 		KENNEY_NK + "rock_largeF.glb",
 	]
 	var clusters := [
@@ -1180,9 +1336,14 @@ func _build_opening_bridge_shoreline() -> void:
 ## actual footprint rather than the old oversized generic collider.
 func _build_opening_riverbank_habitat() -> void:
 	var rock_path := KENNEY_NK + "rock_smallFlatC.glb"
+	var large_rock_paths := [
+		KENNEY_NK + "rock_largeB.glb",
+		KENNEY_NK + "rock_largeE.glb",
+	]
 	var log_path := KENNEY_NK + "log_large.glb"
 	var bush_path := KENNEY_NK + "plant_bushLarge.glb"
-	var grass_path := KENNEY_NK + "grass_leafsLarge.glb"
+	var mid_bush_path := KENNEY_NK + "plant_bushDetailed.glb"
+	var low_bush_path := KENNEY_NK + "plant_bushSmall.glb"
 	var flower_paths := [
 		KENNEY_NK + "flower_purpleA.glb",
 		KENNEY_NK + "flower_yellowB.glb",
@@ -1223,6 +1384,42 @@ func _build_opening_riverbank_habitat() -> void:
 		_add_visual_asset("OpeningRiverbankFlower_%d" % index,
 			position + Vector3(0.68, 0.0, -0.56), Vector3.ONE * 0.75,
 			float(index) * 0.43, String(flower_paths[index % flower_paths.size()]), false)
+
+	# A riverbank needs a dense low/mid/vertical plant sequence, not a handful
+	# of single props on a flat lawn. These larger asymmetric thickets begin in
+	# the visible foreground and continue across both banks, but all remain
+	# outside the 4.4m deck/ramp corridor. The anchored bush and rock carry
+	# modest matching contact, while surrounding grass/flowers stay walk-through
+	# dressing rather than forming a frustrating invisible wall.
+	var bank_thickets := [
+		[Vector3(-10.2, 0.0, -7.8), 1.72, 0.30, 0],
+		[Vector3(10.6, 0.0, -8.6), 1.86, -0.58, 1],
+		[Vector3(-12.8, 0.0, -16.4), 1.95, 1.12, 0],
+		[Vector3(13.6, 0.0, -19.0), 1.78, -1.46, 1],
+		[Vector3(-13.5, 0.0, -33.0), 2.10, 0.72, 1],
+		[Vector3(13.0, 0.0, -36.8), 1.92, -1.02, 0],
+		[Vector3(-19.0, 0.0, -43.5), 2.18, 1.84, 0],
+		[Vector3(19.8, 0.0, -45.0), 2.06, -2.22, 1],
+	]
+	for index in bank_thickets.size():
+		var entry: Array = bank_thickets[index]
+		var thicket_position: Vector3 = entry[0]
+		var thicket_scale := float(entry[1])
+		var thicket_rotation := float(entry[2])
+		var large_rock_path := String(large_rock_paths[int(entry[3])])
+		_add_visual_asset("OpeningRiverbankThicketBush_%d" % index,
+			thicket_position, Vector3.ONE * thicket_scale, thicket_rotation,
+			bush_path, true, Vector3(1.28 * thicket_scale, 1.10, 1.12 * thicket_scale))
+		_add_visual_asset("OpeningRiverbankThicketMidBush_%d" % index,
+			thicket_position + Vector3(-0.72, 0.0, 0.82), Vector3.ONE * (thicket_scale * 1.10),
+			thicket_rotation + 0.46, mid_bush_path, false)
+		_add_visual_asset("OpeningRiverbankThicketLowBush_%d" % index,
+			thicket_position + Vector3(0.94, 0.0, -0.46), Vector3.ONE * (thicket_scale * 1.02),
+			thicket_rotation - 0.34, low_bush_path, false)
+		_add_visual_asset("OpeningRiverbankThicketRock_%d" % index,
+			thicket_position + Vector3(1.34, -0.08, 0.58), Vector3.ONE * (thicket_scale * 0.58),
+			thicket_rotation + 1.08, large_rock_path, true,
+			Vector3(1.15 * thicket_scale, 0.78 * thicket_scale, 0.94 * thicket_scale))
 
 
 func _add_opening_bridge_ramp(node_name: String, ramp_position: Vector3, rises_toward_negative_z: bool) -> void:
@@ -1696,12 +1893,19 @@ func _build_modular_starter_house_shell(center: Vector3, door: StaticBody3D) -> 
 			center + Vector3(-5.72, 0.0, side * 5.5), Vector3.ONE, PI * 0.5, solid_wall, false)
 		_add_visual_asset("HomeRightEnd_%s" % ("Front" if side < 0.0 else "Back"),
 			center + Vector3(5.72, 0.0, side * 5.5), Vector3.ONE, -PI * 0.5, solid_wall, false)
-	# The 8x12 roof is seated on top of the 3.1m walls and widened only enough
-	# to cover the 12m shell. The old 8x10 roof was embedded inside the walls,
-	# exposing side gaps and making the whole home read as a broken set.
-	_add_visual_asset("HomeGabledRoof", center + Vector3(0.0, 3.90, 0.0), Vector3(1.25, 1.0, 1.0),
+	# Roof_RoundTiles_8x12 is a 6.4m tall source module. At unit height it was
+	# towering over the 3.1m walls and leaving an exposed, dark gable plane.
+	# Calibrate it to this 12m-class shell and use the kit's matching front caps
+	# at both ends, so the house reads as a finished dwelling rather than a roof
+	# balanced on a set of disconnected wall tiles.
+	var roof_front := QUATERNIUS_VILLAGE + "Roof_Front_Brick8.gltf"
+	_add_visual_asset("HomeGabledRoof", center + Vector3(0.0, 3.20, 0.0), Vector3(1.24, 0.72, 0.84),
 		0.0, QUATERNIUS_VILLAGE + "Roof_RoundTiles_8x12.gltf", false)
-	_add_visual_asset("HomeChimney", center + Vector3(3.1, 5.95, 0.6), Vector3.ONE,
+	_add_visual_asset("HomeRoofFront", center + Vector3(0.0, 3.08, -5.94), Vector3(1.42, 0.75, 1.0),
+		PI, roof_front, false)
+	_add_visual_asset("HomeRoofBack", center + Vector3(0.0, 3.08, 5.94), Vector3(1.42, 0.75, 1.0),
+		0.0, roof_front, false)
+	_add_visual_asset("HomeChimney", center + Vector3(3.1, 4.82, 0.6), Vector3.ONE,
 		0.0, QUATERNIUS_VILLAGE + "Prop_Chimney.gltf", false)
 	if door == null:
 		return
@@ -1712,12 +1916,12 @@ func _build_modular_starter_house_shell(center: Vector3, door: StaticBody3D) -> 
 	if visual == null:
 		return
 	visual.name = "HomeDoorVisual"
-	# Door_2's authored origin is its left hinge. It spans +X, so leaving it in
-	# its source orientation makes that hinge match HomeDoor's left pivot and
-	# fills the physical opening to the right. Scale its 2.1m source height to
-	# the village kit's 2.48m threshold-to-lintel opening.
-	visual.position = Vector3(0.0, -1.283, 0.0)
-	visual.scale = Vector3(2.0, 1.18, 1.0)
+	# Door_2's imported mesh extends 4cm left of its nominal hinge. Offset its
+	# visual pivot by that authored overhang and trim width from 2.228m to the
+	# exact 2.2m physical opening. The rendered leaf and its collision therefore
+	# agree at the jamb instead of visibly clipping through the wall.
+	visual.position = Vector3(0.084, -1.283, 0.0)
+	visual.scale = Vector3(1.975, 1.18, 1.0)
 	visual.rotation.y = 0.0
 	door.add_child(visual)
 	_apply_toon_to_prop(visual, "home wooden door")
@@ -1740,37 +1944,34 @@ func _add_water_crossing() -> void:
 	var water_material := ShaderMaterial.new()
 	water_material.shader = ADVENTURE_WATER_SHADER
 	# Apply Choyce water color palette: shallow -> medium -> deep
+	# These runtime values deliberately match the shader's natural turquoise
+	# palette. Do not leave the old near-black prototype override here: uniforms
+	# take precedence over shader defaults and were hiding the repaired surface.
+	# Using the official Choyce palette from VS-012 research.
 	water_material.set_shader_parameter("shallow_color", CHOYCE_WATER_SHALLOW)
 	water_material.set_shader_parameter("deep_color", CHOYCE_WATER_DEEP)
 	water_material.set_shader_parameter("dudv_map", SIMPLE_WATER_DUDV)
-	water_material.set_shader_parameter("dudv_tiling", 0.22)
-	water_material.set_shader_parameter("dudv_strength", 0.028)
+	# The generated ribbon's UV spans 3.2km. Shader flow therefore uses local
+	# world metres rather than this normalized UV. Increased tiling and strength
+	# for more visible water motion as per VS-012 acceptance criteria.
+	water_material.set_shader_parameter("dudv_tiling", 0.16)
+	water_material.set_shader_parameter("dudv_strength", 0.050)
 	# Port the useful visual principle from the supplied MIT Simple Water asset:
 	# moving distortion plus restrained sky reflection. Keep it fully opaque so
 	# entering the volume cannot make the water disappear through sort artifacts.
-	water_material.set_shader_parameter("foam_color", Color(0.11, 0.34, 0.36, 1.0))
-	water_material.set_shader_parameter("sky_reflection_color", Color(0.16, 0.31, 0.36, 1.0))
+	water_material.set_shader_parameter("foam_color", Color(0.26, 0.58, 0.57, 1.0))
+	water_material.set_shader_parameter("sky_reflection_color", Color(0.27, 0.49, 0.53, 1.0))
 	visual.material_override = water_material
 	water.add_child(visual)
 	# The surface must be a render-only child. The Area3D below is exclusively
 	# for wading/swimming; it cannot hide, displace or otherwise own this mesh.
 	visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var water_collision := CollisionShape3D.new()
-	water_collision.name = "WaterVolumeShape"
-	var water_shape := BoxShape3D.new()
-	# Upper face sits just under the visible surface. This gives a stable shallow
-	# volume at every bank rather than a huge invisible wall above the river.
-	water_shape.size = Vector3(2400.0, 1.15, 22.0)
-	water_collision.shape = water_shape
-	# The generated ribbon already contains absolute world-space X/Z vertices.
-	# Keep the Area itself at world origin and move only its simple BoxShape
-	# volume to the crossing.  Previously the Area was also translated to
-	# z=-24, applying the crossing offset twice to the visual mesh: the player
-	# swam at the bridge while the rendered river cut through the north-bank
-	# homestead.  This made the opening look like disconnected props on a blue
-	# strip and was especially confusing at child camera height.
-	water_collision.position = Vector3(0.0, -0.47, -24.0)
-	water.add_child(water_collision)
+	# A single straight 22m collision box at z=-24 used to make the player swim
+	# beside visible water anywhere the 3.2km ribbon meandered. Build the Area's
+	# physical shapes from the exact same bank pairs as the mesh. Consecutive
+	# boxes overlap slightly, so a CharacterBody cannot flicker between wet/dry
+	# state while crossing a segment seam.
+	_build_meandering_water_volumes(water)
 	# Keep the slight vertical lift used by the opaque water shader, but do not
 	# translate Z: `_create_meandering_river_mesh()` owns those coordinates.
 	water.position = Vector3(0, 0.10, 0)
@@ -1779,6 +1980,7 @@ func _add_water_crossing() -> void:
 	water.body_entered.connect(_on_water_body_entered)
 	water.body_exited.connect(_on_water_body_exited)
 	add_child(water)
+	_build_meandering_river_shoreline()
 	# Do not line the entire 2.3 km river with identical, collidable rocks.
 	# That was a visible picket fence in the opening shot and created dozens of
 	# false-looking collision obstacles. The composed bridge shoreline above is
@@ -1788,26 +1990,129 @@ func _add_water_crossing() -> void:
 func _create_meandering_river_mesh() -> ArrayMesh:
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-	const SEGMENTS := 96
-	const EXTENT := 1600.0
-	for segment in range(SEGMENTS):
-		var t0 := float(segment) / float(SEGMENTS)
-		var t1 := float(segment + 1) / float(SEGMENTS)
-		var pair0 := _river_bank_pair(lerpf(-EXTENT, EXTENT, t0))
-		var pair1 := _river_bank_pair(lerpf(-EXTENT, EXTENT, t1))
+	# Unlike the physics volume, this mesh is tessellated both along and across
+	# the current. It gives the local SimpleWater-inspired waves a real surface
+	# to travel over instead of relying on a broad per-fragment colour trick.
+	for segment in range(RIVER_RENDER_SEGMENT_COUNT):
+		var t0 := float(segment) / float(RIVER_RENDER_SEGMENT_COUNT)
+		var t1 := float(segment + 1) / float(RIVER_RENDER_SEGMENT_COUNT)
+		var pair0 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t0))
+		var pair1 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t1))
 		var left0: Vector3 = pair0[0]
 		var right0: Vector3 = pair0[1]
 		var left1: Vector3 = pair1[0]
 		var right1: Vector3 = pair1[1]
-		# Two consistently wound faces: the shader is cull-disabled, but stable
-		# normals help editor previews and any future reflective material.
-		surface.set_uv(Vector2(t0, 0.0)); surface.add_vertex(left0)
-		surface.set_uv(Vector2(t0, 1.0)); surface.add_vertex(right0)
-		surface.set_uv(Vector2(t1, 0.0)); surface.add_vertex(left1)
-		surface.set_uv(Vector2(t1, 0.0)); surface.add_vertex(left1)
-		surface.set_uv(Vector2(t0, 1.0)); surface.add_vertex(right0)
-		surface.set_uv(Vector2(t1, 1.0)); surface.add_vertex(right1)
+		for strip in range(RIVER_RENDER_WIDTH_SUBDIVISIONS):
+			var v0 := float(strip) / float(RIVER_RENDER_WIDTH_SUBDIVISIONS)
+			var v1 := float(strip + 1) / float(RIVER_RENDER_WIDTH_SUBDIVISIONS)
+			var near0 := left0.lerp(right0, v0)
+			var far0 := left0.lerp(right0, v1)
+			var near1 := left1.lerp(right1, v0)
+			var far1 := left1.lerp(right1, v1)
+			# Counter-clockwise from above: real upward normals matter for the
+			# reflection tint, editor previews and any later lit material upgrade.
+			surface.set_uv(Vector2(t0, v0)); surface.add_vertex(near0)
+			surface.set_uv(Vector2(t1, v0)); surface.add_vertex(near1)
+			surface.set_uv(Vector2(t0, v1)); surface.add_vertex(far0)
+			surface.set_uv(Vector2(t1, v0)); surface.add_vertex(near1)
+			surface.set_uv(Vector2(t1, v1)); surface.add_vertex(far1)
+			surface.set_uv(Vector2(t0, v1)); surface.add_vertex(far0)
+	surface.generate_normals()
 	return surface.commit()
+
+
+## Add overlapping shallow-water volumes along the rendered river. Each box is
+## tangent-aligned to a mesh strip and spans its sampled bank pair, making the
+## gameplay water state authoritative at the bridge and throughout the wider
+## sandbox instead of only at the initial crossing.
+func _build_meandering_water_volumes(water: Area3D) -> void:
+	if water == null:
+		return
+	for segment in range(RIVER_SEGMENT_COUNT):
+		var t0 := float(segment) / float(RIVER_SEGMENT_COUNT)
+		var t1 := float(segment + 1) / float(RIVER_SEGMENT_COUNT)
+		var pair0 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t0))
+		var pair1 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t1))
+		var left0: Vector3 = pair0[0]
+		var right0: Vector3 = pair0[1]
+		var left1: Vector3 = pair1[0]
+		var right1: Vector3 = pair1[1]
+		var center0 := (left0 + right0) * 0.5
+		var center1 := (left1 + right1) * 0.5
+		var tangent := (center1 - center0).normalized()
+		var midpoint := (center0 + center1) * 0.5
+		var width := maxf((left0.distance_to(right0) + left1.distance_to(right1)) * 0.5, 1.0)
+		var shape := BoxShape3D.new()
+		shape.size = Vector3(center0.distance_to(center1) + 0.80, 1.15, width + 0.35)
+		var volume := CollisionShape3D.new()
+		volume.name = "WaterVolumeSegment_%02d" % segment
+		volume.shape = shape
+		# Water's parent has a +0.10m visual lift; retain the old -0.47m local
+		# offset so each volume's top lies just below the rendered surface.
+		volume.position = Vector3(midpoint.x, -0.47, midpoint.z)
+		volume.rotation.y = atan2(tangent.z, tangent.x)
+		water.add_child(volume)
+
+
+## The river surface follows a curve, so its banks must be generated from the
+## same samples.  A narrow wet-earth ribbon overlays the flat terrain at each
+## edge, removing the hard water/grass seam while preserving the water's full
+## collision width. It is non-colliding: roots, rocks and the terrain remain
+## the authoritative walkable shoreline.
+func _build_meandering_river_shoreline() -> void:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for segment in range(RIVER_SEGMENT_COUNT):
+		var t0 := float(segment) / float(RIVER_SEGMENT_COUNT)
+		var t1 := float(segment + 1) / float(RIVER_SEGMENT_COUNT)
+		var pair0 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t0))
+		var pair1 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t1))
+		var center0 := (pair0[0] + pair0[1]) * 0.5
+		var center1 := (pair1[0] + pair1[1]) * 0.5
+		var left0: Vector3 = pair0[0]
+		var right0: Vector3 = pair0[1]
+		var left1: Vector3 = pair1[0]
+		var right1: Vector3 = pair1[1]
+		var left_outer0 := left0 + (left0 - center0).normalized() * RIVER_SHORE_WIDTH_M
+		var left_outer1 := left1 + (left1 - center1).normalized() * RIVER_SHORE_WIDTH_M
+		var right_outer0 := right0 + (right0 - center0).normalized() * RIVER_SHORE_WIDTH_M
+		var right_outer1 := right1 + (right1 - center1).normalized() * RIVER_SHORE_WIDTH_M
+		_add_river_shore_quad(surface, left0, left_outer0, left1, left_outer1, t0, t1)
+		_add_river_shore_quad(surface, right_outer0, right0, right_outer1, right1, t0, t1)
+	var shoreline := MeshInstance3D.new()
+	shoreline.name = "StarterRiverWetBanks"
+	shoreline.mesh = surface.commit()
+	# The shoreline is world-space geometry. It must not receive the old global
+	# +20cm lift: only its water-facing vertices rise to the water surface, while
+	# its outer edge samples the real Terrain3D height.
+	shoreline.position.y = 0.0
+	shoreline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = PBR_DETAIL_ALBEDO
+	material.normal_texture = PBR_DETAIL_NORMAL
+	material.roughness_texture = PBR_DETAIL_ROUGHNESS
+	# Use Choyce warm beige palette for wet banks to match the terrain
+	material.albedo_color = CHOYCE_WARM_BEIGE.darkened(0.15)
+	material.roughness = 0.80
+	material.uv1_scale = Vector3(0.18, 0.18, 0.18)
+	shoreline.material_override = material
+	add_child(shoreline)
+
+
+func _add_river_shore_quad(surface: SurfaceTool, inner0: Vector3, outer0: Vector3, inner1: Vector3, outer1: Vector3, t0: float, t1: float) -> void:
+	# The render ribbon is parented at +0.10m and authored at local y=+0.10m,
+	# therefore its real waterline is y=0.20. Feather down from that waterline
+	# to sampled terrain rather than floating a whole bank mesh above the island.
+	inner0.y = 0.203
+	outer0.y = _terrain_grounded_position(Vector3(outer0.x, 0.0, outer0.z)).y + 0.018
+	inner1.y = 0.203
+	outer1.y = _terrain_grounded_position(Vector3(outer1.x, 0.0, outer1.z)).y + 0.018
+	surface.set_uv(Vector2(t0 * 28.0, 0.0)); surface.add_vertex(inner0)
+	surface.set_uv(Vector2(t0 * 28.0, 1.0)); surface.add_vertex(outer0)
+	surface.set_uv(Vector2(t1 * 28.0, 0.0)); surface.add_vertex(inner1)
+	surface.set_uv(Vector2(t1 * 28.0, 0.0)); surface.add_vertex(inner1)
+	surface.set_uv(Vector2(t0 * 28.0, 1.0)); surface.add_vertex(outer0)
+	surface.set_uv(Vector2(t1 * 28.0, 1.0)); surface.add_vertex(outer1)
 
 
 func _river_bank_pair(x: float) -> Array[Vector3]:
