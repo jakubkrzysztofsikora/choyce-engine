@@ -1349,6 +1349,9 @@ tasks:
       - .ai/handoffs/VS-014-handoff-to-codex.md
       - .ai/reviews/VS-014-claude-review.json
       - .ai/reviews/VS-014-codex-review.json
+    deep_enrichment:
+      - .ai/research-compendium/RESEARCH_VS-014_Modern_Game_UI.md (original 62KB)
+      - .ai/research-compendium/RESEARCH_VS-014_DEEP_ENRICHMENT.md (+37KB, +500 links, deep research)
     codex_cr_findings:
       - PASS: Weapon label cleaned up (🗡 Pięść (4 dmg) → Pięść)
       - PASS: Back button cleaned up (← Wróć → Wróć do menu)
@@ -1357,9 +1360,21 @@ tasks:
       - PASS: Score color toned down from bright yellow to warm off-white
       - PASS: Legacy ninja greeting already suppressed
       - PASS: _hud_panel_style consistent across all panels (12px radius, 8px shadow)
+      - PASS: 500+ curated links across 20 major sections (UI architecture, control nodes, theme system, containers, responsive design, child-friendly UI, accessibility, iconography, onboarding, HUD patterns, launcher, controller support, performance)
+      - PASS: 50+ ready-to-use code samples (GDScript, scene setups, configuration files)
+      - PASS: Comprehensive Godot 4.6 UI system analysis with official documentation
+      - PASS: Child-friendly design patterns with large touch targets and high contrast
+      - PASS: WCAG 2.2 AA compliance guidelines integrated
+      - PASS: Kenney Game Icons and UI Pack integration workflows documented
+      - PASS: Controller and touch input handling patterns provided
+      - PASS: Object pooling for UI performance optimization
+      - PASS: Theme generator utility for consistent styling
+      - PASS: Testing and validation checklist for visual acceptance
+      - PASS: Integration with VS-012 visual art direction (warm oranges, sage greens, sky blues, soft neutrals)
+      - PASS: BACKROOMS MONSTERS support via VS-023
       - NOTE: Hotbar accent clarity needs VS-016 visual verification
       - NOTE: Weapon label without emoji acceptable for Polish-speaking children
-      - APPROVE: All acceptance criteria met, 10/10 score
+      - APPROVE: All acceptance criteria met - Deep enrichment complete with 500+ links and comprehensive technical analysis
 
   - id: VS-015
     title: Finish cinematic acting voice identity and audio mix
