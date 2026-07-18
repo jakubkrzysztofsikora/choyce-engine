@@ -1071,6 +1071,7 @@ tasks:
       - PLAN.md
       - data/templates/adventure.json
       - src/adapters/inbound/gameplay/world_renderer.gd
+      - data/models/quaternius/medieval_village (CC0 Quaternius Medieval Village MegaKit)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd
     dependencies: [VS-004]
     acceptance_criteria:
@@ -1279,7 +1280,14 @@ tasks:
       - The customization UI is compact, child-readable and does not obscure exploration
       - Choices persist across a local replay and have no gameplay-stat impact
     cross_review_by: claude
-    status: in_progress
+    status: in_review
+    evidence:
+      - src/domain/gameplay/character_customization.gd (data class, JSON persist, bounded palettes)
+      - src/adapters/inbound/gameplay/character_customization_panel.gd (compact overlay UI)
+      - src/adapters/inbound/gameplay/player_controller.gd (set_face_variant, apply_customization, GLB swap, color tint helpers)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (load on start_session, Postać button, panel signal wiring)
+      - tests/domain/test_character_customization.gd (7 tests covering defaults, round-trip, clamp, corrupt JSON, save format, palette bounds)
+      - .ai/handoffs/VS-022-handoff-to-codex.md
 
   - id: VS-023
     title: Replace slime placeholders with child-safe original liminal creatures
@@ -1440,6 +1448,8 @@ tasks:
     specialty: child-safety-and-combat-content
     inputs:
       - /Users/jakubsikora/Downloads/SWAT.glb
+      - /Users/jakubsikora/Downloads/Soldier.fbx
+      - /Users/jakubsikora/Downloads/Tank.glb
       - /Users/jakubsikora/Downloads/Pistol.glb
       - /Users/jakubsikora/Downloads/Assault Rifle.glb
       - /Users/jakubsikora/Downloads/ShooterKit-aacba3868d41706fde6daff00877055e52d200c6
@@ -1453,6 +1463,24 @@ tasks:
       - No candidate asset is imported or exposed to the current visual vertical slice without an approved design and safety review
     cross_review_by: claude
     status: todo
+
+  - id: VS-032
+    title: Retarget the CC0 Universal Animation Library onto active child and creature rigs
+    owner: codex
+    specialty: character-animation
+    inputs:
+      - data/models/quaternius/animations/UAL1_Standard.glb
+      - src/adapters/inbound/gameplay/player_controller.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/scenes/launcher/launcher_overlay.gd
+    dependencies: [VS-015, VS-024]
+    acceptance_criteria:
+      - Skeleton compatibility and retarget profile are validated before a clip is assigned to a child or creature rig
+      - Idle, walk/run, attack, hit, and reaction clips are grounded, face their movement/threat direction, and avoid root sliding
+      - Launcher montage uses at least two readable camera-composed action beats with no clipped hero or monster silhouettes
+      - Automated animation-state checks and rendered evidence cover cinematic and gameplay application
+    cross_review_by: claude
+    status: in_progress
 
   - id: VS-005
     title: Improve age-appropriate combat telegraphs and feedback

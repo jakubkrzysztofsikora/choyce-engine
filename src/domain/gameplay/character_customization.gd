@@ -7,7 +7,7 @@
 class_name CharacterCustomization
 extends RefCounted
 
-const PERSIST_PATH := "user://character_customization.json"
+static var PERSIST_PATH := "user://character_customization.json"
 const FACE_VARIANTS := ["a", "b", "c", "d", "e", "f"]
 const SKIN_PALETTE := [
 	Color(0.99, 0.84, 0.69),  ## light
