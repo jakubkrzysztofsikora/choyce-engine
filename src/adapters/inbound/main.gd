@@ -3,6 +3,9 @@ extends Control
 
 const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const ShellTransition = preload("res://src/adapters/inbound/shared/ui/shell_transition.gd")
+## Explicit preload keeps the first-run demo independent of Godot's global
+## class cache, which can lag behind a newly added persistence adapter.
+const FilesystemSessionProgressStoreAdapter = preload("res://src/adapters/outbound/filesystem_session_progress_store.gd")
 
 # VS-016: Preload evidence capture classes
 const ScreenshotCaptureClass = preload("res://src/adapters/outbound/evidence/screenshot_capture.gd")
@@ -371,7 +374,7 @@ func _build_default_ports() -> Dictionary:
 	# TASK-025 carry-over closure: progression/clone/remix wired into the
 	# default composition root so Library save/load and remix flows reach
 	# real services instead of NotImplemented push_errors.
-	var progress_store: SessionProgressStorePort = InMemorySessionProgressStore.new().setup()
+	var progress_store: SessionProgressStorePort = FilesystemSessionProgressStoreAdapter.new().setup()
 	var clone_service := CloneWorldService.new()
 	var remix_service := RemixWorldService.new().setup(progress_store, event_bus)
 	var progression_service := ManageProgressionService.new().setup(progress_store, event_bus)

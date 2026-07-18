@@ -5,8 +5,8 @@ class_name ProgressState
 extends RefCounted
 
 var collectibles: Dictionary  # item_id: String -> count: int
-var achievements: Array[String]
-var unlocks: Array[String]
+var achievements: Array  # Array[String]
+var unlocks: Array  # Array[String]
 var quest_progress: Dictionary  # quest_id: String -> stage: int
 var score: int
 
