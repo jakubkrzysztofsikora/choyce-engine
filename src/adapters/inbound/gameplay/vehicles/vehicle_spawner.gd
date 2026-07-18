@@ -1,0 +1,235 @@
+## VehicleSpawner.gd - Spawns and manages vehicles in the world
+##
+## Part of VS-021: Add rare drivable vehicles and bounded bulldozer destruction sandbox
+##
+## Handles:
+## - Vehicle instantiation from templates
+## - Vehicle placement in discoverable locations
+## - Vehicle activation/deactivation based on distance
+##
+class_name VehicleSpawner
+extends Node
+
+
+# Vehicle configurations
+const VEHICLE_CONFIGS := {
+	"simple": {
+		"script": "res://src/adapters/inbound/gameplay/vehicles/simple_vehicle.gd",
+		"scene": "res://scenes/vehicles/simple_vehicle.tscn",
+		"max_speed": 12.0,
+		"mass": 1000.0
+	},
+	"tractor": {
+		"script": "res://src/adapters/inbound/gameplay/vehicles/simple_vehicle.gd",
+		"scene": "res://scenes/vehicles/tractor.tscn",
+		"max_speed": 10.0,
+		"mass": 1500.0
+	},
+	"bulldozer": {
+		"script": "res://src/adapters/inbound/gameplay/vehicles/bulldozer.gd",
+		"scene": "res://scenes/vehicles/bulldozer.tscn",
+		"max_speed": 8.0,
+		"mass": 3000.0
+	}
+}
+
+# Activation distance for performance
+const ACTIVATION_RADIUS := 100.0
+const DEACTIVATION_RADIUS := 150.0
+
+# Reference to player
+var player: Node3D = null
+var runtime_root: Node = null
+var destruction_tracker: Node = null
+var _configured_vehicles_spawned: bool = false
+
+# Spawned vehicles
+var spawned_vehicles: Array[VehicleBase] = []
+
+
+func _ready() -> void:
+	if runtime_root == null:
+		runtime_root = get_parent()
+	# GameplayRuntime injects its player before adding this child. Keep a
+	# parent-relative and group fallback for standalone sample scenes, never a
+	# hard-coded scene-tree path.
+	if player == null:
+		if runtime_root != null:
+			player = runtime_root.get_node_or_null("PlayerController") as Node3D
+		if player == null:
+			player = get_tree().get_first_node_in_group("player") as Node3D
+
+	_spawn_configured_vehicles()
+
+
+func configure(runtime: Node, player_node: Node3D, tracker_node: Node = null) -> void:
+	runtime_root = runtime
+	player = player_node
+	destruction_tracker = tracker_node
+	for vehicle in spawned_vehicles:
+		_configure_vehicle_dependencies(vehicle)
+	if is_inside_tree():
+		_spawn_configured_vehicles()
+
+
+func _process(_delta: float) -> void:
+	if player == null:
+		return
+
+	# Manage vehicle activation based on distance
+	for vehicle in spawned_vehicles:
+		if vehicle == null or not is_instance_valid(vehicle):
+			continue
+
+		var distance := vehicle.global_position.distance_to(player.global_position)
+
+		# Wake nearby unoccupied vehicles so their suspension settles. Control
+		# remains disabled until VehicleBase.enter() receives the player.
+		if distance <= ACTIVATION_RADIUS and vehicle.sleeping:
+			_activate_vehicle(vehicle)
+
+		# Sleeping a distant unoccupied rigid body is enough; never evict a
+		# player who drives beyond the spawn activation radius.
+		elif distance >= DEACTIVATION_RADIUS and not vehicle.sleeping and not vehicle.is_active:
+			_deactivate_vehicle(vehicle)
+
+
+func _spawn_configured_vehicles() -> void:
+	if _configured_vehicles_spawned or player == null:
+		return
+	_configured_vehicles_spawned = true
+	# Default vehicle spawns for VS-021
+	# These should be moved to world configuration eventually
+
+	var spawns := [
+		{
+			"type": "tractor",
+			"position": Vector3(-100, 0, -50),
+			"rotation": PI * 0.5,
+			"discoverable": true
+		},
+		{
+			"type": "bulldozer",
+			"position": Vector3(80, 0, -120),
+			"rotation": 0,
+			"discoverable": true
+		}
+	]
+
+	for spawn in spawns:
+		_spawn_vehicle(spawn)
+
+
+func _spawn_vehicle(spawn_data: Dictionary) -> VehicleBase:
+	var vehicle_type: String = String(spawn_data.get("type", "simple"))
+	var config: Dictionary = VEHICLE_CONFIGS.get(vehicle_type, {})
+
+	if config.is_empty():
+		push_error("Unknown vehicle type: %s" % vehicle_type)
+		return null
+
+	var vehicle_scene_path: String = String(config.get("scene", ""))
+	var vehicle_script_path: String = String(config.get("script", ""))
+
+	var vehicle_script: Script = load(vehicle_script_path) as Script
+	if vehicle_script == null:
+		push_warning("Vehicle script is unavailable; skipping %s" % vehicle_type)
+		return null
+
+	# Try to load the authored scene first. Some test/embedded scenes are saved
+	# with a native VehicleBody3D root and lose their custom script during a
+	# stale import. Re-attach the known vehicle script before deciding that the
+	# vehicle is invalid, so a scene can retain its meshes/colliders without
+	# poisoning the whole gameplay session.
+	var vehicle_node: Node = null
+	if ResourceLoader.exists(vehicle_scene_path):
+		var scene: PackedScene = load(vehicle_scene_path) as PackedScene
+		if scene != null:
+			vehicle_node = scene.instantiate()
+	else:
+		# Create from script
+		vehicle_node = vehicle_script.new()
+
+	if vehicle_node == null:
+		push_error("Failed to create vehicle of type: %s" % vehicle_type)
+		return null
+
+	if not (vehicle_node is VehicleBase):
+		# Keep the scene root and its authored children, but repair a missing or
+		# stale root script when Godot loaded the scene as plain VehicleBody3D.
+		vehicle_node.set_script(vehicle_script)
+	if not (vehicle_node is VehicleBase):
+		push_warning("Vehicle scene is not a VehicleBase; skipping %s" % vehicle_type)
+		vehicle_node.queue_free()
+		return null
+	var vehicle: VehicleBase = vehicle_node as VehicleBase
+
+	# Attach before assigning global transforms. VehicleBody3D cannot resolve a
+	# global transform correctly until it belongs to a scene tree.
+	var vehicle_parent: Node = runtime_root if runtime_root != null else get_parent()
+	if vehicle_parent != null:
+		vehicle_parent.add_child(vehicle)
+	elif get_tree().current_scene != null:
+		get_tree().current_scene.add_child(vehicle)
+	else:
+		push_error("Cannot spawn vehicle without a runtime scene")
+		vehicle.queue_free()
+		return null
+	var spawn_position: Variant = spawn_data.get("position", Vector3.ZERO)
+	vehicle.global_position = spawn_position as Vector3 if spawn_position is Vector3 else Vector3.ZERO
+	if spawn_data.has("rotation"):
+		vehicle.rotation.y = float(spawn_data["rotation"])
+
+	# Apply config overrides.
+	if config.has("max_speed"):
+		vehicle.max_speed = float(config["max_speed"])
+	_configure_vehicle_dependencies(vehicle)
+
+	spawned_vehicles.append(vehicle)
+	# Deactivate initially (will be activated when the injected player is nearby).
+	_deactivate_vehicle(vehicle)
+	return vehicle
+
+
+func _configure_vehicle_dependencies(vehicle: VehicleBase) -> void:
+	if vehicle == null or destruction_tracker == null:
+		return
+	if vehicle.has_method("setup_destruction_tracker"):
+		vehicle.call("setup_destruction_tracker", destruction_tracker)
+
+
+func _activate_vehicle(vehicle: VehicleBase) -> void:
+	if vehicle == null:
+		return
+	vehicle.sleeping = false
+
+
+func _deactivate_vehicle(vehicle: VehicleBase) -> void:
+	if vehicle == null:
+		return
+	if not vehicle.is_active:
+		vehicle.sleeping = true
+
+
+func get_nearest_vehicle(position: Vector3, radius: float = 5.0) -> VehicleBase:
+	var nearest: VehicleBase = null
+	var nearest_dist := float(INF)
+
+	for vehicle in spawned_vehicles:
+		if vehicle == null or not is_instance_valid(vehicle):
+			continue
+
+		var dist := vehicle.global_position.distance_to(position)
+		if dist <= radius and dist < nearest_dist:
+			nearest = vehicle
+			nearest_dist = dist
+
+	return nearest
+
+
+func cleanup() -> void:
+	for vehicle in spawned_vehicles:
+		if vehicle != null and is_instance_valid(vehicle):
+			vehicle.queue_free()
+
+	spawned_vehicles.clear()

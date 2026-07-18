@@ -30,6 +30,13 @@ Bundled in-tree (CC0). FBX assets require Godot's FBX2glTF binary path to be con
 - data/models/quaternius/nature/         Quaternius - Ultimate Nature Pack (CC0, FBX format) - https://quaternius.com/packs/ultimatenature.html
 - data/models/quaternius/<individual *.glb>  Quaternius - Ultimate Modular Characters / Animated Animals (CC0, individual rigs bundled previously) - https://quaternius.com/
 
+### data/models/vehicles/
+
+Bundled in-tree (CC0). Simple low-poly vehicle meshes for child-friendly gameplay.
+
+- data/models/vehicles/tractor.glb         Kenney - Car Pack (CC0) - https://kenney.nl/assets/car-pack
+- data/models/vehicles/bulldozer.glb       Kenney - Construction Kit (CC0) - https://kenney.nl/assets/construction-kit
+
 ### data/textures/voxel/
 
 - Kenney - Voxel Pack (CC0) - https://kenney.nl/assets/voxel-pack

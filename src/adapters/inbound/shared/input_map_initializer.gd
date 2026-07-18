@@ -19,6 +19,16 @@ func _ready() -> void:
     _ensure_action("hotbar_3", [KEY_3])
     _ensure_action("hotbar_4", [KEY_4])
     _ensure_action("hotbar_5", [KEY_5])
+
+    # VS-021: Vehicle input actions
+    _ensure_action("accelerate", [KEY_W, KEY_UP])
+    _ensure_action("reverse", [KEY_S, KEY_DOWN])
+    _ensure_action("steer_left", [KEY_A, KEY_LEFT])
+    _ensure_action("steer_right", [KEY_D, KEY_RIGHT])
+    _ensure_action("brake", [KEY_SPACE, KEY_SHIFT])
+    _ensure_action("exit_vehicle", [KEY_E, KEY_ESCAPE])
+    _ensure_action("blade_toggle", [KEY_Q])
+
     # Player 2 (local split-screen co-op) — right-hand keys so both kids share
     # one keyboard. Arrows move, RCtrl attacks, RShift sprints, Enter jumps.
     _ensure_action("p2_move_forward", [KEY_UP])

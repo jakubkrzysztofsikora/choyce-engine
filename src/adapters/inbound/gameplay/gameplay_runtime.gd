@@ -77,6 +77,12 @@ var _xp_level: int = 0
 var _xp_current: int = 0
 var _xp_bar: ProgressBar = null
 var _xp_label: Label = null
+
+# VS-021: Vehicle system
+var _vehicle_spawner: VehicleSpawner = null
+var _destruction_tracker: DestructionTracker = null
+var _active_vehicle: VehicleBase = null
+
 const WAVE_RESPAWN_DELAY := 6.0
 ## Kid falls below this y → soft-respawn. Fixes spring-launch
 ## softlock (Adv 2 H-5). Default world floor is y=0; -50 leaves a
@@ -176,6 +182,9 @@ func _ready() -> void:
 	_ambient_player = $AmbientPlayer
 	_ambient_particles = $AmbientParticles if has_node("AmbientParticles") else null
 	
+	# VS-021: Initialize vehicle system
+	_setup_vehicle_system()
+
 	# Respect reduce-motion accessibility setting for ambient particles
 	_update_ambient_particles_from_reduce_motion()
 
@@ -343,6 +352,7 @@ func start_session(world: World, session: Session) -> void:
 	_spawn_npcs()
 	_spawn_starter_enemies()
 	_setup_build_grid()
+	_spawn_vehicles()
 
 	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
 
@@ -353,6 +363,59 @@ func _ensure_session_music() -> void:
 	var bank := get_node_or_null("/root/AudioBank")
 	if bank != null and bank.has_method("play_music"):
 		bank.call("play_music", "adventure_island", true)
+
+
+## VS-021: Vehicle System
+
+func _setup_vehicle_system() -> void:
+	# Create destruction tracker if not exists
+	if not has_node("DestructionTracker"):
+		_destruction_tracker = DestructionTracker.new()
+		_destruction_tracker.name = "DestructionTracker"
+		_destruction_tracker.configure(self, _world_renderer)
+		add_child(_destruction_tracker)
+	else:
+		_destruction_tracker = $DestructionTracker
+		_destruction_tracker.configure(self, _world_renderer)
+
+	# Create vehicle spawner if not exists. Inject sibling dependencies before
+	# adding it to the tree so its _ready path can spawn safely in embedded roots.
+	if not has_node("VehicleSpawner"):
+		_vehicle_spawner = VehicleSpawner.new()
+		_vehicle_spawner.name = "VehicleSpawner"
+		_vehicle_spawner.configure(self, _player_controller, _destruction_tracker)
+		add_child(_vehicle_spawner)
+	else:
+		_vehicle_spawner = $VehicleSpawner
+		_vehicle_spawner.configure(self, _player_controller, _destruction_tracker)
+
+
+func _spawn_vehicles() -> void:
+	if _vehicle_spawner == null:
+		_setup_vehicle_system()
+
+	if _vehicle_spawner != null:
+		_vehicle_spawner.configure(self, _player_controller, _destruction_tracker)
+
+
+func _on_vehicle_entered(vehicle: VehicleBase, player: PlayerController) -> void:
+	_active_vehicle = vehicle
+
+	# Switch input context (optional - can be handled in vehicle itself)
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+func _on_vehicle_exited(vehicle: VehicleBase, player: PlayerController, exit_position: Vector3) -> void:
+	if _active_vehicle == vehicle:
+		_active_vehicle = null
+
+	# Restore input
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+func _on_vehicle_destroyed(vehicle: VehicleBase, object: Node3D) -> void:
+	# Handle vehicle destruction tracking if needed
+	pass
 
 
 ## Hide / restore the InboundMain Layout (NavBar + Body) for fullscreen
