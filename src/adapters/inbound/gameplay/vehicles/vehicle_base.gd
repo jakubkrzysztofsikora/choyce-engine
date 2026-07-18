@@ -28,6 +28,11 @@ signal destroyed(object: Node3D)
 @export var camera_follow_height: float = 2.0
 @export var camera_follow_smoothness: float = 10.0
 
+# Terrain3D collision is streamed. A missing tile must never turn a long drive
+# into an irreversible fall; restore the car at its latest verified ground
+# contact instead of relying on a giant invisible floor across the whole map.
+const VOID_RECOVERY_Y := -28.0
+
 var current_engine_force: float = 0.0
 var current_steering: float = 0.0
 var is_braking: bool = false
@@ -43,6 +48,8 @@ var _player_collision_mask := 1
 var _engine_audio: AudioStreamPlayer3D = null
 var _engine_one_shot: AudioStreamPlayer3D = null
 var _was_braking := false
+var _last_safe_ground_position := Vector3.ZERO
+var _last_safe_ground_rotation_y := 0.0
 
 
 func _ready() -> void:
@@ -51,6 +58,8 @@ func _ready() -> void:
 	floor_max_angle = deg_to_rad(52.0)
 	floor_stop_on_slope = true
 	floor_snap_length = 0.55
+	_last_safe_ground_position = global_position
+	_last_safe_ground_rotation_y = rotation.y
 	for child in get_children():
 		if child is Area3D and "entry" in child.name.to_lower():
 			entry_points.append(child as Area3D)
@@ -105,14 +114,16 @@ func set_suspension_damping(_value: float) -> void: pass
 
 
 func _input(event: InputEvent) -> void:
-	# InputEvent does not have is_action_just_pressed() - that is an Input singleton
-	# method. Use Input.is_action_just_pressed() to check if the exit_vehicle action
-	# was pressed, regardless of whether this specific event triggered it.
-	if is_active and Input.is_action_just_pressed("exit_vehicle"):
+	# Consume the actual event. Querying Input here missed E/Escape when another
+	# node handled the same frame, trapping the driver in the vehicle.
+	if is_active and event.is_action_pressed("exit_vehicle"):
 		exit_vehicle()
 
 
 func _physics_process(delta: float) -> void:
+	if global_position.y < VOID_RECOVERY_Y:
+		_recover_from_void()
+		return
 	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
 	if not is_on_floor():
 		velocity.y -= gravity * delta
@@ -128,6 +139,10 @@ func _physics_process(delta: float) -> void:
 		var target_speed := throttle * max_speed
 		var rate := deceleration if is_braking or is_zero_approx(throttle) else acceleration
 		_drive_speed = move_toward(_drive_speed, target_speed, rate * delta)
+		# Child-safe hard cap: arcade speed must never exceed the configured
+		# maximum, and reverse is bounded to half of forward speed so backing
+		# away from an obstacle stays controllable.
+		_drive_speed = clampf(_drive_speed, -max_speed * 0.5, max_speed)
 		if is_braking:
 			_drive_speed = move_toward(_drive_speed, 0.0, max_brake_force * 0.08 * delta)
 		var turn_factor := clampf(absf(_drive_speed) / maxf(max_speed, 0.1), 0.16, 1.0)
@@ -147,6 +162,18 @@ func _physics_process(delta: float) -> void:
 	_was_braking = is_braking
 	_update_engine_audio()
 	move_and_slide()
+	if is_on_floor() and global_position.y >= VOID_RECOVERY_Y:
+		_last_safe_ground_position = global_position
+		_last_safe_ground_rotation_y = rotation.y
+	if global_position.y < VOID_RECOVERY_Y:
+		_recover_from_void()
+
+
+func _recover_from_void() -> void:
+	global_position = _last_safe_ground_position + Vector3.UP * 0.35
+	rotation.y = _last_safe_ground_rotation_y
+	velocity = Vector3.ZERO
+	_drive_speed = 0.0
 
 
 func _update_engine_audio() -> void:
@@ -220,9 +247,28 @@ func exit_vehicle() -> void:
 
 
 func get_exit_position() -> Vector3:
+	var candidate := global_position + global_transform.basis.x * 1.8 + Vector3.UP * 0.2
 	if not exit_points.is_empty():
-		return exit_points[0].global_position + Vector3.UP * 0.05
-	return global_position + global_transform.basis.x * 1.8 + Vector3.UP * 0.2
+		candidate = exit_points[0].global_position + Vector3.UP * 0.05
+	if _is_exit_grounded(candidate):
+		return candidate
+	# The computed exit point hangs over a cliff or a streamed-terrain gap.
+	# Place the driver back at the last verified ground contact instead.
+	return _last_safe_ground_position + global_transform.basis.x * 1.5 + Vector3.UP * 0.35
+
+
+func _is_exit_grounded(pos: Vector3) -> bool:
+	if not is_inside_tree() or get_world_3d() == null:
+		return true
+	var origin := pos + Vector3.UP * 8.0
+	var target := pos + Vector3.DOWN * 16.0
+	var query := PhysicsRayQueryParameters3D.create(origin, target)
+	query.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var floor_y: float = (hit.position as Vector3).y
+	return pos.y - floor_y < 6.0
 
 
 func snap_to_surface() -> bool:
