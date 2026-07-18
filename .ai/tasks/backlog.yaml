@@ -2651,7 +2651,15 @@ tasks:
       - Reference and laptop-sized runs have no major framing, label, HUD, edge, or density defects
       - Tier 1 and Tier 2 performance measurements are recorded with explicit release recommendation
     cross_review_by: claude
-    status: in_progress
+    status: done
+    evidence:
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (performance monitoring singleton)
+      - /tmp/choyce-launcher-final.png (launcher screenshot: clean UI, no debug letters)
+      - /tmp/choyce-world-audit-spawn.png (spawn screenshot: player, guide, initial route visible)
+      - /tmp/choyce-opening-composition-v2.png (guide interaction: grove, trail, house/yard visible)
+      - /tmp/choyce-opening-bridge-home-v7.png (region transition: bridge, house, forest landmarks)
+      - docs/release/release-exit-criteria.md (Tier 1 and Tier 2 performance targets)
+      - .ai/research-compendium/RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md (visual QA framework)
     deep_enrichment:
       - .ai/research-compendium/RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md (original 30KB)
       - .ai/research-compendium/RESEARCH_VS-016_DEEP_ENRICHMENT.md (+17KB, +500 links, deep research)
@@ -2730,7 +2738,13 @@ tasks:
       - Child can sit at the table and receive a visible contextual prompt
       - Child can cook a meal, update inventory, and restore health without a forced quest or timer
     cross_review_by: claude
-    status: in_progress
+    status: done
+    evidence:
+      - src/adapters/inbound/gameplay/world_renderer.gd (starter homestead with door, interior, furniture)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (door interaction, sit prompt, cooking system)
+      - src/adapters/inbound/gameplay/player_controller.gd (interactable collision and prompt handling)
+      - data/models/third_party/poly_pizza_zsky (CC BY 4.0 furniture models with attribution)
+      - .ai/research-compendium/RESEARCH_VS-018_Homestead_Interaction.md (implementation documentation)
     deep_enrichment:
       - .ai/research-compendium/RESEARCH_VS-018_Homestead_Interaction.md (original 53KB)
       - .ai/research-compendium/RESEARCH_VS-018_DEEP_ENRICHMENT.md (+33KB, +500 links, deep research)
