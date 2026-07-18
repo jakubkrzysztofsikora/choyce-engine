@@ -262,6 +262,7 @@ tasks:
       - src/adapters/inbound/gameplay/hero_portrait_capture.gd (programmatic close-up capture utility that frames FacialPerformance and writes PNG review evidence)
       - tests/adapters/inbound/test_hero_identity_layer.gd (facial performance bone-anchor, speech mouth animation, and close-up capture pipeline for Ziemek and Gniewko)
       - tests/adapters/inbound/test_split_screen_hero_pairing.gd (P2 Gniewko has bone-anchored facial performance on the shared humanoid rig)
+      - .ai/specifications/VS-046-hero-asset-specification.md (complete technical specification for child-proportioned hero assets matching concept art)
       - Handoff: junior-coder slice complete; authored child-proportion/garment assets and non-headless live close-up/third-person captures remain with Codex and await Claude cross-review per task cross_review_by.
 
   - id: VS-045
