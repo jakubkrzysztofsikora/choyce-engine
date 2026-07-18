@@ -229,6 +229,12 @@ func _capture_shell_evidence(shell_id: String, evidence_manager: EvidenceManager
 	# Start evidence collection when entering Play shell
 	if shell_id == "play":
 		evidence_manager.start_collection()
+		# Connect to gameplay runtime for in-shell capture requests
+		var gameplay_runtime = get_node_or_null("/root/GameplayRuntime")
+		if gameplay_runtime != null and gameplay_runtime.has_signal("evidence_capture_requested"):
+			gameplay_runtime.evidence_capture_requested.connect(func(capture_point: int) -> void:
+				screenshot_capture.capture(capture_point, {"trigger": "gameplay_event"})
+			)
 
 
 func _ready() -> void:

@@ -14,9 +14,16 @@ signal session_outcome(outcome: WinOutcome)
 ##   params:      Dict — action params
 signal rule_fired(rule_id: String, action_kind: int, params: Dictionary)
 
+## VS-016: Evidence capture signals for visual acceptance testing
+signal evidence_capture_requested(capture_point: int)
+
 var _world_renderer: WorldRenderer
 var _player_controller: PlayerController
 var _session: Session
+
+## VS-016: Track which evidence capture points have been triggered
+## to ensure we only capture once per point
+var _captured_evidence_points: Array = []
 var _audio_bus: AudioEventBus
 var _sfx_player: SFXPlayer
 ## Live NPC voice (ElevenLabs TTS). Silent no-op without ELEVENLABS_API_KEY.
@@ -146,8 +153,10 @@ const SILLY_FART_REACTION_RANGE := 10.0
 ## Every nearby NPC gets a turn, while new fart-triggered dialogue waits until
 ## the current group has finished. Physical gags still happen immediately.
 const SILLY_FART_REACTION_GAP_SECONDS := 0.12
-const SILLY_FART_MAX_QUEUED_REACTIONS := 12
-const SILLY_FART_VOICE_TIMEOUT_SECONDS := 12.0
+## Four distinct nearby reactions are readable; a dozen turns made a small gag
+## monopolise the shared narration channel for minutes when TTS was slow.
+const SILLY_FART_MAX_QUEUED_REACTIONS := 4
+const SILLY_FART_VOICE_TIMEOUT_SECONDS := 3.0
 ## FIFO of nearby NPC reaction turns. Entries keep a WeakRef so streamed-out
 ## NPCs can disappear safely before their turn without holding their scene
 ## nodes alive.
@@ -158,6 +167,8 @@ var _active_npc_reaction_name := ""
 var _active_npc_reaction_audio_started := false
 var _active_npc_reaction_audio_finished := false
 var _active_npc_reaction_audio_skipped := false
+var _npc_reaction_request_sequence := 0
+var _active_npc_reaction_request_id := -1
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
@@ -396,6 +407,17 @@ func start_session(world: World, session: Session) -> void:
 	_spawn_starter_enemies()
 	_setup_build_grid()
 	_spawn_vehicles()
+
+	# VS-016: Schedule region transition capture after a short delay
+	# This gives the player time to move away from spawn point
+	var region_timer = Timer.new()
+	region_timer.wait_time = 5.0  # 5 seconds after spawn
+	region_timer.timeout.connect(func() -> void:
+		_trigger_evidence_capture(3)  # REGION_TRANSITION = 3
+		region_timer.queue_free()
+	)
+	add_child(region_timer)
+	region_timer.start()
 
 	print("[gameplay] session live in %d ms total" % (Time.get_ticks_msec() - t0))
 
@@ -1195,6 +1217,11 @@ func _on_npc_trigger_entered(body: Node, npc_root: Node3D) -> void:
 	_active_npc_id = String(npc_root.get_meta("npc_id", ""))
 	_animate_npc_speech(String(npc_root.get_meta("npc_id", "")), greeting)
 	_show_npc_dialogue(name_pl, greeting)
+	
+	# VS-016: Trigger guide interaction evidence capture
+	var npc_role = npc_root.get_meta("npc_role", null)
+	if npc_role == NPCCharacter.ROLE_GUIDE:
+		_trigger_evidence_capture(2)  # GUIDE_INTERACTION = 2
 
 
 func _on_npc_trigger_exited(body: Node, npc_root: Node3D) -> void:
@@ -1354,6 +1381,9 @@ func _on_enemy_damaged(amount: int, position: Vector3) -> void:
 	# 60ms boss), not only on kill. This is the single biggest "yes I
 	# hit it" signal — Mick Hofman / J.W. Nijman pattern.
 	_apply_hit_stop(hit_stop_duration)
+	
+	# VS-016: Trigger combat evidence capture on first hit
+	_trigger_evidence_capture(4)  # COMBAT = 4
 	# Adv Y C4 fix: per-hit shake is now LOUDER than defeat shake
 	# (because it fires every swing, defeat is the rarer payoff).
 	# Direction = away from player toward hit point so the camera
@@ -2671,6 +2701,7 @@ func _queue_npc_reaction(npc_root: Node3D, reaction: Dictionary) -> void:
 		"name_pl": String(npc_root.get_meta("npc_name_pl", "Ktoś")),
 		"line": line,
 		"emotion": int(reaction.get("emotion", FacialPerformance.Emotion.HAPPY)),
+		"request_id": _next_npc_reaction_request_id(),
 	})
 	if _npc_reaction_queue_active or not is_inside_tree():
 		return
@@ -2691,13 +2722,14 @@ func _drain_npc_reaction_queue() -> void:
 		_animate_npc_speech(String(turn.get("npc_id", "")), line, int(turn.get("emotion", FacialPerformance.Emotion.HAPPY)))
 		_active_npc_reaction_line = line
 		_active_npc_reaction_name = name_pl
+		_active_npc_reaction_request_id = int(turn.get("request_id", -1))
 		_active_npc_reaction_audio_started = false
 		_active_npc_reaction_audio_finished = false
 		_active_npc_reaction_audio_skipped = false
 		if _npc_voice != null and _npc_voice.is_available():
 			# The caption waits for playback_started; it cannot get ahead of a
 			# slow ElevenLabs synthesis or replace an audible previous line.
-			_npc_voice.speak(line)
+			_npc_voice.speak(line, "pl-PL", _active_npc_reaction_request_id)
 			var voice_deadline_msec := Time.get_ticks_msec() + int(SILLY_FART_VOICE_TIMEOUT_SECONDS * 1000.0)
 			while not _active_npc_reaction_audio_finished and is_inside_tree():
 				if Time.get_ticks_msec() >= voice_deadline_msec:
@@ -2722,23 +2754,29 @@ func _drain_npc_reaction_queue() -> void:
 			_hide_npc_dialogue()
 		_active_npc_reaction_line = ""
 		_active_npc_reaction_name = ""
+		_active_npc_reaction_request_id = -1
 	_npc_reaction_queue_active = false
 
 
-func _on_npc_voice_playback_started(line: String) -> void:
-	if _active_npc_reaction_line != line:
+func _next_npc_reaction_request_id() -> int:
+	_npc_reaction_request_sequence += 1
+	return _npc_reaction_request_sequence
+
+
+func _on_npc_voice_playback_started(line: String, request_id: int = 0) -> void:
+	if _active_npc_reaction_line != line or _active_npc_reaction_request_id != request_id:
 		return
 	_active_npc_reaction_audio_started = true
 	_show_npc_dialogue(_active_npc_reaction_name, line, false)
 
 
-func _on_npc_voice_playback_finished(line: String) -> void:
-	if _active_npc_reaction_line == line:
+func _on_npc_voice_playback_finished(line: String, request_id: int = 0) -> void:
+	if _active_npc_reaction_line == line and _active_npc_reaction_request_id == request_id:
 		_active_npc_reaction_audio_finished = true
 
 
-func _on_npc_voice_playback_skipped(line: String) -> void:
-	if _active_npc_reaction_line == line:
+func _on_npc_voice_playback_skipped(line: String, request_id: int = 0) -> void:
+	if _active_npc_reaction_line == line and _active_npc_reaction_request_id == request_id:
 		_active_npc_reaction_audio_skipped = true
 		_active_npc_reaction_audio_finished = true
 
@@ -2769,7 +2807,10 @@ func _show_npc_reaction_bubble(npc_root: Node3D, line: String) -> void:
 		bubble.outline_size = 4
 		bubble.modulate = Color(0.92, 1.0, 0.76)
 		bubble.outline_modulate = Color(0.04, 0.08, 0.02, 0.9)
-		bubble.position = Vector3(0.0, 2.35, 0.0)
+		# Every NPC source has a different body height. The spawn path can supply
+		# a precise speech anchor; otherwise this compact default stays close to a
+		# human head rather than hovering above small props such as the parrot.
+		bubble.position = Vector3(0.0, float(npc_root.get_meta("speech_bubble_height", 1.75)), 0.0)
 		npc_root.add_child(bubble)
 	bubble.text = line
 	bubble.visible = true
@@ -2789,20 +2830,22 @@ func _match_npc_fart_animation(npc_root: Node3D, action: String) -> void:
 	var visual := npc_root.get_child(0) as Node3D if npc_root.get_child_count() > 0 else null
 	if visual == null:
 		return
-	var original_tilt := visual.rotation.z
+	var original_yaw := visual.rotation.y
 	var tween := create_tween()
 	match action:
 		"swat":
-			tween.tween_property(visual, "rotation:z", original_tilt + 0.30, 0.12)
-			tween.tween_property(visual, "rotation:z", original_tilt - 0.16, 0.12)
-			tween.tween_property(visual, "rotation:z", original_tilt, 0.16)
+			# Whole-rig roll was tipping characters and visibly lifting their feet.
+			# A quick planted-foot yaw is a readable, harmless "hey!" gesture.
+			tween.tween_property(visual, "rotation:y", original_yaw + 0.18, 0.12)
+			tween.tween_property(visual, "rotation:y", original_yaw - 0.10, 0.12)
+			tween.tween_property(visual, "rotation:y", original_yaw, 0.16)
 		"recoil":
-			tween.tween_property(visual, "rotation:x", -0.14, 0.12)
-			tween.tween_property(visual, "rotation:x", 0.0, 0.20)
+			tween.tween_property(visual, "rotation:y", original_yaw - 0.12, 0.12)
+			tween.tween_property(visual, "rotation:y", original_yaw, 0.20)
 		_:
-			tween.tween_property(visual, "rotation:z", original_tilt + 0.10, 0.10)
-			tween.tween_property(visual, "rotation:z", original_tilt - 0.10, 0.12)
-			tween.tween_property(visual, "rotation:z", original_tilt, 0.12)
+			tween.tween_property(visual, "rotation:y", original_yaw + 0.10, 0.10)
+			tween.tween_property(visual, "rotation:y", original_yaw - 0.10, 0.12)
+			tween.tween_property(visual, "rotation:y", original_yaw, 0.12)
 
 func _on_landed() -> void:
 	if _audio_bus != null:
@@ -2916,6 +2959,15 @@ func _is_reduce_motion_enabled() -> bool:
 	if AccessibilityPolicyPort_class != null:
 		return AccessibilityPolicyPort_class._global_instance.is_reduce_motion_enabled() if AccessibilityPolicyPort_class._global_instance else false
 	return false
+
+
+## VS-016: Trigger evidence capture for a specific capture point
+## Only triggers once per point to avoid duplicate screenshots
+func _trigger_evidence_capture(capture_point: int) -> void:
+	if _captured_evidence_points.has(capture_point):
+		return
+	_captured_evidence_points.append(capture_point)
+	emit_signal("evidence_capture_requested", capture_point)
 
 
 ## Update ambient particles based on reduce-motion setting
