@@ -3,6 +3,14 @@ extends Control
 
 const IconFont = preload("res://src/adapters/inbound/shared/ui/icon_font.gd")
 const ShellTransition = preload("res://src/adapters/inbound/shared/ui/shell_transition.gd")
+
+# VS-016: Preload evidence capture classes
+const ScreenshotCaptureClass = preload("res://src/adapters/outbound/evidence/screenshot_capture.gd")
+const PerformanceMonitorClass = preload("res://src/adapters/outbound/evidence/performance_monitor.gd")
+const HardwareTierClass = preload("res://src/adapters/outbound/evidence/hardware_tier.gd")
+const VisualQACheckerClass = preload("res://src/adapters/outbound/evidence/visual_qa_checker.gd")
+const EvidenceManagerClass = preload("res://src/adapters/outbound/evidence/evidence_manager.gd")
+
 const SHELL_LANDING := "landing"
 const SHELL_CREATE := "create"
 const SHELL_PLAY := "play"
@@ -169,21 +177,21 @@ func _ensure_voxel_body_bg() -> void:
 ## VS-016: Evidence capture component setup
 func _setup_evidence_components() -> void:
 	# Add HardwareTier for startup detection
-	var hardware_tier = HardwareTier.new()
+	var hardware_tier = HardwareTierClass.new()
 	add_child(hardware_tier)
 	hardware_tier.detect_tier()
 	
 	# Add PerformanceMonitor for game loop monitoring
-	var perf_monitor = PerformanceMonitor.new()
+	var perf_monitor = PerformanceMonitorClass.new()
 	add_child(perf_monitor)
 	perf_monitor.start()
 	
 	# Add ScreenshotCapture for capture events
-	var screenshot_capture = ScreenshotCapture.new()
+	var screenshot_capture = ScreenshotCaptureClass.new()
 	add_child(screenshot_capture)
 	
 	# Add EvidenceManager to coordinate everything
-	var evidence_manager = EvidenceManager.new()
+	var evidence_manager = EvidenceManagerClass.new()
 	add_child(evidence_manager)
 	
 	# Wire up evidence manager with its components
@@ -195,7 +203,7 @@ func _setup_evidence_components() -> void:
 	
 	# Connect to shell navigator for capture triggers
 	if _navigator != null:
-		_navigator.shell_changed.connect(_on_shell_changed.bind(evidence_manager, screenshot_capture))
+		_navigator.shell_changed.connect(_capture_shell_evidence.bind(evidence_manager, screenshot_capture))
 	
 	# Store references for later use
 	_evidence_manager = evidence_manager
@@ -205,13 +213,13 @@ func _setup_evidence_components() -> void:
 
 
 ## VS-016: Handle shell changes for evidence capture
-func _on_shell_changed(shell_id: String, evidence_manager: EvidenceManager, screenshot_capture: ScreenshotCapture) -> void:
+func _capture_shell_evidence(shell_id: String, evidence_manager: EvidenceManager, screenshot_capture: ScreenshotCapture) -> void:
 	# Map shell IDs to capture points
 	var capture_point_map = {
-		"play": ScreenshotCapture.CapturePoint.SPAWN,
-		"create": ScreenshotCapture.CapturePoint.REGION_TRANSITION,
-		"library": ScreenshotCapture.CapturePoint.COMBAT,
-		"parent": ScreenshotCapture.CapturePoint.GUIDE_INTERACTION
+		"play": ScreenshotCaptureClass.CapturePoint.SPAWN,
+		"create": ScreenshotCaptureClass.CapturePoint.REGION_TRANSITION,
+		"library": ScreenshotCaptureClass.CapturePoint.COMBAT,
+		"parent": ScreenshotCaptureClass.CapturePoint.GUIDE_INTERACTION
 	}
 	
 	if shell_id in capture_point_map:
@@ -1028,7 +1036,7 @@ func _show_launcher() -> void:
 func _on_launcher_play() -> void:
 	# VS-016: Capture launcher screenshot before removing launcher
 	if _screenshot_capture != null:
-		_screenshot_capture.capture(ScreenshotCapture.CapturePoint.LAUNCHER, {"trigger": "launcher_play"})
+		_screenshot_capture.capture(ScreenshotCaptureClass.CapturePoint.LAUNCHER, {"trigger": "launcher_play"})
 	
 	_launcher = null
 	var kid_id := _profile.profile_id if _profile != null else "local_kid_1"

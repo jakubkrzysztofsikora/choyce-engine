@@ -57,15 +57,26 @@ func _get_cpu_name() -> String:
 
 
 func _get_gpu_name() -> String:
-	# RenderingServer functions may not be available in all Godot versions
-	return "Unknown"
+	if RenderingServer == null:
+		return "Unknown"
+	if not RenderingServer.has_method("get_video_adapter_name"):
+		return "Unknown"
+	return RenderingServer.get_video_adapter_name()
 
 
 func _get_gpu_vendor() -> String:
-	return "Unknown"
+	if RenderingServer == null:
+		return "Unknown"
+	if not RenderingServer.has_method("get_video_adapter_vendor"):
+		return "Unknown"
+	return RenderingServer.get_video_adapter_vendor()
 
 
 func _get_gpu_vram() -> float:
+	# Godot 4 exposes adapter identity but deliberately has no cross-platform
+	# VRAM query. Calling a non-existent RenderingServer method made the entire
+	# main scene fail to compile, leaving the Play shell blank. Keep the optional
+	# telemetry field conservative until a platform adapter can provide it.
 	return 0.0
 
 
