@@ -128,8 +128,11 @@ tasks:
       - src/adapters/inbound/gameplay/vehicles/vehicle_base.gd (child-safe hard speed cap; safe egress raycast fallback to last grounded position; collision layer/mask restoration)
       - tests/adapters/inbound/test_vehicle_runtime.gd (_assert_vehicle_safety_and_fallbacks regression: speed cap, ramp grounded collision, void-safe egress, collision restore, fist fallback, equipped-tool fallback)
       - godot4 --headless --path . --script tests/adapters/inbound/test_vehicle_runtime.gd (all vehicle runtime assertions pass)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (_spawn_npcs no longer early-returns on empty roster; starter-camp residents always spawn; collision shapes named for testability)
+      - tests/adapters/inbound/test_camp_civilians.gd (regression: residents spawn with empty roster, grounded StaticBody3D, CapsuleShape3D collision, GreetTrigger Area3D, wander metadata, greeting and safe fart-reaction lines, wander loop stays grounded, dialogue label show/hide)
+      - godot4 --headless --path . --script tests/adapters/inbound/test_camp_civilians.gd (all camp civilian assertions pass)
       - godot4 --headless --path . --script tests/domain/test_sandbox_state.gd and tests/application/test_sandbox_persistence.gd (no unrelated breakage)
-      - Handoff: junior-coder slice complete for first two acceptance criteria (terrain/vehicle recovery and car egress/speed/grounded/tool-fist regression coverage); remaining VS-048 acceptance criteria (music crossfade, camp civilians) stay with Codex and await Claude cross-review per task cross_review_by.
+      - Handoff: junior-coder slices complete for terrain/vehicle recovery, car egress/speed/grounded/tool-fist regression, and camp-civilian spawn/wander/interaction coverage. Remaining VS-048 acceptance criterion (music crossfade among exploration/danger/driving states) stays with Codex and awaits Claude cross-review per task cross_review_by.
 
   - id: VS-044
     title: Align the Adventure river with the bridge and compose a dense opening grove

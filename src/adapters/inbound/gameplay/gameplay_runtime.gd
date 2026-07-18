@@ -3,6 +3,7 @@ extends Node3D
 
 const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
 const SKY3D_SCRIPT := preload("res://addons/sky_3d/src/Sky3D.gd")
+const PICTORIAL_VITALITY_METER: Script = preload("res://src/adapters/inbound/shared/ui/pictorial_vitality_meter.gd")
 
 signal session_ended
 ## Emitted at session-end with the WinOutcome so HUD/celebration
@@ -63,8 +64,9 @@ var _rule_compiler: RuleCompilerService
 var _score: int = 0
 var _rules_active: bool = false
 
-# Combat HUD references — built lazily in _build_hud.
-var _hp_bar: ProgressBar
+# Combat HUD references — built lazily in _build_hud. The visible emergency
+# indicator is a pictorial radial meter rather than an unreadable dashboard.
+var _hp_meter: Control
 var _score_label: Label
 var _stats_panel: PanelContainer
 var _enemy_root: Node3D
@@ -115,6 +117,14 @@ var _sandbox_state: SandboxState = null
 var _vehicle_spawner: VehicleSpawner = null
 var _destruction_tracker: DestructionTracker = null
 var _active_vehicle: VehicleBase = null
+var _adventure_music_state := ""
+var _next_adventure_music_rotation_sec := 0.0
+const ADVENTURE_MUSIC_ROTATION_SECONDS := {
+	"explore": 75.0,
+	"drive": 55.0,
+	"danger": 45.0,
+	"night": 95.0,
+}
 
 const WAVE_RESPAWN_DELAY := 6.0
 ## Kid falls below this y → soft-respawn. Fixes spring-launch
@@ -134,6 +144,7 @@ const HUD_ICON_STAR: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Doub
 const HUD_ICON_RETURN: Texture2D = preload("res://data/textures/ui/PNG/Blue/Double/arrow_basic_w.png")
 const HUD_ICON_CAMP: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/campfire-pit.png")
 const HUD_ICON_UNDO: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/arrow_basic_w.png")
+const HUD_ICON_SILLY_PUFF: Texture2D = preload("res://data/textures/generated/silly-puff-icon-v1.png")
 
 # These core Adventure lines are generated with ElevenLabs at asset-prep time
 # and shipped with the game. Finder/editor runs do not inherit a developer
@@ -165,8 +176,9 @@ var _outcome_emitted: bool = false        ## Guard so end_session is idempotent.
 var _last_goal_check_ratio: float = 0.0   ## Cached so HUD can paint a progress bar.
 
 # Wave 3 W3-A3 NPC roster. Injected via setup_npcs(); populated by
-# PlayShell from NPCDialogueLoader.filtered_for_policy(). Empty list
-# means no friendly NPCs spawn (legacy / free-play sessions).
+# PlayShell from NPCDialogueLoader.filtered_for_policy(). An empty list
+# skips the authored Adventure NPCs, but starter-camp residents still
+# spawn so free-play sessions have a lived-in, child-safe camp.
 var _npc_roster: Array = []
 var _npc_root: Node3D = null
 var _npc_dialogue_label: Label = null
@@ -213,6 +225,16 @@ var _active_npc_reaction_request_id := -1
 var _normal_npc_voice_active := false
 var _normal_npc_voice_request_id := -1
 var _normal_npc_voice_line := ""
+
+# Intelligent NPC dialogue variables
+var _npc_llm_port: LLMPort = null
+var _npc_moderation: ModerationPort = null
+var _npc_dialogue_panel: PanelContainer = null
+var _npc_dialogue_input: LineEdit = null
+var _npc_dialogue_send: Button = null
+var _npc_dialogue_close: Button = null
+var _npc_dialogue_history: Dictionary = {}
+
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
@@ -347,6 +369,7 @@ func _ready() -> void:
 		_player_controller.visible = false
 		_player_controller.set_process_input(false)
 		_player_controller.set_process(false)
+		_player_controller.set_physics_process(false)
 		_player_controller.footstep.connect(_on_footstep)
 		_player_controller.landed.connect(_on_landed)
 		_player_controller.hard_landed.connect(_on_hard_landed)
@@ -419,6 +442,12 @@ func setup_goal(
 ## hostile NPCs become guides when combat is off.
 func setup_npcs(npcs: Array) -> void:
 	_npc_roster = npcs.duplicate()
+
+
+func setup_npc_llm(llm: LLMPort, moderation: ModerationPort) -> void:
+	_npc_llm_port = llm
+	_npc_moderation = moderation
+
 
 
 func setup_combat_data(
@@ -564,6 +593,10 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 	_player_controller.visible = true
 	_player_controller.set_process_input(true)
 	_player_controller.set_process(true)
+	# Vehicle entry deliberately disables physics. A reused runtime must never
+	# carry that disabled state into a new Adventure session, otherwise a player
+	# remains suspended at its spawn coordinate despite the visible ground below.
+	_player_controller.set_physics_process(true)
 	_apply_loaded_customization()
 	if use_adventure_sky and _world_renderer.has_runtime_terrain_collision():
 		call_deferred("_confirm_runtime_terrain_collision", terrain_probe_generation,
@@ -606,11 +639,41 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 
 
 func _ensure_session_music() -> void:
-	# Direct test/demo launch paths bypass PlayShell. Keep a non-lyrical music
-	# loop alive there too, so entering the playable world is never silent.
+	# Direct test/demo launch paths bypass PlayShell. Keep a dynamic, local,
+	# non-lyrical phonk/ambient bed alive there too, so the world is never silent.
 	var bank := get_node_or_null("/root/AudioBank")
-	if bank != null and bank.has_method("play_music"):
+	if bank != null and bank.has_method("set_adventure_music_state"):
+		bank.call("set_adventure_music_state", "explore")
+		_adventure_music_state = "explore"
+		_next_adventure_music_rotation_sec = ADVENTURE_MUSIC_ROTATION_SECONDS["explore"]
+	elif bank != null and bank.has_method("play_music"):
 		bank.call("play_music", "adventure_island", true)
+
+
+func _tick_adventure_music() -> void:
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank == null or not bank.has_method("set_adventure_music_state"):
+		return
+	var desired := "explore"
+	if _active_vehicle != null and is_instance_valid(_active_vehicle):
+		desired = "drive"
+	elif _player_controller != null and is_instance_valid(_player_controller):
+		for enemy_variant in get_tree().get_nodes_in_group("enemies"):
+			if not (enemy_variant is EnemyController) or not is_instance_valid(enemy_variant):
+				continue
+			var enemy := enemy_variant as EnemyController
+			if enemy.health != null and enemy.health.is_alive \
+				and enemy.global_position.distance_to(_player_controller.global_position) < 15.0:
+				desired = "danger"
+				break
+	if desired != _adventure_music_state:
+		bank.call("set_adventure_music_state", desired)
+		_adventure_music_state = desired
+		_next_adventure_music_rotation_sec = _session_elapsed_sec + float(ADVENTURE_MUSIC_ROTATION_SECONDS.get(desired, 75.0))
+	if _session_elapsed_sec >= _next_adventure_music_rotation_sec \
+		and bank.has_method("rotate_adventure_track"):
+		bank.call("rotate_adventure_track")
+		_next_adventure_music_rotation_sec = _session_elapsed_sec + float(ADVENTURE_MUSIC_ROTATION_SECONDS.get(desired, 75.0))
 
 
 ## VS-021: Vehicle System
@@ -675,6 +738,13 @@ func _set_main_layout_visible(value: bool) -> void:
 	var layout := get_node_or_null("/root/Main/Layout")
 	if layout != null:
 		layout.visible = value
+	# ActiveIndicator is deliberately a sibling of Main/Layout so it can animate
+	# across launcher tabs. That also meant it survived the layout hide and left
+	# a disconnected lime dash in the gameplay sky. It belongs to shell
+	# navigation, never to the in-world HUD.
+	var active_indicator := get_node_or_null("/root/Main/ActiveIndicator")
+	if active_indicator != null:
+		active_indicator.visible = value
 	# VoxelBodyBG is an OPAQUE black full-rect ColorRect on Main's 2D canvas —
 	# it draws over the root 3D viewport. Hide it (and the scanline overlay)
 	# during gameplay or the kid sees a black screen with only the HUD
@@ -730,9 +800,8 @@ func _confirm_runtime_terrain_collision(probe_generation: int, expected_adapter:
 		Vector3(0.0, 0.0, -46.0),
 		Vector3(14.0, 0.0, -43.0),
 	]
-	if _world_renderer.verify_runtime_terrain_contacts(contacts, excluded, expected_adapter):
-		if probe_generation != _terrain_collision_probe_generation:
-			return
+	var terrain_session_token := _world_renderer.get_terrain_import_session_token() if _world_renderer else 0
+	if _world_renderer.verify_runtime_terrain_contacts(contacts, excluded, expected_adapter, terrain_session_token):
 		_set_legacy_ground_collision_enabled(false)
 		print("[gameplay] Terrain3D collision verified at spawn and bridge bank; safety floor disabled")
 	else:
@@ -1137,10 +1206,25 @@ func _tick_npcs(delta: float) -> void:
 		var base_y: float = float(body.get_meta("npc_base_y", body.global_position.y))
 		match role:
 			NPCCharacter.ROLE_GUIDE, NPCCharacter.ROLE_VENDOR:
-				# Keep feet planted. The former idle bob made static NPCs appear to
-				# float above the terrain from the third-person camera.
+				# Civilian NPCs follow a small, authored loop around their work/home
+				# marker. They stay at terrain height—no idle bob or floating labels—so
+				# the opening reads as a lived-in place rather than a prop showroom.
+				var wander_origin: Vector3 = body.get_meta("npc_wander_origin", body.global_position) as Vector3
+				var wander_radius := float(body.get_meta("npc_wander_radius", 1.25))
+				var wander_speed := float(body.get_meta("npc_wander_speed", 0.32))
+				var phase := float(body.get_meta("npc_wander_phase", 0.0))
+				var orbit := Vector3(cos(t * wander_speed + phase), 0.0,
+					sin(t * wander_speed * 0.83 + phase)) * wander_radius
+				var desired := wander_origin + orbit
+				desired.y = base_y
+				var horizontal := desired - body.global_position
+				horizontal.y = 0.0
+				var is_walking := horizontal.length() > 0.10
+				if is_walking:
+					body.global_position = body.global_position.move_toward(desired, delta * 0.72)
+					body.look_at(body.global_position + horizontal, Vector3.UP)
 				body.global_position.y = base_y
-				body.rotate_y(delta * 0.6)
+				_set_npc_locomotion(body, is_walking)
 			NPCCharacter.ROLE_HOSTILE:
 				# Slow chase: lerp toward player on the XZ plane, capped speed.
 				if _player_controller == null or not is_instance_valid(_player_controller):
@@ -1159,8 +1243,6 @@ func _tick_npcs(delta: float) -> void:
 func _spawn_npcs() -> void:
 	if _player_controller == null:
 		return
-	if _npc_roster.is_empty():
-		return
 	if _npc_root != null and is_instance_valid(_npc_root):
 		_npc_root.queue_free()
 	_npc_root = Node3D.new()
@@ -1172,32 +1254,62 @@ func _spawn_npcs() -> void:
 	# floor while physics settles. Static NPCs must use terrain height, not that
 	# transient character height, or they remain permanently airborne.
 	origin.y = 0.0
-	# Put the guide on the opening path and keep optional characters farther
-	# out. The first thing the kid sees is a friendly invitation, not a wall of
-	# hostile geometry.
-	var count: int = _npc_roster.size()
-	for i in count:
-		var npc_variant: Variant = _npc_roster[i]
-		if not (npc_variant is NPCCharacter):
-			continue
-		var npc: NPCCharacter = npc_variant
-		var angle := (TAU / float(count)) * float(i)
-		var pos := origin + Vector3(cos(angle) * 10.0, 0.0, sin(angle) * 10.0)
-		if i == 0:
-			# The guide is visible beside the opening trail, but speaks only when
-			# approached. This avoids a reading-heavy dialogue slab obscuring the
+
+	# Spawn authored Adventure NPCs only when a roster was injected. The roster
+	# may be empty in free-play sessions, but the starter-camp residents below
+	# still populate the opening so the world never feels abandoned.
+	if not _npc_roster.is_empty():
+		# Put the guide on the opening path and keep optional characters farther
+		# out. The first thing the kid sees is a friendly invitation, not a wall of
+		# hostile geometry.
+		var count: int = _npc_roster.size()
+		for i in count:
+			var npc_variant: Variant = _npc_roster[i]
+			if not (npc_variant is NPCCharacter):
+				continue
+			var npc: NPCCharacter = npc_variant
+			var angle := (TAU / float(count)) * float(i)
+			var pos := origin + Vector3(cos(angle) * 10.0, 0.0, sin(angle) * 10.0)
+			if i == 0:
+				# The guide is visible beside the opening trail, but speaks only when
+				# approached. This avoids a reading-heavy dialogue slab obscuring the
 			# first scenic frame before the child has chosen to interact.
-			pos = origin + Vector3(-3.8, 0.0, -6.0)
-		elif npc.visual_id == "npc_pirate":
-			# The pirate is a discoverable world character even when parental
-			# combat policy degrades their role to guide. Do not let the policy
-			# move a full-sized human into the opening tableau.
-			pos = origin + Vector3(-120.0, 0.0, 90.0)
-		elif npc.visual_id == "npc_parrot":
-			# Pestka stays near Olek as a small, grounded companion—not a human
-			# at a random point on the NPC ring.
-			pos = origin + Vector3(-5.5, 0.0, -6.5)
-		_spawn_one_npc(npc, pos)
+				pos = origin + Vector3(-3.8, 0.0, -6.0)
+			elif npc.visual_id == "npc_pirate":
+				# The pirate is a discoverable world character even when parental
+				# combat policy degrades their role to guide. Do not let the policy
+				# move a full-sized human into the opening tableau.
+				pos = origin + Vector3(-120.0, 0.0, 90.0)
+			elif npc.visual_id == "npc_parrot":
+				# Pestka stays near Olek as a small, grounded companion—not a human
+				# at a random point on the NPC ring.
+				pos = origin + Vector3(-5.5, 0.0, -6.5)
+			_spawn_one_npc(npc, pos)
+
+	# A small, ordinary camp population makes the north-bank home feel lived in
+	# before the later village expansion. These reuse the grounded human rigs and
+	# local facial attachment path; none are color blobs or passive billboards.
+	var residents: Array[NPCCharacter] = [
+		NPCCharacter.new("npc_hania", NPCCharacter.ROLE_GUIDE, "Hania", {
+			"greeting_pl": "Cześć! Właśnie wracam z lasu. Masz już siekierę?",
+			"fart_reaction": {"kind": "laugh", "line": "Ha! Ale numer!"},
+		}),
+		NPCCharacter.new("npc_bartek", NPCCharacter.ROLE_VENDOR, "Bartek", {
+			"greeting_pl": "Pilnuję opału przy domu. Drewno przyda się do gotowania.",
+			"fart_reaction": {"kind": "disgust", "line": "Ej, przewietrzmy to!"},
+		}),
+		NPCCharacter.new("npc_lena", NPCCharacter.ROLE_GUIDE, "Lena", {
+			"greeting_pl": "Miło cię widzieć! Za mostem znajdziesz kamienie do zbierania.",
+			"fart_reaction": {"kind": "curious", "line": "To było naprawdę głośne!"},
+		}),
+	]
+	var resident_positions := [
+		origin + Vector3(-7.5, 0.0, -35.5),
+		origin + Vector3(20.5, 0.0, -48.0),
+		origin + Vector3(4.5, 0.0, -57.0),
+	]
+	for resident_index in residents.size():
+		_spawn_one_npc(residents[resident_index], resident_positions[resident_index], 2.15)
 
 
 func _show_intro_npc() -> void:
@@ -1221,8 +1333,9 @@ func _show_intro_npc() -> void:
 ## Spawn a single NPC marker: capsule mesh + collision + Area3D for
 ## the greeting trigger. Color encodes role so the kid can tell a
 ## guide (green) from a vendor (gold) from a (degraded) hostile (red).
-func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
+func _spawn_one_npc(npc: NPCCharacter, pos: Vector3, wander_radius: float = 1.25) -> void:
 	var root := StaticBody3D.new()
+	var is_small_companion := npc.visual_id == "npc_parrot"
 	root.name = "npc_%s" % npc.npc_id
 	# A detached node cannot safely receive a global transform. Add it to the
 	# NPC root first, then use local position so the authored spawn is stable
@@ -1234,6 +1347,11 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	root.set_meta("greeting_pl", npc.line_for("greeting"))
 	root.set_meta("npc_role", npc.role)
 	root.set_meta("npc_base_y", pos.y)
+	root.set_meta("npc_wander_origin", pos)
+	root.set_meta("npc_wander_radius", wander_radius)
+	root.set_meta("npc_wander_speed", 0.31 + float(abs(npc.npc_id.hash()) % 9) * 0.015)
+	root.set_meta("npc_wander_phase", deg_to_rad(float(abs(npc.npc_id.hash()) % 360)))
+	root.set_meta("speech_bubble_height", 0.90 if is_small_companion else 1.75)
 	var fart_reaction: Variant = npc.lines_pl.get("fart_reaction", {})
 	if fart_reaction is Dictionary:
 		root.set_meta("fart_reaction", (fart_reaction as Dictionary).duplicate(true))
@@ -1260,16 +1378,17 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	label.outline_size = 4
 	label.modulate = Color(0.92, 0.96, 1.0)
 	label.outline_modulate = Color(0, 0, 0, 0.85)
-	label.position = Vector3(0, 2.05, 0)
+	label.position = Vector3(0, 0.95 if is_small_companion else 2.05, 0)
 	label.visible = false
 	root.add_child(label)
 
 	var col := CollisionShape3D.new()
+	col.name = "CollisionShape3D"
 	var shape := CapsuleShape3D.new()
-	shape.height = 1.2
-	shape.radius = 0.28
+	shape.height = 0.68 if is_small_companion else 1.2
+	shape.radius = 0.21 if is_small_companion else 0.28
 	col.shape = shape
-	col.position.y = 0.6
+	col.position.y = 0.34 if is_small_companion else 0.6
 	root.add_child(col)
 
 	# Interaction trigger — 1.8m radius so walking up greets the kid
@@ -1277,13 +1396,33 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	var trigger := Area3D.new()
 	trigger.name = "GreetTrigger"
 	var trig_shape := SphereShape3D.new()
-	trig_shape.radius = 1.8
+	trig_shape.radius = 1.0 if is_small_companion else 1.8
 	var trig_col := CollisionShape3D.new()
 	trig_col.shape = trig_shape
 	trigger.add_child(trig_col)
 	trigger.body_entered.connect(_on_npc_trigger_entered.bind(root))
 	trigger.body_exited.connect(_on_npc_trigger_exited.bind(root))
 	root.add_child(trigger)
+
+
+const _NPC_WALK_HINTS := ["Walk", "walk", "CharacterArmature|Walk", "SkeletonArmature|Skeleton_Walk"]
+
+
+func _set_npc_locomotion(body: StaticBody3D, walking: bool) -> void:
+	var desired_state := "walk" if walking else "idle"
+	if String(body.get_meta("npc_locomotion", "")) == desired_state:
+		return
+	var visual := body.get_child(0) as Node3D if body.get_child_count() > 0 else null
+	var anim := visual.find_child("AnimationPlayer", true, false) as AnimationPlayer if visual != null else null
+	if anim == null:
+		return
+	var hints := _NPC_WALK_HINTS if walking else _NPC_IDLE_HINTS
+	for hint in hints:
+		if anim.has_animation(hint):
+			anim.get_animation(hint).loop_mode = Animation.LOOP_LINEAR
+			anim.play(hint)
+			body.set_meta("npc_locomotion", desired_state)
+			return
 
 ## The player already proves these Kenney character scenes at the correct kid
 ## scale. Reuse them for every NPC instead of depending on a separate rig that
@@ -1309,6 +1448,10 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 			var model := packed.instantiate() as Node3D
 			if model != null:
 				model.scale = Vector3.ONE * 0.92
+				# Kenney's visible feet sit 10cm above its imported root.  The player
+				# controller calibrates this same rig; civilians need the matching
+				# resting offset or they visibly hover above their collision capsule.
+				model.position.y = -0.10
 				# Kenney rigs author facing +Z; face -Z toward the approaching kid.
 				model.rotation.y = PI
 				if npc.visual_id == "npc_pirate":
@@ -1348,9 +1491,9 @@ func _attach_humanoid_face(model: Node3D) -> void:
 
 
 func _build_parrot_visual() -> Node3D:
-	# No bird model exists in the local approved packs. Build a deliberately
-	# readable small parrot silhouette (body, wings, tail, beak and feet) rather
-	# than ever degrading this NPC to a human rig again.
+	# No suitable bird model exists in the compatible local packs. Keep a compact,
+	# readable parrot silhouette (body, wings, tail, beak and feet) rather than
+	# degrading this NPC to a humanoid or a smooth chicken-shaped blob.
 	var parrot := Node3D.new()
 	parrot.name = "ParrotVisual"
 	parrot.scale = Vector3.ONE * 0.62
@@ -1372,9 +1515,21 @@ func _build_parrot_visual() -> Node3D:
 	head_mesh.radius = 0.24
 	head_mesh.height = 0.44
 	head.mesh = head_mesh
-	head.material_override = yellow
+	# A yellow head read as a tiny human with a coloured helmet from the
+	# third-person camera. Keep the head in the parrot's green plumage; reserve
+	# yellow for a compact chest patch and the red beak.
+	head.material_override = green
 	head.position = Vector3(0.0, 0.76, -0.10)
 	parrot.add_child(head)
+	var chest := MeshInstance3D.new()
+	var chest_mesh := SphereMesh.new()
+	chest_mesh.radius = 0.18
+	chest_mesh.height = 0.30
+	chest.mesh = chest_mesh
+	chest.material_override = yellow
+	chest.position = Vector3(0.0, 0.46, -0.25)
+	chest.scale = Vector3(0.75, 1.0, 0.45)
+	parrot.add_child(chest)
 	for x in [-0.27, 0.27]:
 		var wing := MeshInstance3D.new()
 		var wing_mesh := SphereMesh.new()
@@ -1428,7 +1583,6 @@ func _build_parrot_visual() -> Node3D:
 	parrot.add_child(face)
 	face.setup_face(Vector3(0.0, 0.76, -0.10), -0.22, 0.72, false, false)
 	return parrot
-
 
 func _npc_material(color: Color) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -1522,6 +1676,23 @@ func _show_npc_dialogue(name_pl: String, line_pl: String, speak_line: bool = tru
 		return
 	_npc_dialogue_label.text = "%s: %s" % [name_pl, line_pl]
 	_npc_dialogue_label.visible = true
+	if _npc_dialogue_panel != null:
+		_npc_dialogue_panel.visible = true
+
+	# Clear input text
+	if _npc_dialogue_input != null:
+		_npc_dialogue_input.text = ""
+
+	# Conversation is an optional overlay, never a modal state. In particular,
+	# do not focus its LineEdit on greeting: that previously swallowed E and
+	# other gameplay bindings before a child had chosen to type anything.
+
+	# Start conversation history if empty
+	if not _npc_dialogue_history.has(_active_npc_id) or _npc_dialogue_history[_active_npc_id].is_empty():
+		_npc_dialogue_history[_active_npc_id] = [
+			{"role": "assistant", "content": line_pl}
+		]
+
 	# Speak the line aloud (ElevenLabs). Caption stays as the fallback. Normal
 	# encounters are also request-aware; the reaction queue waits for this turn
 	# to finish instead of starting a second concurrent voice.
@@ -1614,6 +1785,10 @@ func _animate_npc_speech(
 func _hide_npc_dialogue() -> void:
 	if _npc_dialogue_label != null:
 		_npc_dialogue_label.visible = false
+	if _npc_dialogue_panel != null:
+		_npc_dialogue_panel.visible = false
+	if _player_controller != null and _player_controller.has_method("set_input_disabled") and _player_controller.is_input_disabled():
+		_player_controller.set_input_disabled(false)
 
 
 func _build_npc_dialogue_label() -> Label:
@@ -1624,10 +1799,25 @@ func _build_npc_dialogue_label() -> Label:
 	panel.name = "NPCDialogue"
 	panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	panel.offset_left = 280
-	panel.offset_top = -160
+	if _npc_llm_port != null:
+		panel.offset_top = -240
+	else:
+		panel.offset_top = -160
 	panel.offset_right = -280
 	panel.offset_bottom = -90
 	hud.add_child(panel)
+	_npc_dialogue_panel = panel
+	# The conversation composer is an interaction surface, not a permanent HUD
+	# element.  A visible empty panel at boot read as a developer chat overlay
+	# and covered the lower third of the opening scene before the child had met
+	# anyone. `_show_npc_dialogue()` reveals it only after entering an NPC's
+	# intentional conversation radius.
+	panel.visible = false
+
+	var vbox := VBoxContainer.new()
+	vbox.name = "DialogueVBox"
+	panel.add_child(vbox)
+
 	var label := Label.new()
 	label.name = "NPCDialogueLabel"
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1638,8 +1828,281 @@ func _build_npc_dialogue_label() -> Label:
 	label.add_theme_constant_override("shadow_offset_x", 2)
 	label.add_theme_constant_override("shadow_offset_y", 2)
 	label.visible = false
-	panel.add_child(label)
+	label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(label)
+
+	if _npc_llm_port != null:
+		var hbox := HBoxContainer.new()
+		hbox.name = "DialogueInputHBox"
+		hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vbox.add_child(hbox)
+
+		var input := LineEdit.new()
+		input.name = "DialogueInput"
+		input.placeholder_text = "Napisz cos do NPC..."
+		input.focus_mode = Control.FOCUS_CLICK
+		input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		input.add_theme_font_size_override("font_size", 18)
+		hbox.add_child(input)
+		_npc_dialogue_input = input
+		input.text_submitted.connect(_on_npc_dialogue_submitted)
+
+		var send_btn := Button.new()
+		send_btn.name = "DialogueSendButton"
+		send_btn.text = "Wyslij"
+		send_btn.focus_mode = Control.FOCUS_CLICK
+		send_btn.add_theme_font_size_override("font_size", 18)
+		hbox.add_child(send_btn)
+		_npc_dialogue_send = send_btn
+		send_btn.pressed.connect(func() -> void: _on_npc_dialogue_submitted(""))
+
+		var close_btn := Button.new()
+		close_btn.name = "DialogueCloseButton"
+		close_btn.text = "Pozegnaj"
+		close_btn.focus_mode = Control.FOCUS_CLICK
+		close_btn.add_theme_font_size_override("font_size", 18)
+		hbox.add_child(close_btn)
+		_npc_dialogue_close = close_btn
+		close_btn.pressed.connect(_hide_npc_dialogue)
+
 	return label
+
+
+func _on_npc_dialogue_submitted(text: String = "") -> void:
+	if text.strip_edges().is_empty():
+		if _npc_dialogue_input != null:
+			text = _npc_dialogue_input.text
+	if text.strip_edges().is_empty():
+		return
+
+	if _npc_dialogue_input != null:
+		_npc_dialogue_input.text = ""
+
+	var npc_name := ""
+	if _npc_root != null:
+		for child in _npc_root.get_children():
+			if child.get_meta("npc_id", "") == _active_npc_id:
+				npc_name = child.get_meta("npc_name_pl", "")
+				break
+	if npc_name.is_empty():
+		npc_name = _active_npc_id
+
+	if _npc_dialogue_label != null:
+		_npc_dialogue_label.text = "%s myśli..." % npc_name
+
+	_execute_npc_completions(text)
+
+
+func _get_inventory() -> Dictionary:
+	if _rules_runtime != null:
+		var raw: Variant = _rules_runtime.get_context_value("inventory")
+		if raw is Dictionary:
+			return raw
+	return {}
+
+
+func _add_inventory_item(item_id: String, amount: int = 1) -> void:
+	var inventory := _get_inventory()
+	inventory[item_id] = int(inventory.get(item_id, 0)) + amount
+	if _rules_runtime != null:
+		_rules_runtime.set_context_value("inventory", inventory)
+		_rules_runtime.on_event("inventory_changed", {"item": item_id})
+	_refresh_inventory_panel(inventory)
+
+
+func _execute_npc_completions(player_text: String) -> void:
+	if _npc_llm_port == null:
+		return
+
+	var active_npc: NPCCharacter = null
+	for npc_variant in _npc_roster:
+		if npc_variant is NPCCharacter and npc_variant.npc_id == _active_npc_id:
+			active_npc = npc_variant
+			break
+
+	var npc_name_pl := _active_npc_id
+	var npc_role := "guide"
+	if active_npc != null:
+		npc_name_pl = active_npc.name_pl
+		npc_role = active_npc.role
+
+	if not _npc_dialogue_history.has(_active_npc_id):
+		_npc_dialogue_history[_active_npc_id] = []
+
+	_npc_dialogue_history[_active_npc_id].append({"role": "user", "content": player_text})
+
+	var inv_str := ""
+	var inv := _get_inventory()
+	for item_id in inv.keys():
+		inv_str += "%s: %d, " % [item_id, inv[item_id]]
+	if inv_str.is_empty():
+		inv_str = "pusty"
+	else:
+		inv_str = inv_str.left(inv_str.length() - 2)
+
+	var sys_prompt := "Jesteś postacią w grze przygodowej dla dzieci. " \
+		+ "Nazywasz się: %s.\n" \
+		+ "Twoja rola to: %s (guide = pomocnik/trener, vendor = kupiec, hostile = wróg).\n" \
+		+ "Stan gry:\n" \
+		+ "- Punkty gracza: %d\n" \
+		+ "- Życie gracza: %d/%d\n" \
+		+ "- Ekwipunek gracza: %s\n\n" \
+		+ "Odpowiadaj po polsku. Pisz krótko (1-3 zdania), przyjaźnie i zgodnie ze swoją rolą.\n" \
+		+ "Możesz modyfikować stan gry (dawać/odbierać przedmioty, leczyć, zadawać obrażenia, dawać punkty).\n" \
+		+ "Jeśli podejmiesz decyzję o zmianie stanu gry, na samym końcu swojej odpowiedzi dopisz dokładnie blok w tagu <decision>:\n" \
+		+ "<decision>\n" \
+		+ "{\n" \
+		+ "  \"action\": \"give_item|take_item|give_score|heal|damage\",\n" \
+		+ "  \"item_id\": \"wood_oak|ore_iron|slime_gel|food_apple|banana\",\n" \
+		+ "  \"amount\": 1\n" \
+		+ "}\n" \
+		+ "</decision>\n" \
+		+ "W zwykłym tekście nie wspomominaj o tym bloku ani o tagach."
+
+	sys_prompt = sys_prompt % [
+		npc_name_pl,
+		npc_role,
+		_score,
+		_player_controller.get_health().current_hp if _player_controller != null and _player_controller.get_health() != null else 100,
+		_player_controller.get_health().max_hp if _player_controller != null and _player_controller.get_health() != null else 100,
+		inv_str
+	]
+
+	var prompt_text := ""
+	for msg in _npc_dialogue_history[_active_npc_id]:
+		var prefix := "Gracz: " if msg["role"] == "user" else (npc_name_pl + ": ")
+		prompt_text += prefix + msg["content"] + "\n"
+	prompt_text += npc_name_pl + ":"
+
+	var envelope := PromptEnvelope.new(prompt_text, "pl-PL")
+	envelope.system_prompt = sys_prompt
+	envelope.max_tokens = 250
+
+	var npc_id := _active_npc_id
+	var captured_npc_name := npc_name_pl
+	var captured_authored_npc := active_npc
+
+	_npc_llm_port.complete(
+		envelope,
+		{},
+		func(_token: String) -> void: pass,
+		func(result: Dictionary) -> void:
+			var reply_text := str(result.get("text", "")).strip_edges()
+			# Providers are optional enrichment. A transport/model failure must
+			# never become an NPC's line; the child gets a real authored response
+			# immediately, even offline or while LiteLLM/Ollama is restarting.
+			if _is_unusable_npc_model_result(result, reply_text):
+				var local_reply := _authored_npc_fallback_line(captured_authored_npc)
+				_present_npc_reply(npc_id, captured_npc_name, local_reply)
+				return
+
+			if _npc_moderation != null:
+				# GameplayRuntime receives only a profile id; preserve the child-safe
+				# default until a typed profile-age seam is injected by the shell.
+				var age_band := AgeBand.new()
+				var check := _npc_moderation.check_text(reply_text, age_band)
+				if check.is_blocked():
+					reply_text = check.safe_alternative if not check.safe_alternative.is_empty() else "Ojej, nie moge o tym rozmawiac."
+
+			var clean_text := reply_text
+			var decision_json := ""
+			if reply_text.contains("<decision>") and reply_text.contains("</decision>"):
+				var start := reply_text.find("<decision>") + 10
+				var end := reply_text.find("</decision>")
+				decision_json = reply_text.substr(start, end - start).strip_edges()
+				clean_text = reply_text.substr(0, reply_text.find("<decision>")).strip_edges()
+
+			_present_npc_reply(npc_id, captured_npc_name, clean_text)
+
+			if not decision_json.is_empty():
+				_apply_npc_decision(decision_json)
+	)
+
+
+## LLMPort deliberately normalises providers into a compact dictionary, so the
+## game must recognise failures by either explicit metadata or a small family
+## of provider-error phrases. It is intentionally narrow: an authored NPC is
+## still allowed to say ordinary "nie mogę" dialogue unless it refers to a
+## model/provider/transport failure.
+func _is_unusable_npc_model_result(result: Dictionary, reply_text: String) -> bool:
+	if bool(result.get("stopped", false)) or result.has("error"):
+		return true
+	var normalized := reply_text.to_lower().strip_edges()
+	if normalized.is_empty():
+		return true
+	var provider_error_terms := ["model", "llm", "provider", "błąd", "blad", "error", "unavailable", "połączeni", "polaczeni", "connection"]
+	for term in provider_error_terms:
+		if normalized.contains(term):
+			return true
+	return false
+
+
+## Resolve a safe, character-specific line that ships with the adventure.
+## This keeps the offline demo personable without pretending a live model is
+## available or allowing a provider failure to interrupt the play loop.
+func _authored_npc_fallback_line(npc: NPCCharacter) -> String:
+	if npc != null:
+		for trigger in ["hint", "greeting", "celebration"]:
+			var line := npc.line_for(trigger)
+			if not line.is_empty():
+				return line
+	return "Rozejrzyj się spokojnie — przygoda jest wszędzie."
+
+
+func _present_npc_reply(npc_id: String, npc_name: String, reply_text: String) -> void:
+	if _npc_dialogue_label != null:
+		_npc_dialogue_label.text = "%s: %s" % [npc_name, reply_text]
+	_normal_npc_voice_request_id = _next_npc_reaction_request_id()
+	_normal_npc_voice_line = reply_text
+	_normal_npc_voice_active = _speak_npc_line(reply_text, _normal_npc_voice_request_id)
+	if not _npc_dialogue_history.has(npc_id):
+		_npc_dialogue_history[npc_id] = []
+	_npc_dialogue_history[npc_id].append({"role": "assistant", "content": reply_text})
+
+
+func _apply_npc_decision(json_str: String) -> void:
+	var json := JSON.new()
+	if json.parse(json_str) != OK or not json.data is Dictionary:
+		push_warning("Failed to parse NPC decision JSON: %s" % json_str)
+		return
+
+	var data: Dictionary = json.data
+	var action := str(data.get("action", "")).strip_edges()
+	var item_id := str(data.get("item_id", "")).strip_edges()
+	var amount := int(data.get("amount", 1))
+
+	match action:
+		"give_item":
+			if not item_id.is_empty():
+				_add_inventory_item(item_id, amount)
+				print("[npc_decision] gave item: %s x%d" % [item_id, amount])
+		"take_item":
+			if not item_id.is_empty():
+				var inv := _get_inventory()
+				var current := int(inv.get(item_id, 0))
+				if current >= amount:
+					inv[item_id] = current - amount
+					if _rules_runtime != null:
+						_rules_runtime.set_context_value("inventory", inv)
+						_rules_runtime.on_event("inventory_changed", {"item": item_id})
+					_refresh_inventory_panel(inv)
+					print("[npc_decision] took item: %s x%d" % [item_id, amount])
+		"give_score":
+			_score += amount
+			if _score_label != null:
+				_score_label.text = str(_score)
+			if _rules_runtime != null:
+				_rules_runtime.set_context_value("score", _score)
+			print("[npc_decision] gave score: %d" % amount)
+		"heal":
+			if _player_controller != null and _player_controller.get_health() != null:
+				_player_controller.get_health().heal(amount)
+				_player_controller.hp_changed.emit(_player_controller.get_health().current_hp, _player_controller.get_health().max_hp)
+				print("[npc_decision] healed player: %d" % amount)
+		"damage":
+			if _player_controller != null:
+				_player_controller.apply_damage(amount)
+				print("[npc_decision] damaged player: %d" % amount)
 
 
 func _spawn_starter_enemies() -> void:
@@ -1738,7 +2201,19 @@ func _on_player_tool_used(tool_id: String, effect_origin: Vector3, forward: Vect
 	if target == null:
 		if _audio_bus != null:
 			_audio_bus.emit_sfx("physical_swing_%s" % ("axe" if tool_id == "tool_axe" else "pickaxe"), effect_origin)
-		_interaction_feedback("Podejdź bliżej do %s." % ("drzewa" if tool_id == "tool_axe" else "skały"))
+		# Tools remain useful in danger. In creative mode the first selected item
+		# is often an axe, so silently making it unable to affect a nearby monster
+		# felt like combat was broken. Preserve harvesting priority, but route a
+		# close visible enemy through the normal physical-hit path when no matching
+		# resource was targeted.
+		for enemy_candidate in get_tree().get_nodes_in_group("enemies"):
+			if enemy_candidate is EnemyController and is_instance_valid(enemy_candidate):
+				var enemy := enemy_candidate as EnemyController
+				if enemy.global_position.distance_to(_player_controller.global_position) <= 2.15:
+					_player_controller._perform_attack()
+					break
+		_interaction_feedback("Podejdź bliżej do %s." % ("drzewa" if tool_id == "tool_axe" else "skały"),
+			"gather_wood" if tool_id == "tool_axe" else "gather_stone")
 		return
 	if _audio_bus != null:
 		_audio_bus.emit_sfx("tool_axe_wood" if tool_id == "tool_axe" else "tool_pickaxe_stone", target.global_position)
@@ -1752,7 +2227,8 @@ func _on_player_tool_used(tool_id: String, effect_origin: Vector3, forward: Vect
 	var hits := int(target.get_meta("harvest_hits", 0)) + 1
 	target.set_meta("harvest_hits", hits)
 	if hits < 3:
-		_interaction_feedback("%s %d/3" % ["Rąbiesz drzewo" if tool_id == "tool_axe" else "Rozbijasz skałę", hits])
+		_interaction_feedback("%s %d/3" % ["Rąbiesz drzewo" if tool_id == "tool_axe" else "Rozbijasz skałę", hits],
+			"gather_wood" if tool_id == "tool_axe" else "gather_stone")
 		return
 	_gather_world_resource(target)
 
@@ -2179,26 +2655,22 @@ func _on_hotbar_changed(active_slot: int, _block_id: String) -> void:
 
 
 func _on_player_hp_changed(current: int, max_hp: int) -> void:
-	if _hp_bar == null:
+	if _hp_meter == null:
 		return
 	if _stats_panel != null:
 		# Do not occupy the opening with an unexplained empty dashboard. Health
 		# appears when it matters—after an encounter has actually hurt the child.
 		_stats_panel.visible = current < max_hp
-	_hp_bar.max_value = max_hp
-	_hp_bar.value = current
-	# Adv W #3 — color ramp + low-HP panic cue. Default ProgressBar
-	# gives no visual signal at low HP; kid keeps swinging into a
-	# slime not realizing they're 5 HP from defeat. Color blindness
-	# fallback: also use saturation drop at low HP (red ≈ desaturated
-	# gray-red so red-green CB still sees a contrast shift).
+	# Visual ramp: the radial ring also loses pips, so low health remains clear
+	# even when the player cannot distinguish its green/amber/red colour.
 	var ratio: float = float(current) / float(maxi(max_hp, 1))
+	var accent := Color(0.46, 0.94, 0.58)
 	if ratio < 0.3:
-		_hp_bar.modulate = Color(1.0, 0.4, 0.4)
+		accent = Color(1.0, 0.42, 0.38)
 	elif ratio < 0.6:
-		_hp_bar.modulate = Color(1.0, 0.85, 0.4)
-	else:
-		_hp_bar.modulate = Color(0.7, 1.0, 0.7)
+		accent = Color(1.0, 0.76, 0.34)
+	if _hp_meter.has_method("set_vitality"):
+		_hp_meter.call("set_vitality", ratio, accent)
 
 
 func _on_player_defeated() -> void:
@@ -2372,91 +2844,42 @@ func _build_hud() -> void:
 	# later be surfaced from the inventory/character screen.
 	_nutrition_panel.visible = false
 
-	# HP bar + score panel (top-right). 7yo combat HUD.
+	# Emergency vitality only. The old rectangular status dashboard contained
+	# score, XP and level text that read as a debug overlay and obscured scenery.
+	# A compact pictorial ring appears only when the child has actually taken
+	# damage; inventory/progression still updates in the background.
 	var stats_panel := PanelContainer.new()
 	stats_panel.name = "StatsPanel"
 	_stats_panel = stats_panel
 	stats_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	stats_panel.offset_left = -240
-	stats_panel.offset_top = 32
-	stats_panel.offset_right = -32
-	stats_panel.offset_bottom = 132
-	stats_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.32, 0.72, 0.92), 0.84))
+	stats_panel.offset_left = -112
+	stats_panel.offset_top = 20
+	stats_panel.offset_right = -20
+	stats_panel.offset_bottom = 112
+	stats_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.16, 0.30, 0.44), 0.72))
 	stats_panel.visible = false
 	hud.add_child(stats_panel)
 
-	var stats_vbox := VBoxContainer.new()
-	stats_vbox.add_theme_constant_override("separation", 6)
-	stats_panel.add_child(stats_vbox)
-
-	_hp_bar = ProgressBar.new()
-	_hp_bar.name = "HpBar"
-	_hp_bar.min_value = 0
-	_hp_bar.max_value = 100
-	_hp_bar.value = 100
-	_hp_bar.show_percentage = false
-	_hp_bar.custom_minimum_size = Vector2(180, 24)
-	_hp_bar.add_theme_color_override("font_color", Color.WHITE)
-	stats_vbox.add_child(_hp_bar)
-
-	var score_row := HBoxContainer.new()
-	score_row.alignment = BoxContainer.ALIGNMENT_END
-	stats_vbox.add_child(score_row)
-	var score_icon := TextureRect.new()
-	score_icon.texture = HUD_ICON_STAR
-	score_icon.custom_minimum_size = Vector2(26, 26)
-	score_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	score_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	score_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	score_row.add_child(score_icon)
-	_score_label = Label.new()
-	_score_label.name = "ScoreLabel"
-	_score_label.text = "0"
-	_score_label.add_theme_font_size_override("font_size", 22)
-	_score_label.add_theme_color_override("font_color", Color(1.0, 0.94, 0.78))
-	_score_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	_score_label.add_theme_constant_override("shadow_offset_x", 2)
-	_score_label.add_theme_constant_override("shadow_offset_y", 2)
-	score_row.add_child(_score_label)
-
-	var weapon_icon := TextureRect.new()
-	weapon_icon.texture = HUD_ICON_AXE
-	weapon_icon.custom_minimum_size = Vector2(34, 34)
-	weapon_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	weapon_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	weapon_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stats_vbox.add_child(weapon_icon)
-	_weapon_label = Label.new()
-	_weapon_label.name = "WeaponLabel"
-	_weapon_label.text = "Pięść"
-	_weapon_label.add_theme_font_size_override("font_size", 18)
-	_weapon_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
-	_weapon_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	_weapon_label.add_theme_constant_override("shadow_offset_x", 2)
-	_weapon_label.add_theme_constant_override("shadow_offset_y", 2)
-	_weapon_label.visible = false
-	stats_vbox.add_child(_weapon_label)
-
-	# XP bar — Adv 4 ROI 2 dopamine fix. Sits below weapon label.
-	_xp_bar = ProgressBar.new()
-	_xp_bar.name = "XpBar"
-	_xp_bar.min_value = 0
-	_xp_bar.max_value = 4
-	_xp_bar.value = 0
-	_xp_bar.custom_minimum_size = Vector2(180, 18)
-	_xp_bar.modulate = Color(0.6, 1.0, 0.7)
-	stats_vbox.add_child(_xp_bar)
-	_xp_label = Label.new()
-	_xp_label.name = "XpLabel"
-	_xp_label.text = "Lv 0  •  0/4 XP"
-	_xp_label.add_theme_font_size_override("font_size", 16)
-	_xp_label.add_theme_color_override("font_color", Color(0.85, 1.0, 0.85))
-	_xp_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	_xp_label.add_theme_constant_override("shadow_offset_x", 2)
-	_xp_label.add_theme_constant_override("shadow_offset_y", 2)
-	_xp_label.visible = false
-	stats_vbox.add_child(_xp_label)
-	_refresh_xp_hud()
+	_hp_meter = PICTORIAL_VITALITY_METER.new() as Control
+	_hp_meter.name = "PictorialVitalityMeter"
+	_hp_meter.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_hp_meter.offset_left = 8
+	_hp_meter.offset_top = 8
+	_hp_meter.offset_right = -8
+	_hp_meter.offset_bottom = -8
+	stats_panel.add_child(_hp_meter)
+	var vitality_icon := TextureRect.new()
+	vitality_icon.name = "VitalityStar"
+	vitality_icon.texture = HUD_ICON_STAR
+	vitality_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	vitality_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	vitality_icon.set_anchors_preset(Control.PRESET_CENTER)
+	vitality_icon.position = Vector2(28, 28)
+	vitality_icon.size = Vector2(28, 28)
+	vitality_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_panel.add_child(vitality_icon)
+	if _hp_meter.has_method("set_vitality"):
+		_hp_meter.call("set_vitality", 1.0, Color(0.46, 0.94, 0.58))
 
 	# Pictorial backpack — bottom-left. Items appear as familiar resource/tool
 	# thumbnails with a small numeric badge instead of a reading-heavy list.
@@ -2556,41 +2979,46 @@ func _build_hud() -> void:
 	_interaction_prompt_panel = PanelContainer.new()
 	_interaction_prompt_panel.name = "InteractionPrompt"
 	_interaction_prompt_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_interaction_prompt_panel.offset_left = -190
-	_interaction_prompt_panel.offset_top = -154
-	_interaction_prompt_panel.offset_right = 190
-	_interaction_prompt_panel.offset_bottom = -112
+	_interaction_prompt_panel.offset_left = -58
+	_interaction_prompt_panel.offset_top = -178
+	_interaction_prompt_panel.offset_right = 58
+	_interaction_prompt_panel.offset_bottom = -70
 	_interaction_prompt_panel.visible = false
-	_interaction_prompt_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.92, 0.72, 0.30), 0.92))
+	_interaction_prompt_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.22, 0.64, 0.42), 0.78))
 	var prompt_content := Control.new()
-	prompt_content.custom_minimum_size = Vector2(380, 42)
+	prompt_content.custom_minimum_size = Vector2(116, 108)
 	_interaction_prompt_panel.add_child(prompt_content)
+	var prompt_action_back := TextureRect.new()
+	prompt_action_back.name = "InteractionActionBackdrop"
+	prompt_action_back.texture = HUD_ACTION_GREEN
+	prompt_action_back.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	prompt_action_back.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	prompt_action_back.position = Vector2(19, 12)
+	prompt_action_back.size = Vector2(78, 78)
+	prompt_action_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	prompt_content.add_child(prompt_action_back)
 	_interaction_prompt_icon = TextureRect.new()
 	_interaction_prompt_icon.name = "InteractionIcon"
-	_interaction_prompt_icon.texture = HUD_ACTION_GREEN
+	_interaction_prompt_icon.texture = HUD_ICON_AXE
 	_interaction_prompt_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_interaction_prompt_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_interaction_prompt_icon.position = Vector2(4, 2)
-	_interaction_prompt_icon.size = Vector2(38, 38)
+	_interaction_prompt_icon.position = Vector2(33, 26)
+	_interaction_prompt_icon.size = Vector2(50, 50)
 	_interaction_prompt_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	prompt_content.add_child(_interaction_prompt_icon)
+	# Retain the text node for keyboard/screen-reader feedback and legacy input
+	# seams, but never draw it in the child-facing sandbox HUD. The image badge
+	# above communicates the action without turning the world into a task list.
 	_interaction_prompt_label = Label.new()
 	_interaction_prompt_label.name = "InteractionPromptLabel"
-	_interaction_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_interaction_prompt_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_interaction_prompt_label.add_theme_font_size_override("font_size", 18)
-	_interaction_prompt_label.add_theme_color_override("font_color", Color(1.0, 0.96, 0.82))
-	_interaction_prompt_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_interaction_prompt_label.offset_left = 44
-	_interaction_prompt_label.offset_right = -8
+	_interaction_prompt_label.visible = false
 	prompt_content.add_child(_interaction_prompt_label)
 	hud.add_child(_interaction_prompt_panel)
 	_build_sandbox_fart_hint(hud)
 
 
-## A single playful discovery hint is enough to make the optional G-key gag
-## findable. It is not a permanent control legend: it fades after the opening
-## moment and disappears immediately once the child uses it.
+## A single playful discovery hint makes the optional G-key gag findable.
+## It stays compact and quiet until used, then disappears immediately.
 func _build_sandbox_fart_hint(hud: CanvasLayer) -> void:
 	if hud == null or _sandbox_hint_panel != null:
 		return
@@ -2605,7 +3033,7 @@ func _build_sandbox_fart_hint(hud: CanvasLayer) -> void:
 	_sandbox_hint_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.52, 0.86, 0.67), 0.90))
 	var hint_icon := TextureRect.new()
 	hint_icon.name = "HintIcon"
-	hint_icon.texture = HUD_ACTION_GREEN
+	hint_icon.texture = HUD_ICON_SILLY_PUFF
 	hint_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	hint_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	hint_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -2615,28 +3043,11 @@ func _build_sandbox_fart_hint(hud: CanvasLayer) -> void:
 	hint_icon.offset_bottom = -5
 	hint_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_sandbox_hint_panel.add_child(hint_icon)
-	# Retain only the physical keycap, not a reading-heavy "PFF" callout.
-	# It fades before the first exploration evidence frame; the actual fart
-	# cloud, sound and NPC reactions remain the discoverable feedback.
-	var hint := Label.new()
-	hint.name = "HintKeyLabel"
-	hint.text = "G"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 20)
-	hint.add_theme_color_override("font_color", Color.WHITE)
-	hint.add_theme_color_override("font_shadow_color", Color(0.02, 0.12, 0.08, 0.95))
-	hint.add_theme_constant_override("shadow_offset_x", 1)
-	hint.add_theme_constant_override("shadow_offset_y", 2)
-	hint.set_anchors_preset(Control.PRESET_FULL_RECT)
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_sandbox_hint_panel.add_child(hint)
+	# The action must be legible before reading. Keep the keyboard binding as a
+	# non-rendered tooltip for grown-ups and keyboard discovery, but expose only
+	# the image in the child-facing HUD.
+	hint_icon.tooltip_text = "Puf (G)"
 	hud.add_child(_sandbox_hint_panel)
-	if is_inside_tree():
-		var hint_timer := get_tree().create_timer(4.0)
-		hint_timer.timeout.connect(func() -> void:
-			if _sandbox_hint_panel != null and is_instance_valid(_sandbox_hint_panel):
-				_sandbox_hint_panel.visible = false)
 	
 func _tick_world_interactions() -> void:
 	if _interaction_prompt_panel == null:
@@ -2646,7 +3057,7 @@ func _tick_world_interactions() -> void:
 		# It stays readable for the entire ride, not only for the 1.8s feedback
 		# flash used by ordinary interactions.
 		if _interaction_prompt_icon != null:
-			_interaction_prompt_icon.texture = HUD_ACTION_GREEN
+			_interaction_prompt_icon.texture = HUD_ICON_RETURN
 		if _interaction_prompt_label != null:
 			_interaction_prompt_label.text = "E / Esc  Wyjdź z pojazdu"
 		_interaction_prompt_panel.visible = true
@@ -2707,10 +3118,12 @@ func _activate_world_interaction() -> void:
 			_start_training_session(_nearby_world_interactable)
 
 
-func _interaction_feedback(message: String) -> void:
+func _interaction_feedback(message: String, action: String = "") -> void:
 	if _interaction_prompt_label == null:
 		return
 	_interaction_prompt_label.text = message
+	if not action.is_empty() and _interaction_prompt_icon != null:
+		_interaction_prompt_icon.texture = _interaction_texture_for(action)
 	_interaction_feedback_until = 1.8
 
 
@@ -2887,6 +3300,7 @@ func _physics_process(delta: float) -> void:
 	_session_elapsed_sec += delta
 	_check_goal_and_lose()
 	_tick_npcs(delta)
+	_tick_adventure_music()
 	if _world_renderer != null and _player_controller != null and is_instance_valid(_player_controller):
 		_world_renderer.set_exploration_focus(_player_controller.global_position)
 	_tick_world_interactions()
@@ -3211,6 +3625,7 @@ func end_session() -> void:
 		_player_controller.visible = false
 		_player_controller.set_process_input(false)
 		_player_controller.set_process(false)
+		_player_controller.set_physics_process(false)
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	# Restore Main/Layout (NavBar + Body) so the kid sees Landing on return.
 	_set_main_layout_visible(true)
@@ -3221,7 +3636,7 @@ func _input(event: InputEvent) -> void:
 	# before dynamically spawned vehicle nodes, so consume egress first or E can
 	# be swallowed by the generic interaction path and trap the player inside.
 	if _active_vehicle != null and is_instance_valid(_active_vehicle) \
-		and Input.is_action_pressed("exit_vehicle"):
+		and event.is_action_pressed("exit_vehicle"):
 		_active_vehicle.exit_vehicle()
 		var viewport := get_viewport()
 		if viewport != null:
