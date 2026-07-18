@@ -1,5 +1,19 @@
 class_name EffectSpawner extends Node3D
 
+## Spawned effects still awaiting their timed cleanup. _exit_tree()
+## frees them as a last resort so a forceful teardown (test quit, scene
+## change, runtime disposal) doesn't strand GPUParticles3D +
+## ParticleProcessMaterial resources.
+var _active_effects: Array[Node] = []
+
+
+func _exit_tree() -> void:
+	for effect in _active_effects:
+		if is_instance_valid(effect):
+			effect.queue_free()
+	_active_effects.clear()
+
+
 ## Helper to check if reduce-motion is enabled via the global accessibility policy
 func _is_reduce_motion_enabled() -> bool:
 	var AccessibilityPolicyPort_class := load("res://src/ports/outbound/accessibility_policy_port.gd")
@@ -31,8 +45,11 @@ func spawn_collect_effect(position: Vector3) -> void:
 	particles.process_material = mat
 	particles.position = position
 	add_child(particles)
+	_active_effects.append(particles)
 	await get_tree().create_timer(0.8).timeout
-	particles.queue_free()
+	if is_instance_valid(particles):
+		particles.queue_free()
+		_active_effects.erase(particles)
 
 func spawn_dust_puff(position: Vector3) -> void:
 	# Respect reduce-motion accessibility setting
@@ -56,8 +73,11 @@ func spawn_dust_puff(position: Vector3) -> void:
 	particles.process_material = mat
 	particles.position = position
 	add_child(particles)
+	_active_effects.append(particles)
 	await get_tree().create_timer(0.6).timeout
-	particles.queue_free()
+	if is_instance_valid(particles):
+		particles.queue_free()
+		_active_effects.erase(particles)
 
 func spawn_sparkle_burst(position: Vector3) -> void:
 	# Respect reduce-motion accessibility setting
@@ -81,8 +101,11 @@ func spawn_sparkle_burst(position: Vector3) -> void:
 	particles.process_material = mat
 	particles.position = position
 	add_child(particles)
+	_active_effects.append(particles)
 	await get_tree().create_timer(1.2).timeout
-	particles.queue_free()
+	if is_instance_valid(particles):
+		particles.queue_free()
+		_active_effects.erase(particles)
 
 func spawn_confetti(position: Vector3) -> void:
 	# Respect reduce-motion accessibility setting
@@ -106,8 +129,11 @@ func spawn_confetti(position: Vector3) -> void:
 	particles.process_material = mat
 	particles.position = position
 	add_child(particles)
+	_active_effects.append(particles)
 	await get_tree().create_timer(2.2).timeout
-	particles.queue_free()
+	if is_instance_valid(particles):
+		particles.queue_free()
+		_active_effects.erase(particles)
 
 
 ## A family-friendly, non-toxic cartoon cloud for the optional silly action.
@@ -148,3 +174,4 @@ func spawn_stink_cloud(position: Vector3) -> void:
 	await get_tree().create_timer(1.25).timeout
 	if is_instance_valid(cloud):
 		cloud.queue_free()
+		_active_effects.erase(cloud)
