@@ -521,20 +521,31 @@ For each creature:
 
 | Source | URL | Format | License | Notes |
 |--------|-----|--------|---------|-------|
-| Meshy Backrooms | [https://www.meshy.ai/tags/backroom](https://www.meshy.ai/tags/backroom) | GLB/GLTF | CC0 | Pre-made Backrooms entities |
+| Meshy Backrooms | [https://www.meshy.ai/tags/backroom](https://www.meshy.ai/tags/backroom) | GLB/GLTF | CC0 | Pre-made Backrooms entities, instant download |
 | Sketchfab (hooganius) | [https://sketchfab.com/3d-models/backrooms-monster-687ee5d0ea3442f284a21d52ce76e87a](https://sketchfab.com/3d-models/backrooms-monster-687ee5d0ea3442f284a21d52ce76e87a) | GLTF | Free | Check individual license |
 | Sketchfab (Death_Trap87) | [https://sketchfab.com/3d-models/bacteria-monster-backrooms-148bd0a721a14ed89bba00ff9e4260e7](https://sketchfab.com/3d-models/bacteria-monster-backrooms-148bd0a721a14ed89bba00ff9e4260e7) | GLTF | Free | Bacteria monster style |
-| CGTrader Backrooms | [https://www.cgtrader.com/3d-models/backrooms](https://www.cgtrader.com/3d-models/backrooms) | FBX/OBJ | Varies | Check CC0 filter |
+| Sketchfab (realism) Entity 1 | [https://sketchfab.com/3d-models/backrooms-entity-1-90bd920721a74f099bee487d29aaff57](https://sketchfab.com/3d-models/backrooms-entity-1-90bd920721a74f099bee487d29aaff57) | GLTF | Free | Backrooms entity 1 |
+| Sketchfab Original Backrooms | [https://sketchfab.com/3d-models/original-backrooms-e5c6b30995ff442d9852a1dd697aaef1](https://sketchfab.com/3d-models/original-backrooms-e5c6b30995ff442d9852a1dd697aaef1) | GLTF | Free | Complete environment with entities |
+| CGTrader Backrooms | [https://www.cgtrader.com/3d-models/backrooms](https://www.cgtrader.com/3d-models/backrooms) | FBX/OBJ | Varies | Check CC0 filter for free assets |
+| TurboSquid Backrooms | [https://www.turbosquid.com/Search/3D-Models/backrooms](https://www.turbosquid.com/Search/3D-Models/backrooms) | GLB/FBX/OBJ | Varies | Filter by CC0/Public Domain |
+| Open Source 3D Assets | [https://www.opensource3dassets.com/en](https://www.opensource3dassets.com/en) | GLB | CC0 | Free high-quality GLB models |
+| Tripo AI Backrooms Gallery | [https://studio.tripo3d.ai/3d-model-gallery/backrooms](https://studio.tripo3d.ai/3d-model-gallery/backrooms) | GLB | Free | AI-generated Backrooms models |
 
 #### 2. **General CC0 Model Sources (Adaptable)
 
 | Source | URL | Format | License | Notes |
 |--------|-----|--------|---------|-------|
-| Quaternius | [https://quaternius.com](https://quaternius.com) | GLB/FBX | CC0 | Universal Base Characters |
-| Kenney | [https://kenney.nl](https://kenney.nl) | GLB/FBX | CC0 | Monster Builder Pack |
-| Poly Pizza | [https://poly.pizza](https://poly.pizza) | GLB | CC0 | Free bundles |
-| Kenney Monster Builder | [https://kenney.nl/assets/monster-builder-pack](https://kenney.nl/assets/monster-builder-pack) | PNG/Sprite | CC0 | 2D, can be 3Dified |
-| LuizMelo Monsters | [https://luizmelo.itch.io/monsters-creatures-fantasy](https://luizmelo.itch.io/monsters-creatures-fantasy) | FBX | CC0 | Fantasy creatures |
+| Quaternius | [https://quaternius.com](https://quaternius.com) | GLB/FBX | CC0 | Universal Base Characters, all free |
+| Kenney | [https://kenney.nl](https://kenney.nl) | GLB/FBX | CC0 | Monster Builder Pack, RPG Kit |
+| Poly Pizza | [https://poly.pizza](https://poly.pizza) | GLB | CC0 | Free bundles, no login required |
+| Kenney Monster Builder | [https://kenney.nl/assets/monster-builder-pack](https://kenney.nl/assets/monster-builder-pack) | PNG/Sprite | CC0 | 2D sprites, can be 3Dified |
+| LuizMelo Monsters | [https://luizmelo.itch.io/monsters-creatures-fantasy](https://luizmelo.itch.io/monsters-creatures-fantasy) | FBX | CC0 | Fantasy creatures, rigged |
+| Quaternius Ultimate Monsters Bundle | [https://poly.pizza/bundle/Ultimate-Monsters-Bundle-5oyGWAmOB6](https://poly.pizza/bundle/Ultimate-Monsters-Bundle-5oyGWAmOB6) | GLB/FBX | CC0 | 50 monsters with animations |
+| Quaternius Enemy Small | [https://poly.pizza/m/4LjT020LQh](https://poly.pizza/m/4LjT020LQh) | GLB/FBX | CC0 | Low-poly enemy, optimized for Godot |
+| Quaternius Survival Pack | [https://poly.pizza/bundle/Survival-Pack-XzvQPP0yWB](https://poly.pizza/bundle/Survival-Pack-XzvQPP0yWB) | GLB | CC0 | Various assets including creatures |
+| BlenderKit Monsters | [https://www.blenderkit.com/?query=category_subtree%3Amonster-creature](https://www.blenderkit.com/?query=category_subtree%3Amonster-creature) | BLEND/GLB | CC0 | Free and paid, filter for free |
+| Poly Haven | [https://polyhaven.com/](https://polyhaven.com/) | GLB/FBX | CC0 | PBR materials and models |
+| CC0 Textures Models | [https://cc0textures.com/](https://cc0textures.com/) | GLB/FBX | CC0 | Textures and some models |
 
 #### 3. **Blender Creation Pipeline**
 
@@ -594,6 +605,95 @@ For creating custom Backrooms creatures:
 | Medium Creature (The Flicker) | < 2000 | < 4000 | 1x 1024px | 2 levels |
 | Complex Creature (Pipe Crawler) | < 5000 | < 10000 | 2x 1024px | 2 levels |
 | Boss Creature (The Chooser) | < 10000 | < 20000 | 2x 2048px | 3 levels |
+
+### Backrooms Textures & Materials
+
+For authentic Backrooms aesthetic, use these CC0 texture sources:
+
+| Source | URL | Format | License | Notes |
+|--------|-----|--------|---------|-------|
+| Backrooms Textures (amini-allight) | [https://github.com/amini-allight/backrooms-textures](https://github.com/amini-allight/backrooms-textures) | PNG | CC0 1.0 | Carpet, walls, ceiling - classic Backrooms |
+| OpenGameArt Backrooms PBR | [https://opengameart.org/content/backrooms-pbr-texture-pack](https://opengameart.org/content/backrooms-pbr-texture-pack) | PNG | CC0 | 1024x1024, albedo/roughness/normal, includes Blender files |
+| OpenGameArt Carpet | [https://opengameart.org/content/backrooms-pbr-texture-pack-carpetpng](https://opengameart.org/content/backrooms-pbr-texture-pack-carpetpng) | PNG | CC0 | Backrooms-style carpet texture |
+| Yasu's Backrooms Materials | [https://mvyasu.itch.io/backrooms-material-pack](https://mvyasu.itch.io/backrooms-material-pack) | BLEND | CC0 | Wallpaper, ceiling tiles, carpets, lights |
+| CC0 Textures - Concrete | [https://cc0-textures.com/c/concrete](https://cc0-textures.com/c/concrete) | PNG/JPG | CC0 | PBR concrete for floors/walls |
+| 3DTextures.me Backrooms | [https://3dtextures.me/tag/backrooms/](https://3dtextures.me/tag/backrooms/) | PNG | Free | High-quality seamless PBR |
+| 3DTextures Wallpaper 001 | [https://3dtextures.me/2024/06/25/wallpaper-backrooms-001/](https://3dtextures.me/2024/06/25/wallpaper-backrooms-001/) | PNG | Free | Backrooms-style wallpaper texture |
+| Poly Haven | [https://polyhaven.com/](https://polyhaven.com/) | PNG/EXR | CC0 | PBR textures compatible with all engines |
+
+**Recommended Texture Workflow:**
+- Use **1024x1024** for most creatures
+- Use **PBR workflow**: Albedo + Roughness + Normal + Metallic (where applicable)
+- For Backrooms aesthetic: muted colors, low saturation, fluorescent lighting accents
+- Bake textures to **GLTF/GLB** format for Godot import
+
+---
+
+## Godot-Ready Toon Shaders for Cartoon Monsters
+
+To achieve the child-friendly cartoon look for Backrooms creatures, use these shader resources:
+
+### Built-in Godot 4 Toon Options
+
+**StandardMaterial3D with Toon Mode:**
+- Set `diffuse_mode` to "Toon" for cel-shaded lighting
+- Set `specular_mode` to "Toon" for stylized highlights
+- Works with PBR textures (albedo, roughness, normal)
+- Fastest option, no custom shader code required
+
+### Custom Toon Shaders
+
+| Shader | URL | Features | License |
+|--------|-----|----------|---------|
+| Binbun3D Ultimate Toon Shader | [https://binbun3d.itch.io/godot-ultimate-toon-shader](https://binbun3d.itch.io/godot-ultimate-toon-shader) | Hard shadows, patterns, painterly | Free (commercial) |
+| Flexible Toon Shader (AssetLib) | [https://godotengine.org/asset-library/asset/1900](https://godotengine.org/asset-library/asset/1900) | Color ramps, multiple lights, rim lighting | MIT |
+| Complete Cel Shader | [https://godotshaders.com/shader/complete-cel-shader-for-godot-4/](https://godotshaders.com/shader/complete-cel-shader-for-godot-4/) | Full toon setup with includes | Free |
+| Godot Toon Shading Tutorial | [https://bun3d.com/tutorials/shading/godot-toon-shading/](https://bun3d.com/tutorials/shading/godot-toon-shading/) | Comprehensive guide | Free |
+
+### Example Custom Toon Shader Code
+
+```glsl
+# Basic Toon Shader for Godot 4
+shader_type spatial;
+uniform vec3 albedo : source_color;
+uniform float cel_levels : hint_range(2.0, 10.0) = 4.0;
+
+void fragment() {
+    ALBEDO = albedo;
+}
+
+void light() {
+    float light = max(dot(NORMAL, LIGHT), 0.0) * ATTENUATION;
+    # Quantize light into discrete bands (cel shading)
+    light = round(light * cel_levels) / cel_levels;
+    
+    # Add rim lighting for cartoon effect
+    float rim = 1.0 - saturate(dot(NORMAL, VIEW));
+    rim = pow(rim, 2.0);
+    
+    vec3 diffuse = vec3(light) * LIGHT_COLOR / PI;
+    vec3 rim_light = vec3(rim * 0.5) * LIGHT_COLOR;
+    
+    DIFFUSE_LIGHT += diffuse;
+    DIFFUSE_LIGHT += rim_light;
+}
+```
+
+**Shader Setup Steps:**
+1. Create a new ShaderMaterial
+2. Assign to MeshInstance3D
+3. Use the above code or download a pre-made shader
+4. Adjust cel_levels parameter (2-10) for more/less shading bands
+5. Combine with PBR textures for detail
+
+### Recommended Settings for Backrooms Creatures
+
+| Creature Type | Cel Levels | Rim Intensity | Outline |
+|---------------|------------|---------------|---------|
+| Simple (Flicker Flea) | 3 | 0.3 | None |
+| Medium (The Flicker) | 4 | 0.5 | Soft |
+| Complex (Pipe Crawler) | 5 | 0.7 | Medium |
+| Boss (The Chooser) | 6 | 0.8 | Strong |
 
 ---
 
@@ -1813,30 +1913,57 @@ Expected: No errors, clean exit code 0
 | Kenney Monster Builder | [https://kenney.nl/assets/monster-builder-pack](https://kenney.nl/assets/monster-builder-pack) | CC0 |
 | LuizMelo Fantasy Monsters | [https://luizmelo.itch.io/monsters-creatures-fantasy](https://luizmelo.itch.io/monsters-creatures-fantasy) | CC0 |
 
-### State Machine Tutorials
+### State Machine Tutorials & Plugins
 
-| Resource | URL |
-|----------|-----|
-| Godot Learning - State Machine | [https://godotlearning.com/blog/godot-4-state-machine-tutorial](https://godotlearning.com/blog/godot-4-state-machine-tutorial) |
-| Coding Quests - Enemy AI | [https://codingquests.io/blog/godot-4-2d-enemy-ai-tutorial](https://codingquests.io/blog/godot-4-2d-enemy-ai-tutorial) |
-| GDQuest - Finite State Machine | [https://www.gdquest.com/tutorial/godot/design-patterns/finite-state-machine/](https://www.gdquest.com/tutorial/godot/design-patterns/finite-state-machine/) |
-| YouTube: Godot State Machine | [https://www.youtube.com/watch?v=example](https://www.youtube.com/watch?v=example) |
+| Resource | URL | Type | Notes |
+|----------|-----|------|-------|
+| Godot Learning - State Machine | [https://godotlearning.com/blog/godot-4-state-machine-tutorial](https://godotlearning.com/blog/godot-4-state-machine-tutorial) | Tutorial | Node-based and enum-based approaches |
+| Coding Quests - Enemy AI Tutorial | [https://codingquests.io/blog/godot-4-enemy-ai-tutorial](https://codingquests.io/blog/godot-4-enemy-ai-tutorial) | Tutorial | Patrol, chase, attack with state machine |
+| Coding Quests - 2D Enemy AI | [https://codingquests.io/blog/godot-4-2d-enemy-ai-tutorial](https://codingquests.io/blog/godot-4-2d-enemy-ai-tutorial) | Tutorial | Wind-up telegraph emphasis |
+| GDQuest - Finite State Machine | [https://www.gdquest.com/tutorial/godot/design-patterns/finite-state-machine/](https://www.gdquest.com/tutorial/godot/design-patterns/finite-state-machine/) | Tutorial | Design patterns, hierarchical states |
+| Summer Engine - AI Guide | [https://www.summerengine.com/blog/how-to-make-ai-in-godot](https://www.summerengine.com/blog/how-to-make-ai-in-godot) | Tutorial | Step-by-step AI with NavigationAgent3D |
+| YouTube: 3D Enemy AI Godot 4 | [https://www.youtube.com/watch?v=egedSO9vWH4](https://www.youtube.com/watch?v=egedSO9vWH4) | Video | Pathfinding, attacking, animations |
+| YouTube: Character & Enemy AI | [https://www.youtube.com/watch?v=wvRjTjC0E78](https://www.youtube.com/watch?v=wvRjTjC0E78) | Video | Complete 3D enemy system |
+
+#### State Machine Plugins (Recommended for Complex AI)
+
+| Plugin | URL | Features | License |
+|--------|-----|----------|---------|
+| **LimboAI** (C++) | [https://github.com/limbonaut/limboai](https://github.com/limbonaut/limboai) | Behavior Trees + State Machines, visual editor, debugger, hierarchical states | MIT |
+| **godot-finite-state-machine** | [https://github.com/godot-addons/godot-finite-state-machine](https://github.com/godot-addons/godot-finite-state-machine) | Code-only FSM, programmatic states, hierarchical support | MIT |
+| **HexagonNico FSM** | [https://github.com/HexagonNico/Godot-FiniteStateMachine](https://github.com/HexagonNico/Godot-FiniteStateMachine) | Lightweight FSM plugin, Godot 4 compatible | MIT |
+
+**Plugin Recommendation:** For Backrooms creatures with complex behaviors (patrol, chase, wind-up, attack, hurt, die), use **LimboAI** for its visual editor and hierarchical state support. For lighter needs, the built-in Node-based state machine (as shown in code samples above) is sufficient.
 
 ### Creature Design Resources
 
-| Resource | URL |
-|----------|-----|
-| Liminal Space Palettes | [https://lospec.com/palette-list/tag/liminal](https://lospec.com/palette-list/tag/liminal) |
-| Child-Friendly Monster Design | [https://kreafolk.com/blogs/inspirations/monster-character-design](https://kreafolk.com/blogs/inspirations/monster-character-design) |
-| Kid-Friendly Monsters | [https://dmingdad.com/kid-friendly-monsters/](https://dmingdad.com/kid-friendly-monsters/) |
+| Resource | URL | Type | Notes |
+|----------|-----|------|-------|
+| Liminal Space Palettes | [https://lospec.com/palette-list/tag/liminal](https://lospec.com/palette-list/tag/liminal) | Palettes | Muted Backrooms colors |
+| Child-Friendly Monster Design | [https://kreafolk.com/blogs/inspirations/monster-character-design](https://kreafolk.com/blogs/inspirations/monster-character-design) | Guide | Professional design tips |
+| Kid-Friendly Monsters | [https://dmingdad.com/kid-friendly-monsters/](https://dmingdad.com/kid-friendly-monsters/) | Guide | D&D inspired kid-friendly monsters |
+| BlenderKit Kids Monsters | [https://www.blenderkit.com/asset-gallery-detail/5cc178fc-6533-44c9-b5ad-ea6ef9a4393c/](https://www.blenderkit.com/asset-gallery-detail/5cc178fc-6533-44c9-b5ad-ea6ef9a4393c/) | Models | Free kid-friendly monster models |
+| Nexas 3D Character Guide | [https://nexas3d.com/3d-character-modeling-guide/](https://nexas3d.com/3d-character-modeling-guide/) | Tutorial | Beginner-friendly 3D modeling |
+| Threedium Cartoon 3D | [https://threedium.io/create/3d-models/character/cartoon](https://threedium.io/create/3d-models/character/cartoon) | Tutorial | Create cartoon characters from images |
+| Dreamina Monster Creator | [https://dreamina.capcut.com/resource/create-your-own-monster](https://dreamina.capcut.com/resource/create-your-own-monster) | Guide | 4 ways to create monsters (AI, sketching, 3D, assets) |
+
+### Navigation & Pathfinding Resources
+
+| Resource | URL | Type | Notes |
+|----------|-----|------|-------|
+| Godot Docs - Agent Avoidance | [https://docs.godotengine.org/en/4.0/tutorials/navigation/navigation_using_agent_avoidance.html](https://docs.godotengine.org/en/4.0/tutorials/navigation/navigation_using_agent_avoidance.html) | Official | RVO avoidance in Godot 4 |
+| Godot Docs - NavigationAgents | [https://docs.godotengine.org/en/stable/tutorials/navigation/navigation_using_navigationagents.html](https://docs.godotengine.org/en/stable/tutorials/navigation/navigation_using_navigationagents.html) | Official | Complete NavigationAgent3D guide |
+| NavigationAgent3D Class Ref | [https://docs.godotengine.org/en/stable/classes/class_navigationagent3d.html](https://docs.godotengine.org/en/stable/classes/class_navigationagent3d.html) | Official | API reference for agent navigation |
+| Navigation System DeepWiki | [https://deepwiki.com/godotengine/godot/4.13-navigation-system](https://deepwiki.com/godotengine/godot/4.13-navigation-system) | Guide | Deep dive into Godot's navigation system |
 
 ### Community Resources
 
-| Resource | URL |
-|----------|-----|
-| Godot Forum - AI & State Machines | [https://forum.godotengine.org/c/ai](https://forum.godotengine.org/c/ai) |
-| Godot Discord | [https://discord.gg/4JBkykG](https://discord.gg/4JBkykG) |
-| Reddit - r/godot | [https://www.reddit.com/r/godot/](https://www.reddit.com/r/godot/) |
+| Resource | URL | Type | Notes |
+|----------|-----|------|-------|
+| Godot Forum - AI & State Machines | [https://forum.godotengine.org/c/ai](https://forum.godotengine.org/c/ai) | Forum | Active community, Q&A |
+| Godot Discord | [https://discord.gg/4JBkykG](https://discord.gg/4JBkykG) | Chat | Real-time help, #ai channel |
+| Reddit - r/godot | [https://www.reddit.com/r/godot/](https://www.reddit.com/r/godot/) | Forum | Weekly threads, show-and-tell |
+| Godot GitHub - Enemy AI Example | [https://github.com/metanoia83/Godot-4.0-Basic-Character-Controller-and-Enemy-AI](https://github.com/metanoia83/Godot-4.0-Basic-Character-Controller-and-Enemy-AI) | Code | Complete enemy AI implementation |
 
 ---
 
@@ -1912,7 +2039,16 @@ Expected: No errors, clean exit code 0
 
 ---
 
-*Document Version: 1.0*  
+*Document Version: 2.0*  
 *Generated: 2026-07-18*  
-*Status: Ready for Implementation Review*
-*Note: Includes Backrooms-inspired creatures as requested*
+*Last Enriched: Loop 5 - 2026-07-18*
+*Status: Deep Research Complete - Backrooms Monsters Fully Enriched*
+*Notes:*
+- Added 25+ new online resource links for Backrooms models, textures, shaders
+- Enhanced with Godot-specific state machine plugins (LimboAI, godot-fsm)
+- Added toon shader resources and code examples
+- Added navigation/pathfinding tutorials
+- Added child-friendly design resources
+- Includes comprehensive Backrooms monster model sources (Meshy, Sketchfab, Open Source 3D Assets, Tripo AI, CGTrader, TurboSquid)
+- Includes Backrooms texture sources (GitHub, OpenGameArt, Yasu's pack, CC0 Textures, 3DTextures)
+- Backrooms monsters ARE included as explicitly requested

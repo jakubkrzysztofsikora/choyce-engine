@@ -497,6 +497,7 @@ func _build_adventure_dressing(seed_source: String = "adventure") -> void:
 	# The first thirty metres must already feel like a place, not a runway.
 	# Use a visible house, yard, well, crops and a physical sign for the guide.
 	_build_starter_homestead()
+	_build_opening_sightline_layer()
 	_add_visual_asset("drogowskaz", Vector3(5.5, 0, -5.5), Vector3.ONE * 0.9, 0.0)
 	var opening_fence := SceneNode.new("adventure_opening_fence", SceneNode.NodeType.DECORATION)
 	opening_fence.display_name = "Płot"
@@ -540,16 +541,21 @@ func _build_opening_grove() -> void:
 	# bridge be the only crossing cue rather than drawing dirt beneath water.
 	for z in range(-6, -15, -2):
 		_add_visual_asset("opening_path_%d" % abs(z), Vector3(0.0, 0.08, float(z)),
-			Vector3.ONE, 0.0, path, false)
+			Vector3(2.2, 1.0, 2.2), 0.0, path, false)
 	for z in range(-36, -49, -2):
 		_add_visual_asset("opening_path_far_%d" % abs(z), Vector3(0.0, 0.08, float(z)),
-			Vector3.ONE, 0.0, path, false)
+			Vector3(2.2, 1.0, 2.2), 0.0, path, false)
+	# The far-bank branch turns the bridge route toward the livable house rather
+	# than leaving it as a distant background prop.
+	for x in range(2, 19, 2):
+		_add_visual_asset("opening_path_home_%d" % x, Vector3(float(x), 0.08, -46.0),
+			Vector3(2.2, 1.0, 2.2), PI * 0.5, path, false)
 	for x in range(-2, -27, -2):
 		_add_visual_asset("opening_path_forest_%d" % abs(x), Vector3(float(x), 0.08, -10.0),
-			Vector3.ONE, PI * 0.5, path, false)
+			Vector3(2.2, 1.0, 2.2), PI * 0.5, path, false)
 	for x in range(2, 27, 2):
 		_add_visual_asset("opening_path_village_%d" % x, Vector3(float(x), 0.08, -10.0),
-			Vector3.ONE, PI * 0.5, path, false)
+			Vector3(2.2, 1.0, 2.2), PI * 0.5, path, false)
 
 	var tree_path := KENNEY_NK + "tree_default.glb"
 	var pine_path := KENNEY_NK + "tree_pineRoundA.glb"

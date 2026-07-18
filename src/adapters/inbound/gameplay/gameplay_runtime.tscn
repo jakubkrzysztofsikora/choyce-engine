@@ -135,10 +135,10 @@ shape = SubResource("CapsuleShape3D_player")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="PlayerController"]
-; A gentle downward gameplay angle makes the opening route, props, and terrain
-; legible; the old transform was pitched upward and devoted most of the frame
-; to empty sky.
-transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 1.7, 4.2)
+; A shallow third-person angle keeps enough ground for building while giving
+; the opening frame room for the guide, bridge, far-bank house and landmarks.
+; The previous -25° pitch made nearly two thirds of the screen blurred ground.
+transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 1.7, 4.2)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
