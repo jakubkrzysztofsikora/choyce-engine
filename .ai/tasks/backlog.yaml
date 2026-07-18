@@ -74,11 +74,19 @@ tasks:
       - HIGH: The wet-bank ribbon is globally offset by 0.208m and floats above terrain outside the flat opening; terrain-ground the outer bank and lift only the inner edge to the water surface.
       - HIGH: The opening still reads as a sparse prototype: bare repeated ground, lollipop-tree rows and test-piece shrubs do not meet the layered forest clearing criterion.
       - HIGH: The default blue-uniform hero contradicts the approved Ziemek/Gniewko direction; VS-046 must deliver concept-derived rig appearances and live captures.
+      - HIGH: Do not remove the safety ground collider merely because Terrain3D was asked to rebuild; retain it until live terrain ray contacts prove the active spawn and bridge bank are backed by Terrain3D collision.
+      - HIGH: Pure bank-height math is insufficient. Add extension-gated integration coverage for imported terrain, dynamic collision and spawn/bank ray contact.
       - MEDIUM: Bridge coverage proves node existence only, not traversal. A deck/ramp seam, rail overlap, or terrain mismatch can still block the real player while all tests pass. Add bidirectional CharacterBody3D physics traversal coverage and live walk evidence.
       - MEDIUM: A 0.62 shadowless FillLight is active throughout the day as well as night; make it time-of-day responsive and prove night route readability in rendered evidence.
       - MEDIUM: The camera evidence still reads as a flat dark river strip; make shallow/deep contrast and directional motion visible from shore, bridge and in-water viewpoints.
+      - MEDIUM: Build the HUD and inspect actual slot children/icons/active border; retain a clean, unobstructed capture.
       - LOW: The roof caps visibly improve the gable, but the distant capture does not show the door or verify its 2.2m collision alignment. Add a close open/closed door capture plus player passage test before claiming the house repair verified.
       - LOW: Focused structural tests pass but emit cleanup warnings and do not prove bridge traversal; live evidence remains the acceptance authority.
+      - LOW: Desktop-window-obscured screenshots cannot close the visual gate. The first vista remains flat lawn plus a cyan river strip; captured visual evidence must be unobstructed and show traversal.
+      - HIGH: Normalized full-river UVs leave no legible flow pattern in the bridge camera; derive DUDV from local/world metres and retain temporal runtime evidence.
+      - MEDIUM: Cosmetic vertex-wave amplitude exceeds the fixed water-volume contact tolerance; reduce or recalibrate it.
+      - MEDIUM: Contracts must inspect material runtime parameters and generated mesh density, not only shader source fragments.
+      - LOW: Headless exits report resource leaks; improve isolated teardown before using tests as clean runtime-safety evidence.
       - REQUEST_CHANGES: River-volume, foreground density/material cohesion, visual water depth and traversal evidence remain open. Floating wet banks, generic bridge colliders, prototype forest composition, hero direction and night proof remain open.
     evidence:
       - src/adapters/inbound/gameplay/world_renderer.gd (single-offset river transform, seeded colliding woodland clusters, calibrated named trunk/canopy materials)
@@ -94,6 +102,15 @@ tasks:
       - /tmp/choyce-water-flow-current.png (fresh direct-play capture after water pass; remains evidence of progress, not acceptance—the opening composition still reads prototype-level)
       - src/adapters/inbound/gameplay/shaders/forest_foliage.gdshader and world_renderer.gd (explicit readable foliage material plus per-source CC0 tree trunk collision profiles; replaces the black-crown trial)
       - /tmp/choyce-forest-readable-shore-rocks.png (fresh direct-play evidence: readable deep forest and irregular bridge rocks; remains below the visual-composition gate)
+      - .ai/reviews/VS-044-forest-material-rereview-2026-07-18.json (independent adversarial re-review: REQUEST_CHANGES; opening composition and bank depth remain the gate)
+      - /tmp/choyce-forest-lit-scaled-collision.png (fresh direct-play evidence after lighting-aware foliage and scale-matched tree contacts; still not acceptance evidence)
+      - /tmp/choyce-riverbank-bush-only.png (fresh direct-play capture after rejecting cyan tall-plant meshes; valid visual baseline, but foreground/bank composition remains open)
+      - src/adapters/inbound/gameplay/terrain3d_world_adapter.gd and tests/adapters/inbound/test_terrain3d_world_adapter.gd (bounded Terrain3D bank relief with channel/spawn/ramp contact contract)
+      - .ai/reviews/VS-044-terrain-ui-review-2026-07-18.json (independent review: REQUEST_CHANGES; prompted extension-backed collision and live-HUD contracts)
+      - tests/adapters/inbound/test_terrain3d_world_adapter.gd (Terrain3D extension import plus live dynamic-collision rays at spawn and both north-bank samples)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd and world_renderer.gd (legacy safety floor remains until verified Terrain3D rays pass below player/camp and bridge-bank dressing)
+      - tests/adapters/inbound/test_world_renderer_toon_shader.gd (riverbank props are asserted outside the meandering physical swim channel)
+      - /tmp/choyce-opening-bank-props-grounded.jpg (clean direct-play opening capture; collision verified and water no longer pale cyan, but composition still fails the final visual gate)
 
   - id: VS-046
     title: Translate the Ziemek and Gniewko concept references into distinct playable hero looks
@@ -2496,6 +2513,9 @@ tasks:
       - .ai/handoffs/VS-014-handoff-to-codex.md
       - .ai/reviews/VS-014-claude-review.json
       - .ai/reviews/VS-014-codex-review.json
+      - tests/adapters/inbound/test_hotbar_image_hud_contract.gd (icon-led hotbar contract; visible numeric legend removed)
+      - /tmp/choyce-image-hotbar-no-numbers.png (direct-play capture confirming hotbar numerals are gone; desktop overlap means this is not final screenshot-gate evidence)
+      - tests/adapters/inbound/test_hotbar_image_hud_contract.gd (scene-instantiated HUD contract: five texture-backed slots, no Label children, high-contrast active border)
     deep_enrichment:
       - .ai/research-compendium/RESEARCH_VS-014_Modern_Game_UI.md (original 62KB)
       - .ai/research-compendium/RESEARCH_VS-014_DEEP_ENRICHMENT.md (+37KB, +500 links, deep research)
