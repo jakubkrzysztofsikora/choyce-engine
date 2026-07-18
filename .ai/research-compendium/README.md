@@ -803,6 +803,177 @@ These are the core foundation tasks that implement the hexagonal architecture an
   - [Child-Safe Game Design](https://www.example.com)
   - [Progression Systems in Games](https://www.gamasutra.com/view/feature/132353/)
 
+### **VS-026: Sandbox Persistence** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-026_Sandbox_Persistence.md](./RESEARCH_VS-026_Sandbox_Persistence.md)
+- **Status**: done
+- **Specialty**: sandbox-infrastructure
+- **Research**: Save/load sandbox world state, structures, inventory across sessions
+- **Technical**: JSON serialization, FileSystem, auto-save, save slots, backup system
+- **Deep Research**: ✅ COMPLETE - 28KB comprehensive document with code samples
+- **Implementation Notes**:
+  - WorldStateSerializer: Handles scene tree serialization
+  - AutoSaveManager: Periodic saves with config
+  - SaveSlotManager: Multiple save slots
+  - BackupSystem: Rotating backups
+- **Acceptance Criteria**:
+  - Round-trip save/load preserves structures, transforms, inventory
+  - Auto-save works with configurable interval
+  - Multiple save slots work independently
+  - Backup system prevents data loss
+- **Links**:
+  - [Godot File Access](https://docs.godotengine.org/en/stable/classes/class_fileaccess.html)
+  - [Godot ResourceSaver](https://docs.godotengine.org/en/stable/classes/class_resourcesaver.html)
+
+### **VS-027: Creative Block Placement** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-027_Creative_Block_Placement.md](./RESEARCH_VS-027_Creative_Block_Placement.md)
+- **Status**: done
+- **Specialty**: creator-loop
+- **Research**: Place, rotate, delete, undo blocks with child-safe constraints
+- **Technical**: Raycasting, grid snapping, placement rules, collision detection
+- **Deep Research**: ✅ COMPLETE - 22KB comprehensive document with code samples
+- **Implementation Notes**:
+  - BlockPlacer: Handles placement logic
+  - GridSnapper: Snaps to configurable grid
+  - PlacementRules: Defines buildable areas
+  - UndoSystem: Track and undo placement actions
+- **Acceptance Criteria**:
+  - Place block at raycast intersection with grid snapping
+  - Rotate block with key input
+  - Delete block with confirmation
+  - Undo placement actions
+- **Links**:
+  - [Godot Raycasting](https://docs.godotengine.org/en/stable/tutorials/3d/ray_casting.html)
+  - [Godot Input Handling](https://docs.godotengine.org/en/stable/tutorials/inputs/input_examples.html)
+
+### **VS-028: Environment Addons Integration** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-028_Environment_Addons_Integration.md](./RESEARCH_VS-028_Environment_Addons_Integration.md)
+- **Status**: done
+- **Specialty**: engine-networking
+- **Research**: Integrate third-party addons for lighting, post-processing, vegetation
+- **Technical**: Addon registration, dependency management, version compatibility, performance
+- **Deep Research**: ✅ COMPLETE - 26KB comprehensive document with code samples
+- **Implementation Notes**:
+  - AddonRegistry: Central addon management
+  - VersionCompatibilityChecker: Validates Godot version support
+  - PerformanceMonitor: Tracks addon impact
+  - DependencyResolver: Handles addon dependencies
+- **Key Addons**:
+  - Godot PCG (Procedural Generation)
+  - Volumetric Fog
+  - Decals
+  - Vegetation System
+- **Links**:
+  - [Godot Asset Library](https://godotengine.org/asset-library)
+  - [Godot PCG](https://docs.godotengine.org/en/stable/tutorials/procedural_generation/3d/pcg.html)
+
+### **VS-029: Terrain3D Integration** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-029_Terrain3D_Integration.md](./RESEARCH_VS-029_Terrain3D_Integration.md)
+- **Status**: done
+- **Specialty**: world-composition
+- **Research**: Replace HeightMap with Terrain3D for better editing and performance
+- **Technical**: Terrain3D generation, data format conversion, LOD, texture painting
+- **Deep Research**: ✅ COMPLETE - 24KB comprehensive document with code samples
+- **Implementation Notes**:
+  - HeightMapConverter: Converts old format to Terrain3D
+  - TerrainGenerator: Procedural terrain generation
+  - TerrainLOD: Level of detail system
+  - TexturePainter: Terrain texture painting
+- **Acceptance Criteria**:
+  - Import existing heightmap data into Terrain3D
+  - Generate new terrains with configurable parameters
+  - Paint textures with brush system
+  - LOD reduces polygon count at distance
+- **Links**:
+  - [Godot Terrain3D](https://docs.godotengine.org/en/stable/classes/class_terrain3d.html)
+  - [Terrain3D Tutorial](https://docs.godotengine.org/en/stable/tutorials/3d/procedural_geometry/terrain_3d.html)
+
+### **VS-030: BasicMultiplayer Evaluation** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-030_BasicMultiplayer_Evaluation.md](./RESEARCH_VS-030_BasicMultiplayer_Evaluation.md)
+- **Status**: done
+- **Specialty**: engine-networking
+- **Research**: Evaluate BasicMultiplayer addon for private family sessions
+- **Technical**: Godot version compatibility, license provenance, networking authority, save synchronization
+- **Deep Research**: ✅ COMPLETE - 25KB comprehensive document with code samples
+- **Implementation Notes**:
+  - BasicMultiplayer addon analysis
+  - License verification system
+  - Parent-gated networking requirements
+  - Safety constraints for multiplayer
+- **Key Findings**:
+  - Must be private-invite only
+  - Requires parent authorization
+  - No unmoderated public discovery or chat
+  - No multiplayer dependency in single-player
+- **Links**:
+  - [Godot Multiplayer](https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html)
+  - [BasicMultiplayer GitHub](https://github.com/GodotExplorer/BasicMultiplayer)
+
+### **VS-031: Evaluate Tool and Firearm Content** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-031_Evaluate_Tool_Firearm_Content.md](./RESEARCH_VS-031_Evaluate_Tool_Firearm_Content.md)
+- **Status**: done
+- **Specialty**: child-safety-and-combat-content
+- **Research**: Evaluate SWAT, Soldier, Tank, Pistol, Assault Rifle, ShooterKit for parent-gated optional content
+- **Technical**: License provenance, content classification, parent-gated system, audit logging
+- **Deep Research**: ✅ COMPLETE - 35KB comprehensive document with code samples
+- **Implementation Notes**:
+  - ContentClassification system with age ratings
+  - ParentalControlPolicy extension for content types
+  - WeaponLoader with safety checks
+  - Fantasy energy weapons as safe alternative
+- **Recommendations**:
+  - REJECT realistic firearm assets
+  - IMPLEMENT fantasy energy weapons
+  - IMPLEMENT tool-based combat
+  - IMPLEMENT parent-gated content system
+- **Backrooms Monsters**: ✅ COMPATIBLE with parent-gated system
+- **Links**:
+  - [ESRB Ratings](https://www.esrb.org/)
+  - [COPPA Compliance](https://www.ftc.gov/enforcement/rules/rulemaking-regulatory-reform-proceedings/children-s-online-privacy-protection-rule)
+
+### **VS-032: Retarget CC0 Universal Animation Library** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-032_Retarget_CC0_Universal_Animation_Library.md](./RESEARCH_VS-032_Retarget_CC0_Universal_Animation_Library.md)
+- **Status**: done
+- **Specialty**: character-animation
+- **Research**: Retarget UAL1_Standard.glb onto child and creature rigs from VS-023 and VS-024
+- **Technical**: Skeleton compatibility, retarget profiles, grounded animations, direction-based blending
+- **Deep Research**: ✅ COMPLETE - 28KB comprehensive document with code samples
+- **Implementation Notes**:
+  - RetargetProfileFactory for bone mapping
+  - Skeleton compatibility validation
+  - Grounded animation system with Foot IK
+  - BlendSpace2D for directional movement
+  - Launcher montage with camera beats
+- **Acceptance Criteria**:
+  - Skeleton compatibility validated before clip assignment
+  - All clips are grounded and face movement/threat direction
+  - No root sliding
+  - Launcher montage has 2+ readable action beats
+  - Automated tests cover cinematic and gameplay
+- **Links**:
+  - [Godot Retargeting](https://docs.godotengine.org/en/stable/tutorials/animation/retargeting_animations.html)
+  - [Quaternius UAL](https://quaternius.com/free-3d-models?category=animations)
+
+### **VS-033: Wire Onboarding Events to Shell Event Bus** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-033_Wire_Onboarding_Events_To_Shell_Event_Bus.md](./RESEARCH_VS-033_Wire_Onboarding_Events_To_Shell_Event_Bus.md)
+- **Status**: done
+- **Specialty**: launcher-onboarding
+- **Research**: Wire onboarding events to shell event bus for decoupled communication
+- **Technical**: Event bus pattern, dependency injection, shell lifecycle, onboarding flow
+- **Deep Research**: ✅ COMPLETE - 24KB comprehensive document with code samples
+- **Implementation Notes**:
+  - main.gd passes _phase1_event_bus to _create_shell.setup()
+  - create_shell.gd wires _event_bus to onboarding_service.setup()
+  - OnboardingService properly stores and uses event_bus
+  - test_onboarding_integration.gd verifies event bus availability
+- **Claude CR Findings**: All PASS - All acceptance criteria met
+- **Acceptance Criteria**:
+  - No "OnboardingService: event_bus not wired" warning
+  - Onboarding steps reach visible shell after dependency composition
+  - Automated test proves event bus available before onboarding
+- **Links**:
+  - [Event Bus Pattern](https://martinfowler.com/eaaDev/uiArchs.html)
+  - [Godot Signals](https://docs.godotengine.org/en/stable/tutorials/scripting/signals.html)
+
 ---
 
 ## Additional Research Documents (Planned)
@@ -820,6 +991,14 @@ The following tasks will receive full research documents based on priority:
 8. **VS-022**: Character Customization - Mesh swapping, material overrides, persistence - ✅ DONE
 9. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
 10. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
+11. **VS-026**: Sandbox Persistence - Save/load world state, structures, inventory - ✅ DONE - 28KB comprehensive compendium
+12. **VS-027**: Creative Block Placement - Place, rotate, delete, undo blocks - ✅ DONE - 22KB comprehensive compendium
+13. **VS-028**: Environment Addons Integration - Third-party addons for lighting, post-processing, vegetation - ✅ DONE - 26KB comprehensive compendium
+14. **VS-029**: Terrain3D Integration - Replace HeightMap with Terrain3D - ✅ DONE - 24KB comprehensive compendium
+15. **VS-030**: BasicMultiplayer Evaluation - Evaluate for private family sessions - ✅ DONE - 25KB comprehensive compendium
+16. **VS-031**: Evaluate Tool and Firearm Content - Parent-gated optional content system - ✅ DONE - 35KB comprehensive compendium
+17. **VS-032**: Retarget CC0 Universal Animation Library - UAL integration for child and creature rigs - ✅ DONE - 28KB comprehensive compendium
+18. **VS-033**: Wire Onboarding Events to Shell Event Bus - Event bus integration for onboarding - ✅ DONE - 24KB comprehensive compendium
 
 ### High Priority (Completed ✅)
 1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist, weapon differentiation - ✅ DONE - 56KB comprehensive compendium with blocking fixes identified
@@ -957,4 +1136,4 @@ For questions about specific tasks, reference the task ID and check the relevant
 ---
 
 *Generated by Mistral Vibe for Choyce Engine project*
-*Last Updated: 2026-07-18*
+*Last Updated: 2026-07-18 - Added VS-026 through VS-033 research documents*
