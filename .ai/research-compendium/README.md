@@ -71,7 +71,14 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: Enemy state machines, wind-up telegraph system, child-safe creature design
 
-### 9. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
+### 9. Reversible Creator Interaction (VS-008) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-008_Reversible_Creator_Interaction.md](./RESEARCH_VS-008_Reversible_Creator_Interaction.md)
+- **Focus**: Collect → upgrade → place decoration → undo/replay loop with command pattern
+- **Status**: done
+- **Complexity**: HIGH
+- **Key Technologies**: Command Pattern, Godot UndoRedo, inventory/hotbar, resource collection, event bus
+
+### 10. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
 - **File**: [RESEARCH_VS-005_Combat_Telegraphs_Feedback.md](./RESEARCH_VS-005_Combat_Telegraphs_Feedback.md)
 - **Focus**: Hitstop, screen shake, aim assist, damage numbers, particle effects, weapon differentiation
 - **Status**: in_review
@@ -354,11 +361,13 @@ These tasks have full, detailed research documents with code samples, online res
   - CI/CD pipeline with GitHub Actions
   - Privacy-first telemetry (opt-in, anonymized)
 
-### VS-008: Reversible Creator Interaction
+### VS-008: Reversible Creator Interaction ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-008_Reversible_Creator_Interaction.md](./RESEARCH_VS-008_Reversible_Creator_Interaction.md)
 - **Status**: done
 - **Specialty**: creator-loop
-- **Research**: Collect → upgrade → place decoration → undo/replay
+- **Research**: Collect → upgrade → place decoration → undo/replay loop with Command Pattern
 - **Current Evidence**: build_grid.gd (undo stack), gameplay_runtime.gd (HUD UndoBtn)
+- **Deep Research**: ✅ COMPLETE - 31KB comprehensive document with code samples, best practices, child-safety constraints
 
 ### VS-009: Governed AI Flows
 - **Status**: done
@@ -591,11 +600,14 @@ The following tasks will receive full research documents based on priority:
 ### High Priority (Completed ✅)
 1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist, weapon differentiation - ✅ DONE - 56KB comprehensive compendium with blocking fixes identified
 2. **VS-006**: Audio Visual Accessibility - Full audio bus architecture, accessibility systems - ✅ DONE
-3. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
-4. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking, heal - ✅ DONE
-5. **VS-022**: Character Customization - Mesh swapping, material overrides, persistence - ✅ DONE
-6. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
-7. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
+3. **VS-008**: Reversible Creator Interaction - Command Pattern, collect→upgrade→place→undo loop - ✅ DONE - 31KB comprehensive compendium
+4. **VS-012**: Visual Art Direction - Palette, materials, lighting, asset kits - ✅ DONE - 46KB comprehensive compendium
+5. **VS-014**: Modern Game UI - HUD replacement, controls, iconography - ✅ DONE - 62KB comprehensive compendium
+6. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
+7. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking, heal - ✅ DONE
+8. **VS-022**: Character Customization - Mesh swapping, material overrides, persistence - ✅ DONE
+9. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
+10. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
 
 ### High Priority (Completed ✅)
 1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist, weapon differentiation - ✅ DONE - 56KB comprehensive compendium with blocking fixes identified
