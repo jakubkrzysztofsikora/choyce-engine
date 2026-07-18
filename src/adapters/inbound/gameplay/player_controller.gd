@@ -24,9 +24,9 @@ const WATER_SINK_SPEED := 0.18
 const WATER_SWIM_UP_VELOCITY := 3.4
 const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
 const HERO_CLOTHING_SHADER := preload("res://src/adapters/inbound/gameplay/shaders/hero_clothing.gdshader")
-const KENNEY_TOON_COLORMAP := preload("res://data/models/kenney/toon_characters/Models/GLB format/Textures/colormap.png")
-const KENNEY_BAG_SCENE := preload("res://data/models/kenney/food_kit/GLB/bag.glb")
 const ZIEMEK_HOODIE_PATTERN := preload("res://data/textures/generated/ziemek-hoodie-fabric-v1.png")
+const ZIEMEK_GLB := preload("res://data/models/heroes/ziemek.glb")
+const GNIEWSKO_GLB := preload("res://data/models/heroes/gniewko.glb")
 
 signal footstep
 signal landed
@@ -1323,14 +1323,14 @@ func apply_customization(c: CharacterCustomization, enforce_hero_preset: bool = 
 	_apply_hero_identity_layer(c, use_signature)
 
 
-## Select the visual identity without replacing the underlying animated rig.
-## This is intentionally cosmetic: input, save data and gameplay stats remain
-## separate from which of the two boys is shown.
+## Select the visual identity by swapping to the correct hero GLB.
+## Each hero has their own pre-baked GLB with colors, backpack, and rig.
 func set_hero_identity(identity: String) -> void:
 	if identity not in [HERO_IDENTITY_ZIEMEK, HERO_IDENTITY_GNIEWKO]:
 		return
 	_hero_identity = identity
-	_apply_hero_identity_layer()
+	var glb_path := ZIEMEK_GLB if identity == HERO_IDENTITY_ZIEMEK else GNIEWSKO_GLB
+	_swap_character_glb(glb_path.resource_path)
 
 
 func _is_valid_face_variant(variant: String, set: String) -> bool:
@@ -1438,65 +1438,22 @@ func _hero_shoe_color(c: CharacterCustomization = null, enforce_hero_preset: boo
 	return CharacterCustomization.SHOES_PALETTE[c.shoes]
 
 
-## Recolour the real skinned garment mesh and add only a ready-made backpack.
-## The previous capsule-based clothes looked like rigid armour in third-person
-## play, so no primitive torso/leg stand-ins are kept here.
+## Hero identity is now baked into the per-hero GLBs (ziemek.glb, gniewko.glb).
+## This function is kept for facial performance setup and backward compatibility
+## with any legacy Kenney-based customization.
 func _apply_hero_identity_layer(c: CharacterCustomization = null, enforce_hero_preset: bool = false) -> void:
 	if _character_mesh == null or not is_instance_valid(_character_mesh):
 		return
-	var previous := _character_mesh.get_node_or_null("HeroIdentityLayer")
-	if previous != null:
-		# Detach synchronously so the replacement keeps the canonical name, then
-		# let the renderer release the old GLB materials at the end of the frame.
-		# Immediate free() was producing material-null churn while a Forward+
-		# frame still referenced the old backpack surface overrides.
-		_character_mesh.remove_child(previous)
-		previous.queue_free()
-	var layer := Node3D.new()
-	layer.name = "HeroIdentityLayer"
-	_character_mesh.add_child(layer)
-
-	var top := _hero_top_color(c, enforce_hero_preset)
-	var pants := _hero_pants_color(c, enforce_hero_preset)
-	var use_ziemek_pattern := _hero_identity == HERO_IDENTITY_ZIEMEK and (enforce_hero_preset or c == null)
-	_apply_hero_clothing_material(top, pants, use_ziemek_pattern)
-
-	# Ziemek's backpack is a supplied, textured Kenney mesh, scaled from its
-	# source bounds to sit within the child's shoulders. It reads from behind
-	# without becoming a rigid body proxy.
-	if _hero_identity == HERO_IDENTITY_ZIEMEK:
-		var backpack := KENNEY_BAG_SCENE.instantiate() as Node3D
-		if backpack == null:
-			return
-		backpack.name = "ZiemekBackpack"
-		# The source character faces +Z, while CharacterMesh rotates 180° for
-		# gameplay; its camera-visible back is therefore local -Z. Keep the bag
-		# fully outside the body depth instead of embedding it in the torso.
-		backpack.position = Vector3(0.0, 0.20, -0.33)
-		backpack.scale = Vector3.ONE * 0.34
-		_tint_identity_meshes(backpack, Color("#30373a"))
-		layer.add_child(backpack)
-		var patch := BoxMesh.new()
-		patch.size = Vector3(0.065, 0.058, 0.012)
-		_add_identity_mesh(layer, "ZiemekBackpackBadge", patch, ZIEMEK_LIME, Vector3(0.0, 0.287, -0.49))
+	# New hero GLBs have colors, backpack, and rig baked in.
+	# Only ensure facial performance is attached (for Kenney fallback).
+	if _facial_performance == null or not is_instance_valid(_facial_performance):
+		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(_character_mesh)
 
 
+## Hero clothing colors are baked into the per-hero GLBs.
+## This function is kept as a no-op for backward compatibility.
 func _apply_hero_clothing_material(top_color: Color, pants_color: Color, use_ziemek_pattern: bool = false) -> void:
-	var body_meshes := _find_meshes_by_name_token(_character_mesh, "body-mesh")
-	if body_meshes.is_empty():
-		return
-	# Kenney GLBs split the animated torso, sleeves and lower body across several
-	# mesh instances. Applying the hoodie shader only to the first `body-mesh`
-	# left a grey torso beside turquoise sleeves in the live third-person view.
-	for body in body_meshes:
-		var material := ShaderMaterial.new()
-		material.shader = HERO_CLOTHING_SHADER
-		material.set_shader_parameter("source_albedo", KENNEY_TOON_COLORMAP)
-		material.set_shader_parameter("garment_color", top_color)
-		material.set_shader_parameter("trouser_color", pants_color)
-		material.set_shader_parameter("hoodie_pattern", ZIEMEK_HOODIE_PATTERN)
-		material.set_shader_parameter("hoodie_pattern_strength", 0.72 if use_ziemek_pattern else 0.0)
-		body.material_override = material
+	pass
 
 
 func _tint_identity_meshes(root: Node, color: Color) -> void:

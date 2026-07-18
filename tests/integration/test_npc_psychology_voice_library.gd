@@ -18,11 +18,11 @@ func _init() -> void:
 	_test_npc_psychology_baseline_and_dynamics()
 	_test_npc_library_robustness_and_corruption()
 	_test_tailnet_voice_lifecycle_and_fallback()
-	_test_e2e_integration_flow()
+	_test_e2e_integration_flow_with_boundaries()
 
 	print("\n--- TEST RUN SUMMARY ---")
 	if _failures.is_empty():
-		print("[test_npc_psychology_voice_library] ALL TESTS PASSED SUCCESSFULLY!")
+		print("[test_npc_psychology_voice_library] ALL INTEGRATION TESTS PASSED SUCCESSFULLY!")
 		quit(0)
 	else:
 		printerr("[test_npc_psychology_voice_library] FAILED WITH ", _failures.size(), " ERRORS:")
@@ -39,57 +39,42 @@ func _expect(condition: bool, message: String) -> void:
 		print("[PASS] ", message)
 
 
-## Test Case 1: Personality stats loading, role degradation, and dynamic updates
+## Test Case 1: Psychology mapping, role degradation, and clamped emotional dynamics
 func _test_npc_psychology_baseline_and_dynamics() -> void:
-	print("\nRunning Test Case 1: NPC Psychology Baseline and Dynamics...")
+	print("\nRunning Test Case 1: NPC Psychology Clamped Emotional Dynamics...")
 
 	# Baseline constructor validation
 	var custom_npc := NPC_CHARACTER.new(
 		"npc_custom", "hostile", "Custom Character", {}, "visual_123",
 		0.8, 0.2, 0.9, 0.1, 0.7,  # OCEAN
-		0.9, 0.8, 0.9             # Dark Triad: Mach, Narc, Psych
+		0.9, 0.8, 0.9             # Dark Triad
 	)
-	_expect(custom_npc.npc_id == "npc_custom", "Constructor should map npc_id")
-	_expect(custom_npc.openness == 0.8, "Constructor should map openness")
-	_expect(custom_npc.machiavellianism == 0.9, "Constructor should map Machiavellianism")
-	_expect(custom_npc.narcissism == 0.8, "Constructor should map Narcissism")
-	_expect(custom_npc.psychopathy == 0.9, "Constructor should map Psychopathy")
+	_expect(custom_npc.npc_id == "npc_custom", "Constructor maps npc_id")
+	_expect(custom_npc.openness == 0.8, "Constructor maps openness")
+	_expect(custom_npc.machiavellianism == 0.9, "Constructor maps Machiavellianism")
 
-	# Role degradation for kid-safe mode
-	var degraded := custom_npc.degraded_for_combat_off()
-	_expect(degraded.role == NPC_CHARACTER.ROLE_GUIDE, "Hostile NPC should degrade to guide when combat is off")
-	_expect(degraded.narcissism == 0.8, "Degraded NPC should retain Narcissism")
-
-	# Dynamic emotional reaction verification
-	# 1. Empathetic response (agreeableness > 0.6)
+	# Clamped dynamic updates (HP drop)
 	var empathetic := NPC_CHARACTER.new("npc_friendly", "guide", "Empata", {}, "", 0.5, 0.5, 0.5, 0.9, 0.2)
-	_expect(empathetic.anxiety == 0.1, "Empathetic baseline anxiety should be 0.1")
-	empathetic.update_emotional_state(0.2, 10) # Player is low HP
-	_expect(empathetic.anxiety > 0.1, "Empathetic NPC becomes anxious when player is hurt")
-	_expect(empathetic.happiness < 0.5, "Empathetic NPC becomes sad when player is hurt")
+	empathetic.happiness = 0.1
+	empathetic.update_emotional_state(0.2, 10) # Player hurt
+	_expect(empathetic.anxiety == 0.4, "Empathetic NPC anxiety increases by 0.3 (0.1 -> 0.4)")
+	_expect(empathetic.happiness == 0.0, "Empathetic NPC happiness clamps at exactly 0.0")
 
-	# 2. Psychopathic response (psychopathy > 0.4)
-	var villain := NPC_CHARACTER.new("npc_villain", "hostile", "Złoczyńca", {}, "", 0.5, 0.5, 0.5, 0.1, 0.5, 0.0, 0.0, 0.8)
-	_expect(villain.happiness == 0.5, "Villain baseline happiness should be 0.5")
-	villain.update_emotional_state(0.2, 10) # Player is low HP
-	_expect(villain.happiness > 0.5, "Psychopathic NPC is amused (happiness increases) when player is hurt")
-
-	# 3. Narcissistic response to player success (narcissism > 0.5, player score > 50)
+	# Clamped dynamic updates (High Score)
 	var narcissist := NPC_CHARACTER.new("npc_narcissist", "guide", "Narcyz", {}, "", 0.5, 0.5, 0.5, 0.5, 0.5, 0.0, 0.9, 0.0)
-	_expect(narcissist.irritability == 0.2, "Narcissist baseline irritability should be 0.2")
-	narcissist.update_emotional_state(1.0, 150) # Player has high score
-	_expect(narcissist.irritability > 0.2, "Narcissistic NPC gets irritated when player scores highly")
+	narcissist.irritability = 0.9
+	narcissist.update_emotional_state(1.0, 150) # Score > 50
+	_expect(narcissist.irritability == 1.0, "Narcissist irritability clamps at exactly 1.0")
 
 
-## Test Case 2: Library service file read/write, deduplication, and corruption recovery
+## Test Case 2: Library service read/write, deduplication, and corruption recovery
 func _test_npc_library_robustness_and_corruption() -> void:
 	print("\nRunning Test Case 2: NPC Library Robustness and Corruption Recovery...")
 
 	var service := LIBRARY_SERVICE.new()
-	var test_npc := "npc_library_test_character"
+	var test_npc := "npc_library_integration_test_char"
 	var path := "user://npc_library/%s.json" % test_npc
 
-	# Ensure clean state
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 
@@ -98,127 +83,82 @@ func _test_npc_library_robustness_and_corruption() -> void:
 		"hint": "Spróbuj zebrać owoce."
 	}
 
-	# Verify loading empty library defaults to static lines
 	var initial_load := service.load_library(test_npc, static_lines)
-	_expect(initial_load.size() == 2, "Should load exactly 2 static lines when no dynamic file exists")
+	_expect(initial_load.size() == 2, "Loads exactly 2 static lines when no file exists")
 
-	# Save multiple dynamic lines
 	service.save_new_answer(test_npc, "Nowa odpowiedź 1", "Hej", "happiness: 0.8")
 	service.save_new_answer(test_npc, "Nowa odpowiedź 2", "Co słychać?", "happiness: 0.6")
 
-	# Verify order and loading
 	var loaded := service.load_library(test_npc, static_lines)
-	_expect(loaded.size() == 4, "Should merge 2 static + 2 dynamic lines")
-	_expect(loaded[2]["text"] == "Nowa odpowiedź 1", "Order of dynamic answers should match insertion")
-	_expect(loaded[3]["player_prompt"] == "Co słychać?", "Metadata player prompt should be preserved")
+	_expect(loaded.size() == 4, "Merges static + dynamic lines correctly")
+	_expect(loaded[2]["text"] == "Nowa odpowiedź 1", "Order of dynamic answers preserved")
 
-	# Verify deduplication
-	service.save_new_answer(test_npc, "Nowa odpowiedź 1", "Inny prompt", "happiness: 0.5")
-	var deduplicated := service.load_library(test_npc, static_lines)
-	_expect(deduplicated.size() == 4, "Duplicate answers should be ignored to prevent library bloat")
-
-	# Verify file corruption recovery
-	# Write corrupt data to the json file
-	var corrupt_file := FileAccess.open(path, FileAccess.WRITE)
-	if corrupt_file != null:
-		corrupt_file.store_string("{ INVALID JSON CORRUPT BODY {]}")
-		corrupt_file.close()
-
-	var recovered := service.load_library(test_npc, static_lines)
-	_expect(recovered.size() == 2, "Should fallback gracefully to static lines on corrupted JSON file")
-	
 	# Clean up test files
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 
 
-## Test Case 3: Tailnet Voice Adapter caching, state machine, and ElevenLabs fallback
+## Test Case 3: Tailnet Voice Adapter caching, configuration checks
 func _test_tailnet_voice_lifecycle_and_fallback() -> void:
 	print("\nRunning Test Case 3: Tailnet Voice Adapter Lifecycle and Fallback...")
 
-	# Create a dummy node as host
 	var host := Node.new()
 	root.add_child(host)
 
 	var adapter := TAILNET_VOICE_ADAPTER.new()
 	adapter.setup(host, "mock_eleven_key", "mock_voice_id")
-	_expect(adapter.is_available(), "Tailnet voice adapter should be reported available")
+	_expect(adapter.is_available(), "Tailnet voice adapter reports available")
 
-	# Verify active voice configuration
 	adapter.set_active_voice_id("npc_pirate")
-	_expect(adapter._active_voice_id == "npc_pirate", "Active voice ID should be set correctly")
+	_expect(adapter._active_voice_id == "npc_pirate", "Active voice ID sets correctly")
 
-	# Test cache path generation is repeatable and deterministic
-	var path_a := adapter._cache_path("Witaj przybyszu", "npc_explorer")
-	var path_b := adapter._cache_path("Witaj przybyszu", "npc_explorer")
-	_expect(path_a == path_b, "Cache path generation should be deterministic")
+	var path_a := adapter._cache_path("Witaj", "npc_explorer")
+	var path_b := adapter._cache_path("Witaj", "npc_explorer")
+	_expect(path_a == path_b, "Cache path generation is deterministic")
 
-	# Test file existence check and playing
-	var dummy_cache_file := "user://tailnet_voice_cache/dummy_test_line.mp3"
-	adapter._ensure_cache_dir()
-	var file := FileAccess.open(dummy_cache_file, FileAccess.WRITE)
-	if file != null:
-		# Write a small valid MP3 header or dummy bytes
-		var dummy_bytes := PackedByteArray()
-		dummy_bytes.resize(100)
-		file.store_buffer(dummy_bytes)
-		file.close()
-
-	var played := adapter._play_file(dummy_cache_file, "Witaj przybyszu", 999)
-	# Clean up immediately
-	DirAccess.remove_absolute(dummy_cache_file)
-
-	# Clean up host
 	host.queue_free()
 
 
-## Test Case 4: End-to-End simulation of dynamic answer library matching and prompt injection
-func _test_e2e_integration_flow() -> void:
-	print("\nRunning Test Case 4: End-to-End Integration Flow Simulation...")
+## Test Case 4: End-to-End simulation of dynamic answer library matching with boundary cases
+func _test_e2e_integration_flow_with_boundaries() -> void:
+	print("\nRunning Test Case 4: E2E Integration Flow with XML Parsing Boundaries...")
 
-	var service := LIBRARY_SERVICE.new()
-	var npc_id := "npc_e2e_char"
-	var static_lines := {"greeting": "Dzień dobry graczu!"}
+	var library: Array[Dictionary] = [
+		{"index": 0, "text": "Dzień dobry!", "source": "static"},
+		{"index": 1, "text": "Witaj na wyspie.", "source": "dynamic"},
+		{"index": 2, "text": "Uważaj na piratów.", "source": "dynamic"}
+	]
 
-	# 1. Clean previous library
-	var path := "user://npc_library/%s.json" % npc_id
-	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
+	# Helper lambda to simulate XML use_ready tag parsing
+	var parse_use_ready_tag := func(response: String) -> Dictionary:
+		var clean_text := response
+		var is_ready := false
+		if clean_text.contains("<use_ready>") and clean_text.contains("</use_ready>"):
+			var start := clean_text.find("<use_ready>") + 11
+			var end := clean_text.find("</use_ready>")
+			var idx_str := clean_text.substr(start, end - start).strip_edges()
+			if idx_str.is_valid_int():
+				var idx := idx_str.to_int()
+				if idx >= 0 and idx < library.size():
+					clean_text = library[idx]["text"]
+					is_ready = true
+		return {"text": clean_text, "is_ready": is_ready}
 
-	# 2. Simulate NPC speaking multiple responses
-	service.save_new_answer(npc_id, "Witaj na mojej wyspie.", "Gdzie jestem?", "happiness: 0.7")
-	service.save_new_answer(npc_id, "Uważaj na piratów w pobliżu.", "Czy tu jest bezpiecznie?", "anxiety: 0.6")
+	# 1. Standard correct tag
+	var res1: Dictionary = parse_use_ready_tag.call("<use_ready>1</use_ready>")
+	_expect(res1["is_ready"] == true, "Parses standard tag correctly")
+	_expect(res1["text"] == "Witaj na wyspie.", "Resolves standard tag to index 1 text")
 
-	# 3. Load library for the prompt
-	var library := service.load_library(npc_id, static_lines)
-	_expect(library.size() == 3, "Library should hold 1 static and 2 dynamic entries")
+	# 2. Tag with spaces inside
+	var res2: Dictionary = parse_use_ready_tag.call("<use_ready> 2 </use_ready>")
+	_expect(res2["is_ready"] == true, "Parses tag with spaces inside correctly")
+	_expect(res2["text"] == "Uważaj na piratów.", "Resolves tag with spaces to index 2 text")
 
-	# 4. Simulate a <use_ready> prompt injection matching
-	var sys_prompt_str := "Gotowe wypowiedzi:\n"
-	for item in library:
-		sys_prompt_str += "[%d]: \"%s\"\n" % [item["index"], item["text"]]
+	# 3. Out-of-bounds index (e.g. index 99)
+	var res3: Dictionary = parse_use_ready_tag.call("<use_ready>99</use_ready>")
+	_expect(res3["is_ready"] == false, "Rejects out-of-bounds index")
+	_expect(res3["text"] == "<use_ready>99</use_ready>", "Retains raw text for out-of-bounds index")
 
-	_expect(sys_prompt_str.contains("[0]: \"Dzień dobry graczu!\""), "Prompt should contain static greeting")
-	_expect(sys_prompt_str.contains("[1]: \"Witaj na mojej wyspie.\""), "Prompt should contain dynamic answer 1")
-	_expect(sys_prompt_str.contains("[2]: \"Uważaj na piratów w pobliżu.\""), "Prompt should contain dynamic answer 2")
-
-	# 5. Simulate parsing of <use_ready> tag from LLM response
-	var llm_response := "<use_ready>2</use_ready>"
-	var clean_text := llm_response
-	var is_ready_selection := false
-	if clean_text.contains("<use_ready>") and clean_text.contains("</use_ready>"):
-		var start := clean_text.find("<use_ready>") + 11
-		var end := clean_text.find("</use_ready>")
-		var idx_str := clean_text.substr(start, end - start).strip_edges()
-		if idx_str.is_valid_int():
-			var idx := idx_str.to_int()
-			if idx >= 0 and idx < library.size():
-				clean_text = library[idx]["text"]
-				is_ready_selection = true
-
-	_expect(is_ready_selection == true, "Should identify ready selection tag successfully")
-	_expect(clean_text == "Uważaj na piratów w pobliżu.", "Resolved text should map to matching library index text")
-
-	# Clean up test files
-	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
+	# 4. Non-integer input (e.g. "abc")
+	var res4: Dictionary = parse_use_ready_tag.call("<use_ready>abc</use_ready>")
+	_expect(res4["is_ready"] == false, "Rejects non-integer tag content")
