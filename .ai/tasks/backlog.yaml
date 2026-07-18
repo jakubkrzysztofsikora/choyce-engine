@@ -1755,11 +1755,23 @@ tasks:
       - Corrupt or incomplete local save safely falls back to a new playable sandbox
     cross_review_by: claude
     status: in_progress
+    evidence:
+      - src/adapters/outbound/filesystem_session_progress_store.gd (filesystem-based ProgressState persistence)
+      - src/adapters/inbound/main.gd:374 (wired FilesystemSessionProgressStore)
+      - tests/adapters/outbound/test_filesystem_session_progress_store.gd (unit tests pass)
     deep_enrichment:
       - .ai/research-compendium/RESEARCH_VS-026_Sandbox_Persistence.md (original 28KB)
       - .ai/research-compendium/RESEARCH_VS-026_DEEP_ENRICHMENT.md (+34KB, +500 links, deep research)
     codex_cr_findings:
-      - PASS: Complete save/load system architecture with SaveManager
+      - FIXED: FileAccess.remove_file() compilation error - changed to DirAccess.remove_absolute()
+      - FIXED: JSON serialization updated for Godot 4.6 (removed print_indent, use static JSON.stringify)
+      - FIXED: Directory listing updated for Godot 4.6 (get_next() pattern with list_dir_begin/end)
+      - FIXED: ProgressState typed arrays changed to untyped to avoid RefCounted assignment issues
+      - FIXED: Score deserialization handles int/float conversion
+      - ADDED: setup() method for method chaining
+      - ADDED: Unit tests for all FilesystemSessionProgressStore methods
+      - INTEGRATED: main.gd updated to use FilesystemSessionProgressStore
+      - NOTE: ProgressState persistence complete; SandboxState wiring needed for full sandbox persistence
       - PASS: World state serialization (placed blocks, terrain modifications, environmental objects)
       - PASS: Player state serialization (position, rotation, velocity, health, stamina, equipment)
       - PASS: Inventory serialization (items, stacks, metadata)
