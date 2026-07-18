@@ -31,6 +31,9 @@ func _test_defaults() -> void:
 	_expect(npc.agreeableness == 0.5, "default agreeableness should be 0.5")
 	_expect(npc.happiness == 0.5, "default happiness should be 0.5")
 	_expect(npc.anxiety == 0.1, "default anxiety should be 0.1")
+	_expect(npc.machiavellianism == 0.0, "default machiavellianism is 0.0")
+	_expect(npc.narcissism == 0.0, "default narcissism is 0.0")
+	_expect(npc.psychopathy == 0.0, "default psychopathy is 0.0")
 
 
 func _test_dynamic_emotion_transitions() -> void:
@@ -40,7 +43,8 @@ func _test_dynamic_emotion_transitions() -> void:
 	)
 	var hostile := NPC_CHARACTER.new(
 		"npc_enemy", "hostile", "Wrog", {}, "npc_enemy",
-		0.5, 0.5, 0.5, 0.2, 0.6  # Hostile (low agreeableness)
+		0.5, 0.5, 0.5, 0.2, 0.6,
+		0.7, 0.6, 0.8  # Highly psychopathic
 	)
 
 	# When player is hurt (low HP ratio < 0.4)
@@ -49,7 +53,7 @@ func _test_dynamic_emotion_transitions() -> void:
 
 	_expect(friendly.anxiety > 0.1, "agreeable NPC becomes anxious when player is hurt")
 	_expect(friendly.happiness < 0.5, "agreeable NPC becomes less happy when player is hurt")
-	_expect(hostile.happiness > 0.5, "hostile NPC becomes happier/amused when player is hurt")
+	_expect(hostile.happiness > 0.5, "psychopathic NPC becomes happier/amused when player is hurt")
 
 	# Create fresh characters to test high score reaction without carrying over previous hurt states
 	var friendly_score := NPC_CHARACTER.new(
@@ -58,7 +62,8 @@ func _test_dynamic_emotion_transitions() -> void:
 	)
 	var hostile_score := NPC_CHARACTER.new(
 		"npc_enemy2", "hostile", "Wrog2", {}, "npc_enemy2",
-		0.5, 0.5, 0.5, 0.2, 0.6
+		0.5, 0.5, 0.5, 0.2, 0.6,
+		0.7, 0.8, 0.4  # Highly narcissistic
 	)
 
 	# When player is doing very well (high score > 50)
@@ -66,7 +71,7 @@ func _test_dynamic_emotion_transitions() -> void:
 	hostile_score.update_emotional_state(1.0, 100)
 
 	_expect(friendly_score.happiness > 0.5, "friendly NPC becomes happier when player has a high score")
-	_expect(hostile_score.irritability > 0.2, "hostile NPC becomes irritated by player's success")
+	_expect(hostile_score.irritability > 0.2, "narcissistic NPC becomes highly irritated by player's success")
 
 
 func _test_loader_presets() -> void:
@@ -83,11 +88,15 @@ func _test_loader_presets() -> void:
 	if explorer != null:
 		_expect(explorer.openness == 0.9, "explorer should have high openness (0.9)")
 		_expect(explorer.neuroticism == 0.2, "explorer should have low neuroticism (0.2)")
+		_expect(explorer.machiavellianism == 0.0, "explorer should have zero Machiavellianism")
 	else:
 		_expect(false, "npc_explorer not found in adventure template")
 
 	if pirate != null:
 		_expect(pirate.agreeableness == 0.2, "pirate should have low agreeableness (0.2)")
 		_expect(pirate.extraversion == 0.7, "pirate should have high extraversion (0.7)")
+		_expect(pirate.machiavellianism == 0.7, "pirate should have high Machiavellianism (0.7)")
+		_expect(pirate.narcissism == 0.6, "pirate should have high Narcissism (0.6)")
+		_expect(pirate.psychopathy == 0.4, "pirate should have medium Psychopathy (0.4)")
 	else:
 		_expect(false, "npc_pirate not found in adventure template")

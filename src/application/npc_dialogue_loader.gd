@@ -45,20 +45,20 @@ const _NAME_MAP := {
 	"npc_mayor": "Burmistrz",
 }
 
-## NPC Personality Profiles (Big Five: openness, conscientiousness, extraversion, agreeableness, neuroticism)
+## NPC Personality Profiles (Big Five: openness, conscientiousness, extraversion, agreeableness, neuroticism, followed by Dark Triad: machiavellianism, narcissism, psychopathy)
 const _PERSONALITY_MAP := {
-	"npc_explorer": [0.9, 0.6, 0.8, 0.7, 0.2],
-	"npc_pirate": [0.3, 0.4, 0.7, 0.2, 0.6],
-	"npc_robot": [0.5, 1.0, 0.2, 0.8, 0.0],
-	"npc_coach": [0.6, 0.9, 0.8, 0.8, 0.3],
-	"npc_shopkeeper": [0.4, 0.8, 0.6, 0.7, 0.3],
-	"npc_banker": [0.3, 0.9, 0.4, 0.5, 0.4],
-	"npc_baker": [0.7, 0.7, 0.5, 0.9, 0.2],
-	"npc_merchant": [0.5, 0.7, 0.7, 0.6, 0.3],
-	"npc_farmer": [0.5, 0.8, 0.4, 0.8, 0.2],
-	"npc_scarecrow": [0.4, 0.3, 0.3, 0.9, 0.7],
-	"npc_parrot": [0.8, 0.3, 0.9, 0.7, 0.5],
-	"npc_mayor": [0.6, 0.8, 0.7, 0.8, 0.3],
+	"npc_explorer": [0.9, 0.6, 0.8, 0.7, 0.2, 0.0, 0.0, 0.0],
+	"npc_pirate": [0.3, 0.4, 0.7, 0.2, 0.6, 0.7, 0.6, 0.4],
+	"npc_robot": [0.5, 1.0, 0.2, 0.8, 0.0, 0.0, 0.0, 0.0],
+	"npc_coach": [0.6, 0.9, 0.8, 0.8, 0.3, 0.0, 0.0, 0.0],
+	"npc_shopkeeper": [0.4, 0.8, 0.6, 0.7, 0.3, 0.1, 0.0, 0.0],
+	"npc_banker": [0.3, 0.9, 0.4, 0.5, 0.4, 0.6, 0.3, 0.1],
+	"npc_baker": [0.7, 0.7, 0.5, 0.9, 0.2, 0.0, 0.0, 0.0],
+	"npc_merchant": [0.5, 0.7, 0.7, 0.6, 0.3, 0.2, 0.1, 0.0],
+	"npc_farmer": [0.5, 0.8, 0.4, 0.8, 0.2, 0.0, 0.0, 0.0],
+	"npc_scarecrow": [0.4, 0.3, 0.3, 0.9, 0.7, 0.0, 0.0, 0.0],
+	"npc_parrot": [0.8, 0.3, 0.9, 0.7, 0.5, 0.1, 0.2, 0.0],
+	"npc_mayor": [0.6, 0.8, 0.7, 0.8, 0.3, 0.2, 0.2, 0.0],
 }
 
 var _cache: Dictionary = {}   ## template_id -> Array[NPCCharacter]
@@ -88,7 +88,11 @@ func load_npcs_for_template(template_id: String) -> Array:
 		var lines: Dictionary = lines_variant
 		var role: String = _ROLE_MAP.get(npc_id, NPCCharacter.ROLE_GUIDE)
 		var name_pl: String = _NAME_MAP.get(npc_id, String(npc_id))
-		var traits: Array = _PERSONALITY_MAP.get(npc_id, [0.5, 0.5, 0.5, 0.5, 0.5])
+		var traits: Array = _PERSONALITY_MAP.get(npc_id, [0.5, 0.5, 0.5, 0.5, 0.5, 0.0, 0.0, 0.0])
+		if traits.size() < 8:
+			traits = traits.duplicate()
+			while traits.size() < 8:
+				traits.append(0.0)
 		npcs.append(NPCCharacter.new(
 			String(npc_id),
 			role,
@@ -99,9 +103,13 @@ func load_npcs_for_template(template_id: String) -> Array:
 			traits[1],
 			traits[2],
 			traits[3],
-			traits[4]
+			traits[4],
+			traits[5],
+			traits[6],
+			traits[7]
 		))
 	_cache[template_id] = npcs
+
 	return npcs
 
 

@@ -30,13 +30,19 @@ var lines_pl: Dictionary
 ## Optional mesh / sprite id resolved by the visual adapter.
 var visual_id: String
 
-## Hidden psychology-backed personality traits (Big Five / OCEAN model)
+## Psychology-backed personality traits (Big Five / OCEAN model)
 ## Normalized from 0.0 (low) to 1.0 (high)
 var openness: float = 0.5
 var conscientiousness: float = 0.5
 var extraversion: float = 0.5
 var agreeableness: float = 0.5
 var neuroticism: float = 0.5
+
+## Dark Triad traits
+## Normalized from 0.0 (low) to 1.0 (high)
+var machiavellianism: float = 0.0
+var narcissism: float = 0.0
+var psychopathy: float = 0.0
 
 ## Dynamic emotional states driven by gameplay and interaction
 var happiness: float = 0.5
@@ -54,7 +60,10 @@ func _init(
 	p_conscientiousness: float = 0.5,
 	p_extraversion: float = 0.5,
 	p_agreeableness: float = 0.5,
-	p_neuroticism: float = 0.5
+	p_neuroticism: float = 0.5,
+	p_machiavellianism: float = 0.0,
+	p_narcissism: float = 0.0,
+	p_psychopathy: float = 0.0
 ) -> void:
 	npc_id = p_npc_id
 	role = p_role if is_valid_role(p_role) else ROLE_GUIDE
@@ -66,6 +75,9 @@ func _init(
 	extraversion = p_extraversion
 	agreeableness = p_agreeableness
 	neuroticism = p_neuroticism
+	machiavellianism = p_machiavellianism
+	narcissism = p_narcissism
+	psychopathy = p_psychopathy
 
 
 ## Resolve the Polish line for a trigger ("greeting", "hint",
@@ -101,7 +113,8 @@ func degraded_for_combat_off() -> NPCCharacter:
 		return self
 	var copy := NPCCharacter.new(
 		npc_id, ROLE_GUIDE, name_pl, lines_pl, visual_id,
-		openness, conscientiousness, extraversion, agreeableness, neuroticism
+		openness, conscientiousness, extraversion, agreeableness, neuroticism,
+		machiavellianism, narcissism, psychopathy
 	)
 	copy.happiness = happiness
 	copy.irritability = irritability
@@ -112,23 +125,25 @@ func degraded_for_combat_off() -> NPCCharacter:
 ## Update emotional states reactively based on player and world context
 func update_emotional_state(player_hp_ratio: float, player_score: int) -> void:
 	if player_hp_ratio < 0.4:
-		if agreeableness > 0.6:
+		if psychopathy > 0.4:
+			# Psychopathic/hostile character is amused by player's distress
+			happiness = clampf(happiness + 0.3 * psychopathy, 0.0, 1.0)
+			anxiety = clampf(anxiety - 0.2 * psychopathy, 0.0, 1.0)
+		elif agreeableness > 0.6:
 			# Empathetic character becomes worried/anxious
 			anxiety = clampf(anxiety + 0.3, 0.0, 1.0)
 			happiness = clampf(happiness - 0.2, 0.0, 1.0)
-		elif role == ROLE_HOSTILE or agreeableness < 0.4:
-			# Hostile or cold character becomes happy or amused
-			happiness = clampf(happiness + 0.2, 0.0, 1.0)
-			anxiety = clampf(anxiety - 0.1, 0.0, 1.0)
 	else:
 		# Gradually return anxiety/happiness to baseline
 		anxiety = clampf(anxiety - 0.1, 0.0, 1.0)
 
 	if player_score > 50:
-		if role == ROLE_HOSTILE:
-			# Hostile gets irritated by player's success
+		if narcissism > 0.5:
+			# Narcissistic character becomes highly irritated/jealous of player's achievements
+			irritability = clampf(irritability + 0.3 * narcissism, 0.0, 1.0)
+		elif role == ROLE_HOSTILE:
+			# Hostile character gets moderately irritated by player success
 			irritability = clampf(irritability + 0.2, 0.0, 1.0)
 		else:
 			# Friendly gets happy for the player
 			happiness = clampf(happiness + 0.1, 0.0, 1.0)
-
