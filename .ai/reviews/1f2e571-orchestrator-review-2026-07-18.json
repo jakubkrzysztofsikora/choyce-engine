@@ -1,0 +1,93 @@
+{
+  "task_id": "1f2e571-orchestrator-review",
+  "reviewer": "codex-orchestrator-audit (glm-5.2 build-mode; fable-5 LiteLLM-gateway down)",
+  "reviewed_commit": "1f2e5714a6c50299d215ad7cb8f4ff37b6e156d5",
+  "scope": "Whole-commit orchestrator-level review covering NPC personality work, co-op hardening, save-state changes, world_renderer changes, and bridge-traversal test changes. Co-op-specific deep-dive lives in VS-050-local-coop-hardening-audit-2026-07-18.json.",
+  "decision": "approve_with_minor_findings",
+  "findings": [
+    {
+      "severity": "pass",
+      "path": "src/domain/world_authoring/npc_character.gd:33-46",
+      "message": "Big Five (OCEAN) personality traits + dynamic emotional state fields added with safe defaults (0.5 baseline, anxiety 0.1, irritability 0.2). Backward-compatible: existing NPCCharacter.new(...) callers get the defaults without code change. Hex-architecture compliant: pure RefCounted domain entity, no engine imports.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/domain/world_authoring/npc_character.gd:103-126",
+      "message": "update_emotional_state(player_hp_ratio, player_score) mutates anxiety/happiness/irritability reactively with bounded clampf. Branches on agreeableness and role produce distinct friendly-vs-hostile reactions. Deterministic given inputs. Covered by test_npc_character_personality.gd and npc_personality_contract_test.gd.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/domain/world_authoring/npc_character.gd:99-102",
+      "message": "degraded_for_combat_off() preserves personality traits AND dynamic emotional state in the copy. Correctly extends prior behavior (which copied only id/role/name/lines/visual).",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/application/npc_dialogue_loader.gd:48-62",
+      "message": "_PERSONALITY_MAP hardcoded preset per known NPC id. Twelve NPCs covered (explorer, pirate, robot, coach, shopkeeper, banker, baker, merchant, farmer, scarecrow, parrot, mayor). Unknown ids fall back to neutral [0.5, 0.5, 0.5, 0.5, 0.5]. Application layer is the right home for presentation defaults; domain stays agnostic.",
+      "risk": "If a new NPC is added without a personality preset, it gets neutral defaults — silent but safe."
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:2010-2034",
+      "message": "_execute_npc_completions now calls active_npc.update_emotional_state(player_hp_ratio, _score) BEFORE building the LLM system prompt, then injects psych_context with the OCEAN + emotion snapshot. The NPC's response is therefore consistent with its current state. Prompt remains Polish-first; instructions now say 'dostosowując ton do swojego charakteru' (adapt tone to your character) instead of fixed 'przyjaźnie' (friendly).",
+      "risk": "Hostile NPC with high 'amused' happiness could produce a friendly-toned Polish response that contradicts its role. Bounded by the existing role instruction in the prompt."
+    },
+    {
+      "severity": "minor",
+      "path": "src/application/npc_dialogue_loader.gd:48-62",
+      "message": "_PERSONALITY_MAP presets are author-chosen constants with no documented rationale (why is robot conscientiousness=1.0? why is scarecrow neuroticism=0.7?). Future drift risk: an author recalibrating one trait without understanding the design intent could break the per-NPC narrative contract.",
+      "fix": "Add a one-line comment per preset naming the design intent (e.g. '# robot: rigidly dutiful, no anxiety; scarecrow: lonely, anxious'). Optional."
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:2336,2349,3547",
+      "message": "Three sites changed from `target.get_meta(\"resource_visual\", null)` to `target.get_meta(\"resource_visual\") if target.has_meta(\"resource_visual\") else null`. This is a Godot-4 API compatibility fix — the two-arg variant of get_meta was deprecated. Behavior preserved.",
+      "risk": "none"
+    },
+    {
+      "severity": "minor",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:3540-3541",
+      "message": "_gather_world_resource previously emitted both 'inventory_changed' AND 'collect_<item>' to rules_runtime; now emits only 'collect_<item>'. The 'inventory_changed' event was removed without scanning rules fixtures for consumers. If any world rule or win-condition keys on 'inventory_changed', it will silently stop firing.",
+      "verification": "Ran `rg -n 'inventory_changed' data/ src/ tests/`. Confirmed `_commit_inventory` (gameplay_runtime.gd:1969-1976) already emits 'inventory_changed' when changed_item_id is non-empty. `_gather_world_resource` calls `_commit_inventory(inventory, item_id)` so the event still fires exactly once per gather. The removed direct emit was a DE-DUPLICATION fix, not a regression. `godot_rules_runtime_adapter.gd:72` checks for 'inventory_changed' and continues to receive it. Finding closed."
+    },
+    {
+      "severity": "pass",
+      "path": "tests/domain/test_npc_character_personality.gd",
+      "message": "Test coverage: defaults, dynamic emotion transitions for friendly vs hostile NPCs at low-HP and high-score regimes, and loader presets for explorer and pirate. Tests create fresh NPC instances per scenario to avoid state carryover. Headless-runnable.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "tests/contracts/npc_personality_contract_test.gd",
+      "message": "Port-contract test integrated into run_contract_tests.gd. Verifies NPCCharacter field defaults, emotional state transitions, and loader preset binding for 'explorer'.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/world_renderer.gd",
+      "message": "52 lines changed. Bridge rendering switches to Kenney Nature Kit centre/side/cap modules over the existing continuous walk surface (per PLAN.md 'Visual-route follow-up' entry). No regression to deterministic forest spawning or water mesh; test_world_renderer_toon_shader.gd and test_kenney_bridge_module_assets.gd cover the new contracts.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "tests/adapters/inbound/test_bridge_traversal_collision.gd",
+      "message": "Bridge traversal test reworked: 76 lines changed. Walks every south/north ramp and deck checkpoint in both directions with a real CharacterBody3D. Exposed and fixed a rail-collider axis error that reached into the middle of the deck. Direct-play evidence is the live capture, not this test alone.",
+      "risk": "none"
+    },
+    {
+      "severity": "low",
+      "path": "PLAN.md:879-887",
+      "message": "New 'Local-co-op control hardening' entry documents the P2 input isolation, single-undo semantic, and keypad 7/9 look-rotation. Entry correctly notes 'This is still one-screen local co-op, not a LAN or a P2P implementation; VS-051 owns the separate parent-authorized transport boundary.' Cross-references VS-051 accurately.",
+      "risk": "none"
+    }
+  ],
+  "summary": "Commit 1f2e571 is a mixed-purpose commit (NPC psychology + co-op hardening + bridge modules + save-state fix) that nonetheless hangs together: every change supports either the co-op sandbox slice or the governed-NPC direction. All twelve findings PASS at the implementation level. Two MINOR findings (personality-preset documentation, removed 'inventory_changed' rules-runtime event) and one LOW (PLAN.md entry accurate) are tracking items, not blockers. Co-op-specific deep-dive is in VS-050-local-coop-hardening-audit-2026-07-18.json. Hex-architecture boundaries preserved; no engine leaks into domain; new domain fields have safe defaults; new tests are headless-runnable.",
+  "approval_gate": "Commit may stay on main. PLAN.md already documents the change. Backlog VS-050 evidence list should append this audit and the co-op audit JSON; VS-044 should append the Kenney bridge module test references.",
+  "notes": [
+    "External fable-5 review (review.sh) unavailable: LiteLLM gateway rate-limited; deepseek-v4-pro and kimi-k3 fallbacks exhausted. Same root cause that killed Codex orchestrator session 019f73c9.",
+    "Recommend a follow-up fable-5 review once LiteLLM gateway recovers: this commit carries enough surface area (NPC personality model + co-op seams + save-state behavior change) to warrant independent hostile review."
+  ]
+}

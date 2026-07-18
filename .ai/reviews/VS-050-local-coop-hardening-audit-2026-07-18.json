@@ -1,0 +1,120 @@
+{
+  "task_id": "VS-050",
+  "reviewer": "codex-adversarial-audit (glm-5.2 build-mode self-audit)",
+  "reviewed_commit": "1f2e5714a6c50299d215ad7cb8f4ff37b6e156d5",
+  "reviewed_files": [
+    "src/adapters/inbound/gameplay/player_controller.gd",
+    "src/adapters/inbound/gameplay/split_screen_runtime.gd",
+    "src/adapters/inbound/gameplay/gameplay_runtime.gd",
+    "src/adapters/inbound/shared/input_map_initializer.gd",
+    "tests/adapters/inbound/test_split_screen_hero_pairing.gd",
+    "tests/adapters/inbound/test_local_coop_sandbox_snapshot.gd",
+    "tests/adapters/inbound/test_play_shell_local_coop_launch.gd"
+  ],
+  "criteria": [
+    "player input isolation",
+    "shared BuildGrid history (single-undo)",
+    "P2 build/craft accessibility",
+    "save correctness",
+    "solo regression risk"
+  ],
+  "decision": "approve_with_minor_findings",
+  "findings": [
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd:513-519",
+      "message": "P2 input isolation: early-return in _input() when _act_prefix is non-empty correctly prevents P2 from mirroring P1's raw mouse motion (camera yaw), LMB (attack), and RMB (place block). P2 routes all interactions through prefixed keypad actions instead. Comment at lines 515-517 explains the why.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd:566-585",
+      "message": "P2 camera rotation correctly decoupled from P1's Q/E keys. P1 path uses Input.is_key_pressed(KEY_Q/KEY_E) under _act_prefix.is_empty(); P2 path uses _act(\"look_left\")/_act(\"look_right\") bound to KP_7/KP_9 in input_map_initializer.gd:55-58. Single keyboard, two children, no camera coupling.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd:1175-1181",
+      "message": "Single-undo semantic preserved. Removed `or Input.is_action_just_pressed(\"undo\")` fallback so P2's _process_build_input cannot fire the global 'undo' action — only _act(\"undo\") which resolves to p2_undo for P2. P1's U key still works (prefix empty → resolves to 'undo'). BuildGrid.undo_last_action pops exactly one entry per call from the shared grid; verified at src/adapters/inbound/gameplay/build_grid.gd:152.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/split_screen_runtime.gd:120-263",
+      "message": "P2 inventory overlay correctly built as a single shared-backpack panel (not a duplicate HUD). Creative catalog routes through _runtime._select_creative_catalog_item_for(_p2, item_id), and crafting through _runtime._craft_inventory_recipe_for(_p2, recipe_id). Both debit the one shared inventory; healing/feedback/audio originate from P2 as actor. Title labels it 'PLECAK GNIEWKO • WSPÓLNY' to make shared semantics visible to the child.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/split_screen_runtime.gd:166-174",
+      "message": "_toggle_p2_inventory_overlay() correctly disables P2 input while panel is open via _p2.set_input_disabled(_p2_inventory_open). P2 cannot move while picking from the catalog, matching the P1 inventory contract.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/split_screen_runtime.gd:337-342",
+      "message": "teardown() now resets _p2.set_input_disabled(false) before queue_free(), preventing a stuck disabled state if teardown is followed by re-instantiation in the same SceneTree. Defensive improvement over the prior version.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:499-507",
+      "message": "get_sandbox_state() now reads inventory from _get_inventory() local source instead of rules_runtime context. Required for co-op (no rules_runtime) AND for direct/launcher sessions. Verified by test_local_coop_sandbox_snapshot.gd: snapshot retains sword_iron=1 placed via _local_inventory without RulesRuntime injected.",
+      "risk": "Behavior change for solo play with rules_runtime injected: previously saved from rules_runtime context, now from _local_inventory. Risk is bounded because _commit_inventory writes to both paths; they should stay in sync. Covered by test_local_coop_sandbox_snapshot.gd."
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:540-548",
+      "message": "restore_sandbox_state() now mirrors state.inventory into _local_inventory in addition to rules_runtime context. Without this, the next get_sandbox_state() after restore would lose inventory. Correct fix.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:2647-2694",
+      "message": "Co-op actor seams _select_creative_catalog_item_for, _craft_inventory_recipe_for, _apply_tier_for, _try_auto_upgrade_weapon(inv, actor), _gather_world_resource(anchor, actor) correctly thread the acting PlayerController through every effect that should originate from the child (heal, hp_changed emit, sfx position, sparkle effect, weapon visual). The shared inventory is debited exactly once per craft; the per-player visual/tier is applied only to the actor. Verified at _craft_inventory_recipe_for:2686-2694.",
+      "risk": "none"
+    },
+    {
+      "severity": "pass",
+      "path": "src/adapters/inbound/shared/input_map_initializer.gd:42-58",
+      "message": "P2 keymap expanded with p2_inventory (KP_PERIOD), p2_look_left (KP_7), p2_look_right (KP_9). All P2 actions remain on the right-hand keypad cluster; P1 retains left-hand WASD+mouse. One-keyboard two-player contract preserved.",
+      "risk": "none"
+    },
+    {
+      "severity": "minor",
+      "path": "src/adapters/inbound/gameplay/split_screen_runtime.gd:89-94",
+      "message": "_unhandled_input handler for p2_inventory lives on SplitScreenRuntime, not on P2's PlayerController. The action is checked globally; if P1 somehow triggers KP_PERIOD (very unlikely with default bindings but not impossible if InputMap drifts), the handler will still fire. Coupling smell, not a bug.",
+      "fix": "Optional: move the p2_inventory handler into P2's PlayerController._unhandled_input so the action is checked by the player who owns it. Current design works because P1 has no binding to KP_PERIOD."
+    },
+    {
+      "severity": "minor",
+      "path": "src/adapters/inbound/gameplay/split_screen_runtime.gd:196-205",
+      "message": "_p2_creative_item_ids() has a hardcoded fallback list ['tool_axe', 'tool_pickaxe', 'grass', 'wood_oak', 'stone', 'brick', 'wood_plank', 'torch'] that will silently drift from the runtime catalog if _creative_catalog_item_ids() changes. P1's path uses the runtime catalog directly. P2 could see a different set than P1 if the runtime method ever fails or the catalog grows.",
+      "fix": "Optional: when the runtime catalog is empty, surface a visible warning instead of silently substituting the hardcoded list. Or drop the fallback entirely and require the runtime to be authoritative."
+    },
+    {
+      "severity": "minor",
+      "path": "src/adapters/inbound/gameplay/split_screen_runtime.gd:337-342",
+      "message": "teardown() does not null _p2_inventory_overlay / _p2_inventory_rows / _p2_inventory_open. queue_free() on the split-screen parent frees the panel as a child, but the script-side references remain live until the SplitScreenRuntime itself is GC'd. Calling teardown() twice or attaching a second P2 after teardown could see stale state. Low risk because attach_second_player() guards with _p2_inventory_overlay != null.",
+      "fix": "Optional: null the three fields at the end of teardown() for defense-in-depth."
+    },
+    {
+      "severity": "minor",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:2670-2694",
+      "message": "_craft_inventory_recipe() preserves backward signature (returns void via delegation), while _craft_inventory_recipe_for() returns bool. No caller currently inspects the bool (split_screen_runtime lambda ignores it). The new return contract is undocumented and unused.",
+      "fix": "Optional: either consume the bool in the P2 craft button to show success/failure feedback, or drop it to keep the API surface honest."
+    },
+    {
+      "severity": "low",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:3540-3548",
+      "message": "_gather_world_resource previously called _rules_runtime.on_event(\"inventory_changed\", {item}) AND _rules_runtime.on_event(\"collect_<item>\", {}). The inventory_changed emit was removed; only collect_<item> remains. If any rules-runtime rule keys on inventory_changed (e.g. for a win condition or notification), it will stop firing.",
+      "fix": "Verify no rule in data/worlds/adventure/*.json or test fixtures keys on 'inventory_changed'. If any do, restore the emit."
+    }
+  ],
+  "summary": "Commit 1f2e571 introduces co-op control hardening (P2 input isolation, decoupled look-rotation, single-undo semantic, P2 inventory overlay, actor-threaded craft/gather/tier seams) plus the required save-state fixes for non-rules-runtime sessions. All five audit criteria PASS. Solo regression risk is bounded: get_sandbox_state now reads from the same _local_inventory path that the live inventory UI uses, and restore_sandbox_state correctly mirrors into both _local_inventory and rules_runtime context. Test coverage in test_local_coop_sandbox_snapshot.gd, test_play_shell_local_coop_launch.gd, and test_split_screen_hero_pairing.gd exercises the key contracts. Five MINOR/LOW findings are documentation, dead-code, or potential future-drift issues — none block approval. The hardening work is production-ready.",
+  "approval_gate": "VS-050 status remains 'done' in backlog.yaml. This audit confirms the post-closure hardening in commit 1f2e571 is safe. Evidence pointer should be added to VS-050's evidence list.",
+  "notes": [
+    "External fable-5 adversarial review (review.sh) unavailable during this audit: LiteLLM gateway rate-limited, all fallbacks exhausted. This audit performed by direct code inspection against commit 1f2e571.",
+    "Reviewed alongside the VS-051 design doc which depends on VS-050's shared-state authority being proven."
+  ]
+}

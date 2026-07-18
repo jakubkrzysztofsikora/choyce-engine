@@ -208,6 +208,10 @@ tasks:
       - tests/adapters/inbound/test_play_shell_local_coop_launch.gd (PlayShell two-player session launch, split-screen path, teardown, solo controls restoration)
       - godot4 --headless --path . -s res://tests/adapters/inbound/test_split_screen_hero_pairing.gd (all PASS)
       - godot4 --headless --path . -s res://tests/adapters/inbound/test_play_shell_local_coop_launch.gd (all PASS)
+      - commit 1f2e571 (post-closure hardening: P2 keypad 7/9 look-rotation, single-undo semantic, P2 inventory overlay with shared-catalog access, actor-threaded craft/gather/tier seams, save-state fix for non-rules-runtime sessions)
+      - tests/adapters/inbound/test_local_coop_sandbox_snapshot.gd (save/restore contract for the shared inventory + shared BuildGrid without RulesRuntime; covers co-op snapshot semantics)
+      - .ai/reviews/VS-050-local-coop-hardening-audit-2026-07-18.json (adversarial audit of commit 1f2e571 co-op changes: APPROVE_WITH_MINOR_FINDINGS; all five audit criteria PASS — input isolation, single-undo, P2 access, save correctness, solo regression)
+      - .ai/reviews/1f2e571-orchestrator-review-2026-07-18.json (orchestrator-level review of the full commit including NPC personality model and bridge modules: APPROVE_WITH_MINOR_FINDINGS; one minor closed via verification — removed 'inventory_changed' emit was a de-duplication, not a regression)
     claude_cr_findings:
       - PASS: Co-op path creates a second playable character. attach_second_player() correctly instantiates P2 player with proper hierarchy.
       - PASS: P2 builds against the same authoritative grid. get_node_or_null('P2Container/P2Viewport/Player2') returns valid PlayerController with shared _build_grid reference.
