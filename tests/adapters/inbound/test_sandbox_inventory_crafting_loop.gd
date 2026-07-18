@@ -28,7 +28,7 @@ func _run() -> void:
 	runtime._add_inventory_item("wood_oak", 6)
 	runtime._add_inventory_item("ore_iron", 2)
 	runtime._add_inventory_item("food_apple", 1)
-	var inventory := runtime._get_inventory()
+	var inventory: Dictionary = runtime._get_inventory()
 	_assert(int(inventory.get("wood_oak", 0)) == 6 and int(inventory.get("ore_iron", 0)) == 2,
 		"direct session keeps collected materials in one local inventory")
 	_assert(runtime._inventory_overlay != null and not runtime._inventory_overlay.visible,
