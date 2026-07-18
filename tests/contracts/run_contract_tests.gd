@@ -82,7 +82,9 @@ const TEST_SCRIPTS: Array[Script] = [
 	preload("res://tests/contracts/environment_port_contract_test.gd"),
 	preload("res://tests/contracts/litellm_adapter_contract_test.gd"),
 	preload("res://tests/contracts/npc_personality_contract_test.gd"),
+	preload("res://tests/contracts/tailnet_voice_adapter_contract_test.gd"),
 ]
+
 
 
 

@@ -372,7 +372,7 @@ func _ready() -> void:
 	if eleven_key.is_empty():
 		eleven_key = OS.get_environment("ELEVEN_LABS_API_KEY").strip_edges()
 	var eleven_voice := OS.get_environment("ELEVENLABS_VOICE_ID").strip_edges()
-	_npc_voice = ElevenLabsVoicePromptAdapter.new().setup(self, eleven_key, eleven_voice)
+	_npc_voice = preload("res://src/adapters/outbound/tailnet_voice_adapter.gd").new().setup(self, eleven_key, eleven_voice)
 	if _npc_voice != null:
 		_npc_voice.playback_started.connect(_on_npc_voice_playback_started)
 		_npc_voice.playback_finished.connect(_on_npc_voice_playback_finished)
@@ -1736,11 +1736,12 @@ func _setup_local_npc_voice() -> void:
 ## exact shipped ElevenLabs takes for authored Adventure lines, then falls
 ## back to the live request path for future/un-authored lines.
 func _speak_npc_line(line: String, request_id: int) -> bool:
-	if _npc_voice is ElevenLabsVoicePromptAdapter and _play_local_npc_voice(line, request_id):
-		return true
-	if _npc_voice != null and _npc_voice.is_available():
-		_npc_voice.speak(line, "pl-PL", request_id)
-		return true
+	if _npc_voice != null:
+		if _npc_voice.has_method("set_active_voice_id"):
+			_npc_voice.set_active_voice_id(_active_npc_id)
+		if _npc_voice.is_available():
+			_npc_voice.speak(line, "pl-PL", request_id)
+			return true
 	return _play_local_npc_voice(line, request_id)
 
 
