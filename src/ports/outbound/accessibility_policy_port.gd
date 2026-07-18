@@ -3,6 +3,10 @@
 class_name AccessibilityPolicyPort
 extends RefCounted
 
+## Static reference to the global instance for cross-module access
+## This allows adapters to query reduce-motion state without breaking hex architecture
+static var _global_instance: AccessibilityPolicyPort = null
+
 
 ## Applies the base WCAG AA contrast theme
 func apply_baseline_contrast() -> void:
@@ -32,3 +36,18 @@ func set_captions_enabled(enabled: bool) -> void:
 ## @param duration: Time in seconds to display
 func show_caption(text: String, duration: float = 3.0) -> void:
 	pass
+
+
+## Enables or disables reduce-motion mode
+## When enabled, animations that could cause discomfort should be disabled or simplified
+## @param enabled: If true, reduce motion effects
+func set_reduce_motion(enabled: bool) -> void:
+	pass
+
+
+## Returns whether reduce-motion mode is currently enabled
+## Falls back to checking the global instance if this is a stub
+func is_reduce_motion_enabled() -> bool:
+	if _global_instance != null and _global_instance != self:
+		return _global_instance.is_reduce_motion_enabled()
+	return false

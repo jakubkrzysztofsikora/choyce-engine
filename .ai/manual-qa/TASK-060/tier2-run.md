@@ -1,13 +1,13 @@
 # TASK-060 Tier-2 Run
 
-- Date: 2026-03-06
+- Date: 2026-07-18
 - Tester: claude (AI Architecture Agent — static analysis, Tier-2 focus)
 - Hardware tier: Tier-2 (ARM equivalent — live evidence deferred to SC-001/SC-002)
 - Device spec: N/A (static analysis)
 - OS version: N/A
-- Build/commit: 3b04185
-- Start time (UTC): 2026-03-06T22:10:00Z
-- End time (UTC): 2026-03-06T22:20:00Z
+- Build/commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+- Start time (UTC): 2026-07-18T03:25:00Z
+- End time (UTC): 2026-07-18T03:35:00Z
 
 ## Compliance Drill Results
 1. Parent-only export flow

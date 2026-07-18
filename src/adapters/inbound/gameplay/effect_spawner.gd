@@ -1,6 +1,16 @@
 class_name EffectSpawner extends Node3D
 
+## Helper to check if reduce-motion is enabled via the global accessibility policy
+func _is_reduce_motion_enabled() -> bool:
+	var AccessibilityPolicyPort_class := load("res://src/ports/outbound/accessibility_policy_port.gd")
+	if AccessibilityPolicyPort_class != null:
+		return AccessibilityPolicyPort_class._global_instance.is_reduce_motion_enabled() if AccessibilityPolicyPort_class._global_instance else false
+	return false
+
 func spawn_collect_effect(position: Vector3) -> void:
+	# Respect reduce-motion accessibility setting
+	if _is_reduce_motion_enabled():
+		return
 	# Create a GPUParticles3D burst
 	var particles := GPUParticles3D.new()
 	particles.emitting = true
@@ -25,6 +35,9 @@ func spawn_collect_effect(position: Vector3) -> void:
 	particles.queue_free()
 
 func spawn_dust_puff(position: Vector3) -> void:
+	# Respect reduce-motion accessibility setting
+	if _is_reduce_motion_enabled():
+		return
 	var particles := GPUParticles3D.new()
 	particles.emitting = true
 	particles.one_shot = true
@@ -47,6 +60,9 @@ func spawn_dust_puff(position: Vector3) -> void:
 	particles.queue_free()
 
 func spawn_sparkle_burst(position: Vector3) -> void:
+	# Respect reduce-motion accessibility setting
+	if _is_reduce_motion_enabled():
+		return
 	var particles := GPUParticles3D.new()
 	particles.emitting = true
 	particles.one_shot = true
@@ -69,6 +85,9 @@ func spawn_sparkle_burst(position: Vector3) -> void:
 	particles.queue_free()
 
 func spawn_confetti(position: Vector3) -> void:
+	# Respect reduce-motion accessibility setting
+	if _is_reduce_motion_enabled():
+		return
 	var particles := GPUParticles3D.new()
 	particles.emitting = true
 	particles.one_shot = true

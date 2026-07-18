@@ -280,8 +280,9 @@ func _start_landing_audio() -> void:
 		bank.play_music("sigma_protocol", true)
 	elif not bank.play_phonk_random(true):
 		bank.play_music("landing_ambient", true)
-	await get_tree().create_timer(0.8).timeout
-	bank.play_voice("greet_landing")
+	# The think-demo launcher owns the first impression. Do not play the legacy
+	# "Cześć, jestem twoim ninja" greeting underneath its cinematic; character
+	# voices belong to the trailer/gameplay moments where they have context.
 
 
 func _audio_bank() -> Node:

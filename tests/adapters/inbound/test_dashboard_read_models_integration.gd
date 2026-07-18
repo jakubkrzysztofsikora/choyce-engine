@@ -177,8 +177,8 @@ func _run() -> void:
 	)
 	await process_frame
 
-	var audit_summary: Label = parent_shell.get_node("Layout/Header/AuditSummary")
-	var ai_summary: Label = parent_shell.get_node("Layout/Header/AISummary")
+	var audit_summary: Label = parent_shell.get_node("Layout/DashboardGrid/AuditCard/AuditContent/AuditSummary")
+	var ai_summary: Label = parent_shell.get_node("Layout/DashboardGrid/AICard/AIContent/AISummary")
 	_assert(
 		audit_summary.text.find("1") >= 0,
 		"ParentZoneShell should render audit summary from parent read model"

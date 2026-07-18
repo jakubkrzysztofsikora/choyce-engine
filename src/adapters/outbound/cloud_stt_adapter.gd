@@ -16,7 +16,7 @@ func setup(consent_port: IdentityConsentPort, api_key: String = "") -> CloudSTTA
 func set_profile(profile_id: String) -> void:
 	_profile_id = profile_id
 
-func transcribe(audio: PackedByteArray, language: String = "") -> String:
+func transcribe(audio: PackedByteArray, language: String) -> String:
 	var effective_language := language if language != "" else _language
 
 	# FAIL-CLOSED: Block cloud STT if no profile or no consent

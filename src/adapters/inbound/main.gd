@@ -75,7 +75,7 @@ var _phase1_policy_store: ParentalPolicyStorePort
 @onready var _active_indicator: PanelContainer = $ActiveIndicator
 @onready var _title_label: Label = $Layout/NavBar/NavPill/TitleLabel
 
-@onready var _mascot: Mascot = $MascotOverlay
+@onready var _mascot: Mascot = get_node_or_null("MascotOverlay")
 @onready var _landing_shell: LandingScreen = $Layout/Body/LandingShell
 @onready var _create_shell: CreateShell = $Layout/Body/CreateShell
 @onready var _play_shell: PlayShell = $Layout/Body/PlayShell
@@ -553,6 +553,96 @@ func _build_default_ports_phase_2() -> void:
 ## that pre-existing projects (e.g. older local_kid_1_starter_canvas entries)
 ## do not block the 3 current starter worlds from appearing.
 func _seed_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -> void:
+	# All starter worlds must come from the same authored template path used by
+	# creation. This prevents the launcher demo from silently bypassing node
+	# properties, rules, goals, and trigger metadata.
+	_seed_starter_content_from_templates(store, clock)
+	return
+
+
+func _seed_starter_content_from_templates(store: ProjectStorePort, clock: ClockPort) -> void:
+	if store == null:
+		return
+	var existing_projects: Dictionary = {}
+	for entry in store.list_projects():
+		if entry is Project and entry.owner_profile_id == _profile.profile_id:
+			existing_projects[entry.project_id] = entry
+
+	var template_loader := TemplateLoader.new().setup(store, clock)
+	var starters := [
+		{"id": "starter_adventure", "template": "adventure", "title": "Wyspa skarbów"},
+		{"id": "starter_farm", "template": "farm", "title": "Mała farma"},
+		{"id": "starter_city", "template": "city", "title": "Miasto neonów"},
+	]
+	var seeded_count := 0
+	for seed in starters:
+		var project_id := "%s_%s" % [_profile.profile_id, seed["id"]]
+		var existing: Project = existing_projects.get(project_id, null)
+		if existing != null and not _needs_starter_template_migration(existing):
+			continue
+		var project := template_loader.create_project_from_template(
+			String(seed["template"]), _profile, project_id
+		)
+		if project == null:
+			push_warning("Could not seed template %s" % seed["template"])
+			continue
+		project.title = String(seed["title"])
+		project.description = String(seed["title"])
+		for world_variant in project.worlds:
+			if world_variant is World:
+				var world: World = world_variant
+				world.is_playable = true
+				world.theme = String(seed["template"])
+		store.save_project(project)
+		seeded_count += 1
+	if seeded_count > 0:
+		push_warning("Seeded %d canonical starter worlds for profile %s" % [seeded_count, _profile.profile_id])
+
+
+func _needs_starter_template_migration(project: Project) -> bool:
+	if project == null or project.worlds.is_empty():
+		return true
+	# The adventure vertical slice intentionally moved from the old 13-node
+	# editor-block starter to a continuous procedural island. Existing local
+	# profiles receive that authored change once; otherwise the renderer keeps
+	# loading the obsolete floating boxes forever. A project that has already
+	# been edited is never silently replaced: its updated timestamp is the
+	# preservation boundary and the owner can keep their authored world.
+	if project.template_id == "adventure" and project.updated_at == project.created_at:
+		for world_variant in project.worlds:
+			if not (world_variant is World):
+				continue
+			var world: World = world_variant as World
+			if world.scene_nodes.size() > 2 or world.game_rules.size() > 0:
+				return true
+			for node_variant in world.scene_nodes:
+				if not (node_variant is SceneNode):
+					continue
+				var node: SceneNode = node_variant as SceneNode
+				if node.node_type != SceneNode.NodeType.TERRAIN:
+					continue
+				var size: Variant = node.properties.get("size", [])
+				if size is Array and (size as Array).size() >= 3 and float((size as Array)[0]) < 2400.0:
+					return true
+	# The previous launcher seed contained only display names and transforms.
+	# Migrate only that recognizable shape; never overwrite a project carrying
+	# authored properties or rules.
+	for world_variant in project.worlds:
+		if not (world_variant is World):
+			return true
+		var world: World = world_variant
+		if not world.game_rules.is_empty():
+			return false
+		for node_variant in world.scene_nodes:
+			if node_variant is SceneNode and not (node_variant as SceneNode).properties.is_empty():
+				return false
+	return true
+
+
+## Legacy hand-authored seed retained temporarily for migration reference.
+## It is unreachable; remove it after VS-004 evidence confirms existing local
+## profiles migrate cleanly to canonical template-backed projects.
+func _seed_legacy_starter_content_if_empty(store: ProjectStorePort, clock: ClockPort) -> void:
 	if store == null:
 		return
 	var now := clock.now_iso() if clock != null else ""
@@ -850,6 +940,11 @@ func _on_transition_requested(from_shell_id: String, to_shell_id: String) -> voi
 
 func _on_shell_changed(shell_id: String) -> void:
 	_update_active_indicator(shell_id)
+	# The think-demo uses the cinematic/guide rather than the legacy drawn ninja.
+	# Keeping this mascot visible in any shell made both the launcher and 3D
+	# session read as a prototype overlay, so it is disabled for this slice.
+	if _mascot != null:
+		_mascot.visible = false
 
 
 ## Thin launcher: the first screen. A big PLAY that drops straight into the
@@ -936,9 +1031,9 @@ func _wire_shell_dependencies() -> void:
 	# fan out to the desktop UI. Bridge is null unless CHOYCE_SHELL_BRIDGE=1.
 	if _play_shell.has_method("setup_shell_bridge"):
 		_play_shell.setup_shell_bridge(_ports.get(KEY_SHELL_BRIDGE_PORT, null))
-	# Wave 3 W3-A/B: inject the goal pipeline so adventure + obby
-	# template packs evaluate their default_goal + lose_conditions and
-	# emit a WinOutcome at session end.
+	# Wave 3 W3-A/B: inject the optional goal pipeline. Adventure is
+	# intentionally sandbox/free-play at this stage; goal-bearing templates
+	# such as Obby can still use the shared evaluator without forking runtime.
 	if _play_shell.has_method("setup_goal_pipeline"):
 		var template_loader := TemplateLoader.new().setup(
 			_phase1_project_store, _phase1_clock

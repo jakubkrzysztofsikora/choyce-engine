@@ -1,14 +1,14 @@
 # TASK-059 Tier-2 Run
 
-- Date: 2026-03-06
+- Date: 2026-07-18
 - Tester: claude (AI Architecture Agent — static code analysis run, Tier-2 focus)
 - Method: Domain/service layer analysis (application services, ports, adapters)
 - Hardware tier: Tier-2 (low-end target: ARM equivalent — runtime validation deferred to TASK-063)
 - Device spec: N/A (static analysis)
 - OS version: N/A
-- Build/commit: 3b04185
-- Start time (UTC): 2026-03-06T20:15:00Z
-- End time (UTC): 2026-03-06T20:30:00Z
+- Build/commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+- Start time (UTC): 2026-07-18T01:15:00Z
+- End time (UTC): 2026-07-18T01:30:00Z
 
 ## Scenario Results
 1. First playable loop time-to-fun

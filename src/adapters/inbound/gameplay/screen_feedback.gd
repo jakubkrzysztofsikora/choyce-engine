@@ -11,6 +11,10 @@ func flash(color: Color, duration: float = 0.15) -> void:
 	rect.queue_free()
 
 func shake(intensity: float = 8.0, duration: float = 0.3) -> void:
+	# Respect reduce-motion accessibility setting
+	if _is_reduce_motion_enabled():
+		return
+
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
 		return
@@ -31,6 +35,9 @@ func shake(intensity: float = 8.0, duration: float = 0.3) -> void:
 ## a pure Control method.
 func shake_directional(intensity: float = 6.0, duration: float = 0.08,
 		direction: Vector2 = Vector2.ZERO) -> void:
+	# Respect reduce-motion accessibility setting
+	if _is_reduce_motion_enabled():
+		return
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
 		return
@@ -50,3 +57,11 @@ func shake_directional(intensity: float = 6.0, duration: float = 0.08,
 		var kick := Vector3(dir.x, dir.y, 0) * intensity * 0.85 * decay
 		tween.tween_property(camera, "position", original_pos + jitter + kick, 0.016)
 	tween.tween_property(camera, "position", original_pos, 0.016)
+
+
+## Helper to check if reduce-motion is enabled via the global accessibility policy
+func _is_reduce_motion_enabled() -> bool:
+	var AccessibilityPolicyPort_class := load("res://src/ports/outbound/accessibility_policy_port.gd")
+	if AccessibilityPolicyPort_class != null:
+		return AccessibilityPolicyPort_class._global_instance.is_reduce_motion_enabled() if AccessibilityPolicyPort_class._global_instance else false
+	return false

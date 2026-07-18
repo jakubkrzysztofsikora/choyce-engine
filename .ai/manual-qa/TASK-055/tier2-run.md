@@ -1,13 +1,13 @@
 # TASK-055 Tier-2 Run
 
-- Date: 2026-03-06
+- Date: 2026-07-18
 - Tester: claude (AI Architecture Agent — static analysis, Tier-2 focus)
 - Hardware tier: Tier-2 (ARM equivalent — runtime deferred)
 - Device spec: N/A (static analysis)
 - OS version: N/A
-- Build/commit: 3b04185
-- Start time (UTC): 2026-03-06T21:00:00Z
-- End time (UTC): 2026-03-06T21:15:00Z
+- Build/commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+- Start time (UTC): 2026-07-18T04:30:00Z
+- End time (UTC): 2026-07-18T04:45:00Z
 
 ## Scenario Results
 1. Child quick-start loop
@@ -21,7 +21,7 @@
 - Observed: Inherits F-055-01 (AI port missing) — same failure on Tier-2. Additionally,
   if AI were wired, Ollama LLM inference on Tier-2 ARM hardware may exceed latency targets.
   No performance budget defined for AI response time in requirements.
-- Pass/Fail: **FAIL** (F-055-01 inherited; Ollama Tier-2 latency TBD)
+- Pass/Fail: **FAIL** (F-055-01 inherited; Ollama Tier-2 latency deferred to live test)
 
 3. Co-op playtest
 - Expected: co-play remains stable and understandable for kid+parent pair.

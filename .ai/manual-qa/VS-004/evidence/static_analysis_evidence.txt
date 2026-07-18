@@ -1,0 +1,10 @@
+Manual QA Verification Evidence for VS-004
+Date: 2026-07-18
+Tester: Claude (Junior Coder Mode)
+Commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+Method: Static verification of Adventure sandbox charter.
+Verification Logs:
+- Checked InboundMain click path loading "adventure" template.
+- Verified WorldRenderer coast and cliff belt boundaries.
+- Confirmed NPC guide "Ziemek" is spawned safely inside starting grove.
+- Confirmed no goals or timers exist in default adventure template JSON.

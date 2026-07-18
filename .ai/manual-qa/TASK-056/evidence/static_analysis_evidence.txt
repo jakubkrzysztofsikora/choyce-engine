@@ -1,0 +1,14 @@
+Manual QA Verification Evidence for TASK-056
+Date: 2026-07-18
+Tester: Claude (Junior Coder Mode)
+Commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+Method: Static verification of Godot entrypoints (`main.gd`), Create shell helpers (`create_shell.gd`), launcher cinematic captions (`launcher_overlay.gd`), and audio bus policy.
+Verification Logs:
+- `src/adapters/inbound/main.gd:1253-1256` wires captions, dyslexia font, and motor scale toggles into `AccessibilityPolicyPort`.
+- `src/adapters/inbound/scenes/launcher/launcher_overlay.gd:262-281` keeps the cinematic lines captioned over the 3D trailer shot.
+- `src/adapters/inbound/shared/audio/bus_setup.gd:29-56` creates and routes `Music`, `Voice`, and `SFX` buses at runtime, and `audio_bank.gd:49-77` instantiates it before the players are built.
+- `src/adapters/inbound/scenes/create/create_shell.gd:160-193` hardcodes the back/play row and screen hint copy.
+- `src/adapters/inbound/scenes/create/create_shell.gd:204-263` hardcodes the quick-build label and preset chip copy.
+- `src/adapters/inbound/scenes/create/create_shell.gd:1133-1142` hardcodes the empty-preview placeholder text.
+- `src/adapters/inbound/scenes/create/create_shell.gd:1422-1508` hardcodes the kid-voice CTA headline/examples and button prompt flow.
+- `src/adapters/inbound/scenes/create/create_shell.gd:1514-1526` keeps a fallback voice-command failure string outside `_t()`.

@@ -1010,6 +1010,9 @@ tasks:
       - PLAN.md
       - src/adapters/inbound/gameplay/world_renderer.gd
       - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - /Users/jakubsikora/Downloads/Police Car.glb (CC BY attribution candidate)
+      - /Users/jakubsikora/Downloads/SUV.glb (provenance review required)
+      - /Users/jakubsikora/Downloads/CAR Model.glb (CC BY Ignition Labs candidate)
     dependencies: [VS-001]
     acceptance_criteria:
       - Trigger Area3D receives stable node name and authored trigger metadata
@@ -1196,10 +1199,12 @@ tasks:
       - src/adapters/inbound/gameplay/world_renderer.gd
       - src/adapters/inbound/gameplay/gameplay_runtime.gd
       - src/adapters/inbound/gameplay/player_controller.gd
+      - data/models/third_party/poly_pizza_zsky (CC BY 4.0, attribution required)
     dependencies: [VS-013, VS-014]
     acceptance_criteria:
       - Starter homestead is enterable through a working door interaction
       - Interior contains ready furniture/food assets and physical walls/floor
+      - Imported third-party furniture has an auditable attribution record and object-fitting collision boxes
       - Child can sit at the table and receive a visible contextual prompt
       - Child can cook a meal, update inventory, and restore health without a forced quest or timer
     cross_review_by: claude
@@ -1254,6 +1259,7 @@ tasks:
     acceptance_criteria:
       - At least one rare vehicle is discoverable, enterable, drivable, and exitable
       - Vehicle collisions and camera handoff are reliable in the streamed world
+      - Selected third-party vehicle art has recorded license provenance, visible credit, and vehicle-fitting collision dimensions
       - Bulldozer destroys only explicit tagged temporary scenery/build blocks and supports restore
       - Protected homes, NPCs, bridge, and boundary cannot be destroyed
     cross_review_by: claude
@@ -1273,7 +1279,7 @@ tasks:
       - The customization UI is compact, child-readable and does not obscure exploration
       - Choices persist across a local replay and have no gameplay-stat impact
     cross_review_by: claude
-    status: todo
+    status: in_progress
 
   - id: VS-023
     title: Replace slime placeholders with child-safe original liminal creatures
@@ -1289,7 +1295,7 @@ tasks:
       - Creatures are original, non-gory, readable, avoidable and comply with parental combat policy
       - Each encounter has a visual telegraph, grounded collision and physical-looking attack effect
     cross_review_by: claude
-    status: todo
+    status: in_progress
 
   - id: VS-024
     title: Add reusable facial speech and emotion performance for the active cast
@@ -1302,6 +1308,7 @@ tasks:
       - src/adapters/inbound/gameplay/gameplay_runtime.gd
       - src/adapters/inbound/gameplay/enemy_controller.gd
       - src/adapters/inbound/scenes/launcher/launcher_overlay.gd
+      - /Users/jakubsikora/Downloads/Man.glb (facial-rig candidate; provenance required before import)
     dependencies: [VS-012, VS-015]
     acceptance_criteria:
       - Player, human NPCs, parrot, encounter creatures, Ziemek and Gniewko visibly blink and express state
@@ -1365,9 +1372,87 @@ tasks:
       - Keyboard placement remains available and combat right-click remains inert
       - Automated player raycast and placement regression test passes
     cross_review_by: claude
-    status: in_review
+    status: done
     evidence:
       - tests/adapters/inbound/test_player_build_input.gd (third-person ray + right-click placement pass)
+
+  - id: VS-028
+    title: Evaluate and integrate runtime-safe supplied environment add-ons
+    owner: codex
+    specialty: visual-toolchain
+    inputs:
+      - /Users/jakubsikora/Downloads/terrabrush
+      - /Users/jakubsikora/Downloads/gdTree3D-f168a93067d73ff2cf63652d753bdde461a55bca
+      - /Users/jakubsikora/Downloads/yparticles3d
+      - /Users/jakubsikora/Downloads/Sky3D_v2
+      - /Users/jakubsikora/Downloads/GodotVoxelSupport-173ac9a7629e63dc0c9153aa7393a3725a89e826
+      - /Users/jakubsikora/Downloads/OpenStylized3D-Godot-Addon--fb789582982e3dd2c3fc4f39fa785fbb5afc5282
+      - /Users/jakubsikora/Downloads/meshcombiner-329dce4c48da5e4325b205377b540dfbe73212c9
+      - /Users/jakubsikora/Downloads/3d-simplewater-1b5daa87388fabed4aaeee19748d7b25c537e46f
+    dependencies: [VS-013, VS-017]
+    acceptance_criteria:
+      - Compatibility, licensing, packaging and performance are recorded for every supplied add-on
+      - Sky, foliage, terrain and atmosphere integrations preserve the 5.76km² streamed-world collision and save contracts
+      - Editor-only or incompatible packages are rejected with an explicit replacement path
+      - At least one selected package is rendered and reviewed before becoming a required dependency
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-029
+    title: Integrate Terrain3D as the streamed adventure-world visual surface
+    owner: codex
+    specialty: terrain-rendering
+    inputs:
+      - /Users/jakubsikora/Downloads/Terrain3D_v1
+      - addons/terrain_3d
+      - src/adapters/inbound/gameplay/terrain3d_world_adapter.gd
+      - src/adapters/inbound/gameplay/world_renderer.gd
+    dependencies: [VS-013, VS-017, VS-019]
+    acceptance_criteria:
+      - Terrain3D loads on the supported local macOS architecture without quarantined or unresolved framework errors
+      - The playable world renders a textured 2.4km by 2.4km terrain surface with the intended 5.76km² traversal footprint
+      - Player grounding, terrain collision, prop placement, and the retained fallback floor are verified by automated checks and a rendered play-session capture
+      - Terrain size, visual quality, and collision bounds are independently reviewed before the fallback surface can be removed
+    cross_review_by: claude
+    status: in_progress
+
+  - id: VS-030
+    title: Evaluate BasicMultiplayer for a later private family-session slice
+    owner: copilot
+    specialty: engine-networking
+    inputs:
+      - /Users/jakubsikora/Downloads/BasicMultiplayer-ec9ebc1bb59b04a1611b258006b1470a522bf0d6
+      - TASK-045
+      - TASK-059
+      - src/domain/identity_safety
+    dependencies: [VS-026, TASK-045]
+    acceptance_criteria:
+      - Godot version, license provenance, networking authority model, and save synchronization implications are documented
+      - Any proposed integration is private-invite only, requires parent authorization, and contains no unmoderated public discovery or chat
+      - The package is either rejected with a safe replacement path or split behind ports with a multiplayer-specific automated test plan
+      - No multiplayer runtime dependency is added to the single-player visual vertical slice
+    cross_review_by: claude
+    status: todo
+
+  - id: VS-031
+    title: Evaluate optional parent-gated tool and firearm content for a later mode
+    owner: mistral
+    specialty: child-safety-and-combat-content
+    inputs:
+      - /Users/jakubsikora/Downloads/SWAT.glb
+      - /Users/jakubsikora/Downloads/Pistol.glb
+      - /Users/jakubsikora/Downloads/Assault Rifle.glb
+      - /Users/jakubsikora/Downloads/ShooterKit-aacba3868d41706fde6daff00877055e52d200c6
+      - src/domain/identity_safety/parental_control_policy.gd
+      - docs/requirements/functionality-requirements.md
+    dependencies: [VS-023, TASK-015]
+    acceptance_criteria:
+      - License and source provenance are recorded for every candidate model and toolkit
+      - The default child sandbox stays melee/creative-only and contains no firearm or tactical-police content
+      - Any later experiment is parent-gated, single-player by default, non-gory, reversible, and has explicit age/content policy coverage
+      - No candidate asset is imported or exposed to the current visual vertical slice without an approved design and safety review
+    cross_review_by: claude
+    status: todo
 
   - id: VS-005
     title: Improve age-appropriate combat telegraphs and feedback
@@ -1408,9 +1493,21 @@ tasks:
     evidence:
       - src/adapters/inbound/shared/audio/bus_setup.gd (runtime bus creation)
       - src/adapters/inbound/shared/audio/bus_setup.tscn (bus setup scene)
-      - src/adapters/inbound/shared/audio/audio_bank.gd (players assigned to Music/Voice/SFX buses)
-      - manual-qa/VS-006/REPORT.md (comprehensive QA report with triage)
+      - src/adapters/inbound/shared/audio/audio_bank.gd (players assigned to Music/Voice/SFX buses, synchronous init)
+      - src/ports/outbound/accessibility_policy_port.gd (added set_reduce_motion/is_reduce_motion_enabled)
+      - src/adapters/outbound/godot_accessibility_adapter.gd (implemented reduce-motion support)
+      - src/adapters/inbound/gameplay/screen_feedback.gd (shake/shake_directional respect reduce-motion)
+      - src/adapters/inbound/gameplay/effect_spawner.gd (all particle effects respect reduce-motion)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (ambient particles respect reduce-motion)
+      - manual-qa/VS-006/REPORT.md (comprehensive QA report with triage, updated with reduce-motion and audio fixes)
       - manual-qa/VS-006/audio_analysis.sh (automated analysis script)
+      - manual-qa/VS-006/audio_report.txt (updated audio analysis after fixes)
+      - data/audio/sfx/eleven/block_buzz.mp3 (normalized from -41dB to -4.7dB)
+      - data/audio/sfx/eleven/spawn_pop.mp3 (normalized from 0dB to -3.2dB)
+      - data/audio/sfx/eleven/victory_fanfare.mp3 (normalized from -0.9dB to -3.9dB)
+      - data/audio/sfx/eleven/kick_impact.mp3 (normalized from 0dB to -3.2dB)
+      - data/audio/sfx/eleven/punch_thud.mp3 (normalized from 0dB to -3.1dB)
+      - data/audio/music/*.mp3 (trailing silence trimmed from all music files)
       - Godot parse-clean verification passed
 
   - id: VS-007

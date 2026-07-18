@@ -23,6 +23,7 @@ const BOUNCER_VELOCITY := 5.0
 const BOUNCER_INTERVAL := 0.9
 const CONTACT_ATTACK_WINDUP := 0.32
 const CONTACT_ATTACK_COOLDOWN := 1.1
+const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
 
 
 enum State { IDLE, WANDER, CHASE, WINDUP, HURT, DEFEAT }
@@ -41,10 +42,16 @@ var _player_ref: Node3D
 var _wander_target: Vector3 = Vector3.ZERO
 var _wander_remaining: float = 0.0
 var _spawn_origin: Vector3 = Vector3.ZERO
+## `_mesh` is retained as the low-cost fallback and collision-scale reference.
+## Normal Adventure encounters replace it with a real local creature model.
 var _mesh: MeshInstance3D
+var _visual_root: Node3D
+var _visual_base_scale: Vector3 = Vector3.ONE
+var _liminal_materials: Array[StandardMaterial3D] = []
 var _collision: CollisionShape3D
 var _ground_shadow: MeshInstance3D
 var _attack_marker: MeshInstance3D
+var _facial_performance
 var _contact_attack_remaining: float = 0.0
 var _contact_attack_cooldown: float = 0.0
 ## Boolean guard — `_collision.set_deferred("disabled", true)` alone
@@ -86,7 +93,9 @@ func _build_visuals() -> void:
 	_collision.shape = shape
 	add_child(_collision)
 
-	# Mesh — procedural sphere or capsule, tinted by definition.tint.
+	# Keep a tiny primitive only as a safe fallback. The playable Adventure uses
+	# the approved local model below: the previous green/pink sphere/capsule
+	# bodies were the exact "mystery balls" reported in the playtest.
 	_mesh = MeshInstance3D.new()
 	var mesh_res: Mesh
 	if definition.archetype == EnemyDefinition.Archetype.BOUNCER:
@@ -107,7 +116,19 @@ func _build_visuals() -> void:
 	mat.roughness = 0.7
 	_mesh.material_override = mat
 	add_child(_mesh)
-	_build_face(_mesh, radius)
+	_visual_root = _build_liminal_visual(is_boss)
+	if _visual_root == null:
+		# Degraded mode must still read as a creature instead of an unlabelled
+		# projectile. This only executes when the bundled model is unavailable.
+		_visual_root = _mesh
+		_build_face(_mesh, radius)
+		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.new()
+		_facial_performance.name = "FacialPerformance"
+		_mesh.add_child(_facial_performance)
+		_facial_performance.setup_face(Vector3(0.0, 0.0, -radius * 0.88), -radius * 0.88, 0.72, false, false)
+	else:
+		_mesh.visible = false
+	_visual_base_scale = _visual_root.scale
 	_build_ground_shadow(radius)
 	_build_attack_marker(radius)
 
@@ -115,6 +136,86 @@ func _build_visuals() -> void:
 	# bounce ends on a seam between the runtime floor and a template surface.
 	floor_snap_length = 0.35
 	safe_margin = 0.04
+
+
+## Load the local low-poly skeleton as an original, non-gory liminal watcher.
+## It preserves the model's authored mesh/material detail and puts a pair of
+## restrained emissive eyes at the actual head height, so it reads as a living
+## encounter instead of a UI-coloured physics primitive.
+func _build_liminal_visual(is_boss: bool) -> Node3D:
+	if definition == null or definition.mesh_asset_id.is_empty():
+		return null
+	if not ResourceLoader.exists(definition.mesh_asset_id):
+		push_warning("Enemy model missing: %s" % definition.mesh_asset_id)
+		return null
+	var packed := load(definition.mesh_asset_id) as PackedScene
+	if packed == null:
+		push_warning("Enemy model could not load: %s" % definition.mesh_asset_id)
+		return null
+	var model := packed.instantiate() as Node3D
+	if model == null:
+		return null
+	model.name = "LiminalWatcherVisual"
+	# The source rig is authored with its feet at local zero. Its conventional
+	# front is +Z, while CharacterBody3D movement faces -Z.
+	model.rotation.y = PI
+	model.scale = Vector3.ONE * (1.22 if is_boss else 0.78)
+	_tint_liminal_materials(model)
+	_add_liminal_eyes(model, is_boss)
+	add_child(model)
+	return model
+
+
+func _tint_liminal_materials(root: Node) -> void:
+	for child in root.get_children():
+		if child is MeshInstance3D:
+			var mesh_node := child as MeshInstance3D
+			if mesh_node.mesh != null:
+				for surface in range(mesh_node.mesh.get_surface_count()):
+					var source := mesh_node.get_active_material(surface)
+					var styled: StandardMaterial3D = null
+					if source is StandardMaterial3D:
+						styled = (source as StandardMaterial3D).duplicate() as StandardMaterial3D
+					else:
+						styled = StandardMaterial3D.new()
+					# Tint only slightly; keep source texture/shape readable and avoid
+					# the oversaturated neon palette from the prototype.
+					styled.albedo_color = styled.albedo_color.lerp(definition.tint, 0.28)
+					styled.roughness = maxf(styled.roughness, 0.52)
+					mesh_node.set_surface_override_material(surface, styled)
+					_liminal_materials.append(styled)
+		for nested in child.get_children():
+			_tint_liminal_materials(nested)
+
+
+func _add_liminal_eyes(model: Node3D, is_boss: bool) -> void:
+	var eye_mat := StandardMaterial3D.new()
+	eye_mat.albedo_color = Color(0.88, 0.94, 1.0)
+	eye_mat.emission_enabled = true
+	eye_mat.emission = Color(0.20, 0.62, 1.0) if not is_boss else Color(0.78, 0.22, 0.95)
+	eye_mat.emission_energy_multiplier = 2.0 if not is_boss else 2.8
+	eye_mat.roughness = 0.25
+	for x in [-0.105, 0.105]:
+		var eye := MeshInstance3D.new()
+		var eye_mesh := SphereMesh.new()
+		eye_mesh.radius = 0.055
+		eye_mesh.height = 0.11
+		eye.mesh = eye_mesh
+		eye.material_override = eye_mat
+		# The imported rig has a 1.65m head centre; position is local to the
+		# model, so it stays anchored as its scale changes.
+		eye.position = Vector3(x, 1.54, -0.19)
+		model.add_child(eye)
+
+
+func _visual_target() -> Node3D:
+	return _visual_root if _visual_root != null and is_instance_valid(_visual_root) else _mesh
+
+
+func _reset_visual_scale() -> void:
+	var visual := _visual_target()
+	if visual != null:
+		visual.scale = _visual_base_scale
 
 
 func _build_face(parent: Node3D, radius: float) -> void:
@@ -222,6 +323,8 @@ func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO, attack_st
 	emit_signal("damaged_with_amount", amount, global_position + Vector3(0, 0.4, 0))
 	_state = State.HURT
 	_hurt_remaining = 0.2
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.HURT, 0.42)
 	# Adv Y H5 fix: kicks get 2x knockback
 	var knockback_mult := 2.0 if attack_style == "kick" else 1.0
 	# Knockback away from attacker
@@ -250,12 +353,14 @@ func apply_damage(amount: int, knockback_from: Vector3 = Vector3.ZERO, attack_st
 		mat.emission_energy_multiplier = 1.5
 		# Adv Y M2 fix: vertical squash + horizontal stretch on hit reads as "OOF"
 		# Parallel-tween with the emission flash for simultaneous visual feedback
-		var original_scale := _mesh.scale
+		var visual := _visual_target()
+		var original_scale := visual.scale if visual != null else Vector3.ONE
 		var squash_tween := create_tween().set_parallel(true)
-		squash_tween.tween_property(_mesh, "scale",
-			Vector3(1.3, 0.65, 1.3), 0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		squash_tween.tween_property(_mesh, "scale",
-			original_scale, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		if visual != null:
+			squash_tween.tween_property(visual, "scale",
+				original_scale * Vector3(1.3, 0.65, 1.3), 0.06).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			squash_tween.tween_property(visual, "scale",
+				original_scale, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		var tween := create_tween()
 		# Hold the bright frame for 80ms so the eye registers "WHACK"
 		tween.tween_interval(0.08)
@@ -287,11 +392,12 @@ func _on_defeat() -> void:
 	# Shrink-out anim (kid-safe — no rag doll). If end_session frees
 	# the node mid-tween, the post-await check prevents calling
 	# queue_free on an already-freed instance (Adv 6 #1).
-	if _mesh == null or not is_instance_valid(_mesh):
+	var visual := _visual_target()
+	if visual == null or not is_instance_valid(visual):
 		queue_free()
 		return
 	var tween := create_tween().set_parallel(true)
-	tween.tween_property(_mesh, "scale", Vector3.ZERO, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tween.tween_property(visual, "scale", Vector3.ZERO, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "global_position",
 		global_position + Vector3(0, 0.5, 0), 0.3)
 	await tween.finished
@@ -364,8 +470,7 @@ func _state_windup(delta: float) -> void:
 					mat.albedo_color = mat.get_meta("original_color")
 				else:
 					mat.albedo_color = definition.tint
-			if _mesh != null:
-				_mesh.scale = Vector3.ONE
+			_reset_visual_scale()
 	if _telegraph_remaining <= 0.0:
 		# Wind-up complete, trigger attack
 		_begin_contact_attack()
@@ -376,11 +481,12 @@ func _state_windup(delta: float) -> void:
 				mat.albedo_color = mat.get_meta("original_color")
 			else:
 				mat.albedo_color = definition.tint
-		if _mesh != null:
-			_mesh.scale = Vector3.ONE
+		_reset_visual_scale()
 
 
 func _start_windup_visuals() -> void:
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.ANGRY, WINDUP_DURATION + 0.2)
 	# Scale up and tint red for wind-up
 	if _mesh != null and _mesh.material_override is StandardMaterial3D:
 		var mat: StandardMaterial3D = _mesh.material_override
@@ -389,9 +495,10 @@ func _start_windup_visuals() -> void:
 			mat.set_meta("original_color", mat.albedo_color)
 		mat.albedo_color = Color(1.0, 0.3, 0.3)  # Red tint
 		# Scale up
-		if _mesh != null:
+		var visual := _visual_target()
+		if visual != null:
 			var windup_tween := create_tween()
-			windup_tween.tween_property(_mesh, "scale", Vector3(1.3, 1.3, 1.3), 0.1)
+			windup_tween.tween_property(visual, "scale", _visual_base_scale * Vector3(1.3, 1.3, 1.3), 0.1)
 
 
 func _bounce_toward(direction: Vector3, magnitude: float, interval: float, delta: float) -> void:
@@ -416,6 +523,8 @@ func _begin_contact_attack() -> void:
 		return
 	_contact_attack_remaining = CONTACT_ATTACK_WINDUP
 	_contact_attack_cooldown = CONTACT_ATTACK_COOLDOWN
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.FOCUSED, CONTACT_ATTACK_WINDUP + 0.2)
 	if _attack_marker != null and is_instance_valid(_attack_marker):
 		_attack_marker.visible = true
 		_attack_marker.scale = Vector3(0.65, 1.0, 0.65)

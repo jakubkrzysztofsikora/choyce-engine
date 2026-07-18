@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/gameplay_runtime.gd" id="1_gameplay_runtime"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/world_renderer.gd" id="2_world_renderer"]
@@ -9,6 +9,9 @@
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/victory_sequence.gd" id="7_victory_sequence"]
 [ext_resource type="Script" path="res://src/adapters/inbound/gameplay/audio_event_bus.gd" id="8_audio_event_bus"]
 [ext_resource type="PackedScene" path="res://data/models/kenney/toon_characters/Models/GLB format/character-male-a.glb" id="9_character_mesh"]
+[ext_resource type="Texture2D" path="res://data/textures/generated/forest-meadow-ground-v1.png" id="10_ground_color"]
+[ext_resource type="Texture2D" path="res://data/textures/pbr/ground003/Ground003_1K-JPG_NormalGL.jpg" id="11_ground_normal"]
+[ext_resource type="Texture2D" path="res://data/textures/pbr/ground003/Ground003_1K-JPG_Roughness.jpg" id="12_ground_roughness"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSky_kid"]
 sky_top_color = Color(0.30, 0.55, 0.85, 1)
@@ -53,13 +56,13 @@ glow_intensity = 0.6
 glow_bloom = 0.05
 glow_blend_mode = 1
 adjustment_enabled = true
-adjustment_saturation = 1.15
+adjustment_saturation = 0.98
 adjustment_contrast = 1.05
 fog_enabled = true
 fog_mode = 1
 fog_light_color = Color(0.78, 0.88, 0.95, 1)
 fog_light_energy = 0.7
-fog_density = 0.008
+fog_density = 0.0035
 fog_sky_affect = 0.0
 fog_aerial_perspective = 0.3
 
@@ -83,36 +86,27 @@ emission = Color(1, 1, 0.8, 1)
 emission_energy_multiplier = 0.5
 
 [sub_resource type="BoxMesh" id="BoxMesh_ground"]
-size = Vector3(80, 0.5, 80)
-
-[sub_resource type="Gradient" id="Gradient_grass"]
-offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(0.32, 0.55, 0.28, 1, 0.50, 0.72, 0.38, 1, 0.62, 0.82, 0.48, 1)
-
-[sub_resource type="FastNoiseLite" id="FastNoiseLite_ground"]
-noise_type = 1
-frequency = 0.08
-fractal_octaves = 4
-
-[sub_resource type="NoiseTexture2D" id="NoiseTex_ground"]
-width = 512
-height = 512
-seamless = true
-color_ramp = SubResource("Gradient_grass")
-noise = SubResource("FastNoiseLite_ground")
+size = Vector3(2400, 0.5, 2400)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
-albedo_color = Color(0.85, 0.95, 0.80, 1)
-albedo_texture = SubResource("NoiseTex_ground")
-roughness = 0.95
-uv1_scale = Vector3(20, 20, 1)
+; Original production ground albedo with the existing CC0 normal/roughness
+; maps keeps the foreground from reading as a repeated flat grass plate.
+albedo_color = Color(0.92, 0.96, 0.88, 1)
+albedo_texture = ExtResource("10_ground_color")
+normal_enabled = true
+normal_texture = ExtResource("11_ground_normal")
+roughness_texture = ExtResource("12_ground_roughness")
+roughness_texture_channel = 0
+roughness = 0.82
+texture_filter = 5
+uv1_scale = Vector3(260, 260, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
-size = Vector3(80, 0.5, 80)
+size = Vector3(2400, 0.5, 2400)
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.35
-height = 1.6
+height = 1.8
 
 [node name="GameplayRuntime" type="Node3D"]
 script = ExtResource("1_gameplay_runtime")
@@ -141,7 +135,10 @@ shape = SubResource("CapsuleShape3D_player")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="PlayerController"]
-transform = Transform3D(1, 0, 0, 0, 0.965926, -0.258819, 0, 0.258819, 0.965926, 0, 2.5, 4.5)
+; A gentle downward gameplay angle makes the opening route, props, and terrain
+; legible; the old transform was pitched upward and devoted most of the frame
+; to empty sky.
+transform = Transform3D(1, 0, 0, 0, 0.906308, 0.422618, 0, -0.422618, 0.906308, 0, 1.7, 4.2)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)

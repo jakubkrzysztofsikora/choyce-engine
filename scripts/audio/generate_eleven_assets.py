@@ -39,6 +39,20 @@ if not API_KEY:
 MASCOT_VOICE_ID = "pNInz6obpgDQGcFmaJgB"
 TTS_MODEL = "eleven_multilingual_v2"
 
+# Cinematic character voices created with ElevenLabs Voice Design: both are
+# youthful Polish-speaking male game characters, deliberately distinct from
+# the adult narrator voices used elsewhere in the app.
+CINEMATIC_VOICE_IDS = {
+    "ziemek": "xMkKy7yY4DLmATtMWDXw",
+    "gniewko": "i0EQYxsgYUqm1osBmKst",
+}
+CINEMATIC_LINES = {
+    "cinematic_ziemek_attack": ("ziemek", "Gniewko!"),
+    "cinematic_gniewko_ready": ("gniewko", "Ziemek!"),
+    "cinematic_ziemek_monster": ("ziemek", "Potwór!"),
+    "cinematic_gniewko_help": ("gniewko", "Uwaga!"),
+}
+
 # Sigma-coded short declarative lines — calm authority, dry humor,
 # slight mystery. No yelling, no rage, no scary content. Reads like
 # a chill ninja sensei talking to a kid apprentice. PL only.
@@ -109,20 +123,28 @@ def http_post(url: str, body: dict, accept: str = "audio/mpeg") -> bytes:
         return resp.read()
 
 
-def gen_voice(name: str, text: str) -> bool:
+def gen_voice(
+    name: str,
+    text: str,
+    voice_id: str = MASCOT_VOICE_ID,
+    style: float = 0.35,
+    stability: float = 0.55,
+    force: bool = False,
+) -> bool:
     out = VOICE_DIR / f"{name}.mp3"
-    if out.exists() and out.stat().st_size > 1024:
+    if not force and out.exists() and out.stat().st_size > 1024:
         print(f"[skip] voice/{name}.mp3 already present ({out.stat().st_size} bytes)")
         return True
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{MASCOT_VOICE_ID}"
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     body = {
         "text": text,
         "model_id": TTS_MODEL,
         "voice_settings": {
-            "stability": 0.55,
+            "stability": stability,
             "similarity_boost": 0.8,
-            "style": 0.35,
+            "style": style,
             "use_speaker_boost": True,
+            "speed": 1.2,
         },
     }
     try:
@@ -191,6 +213,16 @@ def main() -> int:
     MUSIC_DIR.mkdir(parents=True, exist_ok=True)
 
     tally = {"voice_ok": 0, "voice_fail": 0, "sfx_ok": 0, "sfx_fail": 0, "music_ok": 0, "music_fail": 0}
+
+    if "--cinematic" in sys.argv:
+        print("=== Cinematic character voices (Polish / ElevenLabs) ===")
+        failed = 0
+        force = "--force" in sys.argv
+        for name, (character, text) in CINEMATIC_LINES.items():
+            voice_id = CINEMATIC_VOICE_IDS[character]
+            if not gen_voice(name, text, voice_id, style=0.65, stability=0.58, force=force):
+                failed += 1
+        return 1 if failed else 0
 
     print("=== Voice lines (Polish) ===")
     for name, text in VOICE_LINES.items():

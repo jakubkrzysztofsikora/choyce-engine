@@ -17,6 +17,7 @@ const BUILD_RAY_RANGE := 8.0
 const WATER_MOVE_MULTIPLIER := 0.48
 const WATER_SINK_SPEED := 1.3
 const WATER_SWIM_UP_VELOCITY := 3.4
+const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
 
 signal footstep
 signal landed
@@ -119,6 +120,7 @@ var _head_bob_time: float = 0.0
 var _base_scale: Vector3 = Vector3.ONE
 var _camera_base_y: float = 1.6
 var _character_mesh: Node3D
+var _facial_performance
 var _anim_player: AnimationPlayer
 var _current_anim: String = ""
 var _world_interaction_lock: float = 0.0
@@ -148,6 +150,14 @@ func _ready() -> void:
 	_character_mesh = get_node_or_null("CharacterMesh")
 	if _character_mesh != null:
 		_character_mesh.rotation.y = PI
+		# Imported Kenney characters have no reliable facial blend-shapes. Add a
+		# small local face rig so the player blinks and visibly reacts to play.
+		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.new()
+		_facial_performance.name = "FacialPerformance"
+		_character_mesh.add_child(_facial_performance)
+		# Kenney's head mesh occupies local y≈0.34–0.67, not a humanoid-
+		# metre-scale y=1.3. Keep the layer on its actual face, not above it.
+		_facial_performance.setup_face(Vector3(0.0, 0.51, 0.0), 0.20)
 		# Kenney GLB embeds an AnimationPlayer with idle/walk/sprint/jump/fall.
 		_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		if _anim_player != null:
@@ -368,9 +378,8 @@ func _input(event: InputEvent) -> void:
 	if not is_processing_input():
 		return
 
-	# FPS-style mouselook: mouse motion alone rotates the camera (no
-	# hold-to-look needed). The cursor is captured for the 3D session
-	# so motion deltas are raw. ESC releases capture so the kid can
+	# Mouse motion alone rotates the camera. The cursor is captured for the
+	# 3D session so motion deltas are raw. ESC releases capture so the kid can
 	# click HUD (back button, hotbar). LMB swings only when captured;
 	# LMB while cursor is visible falls through to HUD click handlers
 	# (Adv C B2 fix — was capturing cursor on every LMB regardless of
@@ -387,6 +396,17 @@ func _input(event: InputEvent) -> void:
 				Input.action_press("attack")
 			else:
 				Input.action_release("attack")
+			return
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			# Building was advertised as right-click but was only routed through a
+			# synthetic Input action. That action can miss the physics tick entirely,
+			# leaving a perfectly aimed ghost with no block ever placed. Place on the
+			# press event itself; UI controls consume their own pointer events before
+			# this gameplay handler receives them.
+			var active_kind: String = String(_hotbar[_active_slot]) if (_active_slot >= 0 and _active_slot < _hotbar.size()) else ""
+			if _ensure_game_mode_service().current_mode(active_kind) == GameModeService.Mode.BUILD:
+				if event.pressed:
+					_try_place_block()
 			return
 
 	if event is InputEventMouseMotion:
@@ -457,6 +477,8 @@ func play_sit_at(pos: Vector3) -> void:
 ## ATTACK_RANGE + ATTACK_ARC. Emit `attacked` signal so gameplay
 ## runtime can spawn swing VFX / SFX.
 func _perform_attack() -> void:
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.FOCUSED, 0.38)
 	# Adv Y M3 fix: combo-window cooldown system
 	var now := Time.get_ticks_msec() / 1000.0
 	var in_combo_window := now - _last_swing_time < COMBO_WINDOW_SEC
@@ -674,6 +696,8 @@ func apply_damage_from_enemy(amount: int, source_position: Vector3) -> void:
 		return
 	if not _health.apply_damage(amount):
 		return
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.HURT, 0.68)
 	hp_changed.emit(_health.current_hp, _health.max_hp)
 	# Knockback away from source. Add to existing horizontal velocity
 	# (not overwrite) and only boost Y if the kid isn't already
@@ -855,11 +879,7 @@ func _ensure_game_mode_service() -> GameModeService:
 ## 4 blocks from the catalog. Number keys 1..5 cycle.
 func setup_build_grid(grid: BuildGrid) -> void:
 	_build_grid = grid
-	var default := BlockKind.default_catalog()
-	_hotbar.clear()
-	_hotbar.append("fist")   ## slot 0 = weapon → COMBAT mode default
-	for i in mini(default.size(), 4):
-		_hotbar.append((default[i] as BlockKind).block_id)
+	_hotbar = ["fist", "grass", "wood_oak", "glow", "spring"]
 	_active_slot = 0
 	hotbar_changed.emit(_active_slot, _hotbar[_active_slot])
 
@@ -877,6 +897,13 @@ func _process_build_input() -> void:
 		_try_place_block()
 	if Input.is_action_just_pressed(_act("break_block")):
 		_try_break_block()
+	if Input.is_action_just_pressed(_act("undo")) or Input.is_action_just_pressed("undo"):
+		_try_undo()
+
+
+func _try_undo() -> void:
+	if _build_grid != null:
+		_build_grid.undo_last_action()
 
 
 func _build_raycast() -> Dictionary:
@@ -958,3 +985,156 @@ func _landing_squash() -> void:
 
 func _hard_landing_feedback() -> void:
 	hard_landed.emit()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Character customization (VS-022). Cosmetic only — no stat or balance impact.
+# Driven by CharacterCustomization domain type; persisted via that class.
+# ──────────────────────────────────────────────────────────────────────────────
+
+const _KENNEY_MALE_DIR := "res://data/models/kenney/toon_characters/Models/GLB format"
+const _KENNEY_FEMALE_DIR := "res://data/models/kenney/toon_characters/Models/GLB format"
+var _active_face_variant: String = "a"
+var _active_face_set: String = "male"
+
+
+## Swap the visible face/character by loading a different Kenney GLB.
+## Live at runtime so the customization panel can change the kid's look
+## mid-session without restarting the game.
+func set_face_variant(variant: String, set: String = "male") -> void:
+	if not _is_valid_face_variant(variant, set):
+		return
+	if variant == _active_face_variant and set == _active_face_set and _character_mesh != null and is_instance_valid(_character_mesh):
+		return  # no-op if same face is already mounted
+	_active_face_variant = variant
+	_active_face_set = set
+	var dir := _KENNEY_MALE_DIR if set == "male" else _KENNEY_FEMALE_DIR
+	_swap_character_glb("%s/character-%s-%s.glb" % [dir, set, variant])
+
+
+## Apply a saved/edited CharacterCustomization to the live character.
+## Handles both the face swap and the per-body-part color overrides.
+## Safe to call multiple times; subsequent calls just re-tint.
+func apply_customization(c: CharacterCustomization) -> void:
+	if c == null:
+		return
+	c.clamp_in_place()
+	set_face_variant(c.face, _active_face_set)
+	_apply_customization_colors(c)
+
+
+func _is_valid_face_variant(variant: String, set: String) -> bool:
+	if set != "male" and set != "female":
+		return false
+	return variant in CharacterCustomization.FACE_VARIANTS
+
+
+func _swap_character_glb(path: String) -> void:
+	if not ResourceLoader.exists(path):
+		push_warning("[player_controller] missing face GLB: %s" % path)
+		return
+	if _character_mesh != null and is_instance_valid(_character_mesh):
+		_character_mesh.queue_free()
+		_character_mesh = null
+	if _facial_performance != null and is_instance_valid(_facial_performance):
+		_facial_performance.queue_free()
+		_facial_performance = null
+	if _held_weapon != null and is_instance_valid(_held_weapon):
+		_held_weapon.queue_free()
+		_held_weapon = null
+	var packed := load(path) as PackedScene
+	if packed == null:
+		push_warning("[player_controller] failed to load face GLB: %s" % path)
+		return
+	var new_mesh := packed.instantiate() as Node3D
+	if new_mesh == null:
+		return
+	new_mesh.name = "CharacterMesh"
+	add_child(new_mesh)
+	_character_mesh = new_mesh
+	_setup_character_appearance()
+
+
+func _setup_character_appearance() -> void:
+	if _character_mesh == null or not is_instance_valid(_character_mesh):
+		return
+	_character_mesh.rotation.y = PI
+	_facial_performance = FACIAL_PERFORMANCE_SCRIPT.new()
+	_facial_performance.name = "FacialPerformance"
+	_character_mesh.add_child(_facial_performance)
+	_facial_performance.setup_face(Vector3(0.0, 0.51, 0.0), 0.20)
+	_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if _anim_player == null:
+		return
+	for anim_name in _anim_player.get_animation_list():
+		var src := _anim_player.get_animation(anim_name)
+		if src == null:
+			continue
+		var dup := src.duplicate() as Animation
+		var lname := String(anim_name).to_lower()
+		var is_attack := String(anim_name) in ATTACK_ANIMS
+		var is_loop := false
+		if not is_attack:
+			for ln in LOOPING_ANIMS:
+				if lname.begins_with(ln):
+					is_loop = true
+					break
+		dup.loop_mode = Animation.LOOP_LINEAR if is_loop else Animation.LOOP_NONE
+		var lib := _anim_player.get_animation_library("")
+		if lib != null:
+			lib.remove_animation(anim_name)
+			lib.add_animation(anim_name, dup)
+	_play_anim("idle")
+	if not _anim_player.animation_finished.is_connected(_on_anim_finished):
+		_anim_player.animation_finished.connect(_on_anim_finished)
+
+
+func _apply_customization_colors(c: CharacterCustomization) -> void:
+	if _character_mesh == null or not is_instance_valid(_character_mesh):
+		return
+	var body := _find_mesh_by_name(_character_mesh, "body-mesh")
+	if body != null:
+		# Kenney toon characters use one body mesh for skin + clothes; mix the
+		# kid's outfit + hair picks into one tint so each choice still moves
+		# the character visually without requiring per-bodypart re-meshing.
+		var tint: Color = (
+			CharacterCustomization.TOP_PALETTE[c.top]
+			+ CharacterCustomization.PANTS_PALETTE[c.pants]
+			+ CharacterCustomization.SHOES_PALETTE[c.shoes]
+			+ CharacterCustomization.HAIR_PALETTE[c.hair]
+		) * 0.25
+		_tint_mesh(body, tint)
+	var head := _find_mesh_by_name(_character_mesh, "head-mesh")
+	if head != null:
+		_tint_mesh(head, CharacterCustomization.SKIN_PALETTE[c.skin])
+
+
+func _find_mesh_by_name(root: Node, mesh_name: String) -> MeshInstance3D:
+	if root == null:
+		return null
+	if root is MeshInstance3D and root.name == mesh_name:
+		return root
+	for child in root.get_children():
+		var found := _find_mesh_by_name(child, mesh_name)
+		if found != null:
+			return found
+	return null
+
+
+## Tints a mesh while preserving its imported texture: duplicates the active
+## material, swaps albedo_color, installs as material_override. Falls back to
+## a flat material if the GLB mesh has no usable StandardMaterial3D.
+func _tint_mesh(mesh: MeshInstance3D, color: Color) -> void:
+	if mesh == null:
+		return
+	var active := mesh.get_active_material(0)
+	if active is StandardMaterial3D:
+		var tint := (active as StandardMaterial3D).duplicate() as StandardMaterial3D
+		tint.albedo_color = color
+		mesh.material_override = tint
+	else:
+		var fallback := StandardMaterial3D.new()
+		fallback.albedo_color = color
+		fallback.metallic = 0.0
+		fallback.roughness = 0.6
+		mesh.material_override = fallback

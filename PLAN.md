@@ -1,109 +1,365 @@
-# PLAN — Ship Choyce Engine to Playable MVP
+# Choyce Engine — Vertical Slice Delivery Plan
 
-**Goal (user, 2026-06-03):** Beautiful modern menu shell, playable world building with voice agent help, ≥2 world types with mechanics, animation, NPCs, win/lose scenarios.
+Updated: 2026-07-17
 
-**Status (commit `5dd34fc`):** 63/66 backlog tasks done. Hex-arch domain + ports/adapters complete. Tauri+Next.js shell skeleton wired (landing/create-chrome/library/parent). Godot scenes for landing/create/play/library/parent exist. 5 world templates in `data/templates/` (adventure, city, farm, obby, tycoon). Combat C1–C4 fight-feel landed. AI-vision test infra (TASK-061…066) in_review. **Carry-overs from the 2026-05-18 remediation session block the goal** — see `~/.claude/projects/-Users-jakubsikora-Repos-choyce-engine/memory/MEMORY.md` "Carry-overs" + "Critical Production Bugs".
+## Objective
 
----
+Deliver a family-friendly, styled, replayable 3D Adventure sandbox slice that a child can launch, understand, freely explore, discover, interact with, and leave safely. Optional combat and activities should enrich the world without turning the first experience into a checklist. Then promote the same runtime into a packaged engine/product slice with one reversible creation interaction and governed AI assistance.
 
-## Files in scope (first-touch)
+The current branch is a functional technical prototype, not yet a convincing game. Automated tests are broadly healthy, but the rendered result still reads as a debug scene: flat/saturated materials, sparse authored content, weak spatial composition, oversized or developer-like HUD elements, and a cinematic/audio pass that needs another quality bar. The visual rescue below is now a release gate, not optional polish.
 
-Wave-1 menu:
-- `shell/src/app/page.tsx`, `shell/src/app/create-chrome/page.tsx`, `shell/src/app/library/page.tsx`, `shell/src/app/parent/page.tsx`
-- `shell/src/app/globals.css`, `shell/src/messages/pl.json`
-- `src/adapters/inbound/scenes/landing/landing_screen.{gd,tscn}`
+### Latest implementation evidence — VS-019 (2026-07-17)
 
-Wave-2 voice-assisted build:
-- `src/adapters/inbound/scenes/create/create_shell.{gd,tscn}`
-- `src/application/services/request_ai_creation_help_service.gd`
-- `src/adapters/outbound/ollama_llm_adapter.gd`, `moderating_stt_adapter.gd`, voice_prompt adapters
-- `src/adapters/inbound/gameplay/build_grid.gd`, `world_renderer.gd`
+- The runtime floor and Adventure template now cover `2400m × 2400m`
+  (`5.76km²`), with a 5×5 player-relative chunk envelope and deterministic
+  seed/version/coordinate chunk identity.
+- A physical four-sided coast now blocks the final 52m before the ground edge;
+  the old "run for 20 seconds into the void" failure has a regression test.
+- Live render exposed imported-character scale drift, which was calibrated to
+  the child-sized collision reference. This is not a visual-rescue pass: the
+  opening composition and terrain materials still fail the presentability gate.
+- Evidence: `test_world_renderer_toon_shader.gd`,
+  `template_loader_starter_smoke.gd`, editor parse, and smoke boot passed.
+- Independent adversarial review: **FIX-FIRST**. Before VS-019 can close, it
+  needs budgeted (non-blocking) chunk construction, a visible colliding coast
+  rather than only an invisible safety wall, deterministic reload/physics
+  coverage, coherent river/bridge traversal, and retained clean-profile
+  boundary/performance captures. The invalid `Koral` placeholder and outer
+  chunk spill were corrected after that review; the remaining items stay open.
+- Follow-up in progress: generation now runs in the renderer under a 3.5ms /
+  three-cell frame budget after movement only schedules chunks. The outer void
+  is replaced with an ocean sheet and a deterministic, toon-muted cliff belt
+  with collision inside the visual geometry. A second adversarial review kept
+  VS-019 **FIX-FIRST**: it prompted disposal budgeting and segmented,
+  cliff-aligned collision (both now implemented). It still needs long-run
+  boundary and frame-time capture on the reference machines, plus deterministic
+  completed-job/reload and physical-player regression evidence, before closure.
+- Sandbox-loop follow-up: forest logs and cave ore caches are now explicit,
+  one-use world interactions. They feed the existing three-wood stick and
+  wood/iron sword ladder, update the pictorial inventory, and give the child a
+  concrete gather → upgrade → build/cook loop without a timer. The river now
+  blocks direct crossing except at the authored bridge.
+- Opening-frame follow-up in progress: the gameplay camera is now pitched down
+  toward the route rather than the sky, and the CC0 AmbientCG Ground003
+  colour/normal/roughness maps are wired into the 2.4km terrain material. A
+  new authored forest mass extends roughly 400m × 300m north-west from its
+  signposted entrance, with a clear trail, irregular clearings, and
+  scale-matched tree collision. This is a direct response to the "out of the
+  map in 20 seconds" and tiny-prop reports; it still requires clean-profile
+  play capture and visual review before the rescue gate can pass.
+- Opening combat follow-up: the three prototype enemies no longer spawn around
+  the player. Optional encounters now wait at the cave, deep forest, and
+  beach, preserving the intended non-combat first minute while the remaining
+  creature-art replacement work stays inside the visual-rescue gate.
+- Opening-material follow-up: the template terrain duplicated the scene-owned
+  PBR ground 25cm above it, hiding the river, trail, and ground dressing.
+  Adventure now uses one floor only. A focused visual review then required the
+  route to end at each riverbank and the bridge to read as its own crossing;
+  those corrections and a Kenney-only foreground foliage pass are in progress.
 
-Wave-3 two playable world types:
-- `data/templates/adventure.json`, `data/templates/obby.json`
-- `src/adapters/inbound/main.gd` (KEY_PROGRESSION / KEY_CLONE / KEY_REMIX wiring — TASK-025 carry-over)
-- `src/application/services/{clone_world_service,remix_world_service,manage_progression_service}.gd`
-- `src/adapters/inbound/gameplay/{gameplay_runtime.gd,player_controller.gd,enemy_controller.gd,victory_sequence.gd}`
-- `src/domain/gameplay/{win_outcome.gd,quest.gd,quest_log.gd,session.gd}`
-- `src/domain/world_authoring/game_goal.gd`
+## Scope decision
 
----
+### Gate A — Adventure playable slice
 
-## Tasks (waves)
+Critical path:
 
-### Wave 0 — Unblock carry-overs (must precede playable)
-- [ ] W0-1 Wire `KEY_PROGRESSION`, `KEY_CLONE`, `KEY_REMIX` in `main.gd::_build_default_ports`. Re-add CloneWorldService / RemixWorldService / ManageProgressionService to shell wiring. Flip TASK-025 in `backlog.yaml` back to `done` once composition-root CI gate is green.
-- [ ] W0-2 Replace `FilesystemDataLifecycleAdapter._clear_profile_consent` private-field reach with public `FilesystemConsentStore.delete_profile()`.
-- [ ] W0-3 Land TASK-061…066 cross-reviews (codex + copilot) so menu + create flows can be CI-gated with AI-vision scenarios.
+`launch → click Adventure → meet guide → wander and discover → interact → optionally fight/build → return or keep exploring → replay`
 
-### Wave 1 — Beautiful modern menu (kid + parent)
-- [ ] W1-A Replace `sigma_protocol`/phonk glitch theme on landing with kid-targeted "Astro Bot diorama" aesthetic per `thoughts/shared/research/aaa-upgrade-synthesis-2026-05-19.md`. Phonk allowed only as opt-in parent-zone skin.
-- [ ] W1-B Landing hero: 3 large cards — **Buduj** (create), **Graj** (library), **Rodzic** (parent). Animated SVG mascots. Polish strings only via `_t()` (zero hardcoded — protect F-056-01 closure).
-- [ ] W1-C Tauri sidecar spawn: implement `shell_spawn_godot` in `shell/src-tauri/src/lib.rs`; surface engine readiness; friendly offline banner.
-- [ ] W1-D Library page: grid of saved worlds from `FilesystemPublishStore` with cover thumbnails + play/edit/remix buttons. Friendly empty state.
-- [ ] W1-E Parent zone polish: TabContainer (Consent / Audit / Dane / Limits / Policies) — fixes DaneTab discoverability carry-over. RBAC first-statement assert stays.
-- [ ] W1-F Godot `landing_screen.tscn` either visually aligns with shell or hides itself when sidecar mode is active.
+Required:
 
-### Wave 2 — Voice-assisted world building
-- [ ] W2-A True async Ollama streaming: rewrite `OllamaLLMAdapter` with raw `HTTPClient` + `Thread`, real-time `on_token` / `on_done` Callables. Replace `complete_with_tools_sync` in `RequestAICreationHelpService`. Behind `ai_stream_v2` flag for one release.
-- [ ] W2-B Push-to-talk + wake gate in `create_shell.gd` using `VoicePromptPort` + `ModeratingSttAdapter` + `IntentExtractorPort`. Confidence < 0.6 → ask child to repeat. Blocked transcripts emit kid-register Polish feedback.
-- [ ] W2-C Preview/Apply/Undo two-step UI for AI edits (UX-AI-002 carry-over). Hook into existing `WorldEditCommand` undo log (TASK-006).
-- [ ] W2-D AI memory recall surfaces "ostatnio dodałeś…" suggestions; bound the cache (avoids recurring unbounded-cache review finding).
-- [ ] W2-E Voice CTA wiring on every navigation step (UX-KID-001 carry-over).
+- Data-driven Adventure world with a sandbox/free-play session contract; no compulsory target, score, timer, or victory screen.
+- A substantial exploration island (target 2400×2400m traversable floor —
+  5.76km² — with deterministic streamed procedural biomes) with
+  four readable landmark regions, natural traversal routes, and no visible
+  hard map edge from the opening area.
+- Flora, fauna, ambient motion, landmark labels/signposts, and encounter zones
+  distributed across the island rather than a spawn-room arena.
+- Kid-safe first-run combat policy.
+- Friendly NPC with captions and optional governed voice.
+- Optional combat, reward feedback, soft respawn, and clean session teardown.
+- A friendly opening guide, readable landmarks, discoverable NPCs, animals,
+  flora, houses, forest, beach, cave, and ambient world motion.
+- No runtime scene-tree errors.
+- Clean-profile manual evidence on Tier 1 and Tier 2 hardware.
 
-### Wave 3 — Two playable world types end-to-end
-**Type A — Adventure (PvE quest):** `data/templates/adventure.json`
-- [ ] W3-A1 Win: collect 3 keys → unlock door → reach exit portal. Defined as `GameGoal` + `Quest` resources, evaluated by `GodotRulesRuntimeAdapter`.
-- [ ] W3-A2 Lose: HP → 0 (3 lives) OR 5-min timer (parent-tunable).
-- [ ] W3-A3 NPCs: 1 friendly quest-giver (dialogue from `data/templates/npc_dialogue.json`), 2 hostile (reuse `EnemyController` + combat C1-C4).
-- [ ] W3-A4 Animation: `AnimationTree` blend tree for player + NPCs (idle/walk/run/attack/hit/death). Quaternius rigs already bundled.
-- [ ] W3-A5 `NavigationRegion3D` bake on world load. Enemy patrol + chase via `NavigationAgent3D`.
-- [ ] W3-A6 Quest-log HUD + `victory_sequence` celebration (confetti VFX, Polish narration via `VoicePromptPort`, save-and-continue prompt).
+Not required to pass Gate A:
 
-**Type B — Obby (parkour platformer):** `data/templates/obby.json`
-- [ ] W3-B1 Win: reach finish flag within timer. Best-time persistence via `KidStatusReadModelAdapter`.
-- [ ] W3-B2 Lose: fall below kill-plane → respawn at last checkpoint. Lives = 5.
-- [ ] W3-B3 Mechanics: double-jump, sprint, sliding platforms, swinging hazards (`Area3D`), bounce pads, lava tiles — all via `RulesRuntimePort` block grammar so kids can author variants.
-- [ ] W3-B4 NPCs: friendly "race coach" mascot, TTS taunts/cheers. No combat NPCs.
-- [ ] W3-B5 Checkpoint flags, finish-line ribbon, fireworks VFX on win.
+- Ollama world creation.
+- Real microphone/STT.
+- Obby, multiplayer, publishing, or cloud services.
 
-### Wave 4 — Verify
-- [ ] W4-A Run `scripts/ci/run-ai-vision-tests.sh` against both world types. KF-001 onboarding, KF-002 hints, SC-001 COPPA still pass.
-- [ ] W4-B Run TASK-055 manual kid-parent gameplay charter.
-- [ ] W4-C Run TASK-056 localization + accessibility sweep (captions on, kid-register text only).
-- [ ] W4-D Move audit-ledger `verify_integrity("full")` multi-segment scan off main thread (carry-over).
+### Gate B — Engine/product slice
 
----
+Required after Gate A:
 
-## Risk register
+- Tauri package launches and supervises the Godot sidecar.
+- One small creator loop: collect → upgrade → place decoration → undo/replay.
+- AI assistance uses input/output moderation, parent approval for high-impact changes, audit events, and reversible mutations.
+- Accessibility, localization, performance, audio, and visual evidence are captured rather than inferred from headless tests.
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Carry-over: TASK-025 progression unwired | Library save/load silently breaks; kids lose worlds | Wave 0 must land before Wave 3; composition-root CI gate catches it |
-| Ollama streaming rewrite touches every AI call site | Regression in TASK-018 failsafe + TASK-043 memory layer | Feature flag `ai_stream_v2`; keep `_sync` shim for 1 release |
-| Two world types share `gameplay_runtime` but diverge on rules | Code-fork or unmaintainable `if obby:` branches | Push divergence into `RulesRuntimePort` block resources; runtime stays polymorphic |
-| Phonk/sigma_protocol theme on kid landing | Parents reject as edgy | Wave 1-A swaps to Astro-Bot kid aesthetic; phonk is parent-only optional skin |
-| Composition-root gate not enforced pre-merge | Adapter regressions slip in | Mark `.github/workflows/composition-root-gate.yml` as required check on PRs touching `main.gd` |
+## Current release blockers
 
----
+1. VS-001, VS-002, and VS-003 are implemented but still need cross-agent review and retained evidence.
+2. The clean-profile Adventure sandbox journey has not been manually proven.
+3. Manual evidence for TASK-055, TASK-056, TASK-059, and TASK-060 is missing.
+4. Tauri remains a smoke-command skeleton and cannot launch Godot.
+5. Voice input remains canned/placeholder and AI tool execution still uses a synchronous shim.
+6. The worktree contains unreviewed renderer/config changes and generated/imported assets.
 
-## Sequencing & ownership
+## Visual rescue gate — required before calling the demo presentable
 
-- **codex** — Wave 0 + Wave 2-A (Ollama streaming, AI-runtime touch).
-- **claude (me)** — Wave 3 domain (win/lose, quest, goal) + review Wave 1-E parent RBAC.
-- **copilot** — Wave 1 UI/UX + Wave 4-B/C manual QA.
-- **mistral** — Wave 3 mechanics adapters (`player_controller`, `enemy_controller`, AnimationTree, navigation bake).
+The next playable demo must look intentional in the first screenshot and remain
+interesting for the first five minutes. Functionality alone is not evidence of a
+vertical slice. Every item below needs a rendered/manual check in addition to
+headless tests.
 
-Estimated wall-clock with 4 agents parallel: **~6 working days** (Wave 0 day 1, Waves 1+2 days 2-3, Wave 3 days 3-5, Wave 4 day 6).
+### World and composition
 
----
+- Replace the empty opening square with a composed starting grove: trail, guide,
+  readable landmark, house/yard, vegetation clusters, ambient animals, and at
+  least two visible routes onward.
+- Hide the world boundary from the opening camera with terrain continuation,
+  foliage, hills, water, fog, or authored background geometry. No visible
+  rectangular island edge or eternal chasm.
+- Make the island feel large through layered sightlines and destination reveals:
+  village, forest, beach, cave, and one distant landmark must each have a
+  recognizable silhouette and a reason to walk there.
+- Use procedural generation only for repeatable dressing and macro variation;
+  the opening route and landmark beats remain curated so the child is never
+  dropped into an empty random field.
+- Procedural macro cells must extend well beyond the opening view so sprinting
+  for 20 seconds does not reach a hard edge or an empty test void. The seed is
+  deterministic per world id and remains safe to regenerate.
+- Player-relative scale is explicit: the player rig is the 1.8m reference;
+  houses, tree clusters and bridges are scaled as places rather than props.
+- Traversable set pieces use collision boxes. The starter homestead includes an
+  openable door, walkable interior, furniture, sit interaction and a forgiving
+  cook-food/heal loop so the sandbox has a normal-life activity before combat.
 
-## Out of scope
-- Cloud publishing (Wave B Phase 6 already shipped `FilesystemPublishStore`; HTTP stub stays).
-- True multiplayer / friends list (FR-025 carry-over).
-- New PBR asset re-authoring (Wave 3 graphics carry-over in `aaa-upgrade-synthesis-2026-05-19.md`).
-- Mobile / iPad builds.
+### Materials, lighting, and asset language
 
----
+- Establish one restrained palette and material language for ground, water,
+  foliage, architecture, characters, and interactables. Remove neon rainbow
+  defaults and untextured debug colors from the main camera.
+- Add real surface variation to terrain and props: albedo detail, roughness
+  differences, slope/shore transitions, foliage variation, and contact shadows.
+- Prefer cohesive ready-made Kenney, Quaternius, KayKit, and existing project
+  assets. Do not mix disconnected art packs in the same focal composition.
+- Add a daylight setup with controlled exposure, ambient occlusion/contact
+  grounding, soft shadows, atmospheric depth, and a consistent horizon.
 
-*This plan supersedes the auto-scaffolded PLAN.md. References: `~/.claude/projects/-Users-jakubsikora-Repos-choyce-engine/memory/MEMORY.md` (carry-overs + Wave A/B/C remediation), `.ai/tasks/backlog.yaml` (TASK-001…066), `thoughts/shared/research/aaa-upgrade-synthesis-2026-05-19.md` (art direction synthesis).*
+### UI and onboarding
+
+- Replace the oversized control legend, emoji/debug icon treatment, rainbow
+  hotbar, giant world labels, and mascot overlay with a compact modern HUD.
+- Keep only context-relevant information on screen: health/energy when needed,
+  selected item, short interaction prompt, captions, and a small pause/help entry.
+- Use iconography from one visual system, readable typography, translucent
+  panels, consistent spacing, focus states, and controller/tablet-safe hit areas.
+- The think-demo launcher starts without the old “Cześć, jestem twoim ninja”
+  greeting. Trailer character voices are separate, youthful ElevenLabs voices,
+  queued serially, captioned, and never allowed to overlap.
+
+### Cinematic and sound bar
+
+- Keep the 5–10 second trailer as a real 3D shot with clear front-facing
+  silhouettes, readable anticipation/contact/recovery, intentional camera shots,
+  restrained impacts, and the monster fully inside frame.
+- Ziemek and Gniewko must have distinct, masculine youthful deliveries with
+  emotional variation; every line must match its caption and finish before the
+  launcher handoff.
+- Physical attacks use physical ElevenLabs-generated punch/kick/whoosh assets;
+  music stays below dialogue and important cues are audible on laptop speakers.
+
+### Visual acceptance checks
+
+- Capture rendered screenshots at launcher, 15 seconds into exploration, the
+  first guide interaction, a region transition, and an optional combat moment.
+- At launcher and spawn, no debug letters, clipped actors, visible map edge,
+  flat placeholder terrain, or empty square composition may be present.
+- A reviewer unfamiliar with the code can identify the player, guide, route,
+  nearest landmark, interaction affordance, and destination from the images
+  alone.
+- Run the same checks at the project reference resolution and a laptop-sized
+  window; no major label, HUD, or camera framing break is acceptable.
+
+### Adversarial review status — 2026-07-17
+
+- Two independent hostile reviews were run after the world-scale pass. Both
+  returned `FIX-FIRST`: headless smoke proves boot only; rendered gate evidence,
+  collision/interaction integration coverage, safe migration, and a convincing
+  large-world composition are still required before calling this presentable.
+- The implementation pass addressed the most immediate regressions: stale local
+  starter data is migrated only when untouched, Adventure rules/quests are now
+  free-play, the opening no longer seeds cube placeholder resources, imported
+  nature assets are larger and denser, and the river continues well beyond the
+  bridge. These changes do not waive the rendered acceptance gate.
+
+## Delivery gates
+
+### Gate 0 — Repository truth
+
+- Reconcile `project.godot`, `shell/next-env.d.ts`, generated imports, raw assets, and Cargo lock.
+- Update stale backlog statuses and remove historical blockers that are no longer true.
+- Keep the Forward+/SDFGI rendering decision explicit and validated.
+
+Exit: intentional worktree, parse-clean Godot project, and a reproducible validation command set.
+
+### Gate 1 — Canonical authored runtime
+
+- Preserve node properties, transforms, source blocks, rule properties, and active state in `TemplateLoader`.
+- Normalize JSON vector/color values at the inbound renderer boundary without leaking Godot nodes into domain/application code.
+- Copy trigger metadata into `Area3D` nodes and support `collectible`, `checkpoint`, `win`, and `win_zone`.
+- Use one canonical template-to-runtime path for Adventure.
+- Add tests from template JSON through runtime-facing entities.
+
+Exit: authored Adventure and Obby trigger/property tests pass; no data is silently discarded.
+
+### Gate 2 — Playable Adventure proof
+
+- Confirm the NPC scene-tree lifecycle fix remains clean in rendered and
+  clean-profile runs.
+- Place the guide at the opening trail and distribute encounters across the
+  island so the first minutes teach movement and discovery.
+- Verify free-play startup, guide dialogue, exploration, region discovery,
+  optional combat, soft respawn, cursor release, exit, and teardown.
+- Verify session stats and persistence/read models are correct after leaving
+  and replaying a sandbox session.
+- Execute the clean-profile sandbox charter and capture logs/screenshots/video.
+
+Exit: a child can complete the loop without adult rescue; no high-severity runtime errors remain.
+
+### Gate 3 — Feel and accessibility
+
+- Add enemy telegraph/wind-up, hit response, soft aim assist, weapon differentiation, and clear reward feedback.
+- Route music/SFX/voice through explicit buses and validate levels and blocking cues.
+- Add reduce-motion behavior, controller/tablet-friendly controls, readable dynamic hints, and captions.
+- Prefer existing approved KayKit/Quaternius/Kenney assets, template packs,
+  rule blocks, and sample scenes. Create new assets or logic only when a
+  rendered/tested gap remains.
+
+Exit: manual kid-flow review passes on Tier 1/Tier 2 hardware with traceable defects.
+
+### Gate 4 — Packaged product
+
+- Implement Tauri Godot sidecar spawn, readiness, shutdown, reconnect, protocol versioning, authentication, and bounded message handling.
+- Run packaged-shell smoke test, not only Godot direct launch.
+
+Exit: installed shell launches the same Adventure slice and recovers from engine restart.
+
+### Gate 5 — Governed creation loop
+
+- Add one small reversible build/upgrade/decorate interaction.
+- Replace canned STT with local-first real input and explicit opt-in fallback.
+- Replace synchronous AI tool shim with cancellable async execution.
+- Enforce input moderation, output moderation, parent approval for high-impact changes, structured audit, and Preview → Apply → Undo.
+
+Exit: AI failure, refusal, cancellation, and rollback are safe and observable.
+
+### Gate 6 — Expansion
+
+- Add Obby only after Adventure acceptance is complete.
+- Reuse the canonical template/runtime contracts; do not fork `GameplayRuntime` by template.
+
+## Evidence requirements
+
+Release evidence must include:
+
+- Contract, application, safety, persistence, and domain-isolation outputs.
+- Clean-profile Adventure win, loss, retry, and second-run evidence.
+- Rendered screenshots and performance measurements on Tier 1 and Tier 2 hardware.
+- Localization, captions, contrast, reduce-motion, and control-mode results.
+- Parent consent, audit, delete/export, unsafe-input, and publish-block results.
+- Packaged Tauri launch evidence for Gate B.
+
+Headless performance and fixture-backed KPI reports are useful regression signals, but do not substitute for rendered/manual evidence.
+
+## Planned backlog tasks
+
+The executable task records live in `.ai/tasks/backlog.yaml` and must follow `todo → in_progress → in_review → done`. No task is done without cross-agent review.
+
+| Task | Focus | Owner | Cross-review | Depends on |
+|---|---|---|---|---|
+| VS-001 | Preserve template transforms/properties/rule metadata | codex | claude | Gate 0 |
+| VS-002 | Propagate trigger metadata and runtime trigger semantics | codex | claude | VS-001 |
+| VS-003 | Fix NPC scene-tree lifecycle and runtime error smoke | codex | claude | Gate 0 |
+| VS-004 | Clean-profile Adventure sandbox charter and evidence | copilot | codex | VS-001, VS-002, VS-003 |
+| VS-011 | Sandbox interaction, ecology, and discovery polish | codex | claude | VS-004 |
+| VS-012 | Visual art direction reset: palette, materials, lighting, and cohesive asset kit | codex | claude | VS-004 |
+| VS-013 | Opening composition and world density: grove, routes, landmarks, horizon occlusion | codex | claude | VS-012 |
+| VS-014 | Modern HUD/onboarding replacement and removal of debug presentation | codex | claude | VS-012 |
+| VS-015 | Trailer quality/audio pass: acting, masculine youthful voices, queue, captions, mix | codex | claude | VS-012 |
+| VS-016 | Rendered visual acceptance captures and Tier 1/Tier 2 performance evidence | copilot | codex | VS-013, VS-014, VS-015 |
+| VS-020 | Tool-gated harvesting loop: find/craft axe and pickaxe, then cut trees and mine stone | codex | claude | VS-018, VS-019 |
+| VS-021 | Rare vehicle discovery/driving and a bounded bulldozer destruction sandbox | codex | claude | VS-020 |
+| VS-022 | Player customization: skin, hair, face, top, pants and shoes | codex | claude | VS-014 |
+| VS-023 | Child-safe original liminal-creature encounter set, replacing slime placeholders | codex | claude | VS-005, VS-012 |
+| VS-005 | Combat feel, feedback, and easy-mode pass | mistral | codex | VS-004 |
+| VS-006 | Audio buses, visual QA, accessibility, and rendered performance | mistral | copilot | VS-004 |
+| VS-007 | Tauri sidecar and authenticated bridge | copilot | codex | VS-004 |
+| VS-008 | Reversible creator interaction | claude | codex | VS-004 |
+| VS-009 | Real voice/AI pipeline and safety governance | codex | claude | VS-008 |
+| VS-010 | Obby expansion using shared runtime contracts | mistral | codex | Gate 6 |
+
+## New sandbox systems — implementation order (2026-07-18)
+
+### Priority rule — visual-first vertical slice
+
+For every remaining task, the priority order is: **finished-looking graphics →
+believable physical meshes/collision → animation/camera/audio → mechanics that
+make the scene playable → expansion systems**. A feature that adds a flat
+placeholder, untextured primitive, oversized proxy collider, invisible wall, or
+debug-looking UI is rejected even if its logic works. Ready-made CC0 models,
+PBR materials, authored animation clips, and verified shaders take precedence
+over bespoke procedural placeholders. Headless tests guard regressions; a
+rendered camera capture is the actual acceptance evidence.
+
+1. **Foundation:** collision dimensions are world metres rather than scaled
+   proxy guesses; preserve native materials; use a camera ray and 3D preview
+   for TPP building; real ground/dirt collision; a water volume with
+   wading/swim physics; continuous exploration music; no legacy Ninja overlay.
+2. **Gather → earn → upgrade (VS-020):** place tree and rock resource nodes,
+   tool caches/crafting recipes, durability-free axe and pickaxe checks, clear
+   feedback, and respawnable resources. The child finds or makes the matching
+   tool before harvesting; no timer, grind quota or forced quest.
+3. **Discover → drive → reshape (VS-021):** use a verified CC0 vehicle kit
+   (Kenney Car Kit is the preferred candidate) for rare parked vehicles.
+   Implement arcade CharacterBody driving, enter/exit, camera handoff and
+   collision. The bulldozer may remove only tagged temporary scenery and
+   build-grid blocks; homes, NPCs, bridge, boundary and protected builds stay
+   immune and every removal is restorable.
+4. **Identity/ownership (VS-022):** compact bounded swatches/face variants for
+   skin, hair, face, top, pants and shoes apply to the actual third-person rig,
+   persist locally and never affect gameplay stats.
+5. **Optional encounters (VS-023):** replace slime primitives with original,
+   non-gory liminal-space creatures (mood-inspired, not named or recognizable
+   Backrooms copies), with clear telegraphs, avoidable behavior and parental
+   combat gating.
+
+Acceptance requires a rendered child flow: find an axe → cut a tree → receive
+wood → find/make a pickaxe → mine stone; find, enter, drive and exit a rare
+vehicle; safely restore bulldozer changes; see a chosen character look after a
+full replay; and encounter an optional, readable, non-gory liminal creature.
+
+## Explicit non-goals for the next implementation batch
+
+- Do not add another world type.
+- Do not turn optional discovery prompts into a mandatory quest chain or
+  completion checklist.
+- Do not add bespoke/generated assets before checking the existing asset and
+  sample libraries against a verified visual gap.
+- Do not make Ollama or microphone access a prerequisite for the Adventure sandbox loop.
+- Do not mark the vertical slice complete from headless tests alone.
+- Do not add dynamic LLM-driven NPCs or monsters before the visual/playable demo
+  gate is accepted; keep that idea bookmarked for a later bounded experiment
+  using tailnet LiteLLM decisions, ElevenLabs dialogue, allowlisted actions,
+  moderation, budgets, fallbacks, and audit logs.
+
+## References
+
+- `.ai/tasks/backlog.yaml`
+- `thoughts/shared/plans/2026-07-19-thin-slice-adventure-a-to-z.md`
+- `thoughts/shared/reviews/adv-BB-combat-design-2026-05-19.md`
+- `thoughts/shared/reviews/adv-Y-fight-feel-2026-05-19.md`
+- `docs/release/release-exit-criteria.md`
+- `docs/security/RELEASE_THREAT_MODEL.md`

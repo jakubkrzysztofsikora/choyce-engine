@@ -1,0 +1,11 @@
+Manual QA Verification Evidence for TASK-059
+Date: 2026-07-18
+Tester: Claude (Junior Coder Mode)
+Commit: 9be15cbd2eebb6263033f1b5240eb06de2024374
+Method: Static verification of Godot entrypoints (main.gd), Create canvas interface routes (create_shell.gd), and data lifecycle implementations.
+Verification Logs:
+- Checked InboundMain._ready() navigation target (SHELL_CREATE auto-direct).
+- Verified OnboardingService transition logs (STEP_WELCOME -> STEP_PLACE_FIRST -> STEP_PAINT_FIRST -> STEP_PLAY).
+- Observed diacritics approximations in create_shell.gd strings (F-059-02).
+- Confirmed absence of KEY_REQUEST_AI_HELP_PORT in main.gd (F-059-01).
+- Inspected InMemoryPublishStore reset behavior (F-059-04).

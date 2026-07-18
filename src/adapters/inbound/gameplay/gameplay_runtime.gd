@@ -1,6 +1,8 @@
 class_name GameplayRuntime
 extends Node3D
 
+const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
+
 signal session_ended
 ## Emitted at session-end with the WinOutcome so HUD/celebration
 ## can branch on win vs. lose vs. reason. Always fires before
@@ -22,6 +24,7 @@ var _effect_spawner: EffectSpawner
 var _screen_feedback: ScreenFeedback
 var _victory_sequence: VictorySequence
 var _ambient_player: AudioStreamPlayer
+var _ambient_particles: GPUParticles3D
 
 # Rules engine — injected by main.gd via setup_rules() before start_session.
 # Optional: GameplayRuntime keeps working with null rules (legacy worlds).
@@ -74,8 +77,6 @@ const WAVE_RESPAWN_DELAY := 6.0
 ## softlock (Adv 2 H-5). Default world floor is y=0; -50 leaves a
 ## comfortable buffer for tall builds.
 const FALL_KILL_PLANE_Y := -50.0
-const HUD_SLOT_BLUE: Texture2D = preload("res://data/textures/ui/PNG/Blue/Double/button_square_depth_gloss.png")
-const HUD_SLOT_YELLOW: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/button_square_depth_gloss.png")
 const HUD_ACTION_GREEN: Texture2D = preload("res://data/textures/ui/PNG/Green/Double/button_round_depth_gloss.png")
 const HUD_ICON_AXE: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-axe.png")
 const HUD_ICON_HAMMER: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/tool-hammer.png")
@@ -136,6 +137,12 @@ var _profile_id: String = ""
 ## stays painless.
 var _shell_bridge: Object = null
 
+## VS-022: cosmetic-only player-character customization. Loaded once at
+## session start from user://character_customization.json, applied to the
+## player rig, and re-saved whenever the panel emits a change signal.
+var _customization: CharacterCustomization = null
+var _customization_panel: CharacterCustomizationPanel = null
+
 
 ## Inject the optional shell bridge. main.gd's _build_default_ports_phase_2
 ## passes the WebSocketShellBridgeAdapter when registered; otherwise this
@@ -161,6 +168,10 @@ func _ready() -> void:
 	_screen_feedback = $ScreenFeedbackLayer/ScreenFeedback
 	_victory_sequence = $VictorySequence
 	_ambient_player = $AmbientPlayer
+	_ambient_particles = $AmbientParticles if has_node("AmbientParticles") else null
+	
+	# Respect reduce-motion accessibility setting for ambient particles
+	_update_ambient_particles_from_reduce_motion()
 
 	# Live NPC voice via ElevenLabs. Key from env; absent -> silent no-op.
 	# Accept both env spellings (ELEVENLABS_API_KEY and ELEVEN_LABS_API_KEY).
@@ -291,6 +302,7 @@ func start_session(world: World, session: Session) -> void:
 	_player_controller.visible = true
 	_player_controller.set_process_input(true)
 	_player_controller.set_process(true)
+	_apply_loaded_customization()
 	# Don't capture mouse — kid needs to click ESC button / nav back if anything stalls.
 	# Mouse capture made the apparent "hang" feel total since user couldn't escape.
 	# FPS-style mouselook — capture cursor so motion is raw delta.
@@ -479,6 +491,8 @@ func _enemy_factory_for(enemy_id: String) -> EnemyDefinition:
 ## wall-clock seconds regardless of Engine.time_scale.
 func _apply_hit_stop(duration_seconds: float) -> void:
 	Engine.time_scale = 0.15
+	if get_tree() == null:
+		return
 	var t := get_tree().create_timer(duration_seconds, true, false, true)
 	t.timeout.connect(func() -> void:
 		Engine.time_scale = 1.0
@@ -551,6 +565,14 @@ func _on_block_removed(cell: Vector3i, kind_id: String) -> void:
 	if _rules_runtime != null:
 		_rules_runtime.set_context_value("blocks_placed", _build_grid.block_count())
 		_rules_runtime.on_event("break_block", {"kind": kind_id, "cell": cell})
+
+
+func _on_hud_undo_pressed() -> void:
+	if _build_grid != null:
+		if _build_grid.undo_last_action():
+			_interaction_feedback("Cofnięto!")
+			if _audio_bus != null:
+				_audio_bus.emit_sfx("collect", _player_controller.global_position if _player_controller != null else Vector3.ZERO)
 
 
 ## MVP: spawn a small kid-safe enemy pack beyond the opening guide and
@@ -651,6 +673,7 @@ func _show_intro_npc() -> void:
 		if greeting.is_empty():
 			return
 		_active_npc_id = npc.npc_id
+		_animate_npc_speech(npc.npc_id, greeting)
 		_show_npc_dialogue(npc.name_pl, greeting)
 		return
 
@@ -678,6 +701,9 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	# back to a tinted capsule only if the model fails to load.
 	var visual := _build_npc_visual(npc)
 	root.add_child(visual)
+	var facial = visual.get_node_or_null("FacialPerformance")
+	if facial != null:
+		root.set_meta("facial_performance", facial)
 
 	# The interaction bubble carries the name once the child chooses to talk.
 	# Floating labels across the terrain made the world read like an editor.
@@ -744,6 +770,7 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 				model.rotation.y = PI
 				if npc.visual_id == "npc_pirate":
 					_add_pirate_accessories(model)
+				_attach_humanoid_face(model)
 				var anim := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 				if anim != null:
 					for hint in _NPC_IDLE_HINTS:
@@ -764,7 +791,22 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 	mat.emission = mat.albedo_color
 	mat.emission_energy_multiplier = 0.15
 	capsule.material_override = mat
+	# Keep the degraded fallback expressive too; the face sits on its forward
+	# surface rather than leaving a silent blank marker in a live session.
+	var fallback_face = FACIAL_PERFORMANCE_SCRIPT.new()
+	fallback_face.name = "FacialPerformance"
+	capsule.add_child(fallback_face)
+	fallback_face.setup_face(Vector3(0.0, 0.36, 0.0), -0.35, 0.8)
 	return capsule
+
+
+func _attach_humanoid_face(model: Node3D) -> void:
+	var face = FACIAL_PERFORMANCE_SCRIPT.new()
+	face.name = "FacialPerformance"
+	model.add_child(face)
+	# Kenney head centre is local y≈0.51 and +Z is its authored forward;
+	# the model wrapper rotates PI afterwards for the gameplay world.
+	face.setup_face(Vector3(0.0, 0.51, 0.0), 0.20)
 
 
 func _build_parrot_visual() -> Node3D:
@@ -841,6 +883,12 @@ func _build_parrot_visual() -> Node3D:
 		foot.material_override = dark
 		foot.position = Vector3(x, 0.08, 0.02)
 		parrot.add_child(foot)
+	# The parrot keeps its authored eyes while this lightweight mouth layer
+	# opens only while its greeting is being spoken.
+	var face = FACIAL_PERFORMANCE_SCRIPT.new()
+	face.name = "FacialPerformance"
+	parrot.add_child(face)
+	face.setup_face(Vector3(0.0, 0.76, -0.10), -0.22, 0.72, false, false)
 	return parrot
 
 
@@ -902,6 +950,7 @@ func _on_npc_trigger_entered(body: Node, npc_root: Node3D) -> void:
 	if greeting.is_empty():
 		return
 	_active_npc_id = String(npc_root.get_meta("npc_id", ""))
+	_animate_npc_speech(String(npc_root.get_meta("npc_id", "")), greeting)
 	_show_npc_dialogue(name_pl, greeting)
 
 
@@ -926,6 +975,24 @@ func _show_npc_dialogue(name_pl: String, line_pl: String) -> void:
 	# Speak the line aloud (ElevenLabs). Caption stays as the fallback.
 	if _npc_voice != null:
 		_npc_voice.speak(line_pl)
+
+
+func _speech_duration_for_line(line: String) -> float:
+	# Voice assets can vary a little, but this avoids a permanent talk loop and
+	# closely covers short kid-facing greetings until audio playback ends.
+	return clampf(float(line.length()) / 13.0, 0.75, 4.5)
+
+
+func _animate_npc_speech(npc_id: String, line: String) -> void:
+	if _npc_root == null or npc_id.is_empty():
+		return
+	for child in _npc_root.get_children():
+		if not (child is Node3D) or String(child.get_meta("npc_id", "")) != npc_id:
+			continue
+		var facial = child.get_meta("facial_performance", null)
+		if facial != null and is_instance_valid(facial):
+			facial.speak_for(_speech_duration_for_line(line), FacialPerformance.Emotion.HAPPY)
+		return
 
 
 func _hide_npc_dialogue() -> void:
@@ -1022,43 +1089,6 @@ func _on_player_attacked(damage: int, hit_position: Vector3) -> void:
 	# Cache attack style for use in _on_enemy_damaged
 	if _player_controller != null and _player_controller.has_method("get_last_attack_style"):
 		_last_attack_style = _player_controller.get_last_attack_style()
-
-
-func _update_crosshair_enemy_hover() -> void:
-	if _crosshair_h == null or _crosshair_v == null or _player_controller == null:
-		return
-	var camera := _player_controller.find_child("Camera3D", true, false)
-	if camera == null:
-		camera = _player_controller.find_child("Camera", true, false)
-	if camera == null or not (camera is Camera3D):
-		_crosshair_h.color = Color(1, 1, 1, 0.8)
-		_crosshair_v.color = Color(1, 1, 1, 0.8)
-		return
-	var from := (camera as Camera3D).project_ray_origin(Vector2(0.5, 0.5))
-	var to := from + (camera as Camera3D).project_ray_normal(Vector2(0.5, 0.5)) * 1.8
-	var space_state := get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.new()
-	query.from = from
-	query.to = to
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	query.exclude = [camera]
-	var result := space_state.intersect_ray(query)
-	var is_enemy_in_range := false
-	if result:
-		var collider: Node3D = result.collider
-		if collider != null and is_instance_valid(collider):
-			var body: Node3D = collider
-			while body != null:
-				if body.is_in_group("enemies"):
-					is_enemy_in_range = true
-					break
-				body = body.get_parent() as Node3D
-				if body == null:
-					break
-	var color := Color(1.0, 0.4, 0.4, 0.8) if is_enemy_in_range else Color(1, 1, 1, 0.8)
-	_crosshair_h.color = color
-	_crosshair_v.color = color
 
 
 func _on_enemy_damaged(amount: int, position: Vector3) -> void:
@@ -1283,7 +1313,7 @@ func _apply_tier(index: int, label: String, damage: int, inv: Dictionary) -> voi
 	if _player_controller != null and _player_controller.has_method("set_weapon_visual"):
 		_player_controller.set_weapon_visual(String(_weapon_tiers[index].get("id", "")))
 	if _weapon_label != null:
-		_weapon_label.text = "🗡 %s (%d dmg)" % [label, damage]
+		_weapon_label.text = "%s" % label
 	if _screen_feedback != null:
 		_screen_feedback.flash(Color(1.0, 0.95, 0.4), 0.3)
 	if _effect_spawner != null and _player_controller != null:
@@ -1366,8 +1396,8 @@ func _on_level_up(before: int, after: int) -> void:
 func _current_weapon_label() -> String:
 	if _current_weapon_index >= 0 and _current_weapon_index < _weapon_tiers.size():
 		var tier: Dictionary = _weapon_tiers[_current_weapon_index]
-		return "🗡 %s" % String(tier.get("label", "Pięść"))
-	return "🗡 Pięść"
+		return String(tier.get("label", "Pięść"))
+	return "Pięść"
 
 
 func _current_weapon_damage() -> int:
@@ -1383,10 +1413,12 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 		return
 	for child in _hotbar_panel.get_children():
 		child.queue_free()
-	# Slot 0 is the tool, slots 1-4 are build materials. The current scene used
-	# labels such as FIST/GRASS/DIRT, which made the HUD feel like an editor and
-	# excluded non-reading children. Reuse the bundled Kenney pictorial UI and
-	# real kit thumbnails while retaining the existing hotbar input/state flow.
+	# Slot 0 is the tool, slots 1-4 are build materials. The previous version
+	# painted each slot with the bundled Kenney Blue/Yellow placeholder
+	# textures, which read as debug UI rather than a kid game. Reuse the same
+	# translucent panel system as the rest of the HUD; the active slot is
+	# marked by a brighter accent border, the icon stays as a real kit
+	# thumbnail.
 	var catalog := BlockKind.default_catalog()
 	var slots: Array = []
 	slots.append({"id": "weapon", "name": _current_weapon_label()})
@@ -1399,13 +1431,11 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 		slot.name = "HotbarSlot_%d" % i
 		slot.custom_minimum_size = Vector2(82, 82)
 		slot.tooltip_text = String(entry["name"])
-		var background := TextureRect.new()
-		background.texture = HUD_SLOT_YELLOW if i == active_slot else HUD_SLOT_BLUE
-		background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		background.set_anchors_preset(Control.PRESET_FULL_RECT)
-		background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(background)
+		var panel := PanelContainer.new()
+		panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		var accent := Color(0.78, 0.62, 0.32) if i == active_slot else Color(0.45, 0.55, 0.70)
+		panel.add_theme_stylebox_override("panel", _hud_panel_style(accent, 0.92 if i == active_slot else 0.78))
+		slot.add_child(panel)
 		var icon := TextureRect.new()
 		icon.texture = _hotbar_texture_for(String(entry["id"]), i)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -1517,7 +1547,7 @@ func _build_hud() -> void:
 
 	var back := Button.new()
 	back.name = "BackBtn"
-	back.text = "← Wróć"
+	back.text = "Wróć"
 	back.custom_minimum_size = Vector2(160, 56)
 	back.add_theme_font_size_override("font_size", 28)
 	back.set_anchors_preset(Control.PRESET_TOP_LEFT)
@@ -1531,6 +1561,40 @@ func _build_hud() -> void:
 	back.add_theme_color_override("font_color", Color(0.92, 0.97, 1.0))
 	back.pressed.connect(end_session)
 	hud.add_child(back)
+
+	var undo_btn := Button.new()
+	undo_btn.name = "UndoBtn"
+	undo_btn.text = "Cofnij"
+	undo_btn.custom_minimum_size = Vector2(160, 56)
+	undo_btn.add_theme_font_size_override("font_size", 28)
+	undo_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	undo_btn.offset_left = 208
+	undo_btn.offset_top = 32
+	undo_btn.offset_right = 368
+	undo_btn.offset_bottom = 88
+	undo_btn.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.92, 0.72, 0.30), 0.88))
+	undo_btn.add_theme_stylebox_override("hover", _hud_panel_style(Color(1.0, 0.82, 0.40), 0.96))
+	undo_btn.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.72, 0.52, 0.20), 0.96))
+	undo_btn.add_theme_color_override("font_color", Color(1.0, 0.97, 0.92))
+	undo_btn.pressed.connect(_on_hud_undo_pressed)
+	hud.add_child(undo_btn)
+
+	var customize_btn := Button.new()
+	customize_btn.name = "CustomizeBtn"
+	customize_btn.text = "Postać"
+	customize_btn.custom_minimum_size = Vector2(160, 56)
+	customize_btn.add_theme_font_size_override("font_size", 28)
+	customize_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	customize_btn.offset_left = 384
+	customize_btn.offset_top = 32
+	customize_btn.offset_right = 544
+	customize_btn.offset_bottom = 88
+	customize_btn.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.62, 0.46, 0.78), 0.88))
+	customize_btn.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.72, 0.56, 0.88), 0.96))
+	customize_btn.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.50, 0.34, 0.66), 0.96))
+	customize_btn.add_theme_color_override("font_color", Color(0.96, 0.93, 1.0))
+	customize_btn.pressed.connect(_on_customize_pressed)
+	hud.add_child(customize_btn)
 
 	# HP bar + score panel (top-right). 7yo combat HUD.
 	var stats_panel := PanelContainer.new()
@@ -1571,7 +1635,7 @@ func _build_hud() -> void:
 	_score_label.name = "ScoreLabel"
 	_score_label.text = "0"
 	_score_label.add_theme_font_size_override("font_size", 22)
-	_score_label.add_theme_color_override("font_color", Color(1, 0.92, 0.4))
+	_score_label.add_theme_color_override("font_color", Color(1.0, 0.94, 0.78))
 	_score_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 	_score_label.add_theme_constant_override("shadow_offset_x", 2)
 	_score_label.add_theme_constant_override("shadow_offset_y", 2)
@@ -1586,7 +1650,7 @@ func _build_hud() -> void:
 	stats_vbox.add_child(weapon_icon)
 	_weapon_label = Label.new()
 	_weapon_label.name = "WeaponLabel"
-	_weapon_label.text = "🗡 Pięść (4 dmg)"
+	_weapon_label.text = "Pięść"
 	_weapon_label.add_theme_font_size_override("font_size", 18)
 	_weapon_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
 	_weapon_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
@@ -1894,7 +1958,6 @@ func _physics_process(delta: float) -> void:
 		_world_renderer.set_exploration_focus(_player_controller.global_position)
 	_tick_world_interactions()
 	# Adv Y H4 fix: tint crosshair red when enemy is in range
-	_update_crosshair_enemy_hover()
 	if _interaction_feedback_until > 0.0:
 		_interaction_feedback_until -= delta
 		if _interaction_feedback_until <= 0.0 and _interaction_prompt_label != null:
@@ -2287,3 +2350,64 @@ func _trigger_victory() -> void:
 
 func _on_victory_completed() -> void:
 	end_session()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# VS-022 character customization wiring. Loads from disk once per session,
+# applies to the player, and lets a compact overlay mutate + persist it.
+# ──────────────────────────────────────────────────────────────────────────────
+
+func _apply_loaded_customization() -> void:
+	if _player_controller == null or not _player_controller.has_method("apply_customization"):
+		return
+	if _customization == null:
+		_customization = CharacterCustomization.load_from_disk()
+	_player_controller.apply_customization(_customization)
+
+
+func _on_customize_pressed() -> void:
+	if _customization_panel != null and is_instance_valid(_customization_panel):
+		_close_customization_panel()
+		return
+	if _customization == null:
+		_customization = CharacterCustomization.load_from_disk()
+	var hud := get_node_or_null("HUD")
+	if hud == null:
+		return
+	_customization_panel = CharacterCustomizationPanel.new().setup(_customization)
+	_customization_panel.customization_changed.connect(_on_customization_panel_changed)
+	_customization_panel.panel_closed.connect(_close_customization_panel)
+	hud.add_child(_customization_panel)
+	# Release mouse capture so the kid can interact with the panel without the
+	# camera fighting their cursor. Recaptured on panel close.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+func _on_customization_panel_changed(c: CharacterCustomization) -> void:
+	if c == null:
+		return
+	_customization = c
+	if _player_controller != null and _player_controller.has_method("apply_customization"):
+		_player_controller.apply_customization(c)
+	c.save_to_disk()
+
+
+func _close_customization_panel() -> void:
+	if _customization_panel != null and is_instance_valid(_customization_panel):
+		_customization_panel.queue_free()
+	_customization_panel = null
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+## Helper to check if reduce-motion is enabled via the global accessibility policy
+func _is_reduce_motion_enabled() -> bool:
+	var AccessibilityPolicyPort_class := load("res://src/ports/outbound/accessibility_policy_port.gd")
+	if AccessibilityPolicyPort_class != null:
+		return AccessibilityPolicyPort_class._global_instance.is_reduce_motion_enabled() if AccessibilityPolicyPort_class._global_instance else false
+	return false
+
+
+## Update ambient particles based on reduce-motion setting
+func _update_ambient_particles_from_reduce_motion() -> void:
+	if _ambient_particles != null:
+		_ambient_particles.emitting = not _is_reduce_motion_enabled()

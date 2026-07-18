@@ -23,6 +23,8 @@
  * Real domain commands (start_play, quit, pause, …) land in a follow-up PR.
  */
 
+import { invoke } from "@tauri-apps/api/core";
+
 export const DEFAULT_BRIDGE_URL = "ws://127.0.0.1:9876" as const;
 export const HEARTBEAT_INTERVAL_MS = 5_000;
 export const HEARTBEAT_MAX_MISSES = 3;
@@ -46,6 +48,7 @@ export interface Envelope {
   result?: unknown;
   ok?: boolean;
   error?: string;
+  auth_token?: string;
 }
 
 export interface BridgeEvents {
@@ -66,6 +69,7 @@ interface PendingCmd {
 export class GodotBridge {
   private ws: WebSocket | null = null;
   private url: string;
+  private authToken = "";
   private nextId = 1;
   private pending = new Map<number, PendingCmd>();
   private listeners: { [K in keyof BridgeEvents]: Set<Listener<K>> } = {
@@ -117,6 +121,21 @@ export class GodotBridge {
     }
     this.setStatus("connecting");
 
+    let currentUrl = this.url;
+    let currentAuthToken = this.authToken;
+
+    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ !== undefined) {
+      try {
+        const info = await invoke<{ port: number; auth_token: string }>("start_engine");
+        currentUrl = `ws://127.0.0.1:${info.port}`;
+        currentAuthToken = info.auth_token;
+        this.url = currentUrl;
+        this.authToken = currentAuthToken;
+      } catch (e) {
+        console.error("[godot-bridge] Tauri start_engine failed:", e);
+      }
+    }
+
     return new Promise<void>((resolve, reject) => {
       let settled = false;
       const settle = (fn: () => void) => {
@@ -125,7 +144,7 @@ export class GodotBridge {
         fn();
       };
 
-      const ws = new WebSocket(this.url);
+      const ws = new WebSocket(currentUrl);
       this.ws = ws;
 
       const connectTimer = setTimeout(() => {
@@ -185,6 +204,9 @@ export class GodotBridge {
       return Promise.reject(new Error(`bridge not open (status=${this.status})`));
     }
     const env: Envelope = { ...envelope };
+    if (this.authToken) {
+      env.auth_token = this.authToken;
+    }
     if (env.type === "cmd") {
       env.id = env.id ?? this.nextId++;
       const id = env.id;

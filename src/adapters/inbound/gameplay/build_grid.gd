@@ -32,6 +32,7 @@ const MAX_BLOCKS_PER_WORLD := 500   ## kid-friendly cap per adversary review
 var _cells: Dictionary = {}          ## Vector3i -> MeshInstance3D
 var _kind_lookup: Dictionary = {}    ## block_id -> BlockKind
 var _kind_for_cell: Dictionary = {}  ## Vector3i -> block_id (for events)
+var _history_stack: Array = []       ## Array of Dictionary {"action": "place"|"break", "cell": Vector3i, "block_id": String}
 
 
 func _ready() -> void:
@@ -77,7 +78,7 @@ func kind_at(cell: Vector3i) -> String:
 
 ## Place a block of the given kind at cell. Returns true on success.
 ## Fails if: cell occupied, capacity reached, or block_id unknown.
-func place_block(cell: Vector3i, block_id: String) -> bool:
+func place_block(cell: Vector3i, block_id: String, record_history: bool = true) -> bool:
 	if _cells.has(cell):
 		block_place_failed.emit("occupied")
 		return false
@@ -116,6 +117,8 @@ func place_block(cell: Vector3i, block_id: String) -> bool:
 	add_child(body)
 	_cells[cell] = body
 	_kind_for_cell[cell] = block_id
+	if record_history:
+		_history_stack.append({"action": "place", "cell": cell, "block_id": block_id})
 	block_placed.emit(cell, block_id)
 	return true
 
@@ -125,7 +128,7 @@ func place_block(cell: Vector3i, block_id: String) -> bool:
 ## the gameplay runtime can credit the kid's inventory with the
 ## block's drop_id (or block_id if drop_id is empty). Closes the
 ## "wood_oak has no producer" loop-broken finding (Adv 4).
-func break_block(cell: Vector3i) -> String:
+func break_block(cell: Vector3i, record_history: bool = true) -> String:
 	if not _cells.has(cell):
 		return ""
 	var body: Node = _cells[cell]
@@ -134,6 +137,8 @@ func break_block(cell: Vector3i) -> String:
 	_kind_for_cell.erase(cell)
 	if body != null and is_instance_valid(body):
 		body.queue_free()
+	if record_history:
+		_history_stack.append({"action": "break", "cell": cell, "block_id": id})
 	block_removed.emit(cell, id)
 	# Drop a material item so mining feeds the gear loop.
 	var kind: BlockKind = _kind_lookup.get(id, null)
@@ -143,8 +148,27 @@ func break_block(cell: Vector3i) -> String:
 	return id
 
 
+## Undo the last block placement or break action. Returns true if successful.
+func undo_last_action() -> bool:
+	if _history_stack.is_empty():
+		return false
+	var last_act: Dictionary = _history_stack.pop_back()
+	match last_act["action"]:
+		"place":
+			var cell: Vector3i = last_act["cell"]
+			break_block(cell, false)
+			return true
+		"break":
+			var cell: Vector3i = last_act["cell"]
+			var block_id: String = last_act["block_id"]
+			place_block(cell, block_id, false)
+			return true
+	return false
+
+
 ## Clear all blocks. Called on session end.
 func clear_all() -> void:
+	_history_stack.clear()
 	for cell in _cells.keys():
 		var body: Node = _cells[cell]
 		if body != null and is_instance_valid(body):

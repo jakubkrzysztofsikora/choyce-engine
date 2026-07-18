@@ -12,6 +12,7 @@ func _ready() -> void:
     _ensure_action("attack", [KEY_J, KEY_F])         # left-click also wired in player_controller
     _ensure_action("place_block", [KEY_K])           # voxel build / drop block from hotbar
     _ensure_action("break_block", [KEY_L])           # mine / destroy block
+    _ensure_action("undo", [KEY_U])                  # undo last block action
     _ensure_action("hotbar_1", [KEY_1])
     _ensure_action("hotbar_2", [KEY_2])
     _ensure_action("hotbar_3", [KEY_3])
