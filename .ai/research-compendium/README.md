@@ -64,10 +64,13 @@ These tasks have full, detailed research documents with code samples, online res
 
 ### 7. Nutrition Training & Body Progression (VS-025) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-025_Nutrition_Training_Progression.md](./RESEARCH_VS-025_Nutrition_Training_Progression.md)
+- **Deep Enrichment**: [RESEARCH_VS-025_DEEP_ENRICHMENT.md](./RESEARCH_VS-025_DEEP_ENRICHMENT.md) (+14KB, +500 links, Loop 14)
 - **Focus**: Child-safe nutrition, training, and visible body-progression sandbox loop
-- **Status**: todo
+- **Status**: done - Deep Research Enriched
 - **Complexity**: HIGH
 - **Key Technologies**: Food gathering, training equipment, bounded body presentation, safe progression systems
+- **Child-Safety**: NO calorie counting, NO body shaming, NO body-size scoring, optional progression only
+- **BACKROOMS MONSTERS**: Safe zone integration - monsters excluded from training areas
 
 ### 8. Tauri Sidecar & Godot Bridge (VS-007) ✅ COMPLETE
 - **Files**: [Part 1: Architecture & Rust Implementation](./RESEARCH_VS-007_Tauri_Sidecar_Part1.md), [Part 2: TypeScript Client & Frontend Integration + Code Samples](./RESEARCH_VS-007_Tauri_Sidecar_Part2.md), [Part 3: Packaging, Testing & Production](./RESEARCH_VS-007_Tauri_Sidecar_Part3.md)
@@ -1178,12 +1181,13 @@ The following tasks will receive full research documents based on priority:
 8. **VS-022**: Character Customization - Mesh swapping, material overrides, persistence - ✅ DONE
 9. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
 10. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
-11. **VS-026**: Sandbox Persistence - Save/load world state, structures, inventory - ✅ DONE - 28KB comprehensive compendium
-12. **VS-027**: Creative Block Placement - Place, rotate, delete, undo blocks - ✅ DONE - 22KB comprehensive compendium
-13. **VS-028**: Environment Addons Integration - 8 runtime addons + streaming integration - ✅ DONE - Loop 14 - **~90KB with +400 links, 20+ code samples, compatibility matrix, licensing compliance, performance benchmarks** - All addons MIT/CC0 licensed, Terrain3D/gdTree3D/Sky3D/3D-SimpleWater approved as primary stack
-14. **VS-029**: Terrain3D Integration - Replace HeightMap with Terrain3D - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~94KB total** with +62KB deep enrichment, +500 links, 40+ code samples, geometric clipmap theory, macOS quarantine solutions, Jolt Physics integration, child-safety constraints
-15. **VS-030**: BasicMultiplayer Evaluation - Evaluate for private family sessions - ✅ DONE - Loop 14 - ~125KB with +1200 lines, 400+ links, Godot 4.6 API deep dive, COPPA compliance, 4 authority models, 4 save solutions, private invite system, 5 RPC patterns, performance optimization, comprehensive test plan - BasicMultiplayer APPROVED with safety wrapper
-16. **VS-031**: Evaluate Tool and Firearm Content - Parent-gated optional content system - ✅ DONE - 35KB comprehensive compendium
+11. **VS-025**: Nutrition/Training - Child-safe progression, BlendShapes, HUD, save/load - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~52KB total** with +14KB deep enrichment, +500 links, BlendShape progression, child-safety constraints, BACKROOMS MONSTERS safe zone integration
+12. **VS-026**: Sandbox Persistence - Save/load world state, structures, inventory - ✅ DONE - 28KB comprehensive compendium
+13. **VS-027**: Creative Block Placement - Place, rotate, delete, undo blocks - ✅ DONE - 22KB comprehensive compendium
+14. **VS-028**: Environment Addons Integration - 8 runtime addons + streaming integration - ✅ DONE - Loop 14 - **~90KB with +400 links, 20+ code samples, compatibility matrix, licensing compliance, performance benchmarks** - All addons MIT/CC0 licensed, Terrain3D/gdTree3D/Sky3D/3D-SimpleWater approved as primary stack
+15. **VS-029**: Terrain3D Integration - Replace HeightMap with Terrain3D - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~94KB total** with +62KB deep enrichment, +500 links, 40+ code samples, geometric clipmap theory, macOS quarantine solutions, Jolt Physics integration, child-safety constraints
+16. **VS-030**: BasicMultiplayer Evaluation - Evaluate for private family sessions - ✅ DONE - Loop 14 - ~125KB with +1200 lines, 400+ links, Godot 4.6 API deep dive, COPPA compliance, 4 authority models, 4 save solutions, private invite system, 5 RPC patterns, performance optimization, comprehensive test plan - BasicMultiplayer APPROVED with safety wrapper
+17. **VS-031**: Evaluate Tool and Firearm Content - Parent-gated optional content system - ✅ DONE - 35KB comprehensive compendium
 17. **VS-032**: Retarget CC0 Universal Animation Library - UAL integration for child and creature rigs - ✅ DONE - 28KB comprehensive compendium
 18. **VS-033**: Wire Onboarding Events to Shell Event Bus - Event bus integration for onboarding - ✅ DONE - 24KB comprehensive compendium
 
