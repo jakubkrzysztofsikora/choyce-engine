@@ -6,6 +6,8 @@ const ShellTransition = preload("res://src/adapters/inbound/shared/ui/shell_tran
 ## Explicit preload keeps the first-run demo independent of Godot's global
 ## class cache, which can lag behind a newly added persistence adapter.
 const FilesystemSessionProgressStoreAdapter = preload("res://src/adapters/outbound/filesystem_session_progress_store.gd")
+const FilesystemSandboxStoreClass = preload("res://src/adapters/outbound/filesystem_sandbox_store.gd")
+const SandboxPersistenceServiceClass = preload("res://src/application/sandbox_persistence_service.gd")
 
 # VS-016: Preload evidence capture classes
 const ScreenshotCaptureClass = preload("res://src/adapters/outbound/evidence/screenshot_capture.gd")
@@ -375,6 +377,11 @@ func _build_default_ports() -> Dictionary:
 	# default composition root so Library save/load and remix flows reach
 	# real services instead of NotImplemented push_errors.
 	var progress_store: SessionProgressStorePort = FilesystemSessionProgressStoreAdapter.new().setup()
+	
+	# VS-026: Wire up sandbox persistence for full save/load
+	var sandbox_store := FilesystemSandboxStoreClass.new().setup()
+	var sandbox_persistence := SandboxPersistenceServiceClass.new().setup(sandbox_store, clock)
+	
 	var clone_service := CloneWorldService.new()
 	var remix_service := RemixWorldService.new().setup(progress_store, event_bus)
 	var progression_service := ManageProgressionService.new().setup(progress_store, event_bus)
