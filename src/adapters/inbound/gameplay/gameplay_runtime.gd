@@ -2503,6 +2503,26 @@ func _build_inventory_overlay(hud: CanvasLayer) -> void:
 	grid.add_theme_constant_override("v_separation", 8)
 	content.add_child(grid)
 	_inventory_grid = grid
+	var creative_title := Label.new()
+	creative_title.text = "Kreatywnie"
+	creative_title.add_theme_font_size_override("font_size", 18)
+	content.add_child(creative_title)
+	var creative_grid := GridContainer.new()
+	creative_grid.name = "CreativeCatalog"
+	creative_grid.columns = 5
+	creative_grid.add_theme_constant_override("h_separation", 6)
+	creative_grid.add_theme_constant_override("v_separation", 6)
+	content.add_child(creative_grid)
+	for item_id in _creative_catalog_item_ids():
+		var item_button := TextureButton.new()
+		item_button.name = "Creative_%s" % item_id
+		item_button.custom_minimum_size = Vector2(46, 46)
+		item_button.texture_normal = _inventory_texture_for(item_id)
+		item_button.tooltip_text = _pretty_item_name(item_id)
+		item_button.ignore_texture_size = true
+		item_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		item_button.pressed.connect(func() -> void: _select_creative_catalog_item(item_id))
+		creative_grid.add_child(item_button)
 	var recipes_title := Label.new()
 	recipes_title.text = "Zrób"
 	recipes_title.add_theme_font_size_override("font_size", 18)
@@ -2580,6 +2600,20 @@ func _toggle_inventory_overlay() -> void:
 		_player_controller.set_input_disabled(_inventory_open)
 	if _inventory_open:
 		_refresh_inventory_overlay(_get_inventory())
+
+
+func _creative_catalog_item_ids() -> Array[String]:
+	var item_ids: Array[String] = ["tool_axe", "tool_pickaxe"]
+	for kind_variant in BlockKind.default_catalog():
+		var kind := kind_variant as BlockKind
+		if kind != null:
+			item_ids.append(kind.block_id)
+	return item_ids
+
+
+func _select_creative_catalog_item(item_id: String) -> void:
+	if _player_controller != null and _player_controller.has_method("select_creative_item"):
+		_player_controller.select_creative_item(item_id)
 
 
 func _has_recipe_materials(recipe_id: String, inventory: Dictionary = {}) -> bool:

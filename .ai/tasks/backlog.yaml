@@ -223,6 +223,21 @@ tasks:
       - Focused renderer coverage, a fresh live capture, and independent adversarial review are retained as evidence
     cross_review_by: claude
     status: in_progress
+    claude_cr_findings:
+      - REQUEST_CHANGES: River-volume segmentation incomplete; visible water/physics diverge away from bridge
+      - REQUEST_CHANGES: Opening composition sparse; forest mass too far behind river, lacks layered grove
+      - REQUEST_CHANGES: Foliage material incompatible with toy-style assets; needs stylized replacement
+      - REQUEST_CHANGES: River appears flat dark-cyan; needs visible depth contrast and motion
+      - REQUEST_CHANGES: Bridge collision uses generic boxes; needs authored matching geometry
+      - REQUEST_CHANGES: Wet-bank ribbon offset 0.208m; needs terrain-grounding
+      - REQUEST_CHANGES: Hero direction blocked on VS-046 (Blender asset creation)
+      - PARTIALLY ADDRESSED: Safety ground collider retained with session token mechanism
+      - REQUEST_CHANGES: Bridge traversal needs physics coverage and live walk evidence
+      - ADDRESSED: FillLight is time-of-day responsive (0.62 night / 0.24 day); night capture needed
+      - REQUEST_CHANGES: Water shader needs visible depth variation and current direction
+      - REQUEST_CHANGES: Normalized river UVs need local/world meter derivation
+      - REQUEST_CHANGES: Cyan foliage artifacts and sparse composition keep visual gate open
+      - Visual gate: OPEN - multiple HIGH findings prevent acceptance
     codex_cr_findings:
       - HIGH: The visible river meanders, but swimming uses one fixed 22m-wide rectangular Area at z=-24. Away from the bridge, visible water and water physics diverge. Replace it with sampled/segmented volumes following _river_bank_pair(), then test enter/exit at bridge and meander extrema.
       - HIGH: The capture still reads as a huge empty lawn with isolated toy trees. The forest mass begins too far behind the river to frame the opening, so the required layered, human-scale grove is not achieved. Add coherent close/mid-ground foliage and understory outside the route corridors, then recapture the opening.
@@ -283,6 +298,7 @@ tasks:
       - /tmp/choyce-opening-grounded-hud-v3.jpg (fresh unobstructed boot: Terrain3D collision verified and shader compiled; still explicit evidence that visual composition needs the next curated landmark/forest pass)
       - .ai/reviews/VS-044-opening-adversarial-review-2026-07-18.json (request changes: runtime camera had overridden the composed lens and the bridge faced the house rear wall; both implementation defects are addressed, while the visual gate remains open)
       - /tmp/choyce-opening-door-facing-v10.jpg (fresh live boot after runtime 55-degree lens and bridge-facing usable facade; diagnostic evidence only, not visual-gate acceptance)
+      - .ai/reviews/VS-044-claude-review-2026-07-18.json (Claude cross-review: REQUEST_CHANGES; multiple HIGH severity visual findings remain open)
       - src/adapters/inbound/gameplay/world_renderer.gd (terrain-import session token incremented on successful Terrain3D build; verify_runtime_terrain_contacts rejects stale tokens)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (passes probe generation as expected session token to prevent stale probes from disabling the safety floor)
       - src/adapters/inbound/gameplay/world_renderer.gd (opening forest mass now includes the authored clusters at (-29,0,-56) and (164,0,-205))
