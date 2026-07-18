@@ -123,6 +123,7 @@ var _interaction_prompt_label: Label = null
 var _interaction_prompt_icon: TextureRect = null
 var _nearby_world_interactable: Node3D = null
 var _interaction_feedback_until: float = 0.0
+const SILLY_FART_REACTION_RANGE := 10.0
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
@@ -200,6 +201,8 @@ func _ready() -> void:
 		# Adv Y H2 fix — whoosh on EVERY swing (hit or miss)
 		if _player_controller.has_signal("attacked"):
 			_player_controller.attacked.connect(_on_player_attacked)
+		if _player_controller.has_signal("farted"):
+			_player_controller.farted.connect(_on_player_farted)
 
 	if _victory_sequence != null:
 		_victory_sequence.setup(_effect_spawner, _audio_bus, _screen_feedback, _player_controller)
@@ -292,6 +295,8 @@ func start_session(world: World, session: Session) -> void:
 	# is off (default).
 	_notify_shell("notify_session_started", [world.world_id, _profile_id])
 	_world_renderer.render_world(world)
+	_set_legacy_ground_visual_visible(not _world_renderer.has_runtime_terrain_surface())
+	_set_legacy_ground_collision_enabled(not _world_renderer.has_runtime_terrain_collision())
 	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
 	_register_world_rules(world)
 	var spawn_pos := _world_renderer.get_spawn_position(0)
@@ -357,6 +362,25 @@ func _set_main_layout_visible(value: bool) -> void:
 	var scan := get_node_or_null("/root/Main/VoxelScanlines")
 	if scan != null:
 		scan.visible = value
+
+
+## Preserve the legacy StaticBody3D collider beneath the opening, but never
+## render it on top of a successfully imported Terrain3D mesh. The old mesh
+## and Terrain3D differed by only centimetres, which made the entire ground
+## flicker as the depth buffer alternated between them.
+func _set_legacy_ground_visual_visible(value: bool) -> void:
+	var ground_mesh := get_node_or_null("GroundPlane/GroundMesh") as MeshInstance3D
+	if ground_mesh != null:
+		ground_mesh.visible = value
+
+
+## When Terrain3D has built its dynamic heightfield collider, the old flat
+## StaticBody3D must stop participating in physics too. Otherwise a player can
+## alternate between the two ground surfaces and visibly snap while walking.
+func _set_legacy_ground_collision_enabled(value: bool) -> void:
+	var ground_collision := get_node_or_null("GroundPlane/GroundCollider") as CollisionShape3D
+	if ground_collision != null:
+		ground_collision.set_deferred("disabled", not value)
 
 
 ## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
@@ -701,7 +725,7 @@ func _spawn_one_npc(npc: NPCCharacter, pos: Vector3) -> void:
 	# back to a tinted capsule only if the model fails to load.
 	var visual := _build_npc_visual(npc)
 	root.add_child(visual)
-	var facial = visual.get_node_or_null("FacialPerformance")
+	var facial = visual.find_child("FacialPerformance", true, false)
 	if facial != null:
 		root.set_meta("facial_performance", facial)
 
@@ -801,12 +825,7 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 
 
 func _attach_humanoid_face(model: Node3D) -> void:
-	var face = FACIAL_PERFORMANCE_SCRIPT.new()
-	face.name = "FacialPerformance"
-	model.add_child(face)
-	# Kenney head centre is local y≈0.51 and +Z is its authored forward;
-	# the model wrapper rotates PI afterwards for the gameplay world.
-	face.setup_face(Vector3(0.0, 0.51, 0.0), 0.20)
+	FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(model)
 
 
 func _build_parrot_visual() -> Node3D:
@@ -983,7 +1002,11 @@ func _speech_duration_for_line(line: String) -> float:
 	return clampf(float(line.length()) / 13.0, 0.75, 4.5)
 
 
-func _animate_npc_speech(npc_id: String, line: String) -> void:
+func _animate_npc_speech(
+		npc_id: String,
+		line: String,
+		emotion: int = FacialPerformance.Emotion.HAPPY
+	) -> void:
 	if _npc_root == null or npc_id.is_empty():
 		return
 	for child in _npc_root.get_children():
@@ -991,7 +1014,7 @@ func _animate_npc_speech(npc_id: String, line: String) -> void:
 			continue
 		var facial = child.get_meta("facial_performance", null)
 		if facial != null and is_instance_valid(facial):
-			facial.speak_for(_speech_duration_for_line(line), FacialPerformance.Emotion.HAPPY)
+			facial.speak_for(_speech_duration_for_line(line), emotion)
 		return
 
 
@@ -2292,6 +2315,95 @@ func _input(event: InputEvent) -> void:
 func _on_footstep() -> void:
 	if _audio_bus != null:
 		_audio_bus.emit_sfx("step", _player_controller.global_position)
+
+
+## G-key's optional silly interaction is visual/social only: a real local SFX,
+## a short readable cloud, and role-aware nearby reactions. Angry characters
+## perform one harmless air-swat; this never damages the player or changes
+## combat progression.
+func _on_player_farted(effect_origin: Vector3) -> void:
+	if _audio_bus != null:
+		_audio_bus.emit_sfx("fart_kid_safe", effect_origin)
+	if _effect_spawner != null:
+		_effect_spawner.spawn_stink_cloud(effect_origin)
+	if _npc_root == null:
+		return
+	var closest: Dictionary = {}
+	for npc_variant in _npc_root.get_children():
+		var npc_root := npc_variant as Node3D
+		if npc_root == null or npc_root.global_position.distance_to(effect_origin) > SILLY_FART_REACTION_RANGE:
+			continue
+		var reaction := _fart_reaction_for(npc_root)
+		_show_npc_reaction_bubble(npc_root, String(reaction.line))
+		_animate_npc_speech(String(npc_root.get_meta("npc_id", "")), String(reaction.line), int(reaction.emotion))
+		_match_npc_fart_animation(npc_root, String(reaction.action))
+		if closest.is_empty() or npc_root.global_position.distance_to(effect_origin) < float(closest.distance):
+			closest = {
+				"root": npc_root,
+				"line": String(reaction.line),
+				"distance": npc_root.global_position.distance_to(effect_origin),
+			}
+	# One nearby reaction gets voiced/captioned through the existing single-line
+	# channel. All others retain their own speech bubbles, preventing the old
+	# overlapping-voice problem.
+	if not closest.is_empty():
+		var speaker := closest.root as Node3D
+		_show_npc_dialogue(String(speaker.get_meta("npc_name_pl", "")), String(closest.line))
+
+
+func _fart_reaction_for(npc_root: Node3D) -> Dictionary:
+	var visual_id := String(npc_root.get_meta("npc_id", ""))
+	var role := String(npc_root.get_meta("npc_role", ""))
+	if visual_id == "npc_parrot":
+		return {"line": "Ćwir! To był bąbelkowy podmuch!", "emotion": FacialPerformance.Emotion.HAPPY, "action": "laugh"}
+	if visual_id == "npc_pirate":
+		return {"line": "Arrr! Dość tych gazowych armat!", "emotion": FacialPerformance.Emotion.ANGRY, "action": "swat"}
+	if role == NPCCharacter.ROLE_VENDOR:
+		return {"line": "Fuj! Otwórzmy okno, proszę!", "emotion": FacialPerformance.Emotion.SURPRISED, "action": "recoil"}
+	if role == NPCCharacter.ROLE_HOSTILE:
+		return {"line": "Ej! To wcale nie jest śmieszne!", "emotion": FacialPerformance.Emotion.ANGRY, "action": "swat"}
+	return {"line": "Haha! To był naprawdę mały wiaterek!", "emotion": FacialPerformance.Emotion.HAPPY, "action": "laugh"}
+
+
+func _show_npc_reaction_bubble(npc_root: Node3D, line: String) -> void:
+	var bubble := npc_root.get_node_or_null("FartReaction") as Label3D
+	if bubble == null:
+		bubble = Label3D.new()
+		bubble.name = "FartReaction"
+		bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		bubble.no_depth_test = false
+		bubble.pixel_size = 0.0035
+		bubble.font_size = 24
+		bubble.outline_size = 4
+		bubble.modulate = Color(0.92, 1.0, 0.76)
+		bubble.outline_modulate = Color(0.04, 0.08, 0.02, 0.9)
+		bubble.position = Vector3(0.0, 2.35, 0.0)
+		npc_root.add_child(bubble)
+	bubble.text = line
+	bubble.visible = true
+	get_tree().create_timer(2.8).timeout.connect(func() -> void:
+		if is_instance_valid(bubble):
+			bubble.visible = false)
+
+
+func _match_npc_fart_animation(npc_root: Node3D, action: String) -> void:
+	var visual := npc_root.get_child(0) as Node3D if npc_root.get_child_count() > 0 else null
+	if visual == null:
+		return
+	var original_tilt := visual.rotation.z
+	var tween := create_tween()
+	match action:
+		"swat":
+			tween.tween_property(visual, "rotation:z", original_tilt + 0.30, 0.12)
+			tween.tween_property(visual, "rotation:z", original_tilt - 0.16, 0.12)
+			tween.tween_property(visual, "rotation:z", original_tilt, 0.16)
+		"recoil":
+			tween.tween_property(visual, "rotation:x", -0.14, 0.12)
+			tween.tween_property(visual, "rotation:x", 0.0, 0.20)
+		_:
+			tween.tween_property(visual, "rotation:z", original_tilt + 0.10, 0.10)
+			tween.tween_property(visual, "rotation:z", original_tilt - 0.10, 0.12)
+			tween.tween_property(visual, "rotation:z", original_tilt, 0.12)
 
 func _on_landed() -> void:
 	if _audio_bus != null:

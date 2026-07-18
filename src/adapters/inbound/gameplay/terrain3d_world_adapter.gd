@@ -13,11 +13,13 @@ const PBR_DIRT: Texture2D = preload("res://data/textures/pbr/ground003/Ground003
 const PBR_NORMAL: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_NormalGL.jpg")
 
 var terrain: Node3D
+var _dynamic_collision_ready := false
 var _prepared_albedo: Dictionary = {}
 var _prepared_normal: Texture2D
 
 
 func build(seed_source: String) -> bool:
+	_dynamic_collision_ready = false
 	if not ClassDB.class_exists(&"Terrain3D"):
 		push_warning("Terrain3D extension is unavailable; keeping the safe legacy floor")
 		return false
@@ -26,12 +28,15 @@ func build(seed_source: String) -> bool:
 		push_warning("Terrain3D could not create its runtime node")
 		return false
 	terrain.name = "Terrain3DAdventureSurface"
-	# A 512-pixel heightfield is rendered at 4.6875 metres/pixel, covering the
-	# full 2.4km island while Terrain3D supplies its own detail LODs.
+	# A 512-pixel heightfield at 4.6875 metres per vertex covers the full 2.4km
+	# island. This must be Terrain3D's `vertex_spacing`, not a Node3D scale:
+	# collision/data APIs operate in global metres and otherwise leave physics
+	# behind at a tiny 512m-local region while the rendered mesh looks enormous.
 	var horizontal_scale := WORLD_SIZE_M / float(HEIGHTMAP_RESOLUTION)
-	terrain.scale = Vector3(horizontal_scale, 1.0, horizontal_scale)
+	terrain.scale = Vector3.ONE
 	terrain.position.y = 0.012
 	terrain.set("region_size", HEIGHTMAP_RESOLUTION)
+	terrain.set("vertex_spacing", horizontal_scale)
 	terrain.set("collision_mask", 1)
 	add_child(terrain)
 
@@ -47,8 +52,32 @@ func build(seed_source: String) -> bool:
 	# authored house, bridge, NPCs and collider. Distant ridges add real mesh
 	# depth, hide the horizon, and leave enough clearance for existing props.
 	data.call("import_images", [heights, null, null],
-		Vector3(-HEIGHTMAP_RESOLUTION * 0.5, 0.0, -HEIGHTMAP_RESOLUTION * 0.5), 0.0, 0.72)
+		Vector3(-WORLD_SIZE_M * 0.5, 0.0, -WORLD_SIZE_M * 0.5), 0.0, 0.72)
+	_configure_dynamic_collision()
 	return true
+
+
+func has_dynamic_collision() -> bool:
+	return _dynamic_collision_ready
+
+
+## Terrain3D's default dynamic-game mode is appropriate for a 5.76km² world,
+## but runtime-imported height data needs an explicit collision rebuild. Without
+## it, the mesh renders while the player only ever touches the legacy flat floor.
+func _configure_dynamic_collision() -> void:
+	var collision: Object = terrain.get("collision") as Object
+	if collision == null:
+		push_warning("Terrain3D collision controls are unavailable; keeping the safety floor")
+		return
+	# DYNAMIC_GAME (1): mesh-derived collision follows the active player camera
+	# rather than allocating full-island physics meshes at boot.
+	collision.set("mode", 1)
+	collision.set("layer", 1)
+	collision.set("mask", 1)
+	collision.set("radius", 96)
+	collision.call("build")
+	collision.call("update", true)
+	_dynamic_collision_ready = true
 
 
 func _configure_materials() -> void:

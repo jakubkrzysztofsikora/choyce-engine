@@ -29,6 +29,8 @@ signal attacked(damage: int, hit_position: Vector3)
 ## attack origin so the kid hears their fist cutting air (otherwise
 ## misses are silent and a 7yo thinks the button is broken).
 signal swing_missed(attack_origin: Vector3)
+## Optional sandbox gag. The runtime owns its VFX, SFX and NPC social response.
+signal farted(effect_origin: Vector3)
 signal hp_changed(current: int, max_hp: int)
 signal player_defeated
 
@@ -46,12 +48,14 @@ const COMBO_WINDOW_SEC := 0.5
 const COMBO_COOLDOWN := 0.18
 const COMBO_RECOVERY_SEC := 0.6
 const MAX_COMBO_SWINGS := 2
+const SILLY_FART_COOLDOWN := 2.5
 
 var _health: HealthState
 var _attack_cooldown: float = 0.0
 var _equipped_weapon_damage: int = STARTER_WEAPON_DAMAGE
 var _last_swing_time: float = 0.0
 var _combo_count: int = 0
+var _silly_fart_cooldown := 0.0
 ## Input action prefix for local co-op. "" = player 1 (default, solo path
 ## unchanged). "p2_" routes movement/jump/sprint/attack to the P2 action set
 ## the split-screen runtime registers (arrow keys / RCtrl / RShift).
@@ -152,12 +156,7 @@ func _ready() -> void:
 		_character_mesh.rotation.y = PI
 		# Imported Kenney characters have no reliable facial blend-shapes. Add a
 		# small local face rig so the player blinks and visibly reacts to play.
-		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.new()
-		_facial_performance.name = "FacialPerformance"
-		_character_mesh.add_child(_facial_performance)
-		# Kenney's head mesh occupies local y≈0.34–0.67, not a humanoid-
-		# metre-scale y=1.3. Keep the layer on its actual face, not above it.
-		_facial_performance.setup_face(Vector3(0.0, 0.51, 0.0), 0.20)
+		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(_character_mesh)
 		# Kenney GLB embeds an AnimationPlayer with idle/walk/sprint/jump/fall.
 		_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
 		if _anim_player != null:
@@ -253,11 +252,14 @@ func _physics_process(delta: float) -> void:
 		_health.tick(delta, PLAYER_REGEN_PER_SEC)
 		hp_changed.emit(_health.current_hp, _health.max_hp)
 	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
+	_silly_fart_cooldown = maxf(_silly_fart_cooldown - delta, 0.0)
 	# Route LMB / "attack" action through GameModeService — block in
 	# active slot → break; weapon in slot → attack. Matches
 	# Minecraft Bedrock; dissolves Adv 5 #1 mouse-rebind concern.
 	if Input.is_action_just_pressed(_act("attack")) and _attack_cooldown <= 0.0:
 		_dispatch_lmb()
+	if Input.is_action_just_pressed("silly_fart") and _silly_fart_cooldown <= 0.0:
+		_perform_silly_fart()
 	# Place still bound to dedicated action (K) AND right mouse in
 	# build mode. _process_build_input handles K + 1-5.
 	_process_build_input()
@@ -472,6 +474,26 @@ func play_sit_at(pos: Vector3) -> void:
 	tween.tween_interval(1.15)
 	tween.tween_property(_character_mesh, "position:y", 0.0, 0.22)
 	tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.22)
+
+
+## A short, optional G-key gag with a clear cooldown. This deliberately only
+## animates the player wrapper; it does not change combat state or affect any
+## other character physically.
+func _perform_silly_fart() -> void:
+	_silly_fart_cooldown = SILLY_FART_COOLDOWN
+	if _facial_performance != null:
+		_facial_performance.set_emotion(FacialPerformance.Emotion.SURPRISED, 0.65)
+	if _character_mesh != null and is_instance_valid(_character_mesh):
+		var tween := create_tween()
+		tween.tween_property(_character_mesh, "position:y", -0.055, 0.07)
+		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.10, 0.07)
+		tween.tween_property(_character_mesh, "position:y", 0.0, 0.16)
+		tween.parallel().tween_property(_character_mesh, "rotation:x", 0.0, 0.16)
+	# The character faces -Z, so +Z is safely behind them where the cloud reads
+	# clearly in third person instead of covering the camera-facing body.
+	var effect_origin := global_position + global_transform.basis.z * 0.28 + Vector3(0.0, 0.42, 0.0)
+	farted.emit(effect_origin)
+
 
 ## Sweep the front cone for enemies. Hit each EnemyController within
 ## ATTACK_RANGE + ATTACK_ARC. Emit `attacked` signal so gameplay
@@ -1059,10 +1081,7 @@ func _setup_character_appearance() -> void:
 	if _character_mesh == null or not is_instance_valid(_character_mesh):
 		return
 	_character_mesh.rotation.y = PI
-	_facial_performance = FACIAL_PERFORMANCE_SCRIPT.new()
-	_facial_performance.name = "FacialPerformance"
-	_character_mesh.add_child(_facial_performance)
-	_facial_performance.setup_face(Vector3(0.0, 0.51, 0.0), 0.20)
+	_facial_performance = FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(_character_mesh)
 	_anim_player = _character_mesh.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _anim_player == null:
 		return

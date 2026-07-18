@@ -28,6 +28,8 @@ var _procedural_build_queue: Array[Vector2i] = []
 var _procedural_build_jobs: Dictionary = {}
 var _procedural_disposal_queue: Array[Node3D] = []
 var _last_streamed_chunk := Vector2i(999999, 999999)
+var _has_runtime_terrain_surface := false
+var _has_runtime_terrain_collision := false
 
 func render_world(world: World) -> void:
 	clear_world()
@@ -72,6 +74,19 @@ func clear_world() -> void:
 	_procedural_build_jobs.clear()
 	_procedural_disposal_queue.clear()
 	_last_streamed_chunk = Vector2i(999999, 999999)
+	_has_runtime_terrain_surface = false
+	_has_runtime_terrain_collision = false
+
+
+## GameplayRuntime keeps the legacy flat collider as a safety floor. Its
+## visible mesh must be hidden only when Terrain3D has successfully built,
+## otherwise two almost-coincident ground surfaces shimmer while walking.
+func has_runtime_terrain_surface() -> bool:
+	return _has_runtime_terrain_surface
+
+
+func has_runtime_terrain_collision() -> bool:
+	return _has_runtime_terrain_collision
 
 func get_spawn_position(index: int = 0) -> Vector3:
 	if _spawn_points.is_empty():
@@ -507,7 +522,9 @@ func _build_terrain3d_surface(seed_source: String) -> void:
 	var surface = TERRAIN3D_WORLD_ADAPTER.new()
 	surface.name = "Terrain3DWorldAdapter"
 	add_child(surface)
-	if not surface.build(seed_source):
+	_has_runtime_terrain_surface = surface.build(seed_source)
+	_has_runtime_terrain_collision = _has_runtime_terrain_surface and surface.has_dynamic_collision()
+	if not _has_runtime_terrain_surface:
 		surface.queue_free()
 
 
@@ -977,7 +994,10 @@ func _build_starter_homestead() -> void:
 	# Make the body origin the hinge, then offset its collision and rendered mesh
 	# into the doorway. Opening it now swings like a real door instead of
 	# rotating around its centre.
-	var door := _add_box_obstacle("HomeDoor", center + Vector3(-1.1, 1.6, -5.90), Vector3(2.2, 3.2, 0.22), Color.TRANSPARENT, false)
+	# The village doorway begins at the door-wall's 0.65m stone threshold and
+	# reaches its 3.12m lintel. Keep the physical leaf exactly inside that real
+	# opening rather than leaving an invisible 3.2m rectangle around it.
+	var door := _add_box_obstacle("HomeDoor", center + Vector3(-1.1, 1.886, -5.90), Vector3(2.2, 2.48, 0.22), Color.TRANSPARENT, false)
 	if door != null:
 		var door_collision := door.get_node_or_null("CollisionShape3D") as CollisionShape3D
 		if door_collision != null:
@@ -988,7 +1008,6 @@ func _build_starter_homestead() -> void:
 		door.set_meta("interaction_action", "door")
 		door.set_meta("door_open", false)
 		door.set_meta("door_closed_position", door.position)
-		door.set_meta("door_collision", door_collision)
 	_build_modular_starter_house_shell(center, door)
 
 	# Real, adult-scale furniture replaces the placeholder bedroll/workbench.
@@ -1042,23 +1061,38 @@ func _build_modular_starter_house_shell(center: Vector3, door: StaticBody3D) -> 
 		_add_visual_asset("HomeFacade_%d" % bay,
 			center + Vector3(-4.0 + float(bay) * 2.0, 0.0, -5.72),
 			Vector3.ONE, PI, front_path, false)
+	# The five central bays are 10m wide but the physical home is 12m-class.
+	# Close both edge strips with matched wall modules so there are no visible
+	# daylight slits at the corners or player-sized walk-through gaps.
+	for side in [-1.0, 1.0]:
+		_add_visual_asset("HomeFacadeEdge_%s" % ("Left" if side < 0.0 else "Right"),
+			center + Vector3(side * 5.5, 0.0, -5.72), Vector3.ONE, PI, solid_wall, false)
 	# Back and side walls turn the house into a coherent volume instead of a
 	# front-only set. These meshes are 2m modular bays with source PBR maps.
 	for bay in range(5):
 		_add_visual_asset("HomeBack_%d" % bay,
 			center + Vector3(-4.0 + float(bay) * 2.0, 0.0, 5.72),
 			Vector3.ONE, 0.0, solid_wall, false)
+	for side in [-1.0, 1.0]:
+		_add_visual_asset("HomeBackEdge_%s" % ("Left" if side < 0.0 else "Right"),
+			center + Vector3(side * 5.5, 0.0, 5.72), Vector3.ONE, 0.0, solid_wall, false)
 	for bay in range(5):
 		var z := -4.0 + float(bay) * 2.0
 		_add_visual_asset("HomeLeft_%d" % bay,
 			center + Vector3(-5.72, 0.0, z), Vector3.ONE, PI * 0.5, solid_wall, false)
 		_add_visual_asset("HomeRight_%d" % bay,
 			center + Vector3(5.72, 0.0, z), Vector3.ONE, -PI * 0.5, solid_wall, false)
-	# One authored 10m gabled roof avoids a flat slab silhouette and keeps the
-	# home visible above the opening grove without making it a miniature.
-	_add_visual_asset("HomeGabledRoof", center + Vector3(0.0, 3.05, 0.0), Vector3.ONE,
-		0.0, QUATERNIUS_VILLAGE + "Roof_RoundTiles_8x10.gltf", false)
-	_add_visual_asset("HomeChimney", center + Vector3(3.1, 5.1, 0.6), Vector3.ONE,
+	for side in [-1.0, 1.0]:
+		_add_visual_asset("HomeLeftEnd_%s" % ("Front" if side < 0.0 else "Back"),
+			center + Vector3(-5.72, 0.0, side * 5.5), Vector3.ONE, PI * 0.5, solid_wall, false)
+		_add_visual_asset("HomeRightEnd_%s" % ("Front" if side < 0.0 else "Back"),
+			center + Vector3(5.72, 0.0, side * 5.5), Vector3.ONE, -PI * 0.5, solid_wall, false)
+	# The 8x12 roof is seated on top of the 3.1m walls and widened only enough
+	# to cover the 12m shell. The old 8x10 roof was embedded inside the walls,
+	# exposing side gaps and making the whole home read as a broken set.
+	_add_visual_asset("HomeGabledRoof", center + Vector3(0.0, 3.90, 0.0), Vector3(1.25, 1.0, 1.0),
+		0.0, QUATERNIUS_VILLAGE + "Roof_RoundTiles_8x12.gltf", false)
+	_add_visual_asset("HomeChimney", center + Vector3(3.1, 5.95, 0.6), Vector3.ONE,
 		0.0, QUATERNIUS_VILLAGE + "Prop_Chimney.gltf", false)
 	if door == null:
 		return
@@ -1069,8 +1103,13 @@ func _build_modular_starter_house_shell(center: Vector3, door: StaticBody3D) -> 
 	if visual == null:
 		return
 	visual.name = "HomeDoorVisual"
-	visual.position = Vector3(1.1, -1.60, 0.0)
-	visual.rotation.y = PI
+	# Door_2's authored origin is its left hinge. It spans +X, so leaving it in
+	# its source orientation makes that hinge match HomeDoor's left pivot and
+	# fills the physical opening to the right. Scale its 2.1m source height to
+	# the village kit's 2.48m threshold-to-lintel opening.
+	visual.position = Vector3(0.0, -1.283, 0.0)
+	visual.scale = Vector3(2.0, 1.18, 1.0)
+	visual.rotation.y = 0.0
 	door.add_child(visual)
 	_apply_toon_to_prop(visual, "home wooden door")
 	door.set_meta("door_visual", visual)
@@ -1173,13 +1212,24 @@ func toggle_door(door: Node3D) -> void:
 	var is_open := bool(door.get_meta("door_open", false))
 	var next_open := not is_open
 	door.set_meta("door_open", next_open)
-	var collision := door.get_meta("door_collision", null) as CollisionShape3D
+	# Keep the authoritative leaf collision as a direct child. Object metadata
+	# is not a reliable Node reference across serialization/lifetime boundaries.
+	var collision := _first_collision_shape(door)
 	if collision != null:
 		collision.set_deferred("disabled", next_open)
 	var target_rotation := -PI * 0.48 if next_open else 0.0
 	var tween := create_tween()
 	tween.tween_property(door, "rotation:y", target_rotation, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	door.set_meta("interaction_prompt", "E  Zamknij drzwi" if next_open else "E  Otwórz drzwi")
+
+
+func _first_collision_shape(node: Node) -> CollisionShape3D:
+	if node == null:
+		return null
+	for child in node.get_children():
+		if child is CollisionShape3D:
+			return child as CollisionShape3D
+	return null
 
 
 func _add_visual_asset(
@@ -1206,6 +1256,8 @@ func _add_visual_asset(
 	var root: Node3D = StaticBody3D.new() if collidable else Node3D.new()
 	root.name = node_name.replace(" ", "_")
 	root.add_child(instance)
+	var collision: CollisionShape3D = null
+	var effective_collision_size := collision_size
 	# `_apply_toon_to_prop` preserves a valid source texture atlas. Otherwise it
 	# applies the PBR detail layer above—important for KayKit Builder's flat
 	# palette hills/mountains/houses, which previously looked unrendered.
@@ -1217,9 +1269,8 @@ func _add_visual_asset(
 		# river_bank_42, whose node name does not itself mention "rock".
 		_apply_toon_to_prop(instance, "%s %s" % [node_name, path.get_file()])
 	if collidable:
-		var collision := CollisionShape3D.new()
+		collision = CollisionShape3D.new()
 		var shape := BoxShape3D.new()
-		var effective_collision_size := collision_size
 		var collision_key := node_name.to_lower()
 		if collision_size == Vector3(1.5, 2.0, 1.5):
 			if collision_key.contains("dom") or collision_key.contains("house"):
@@ -1239,12 +1290,65 @@ func _add_visual_asset(
 			1.0 / maxf(absf(asset_scale.z), 0.001)
 		)
 		root.add_child(collision)
-	root.position = asset_position
+	root.position = _terrain_grounded_position(asset_position) if collidable else asset_position
 	root.rotation.y = rotation_y
 	root.scale = asset_scale
 	var container: Node = parent_node if parent_node != null else self
 	container.add_child(root)
+	if collidable and instance is Node3D and collision != null:
+		_align_collidable_asset_to_ground(root, instance as Node3D, collision, effective_collision_size)
 	return root
+
+
+## Terrain3D owns the visible island height away from the intentionally flat
+## opening. Ground every collidable prop to its sampled world height before
+## normalizing the source-model pivot, keeping both render mesh and collider
+## together on a hill instead of at the old y=0 safety floor.
+func _terrain_grounded_position(asset_position: Vector3) -> Vector3:
+	var grounded := asset_position
+	var terrain_adapter := get_node_or_null("Terrain3DWorldAdapter")
+	if terrain_adapter == null:
+		return grounded
+	var terrain: Object = terrain_adapter.get("terrain") as Object
+	if terrain == null:
+		return grounded
+	var data: Object = terrain.get("data") as Object
+	if data == null or not data.has_method("get_height"):
+		return grounded
+	var sampled := float(data.call("get_height", Vector3(asset_position.x, 0.0, asset_position.z)))
+	if not is_nan(sampled):
+		grounded.y += sampled
+	return grounded
+
+
+## Source GLBs do not share a common vertical pivot convention: several of the
+## supplied home props place their geometry well below y=0. Normalize only
+## collidable gameplay props at this adapter boundary, and move their collider
+## with the mesh. That removes both sunken/floating furniture and the matching
+## invisible half-buried collision boxes without disturbing architectural
+## modules such as roofs and wall panels that use deliberate authored offsets.
+func _align_collidable_asset_to_ground(
+		root: Node3D,
+		visual: Node3D,
+		collision: CollisionShape3D,
+		effective_collision_size: Vector3
+	) -> void:
+	root.force_update_transform()
+	var lowest_local_y := INF
+	for mesh_variant in visual.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := mesh_variant as MeshInstance3D
+		var bounds := mesh_instance.get_aabb()
+		for x in [bounds.position.x, bounds.end.x]:
+			for y in [bounds.position.y, bounds.end.y]:
+				for z in [bounds.position.z, bounds.end.z]:
+					var root_local := root.to_local(mesh_instance.global_transform * Vector3(x, y, z))
+					lowest_local_y = minf(lowest_local_y, root_local.y)
+	if lowest_local_y < INF:
+		visual.position.y -= lowest_local_y
+	# Collision shapes are deliberately inverse-scaled above, so this local
+	# offset produces a world-space box whose base is exactly at the prop's
+	# placement surface even when the visual root is enlarged.
+	collision.position.y = effective_collision_size.y * 0.5 / maxf(absf(root.scale.y), 0.001)
 
 
 func _prop_path_for_name(display_name: String) -> String:

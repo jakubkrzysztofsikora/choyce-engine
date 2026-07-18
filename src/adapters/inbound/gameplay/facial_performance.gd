@@ -22,6 +22,42 @@ var _mouth_width := 0.16
 var _mouth_height := 0.026
 
 
+## Imported character clips animate the head bone independently of the model
+## root. A face parented to that root becomes a detached mask during idle/walk
+## poses, so always prefer a BoneAttachment3D for humanoid rigs.
+static func attach_kenney_humanoid(model: Node3D) -> FacialPerformance:
+	return attach_to_bone(model, "head", Vector3(0.0, 0.167, 0.0), 0.202)
+
+
+static func attach_to_bone(
+	model: Node3D,
+	bone_name: String,
+	face_origin: Vector3,
+	front_z: float,
+	visual_scale: float = 1.0,
+	show_eyes: bool = true,
+	show_brows: bool = true
+) -> FacialPerformance:
+	if model == null:
+		push_warning("FacialPerformance.attach_to_bone needs a model node")
+		return null
+	var face := FacialPerformance.new()
+	face.name = "FacialPerformance"
+	var skeleton := model.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton != null and skeleton.find_bone(bone_name) >= 0:
+		var anchor := BoneAttachment3D.new()
+		anchor.name = "FaceHeadAnchor"
+		anchor.bone_name = bone_name
+		skeleton.add_child(anchor)
+		anchor.add_child(face)
+	else:
+		# Keep the fallback expressive, but only use the model root when no rig
+		# exists (primitive NPCs and creatures).
+		model.add_child(face)
+	face.setup_face(face_origin, front_z, visual_scale, show_eyes, show_brows)
+	return face
+
+
 ## `face_origin` is the local centre of the head; `front_z` is the feature
 ## plane offset from that centre. This lets human rigs (front +Z before their
 ## scene rotation) and creatures (front -Z) share the same animator.

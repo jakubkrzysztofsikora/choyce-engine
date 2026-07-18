@@ -422,18 +422,16 @@ func _spawn_cinematic_actor(path: String, pos: Vector3, actor_scale: Vector3) ->
 func _attach_cinematic_face(actor: Node3D, is_monster: bool):
 	if actor == null:
 		return null
-	var face = FACIAL_PERFORMANCE_SCRIPT.new()
-	face.name = "FacialPerformance"
-	actor.add_child(face)
 	if is_monster:
+		var face = FACIAL_PERFORMANCE_SCRIPT.new()
+		face.name = "FacialPerformance"
+		actor.add_child(face)
 		# The skeleton is more compact than the heroes; its face remains visible
 		# in the close shot without adding a giant overlay to the viewport.
 		face.setup_face(Vector3(0.0, 1.34, 0.0), 0.31, 0.86)
+		return face
 	else:
-		# Kenney heroes are authored at sub-metre local scale; their head centre
-		# is y≈0.51. The cinematic actor scale enlarges both rig and face.
-		face.setup_face(Vector3(0.0, 0.51, 0.0), 0.20)
-	return face
+		return FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(actor)
 
 
 func _make_cinematic_fallback(path: String) -> Node3D:
