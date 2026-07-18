@@ -38,9 +38,13 @@ func _run() -> void:
 				var mesh_aabb := mesh_instance.get_aabb()
 				for corner_index in range(8):
 					var local_corner := mesh_aabb.get_endpoint(corner_index)
-					var visual_local_corner := visual.to_local(mesh_instance.to_global(local_corner))
-					lowest_y = minf(lowest_y, visual_local_corner.y)
-			_assert(is_finite(lowest_y) and absf(lowest_y) <= 0.025,
-				"character feet are grounded at the controller contact plane")
+					var player_local_corner := player.to_local(mesh_instance.to_global(local_corner))
+					lowest_y = minf(lowest_y, player_local_corner.y)
+			var collision := player.get_node_or_null("CollisionShape3D") as CollisionShape3D
+			var floor_y := 0.0
+			if collision != null and collision.shape is CapsuleShape3D:
+				floor_y = collision.position.y - (collision.shape as CapsuleShape3D).height * 0.5
+			_assert(is_finite(lowest_y) and absf(lowest_y - floor_y) <= 0.025,
+				"character feet match the capsule's physical floor contact plane")
 	runtime.queue_free()
 	quit(_exit_code)

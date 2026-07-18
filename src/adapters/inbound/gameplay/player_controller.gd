@@ -195,7 +195,7 @@ func _ready() -> void:
 ## old model's feet were authored above its scene root, so physics put the
 ## capsule on the terrain while the visible child hovered in mid-air. Measure
 ## the real mesh bounds in CharacterMesh-local coordinates and place its lowest
-## point exactly at the controller origin (the capsule's floor contact plane).
+## point at the capsule's actual floor-contact plane.
 func _ground_character_visual() -> void:
 	if _character_mesh == null:
 		return
@@ -210,7 +210,24 @@ func _ground_character_visual() -> void:
 			var character_local_corner := _character_mesh.to_local(mesh_instance.to_global(local_corner))
 			lowest_y = minf(lowest_y, character_local_corner.y)
 	if is_finite(lowest_y):
-		_character_mesh.position.y -= lowest_y
+		_character_mesh.position.y += _controller_floor_local_y() - lowest_y
+
+
+## CharacterBody3D's origin is not necessarily its floor. Keep this derived
+## from the collision shape: with the current capsule (centre +0.8, height
+## 1.8), the physical floor is y=-0.1—not y=0. Aligning to the root caused a
+## subtle but very visible hover in the third-person camera.
+func _controller_floor_local_y() -> float:
+	var collision := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision == null or collision.shape == null:
+		return 0.0
+	if collision.shape is CapsuleShape3D:
+		return collision.position.y - (collision.shape as CapsuleShape3D).height * 0.5
+	if collision.shape is BoxShape3D:
+		return collision.position.y - (collision.shape as BoxShape3D).size.y * 0.5
+	if collision.shape is SphereShape3D:
+		return collision.position.y - (collision.shape as SphereShape3D).radius
+	return 0.0
 
 func _physics_process(delta: float) -> void:
 	if not is_processing():
