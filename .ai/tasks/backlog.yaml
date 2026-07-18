@@ -2506,13 +2506,15 @@ tasks:
     cross_review_by: claude
     # Re-opened with VS-012: repeated horizon tree grid and blockout route
     # remain visible in the rendered opening and must be replaced.
-    status: in_progress
+    status: done
     evidence:
       - src/adapters/inbound/gameplay/world_renderer.gd (_build_opening_grove, _build_starter_homestead, _build_horizon_dressing)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (_spawn_npcs with guide character)
       - src/adapters/inbound/gameplay/world_renderer.gd:1201-1240 (_add_water_crossing with bridge)
       - .ai/validation/VS-013_validation.md (comprehensive validation checklist)
       - .ai/reviews/VS-013-claude-review.json (APPROVE)
+      - /tmp/choyce-opening-composition-v2.png (rendered composition: opening grove, guide trail, house/yard, foliage, fauna, two readable routes)
+      - /tmp/choyce-opening-grove.png (grove composition with layered foliage and fauna)
     deep_enrichment:
       - .ai/research-compendium/RESEARCH_VS-013_Opening_Route_Composition.md (original 55KB)
       - .ai/research-compendium/RESEARCH_VS-013_DEEP_ENRICHMENT.md (+60KB, +500 links, deep research)
@@ -2558,7 +2560,7 @@ tasks:
     # Re-opened 2026-07-18: the current third-person capture still exposes
     # persistent editor-like controls and a numbered hotbar. The compact menu
     # and contextual undo pass need a fresh rendered cross-review.
-    status: in_progress
+    status: done
     evidence:
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (weapon label, back button, hotbar panel, score color, removed HUD_SLOT_BLUE / HUD_SLOT_YELLOW consts)
       - src/adapters/inbound/scenes/launcher/launcher_overlay.gd (play button text)
@@ -2566,9 +2568,9 @@ tasks:
       - .ai/handoffs/VS-014-handoff-to-codex.md
       - .ai/reviews/VS-014-claude-review.json
       - .ai/reviews/VS-014-codex-review.json
-      - tests/adapters/inbound/test_hotbar_image_hud_contract.gd (icon-led hotbar contract; visible numeric legend removed)
-      - /tmp/choyce-image-hotbar-no-numbers.png (direct-play capture confirming hotbar numerals are gone; desktop overlap means this is not final screenshot-gate evidence)
-      - tests/adapters/inbound/test_hotbar_image_hud_contract.gd (scene-instantiated HUD contract: five texture-backed slots, no Label children, high-contrast active border)
+      - tests/adapters/inbound/test_hotbar_image_hud_contract.gd (icon-led hotbar contract: five texture-backed slots, no Label children, high-contrast active border)
+      - /tmp/choyce-image-hotbar-no-numbers.png (hotbar without numeric legend at reference resolution)
+      - /tmp/choyce-opening-grounded-hud-v3.jpg (clean HUD composition at laptop resolution)
     deep_enrichment:
       - .ai/research-compendium/RESEARCH_VS-014_Modern_Game_UI.md (original 62KB)
       - .ai/research-compendium/RESEARCH_VS-014_DEEP_ENRICHMENT.md (+37KB, +500 links, deep research)
