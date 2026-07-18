@@ -36,7 +36,7 @@ func play(event_name: String, _position: Vector3 = Vector3.ZERO) -> void:
 				bank.play_melee_impact("kick")
 			else:
 				bank.play_sfx("kick_impact")
-		"physical_swing_punch", "physical_swing_kick", "tool_axe_wood", "tool_pickaxe_stone":
+		"physical_swing_punch", "physical_swing_kick", "physical_swing_axe", "physical_swing_pickaxe", "tool_axe_wood", "tool_pickaxe_stone":
 			if bank.has_method("play_physical_action"):
 				bank.play_physical_action(event_name)
 		"jump":     bank.play_sfx("jump_up")

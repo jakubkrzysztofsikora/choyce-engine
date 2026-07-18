@@ -99,7 +99,8 @@ func _input(event: InputEvent) -> void:
 		return
 
 	# Blade control
-	if event.is_action_just_pressed("blade_toggle"):
+	# InputEvent does not have is_action_just_pressed() - use Input singleton
+	if Input.is_action_just_pressed("blade_toggle"):
 		blade_down = not blade_down
 
 

@@ -31,6 +31,7 @@ var _session: Session
 var _captured_evidence_points: Array = []
 var _opening_evidence_timer: Timer = null
 var _evidence_session_token := 0
+var _terrain_collision_probe_generation := 0
 var _audio_bus: AudioEventBus
 var _sfx_player: SFXPlayer
 ## Live NPC voice (ElevenLabs TTS). Silent no-op without ELEVENLABS_API_KEY.
@@ -47,6 +48,7 @@ var _adventure_sky: WorldEnvironment = null
 var _adventure_legacy_environment: WorldEnvironment = null
 var _adventure_legacy_environment_resource: Environment = null
 var _adventure_legacy_light_visibility: Dictionary = {}
+var _adventure_legacy_fill_light_state: Dictionary = {}
 
 # VS-025: Nutrition, Training, and Body Progression
 var _nutrition_manager: NutritionManager = null
@@ -518,6 +520,8 @@ func _deferred_restore_sandbox_state() -> void:
 func start_session(world: World, session: Session, sandbox_state: SandboxState = null) -> void:
 	_cancel_opening_spawn_evidence()
 	_evidence_session_token += 1
+	_terrain_collision_probe_generation += 1
+	var terrain_probe_generation := _terrain_collision_probe_generation
 	_session = session
 	_score = 0
 	_session_elapsed_sec = 0.0
@@ -542,7 +546,10 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 	if use_adventure_sky:
 		_setup_adventure_sky()
 	_set_legacy_ground_visual_visible(not _world_renderer.has_runtime_terrain_surface())
-	_set_legacy_ground_collision_enabled(not _world_renderer.has_runtime_terrain_collision())
+	# Terrain3D collision is asynchronous. Keep the invisible legacy floor as a
+	# safety catch until direct physics rays prove the spawned terrain has live
+	# collision at both the player start and the north bridge approach.
+	_set_legacy_ground_collision_enabled(true)
 	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
 	_register_world_rules(world)
 	# VS-026: Restore sandbox state after world is rendered and player is available
@@ -558,6 +565,9 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 	_player_controller.set_process_input(true)
 	_player_controller.set_process(true)
 	_apply_loaded_customization()
+	if use_adventure_sky and _world_renderer.has_runtime_terrain_collision():
+		call_deferred("_confirm_runtime_terrain_collision", terrain_probe_generation,
+			_world_renderer.get_runtime_terrain_adapter())
 	# Don't capture mouse — kid needs to click ESC button / nav back if anything stalls.
 	# Mouse capture made the apparent "hang" feel total since user couldn't escape.
 	# FPS-style mouselook — capture cursor so motion is raw delta.
@@ -687,13 +697,46 @@ func _set_legacy_ground_visual_visible(value: bool) -> void:
 		ground_mesh.visible = value
 
 
-## When Terrain3D has built its dynamic heightfield collider, the old flat
-## StaticBody3D must stop participating in physics too. Otherwise a player can
-## alternate between the two ground surfaces and visibly snap while walking.
+## The legacy StaticBody3D is an invisible safety catch while Terrain3D is
+## streaming its local collision. It is disabled only after verified ray hits;
+## that keeps a failed/lazy extension build from letting a child sink through
+## visible ground on the first frame of a session.
 func _set_legacy_ground_collision_enabled(value: bool) -> void:
 	var ground_collision := get_node_or_null("GroundPlane/GroundCollider") as CollisionShape3D
 	if ground_collision != null:
 		ground_collision.set_deferred("disabled", not value)
+
+
+func _confirm_runtime_terrain_collision(probe_generation: int, expected_adapter: Node3D) -> void:
+	# Dynamic Terrain3D collision is populated after the import/update request;
+	# wait for four physics frames rather than treating the request as a ready
+	# signal. The legacy floor remains active throughout the check.
+	for _frame in 4:
+		await get_tree().physics_frame
+	if probe_generation != _terrain_collision_probe_generation:
+		return
+	if _world_renderer == null or not _world_renderer.has_runtime_terrain_collision():
+		return
+	if _world_renderer.get_runtime_terrain_adapter() != expected_adapter:
+		return
+	var ground_plane := get_node_or_null("GroundPlane") as CollisionObject3D
+	var excluded: Array[RID] = []
+	if ground_plane != null:
+		excluded.append(ground_plane.get_rid())
+	if _player_controller != null:
+		excluded.append(_player_controller.get_rid())
+	var contacts: Array[Vector3] = [
+		_world_renderer.get_spawn_position(0),
+		Vector3(0.0, 0.0, -46.0),
+		Vector3(14.0, 0.0, -43.0),
+	]
+	if _world_renderer.verify_runtime_terrain_contacts(contacts, excluded, expected_adapter):
+		if probe_generation != _terrain_collision_probe_generation:
+			return
+		_set_legacy_ground_collision_enabled(false)
+		print("[gameplay] Terrain3D collision verified at spawn and bridge bank; safety floor disabled")
+	else:
+		push_warning("Terrain3D collision did not verify; retaining hidden safety floor")
 
 
 ## The installed MIT-licensed Sky3D addon replaces the static procedural sky
@@ -724,7 +767,10 @@ func _setup_adventure_sky() -> void:
 	# inherited from the generic runtime scene. Keep surfaces warm but restrained,
 	# preserve shadow contrast under trees and reduce horizon haze without showing
 	# the world boundary.
-	environment.ambient_light_energy = 0.74
+	# Keep a physical ambient floor separate from the sky colour. Sky3D's night
+	# sky becomes near-black by design; without this floor the playable terrain,
+	# NPCs and bridge collapsed into silhouettes even though moonlight existed.
+	environment.ambient_light_energy = 1.15
 	environment.ambient_light_sky_contribution = 0.62
 	environment.tonemap_exposure = 0.90
 	environment.adjustment_enabled = true
@@ -767,21 +813,41 @@ func _setup_adventure_sky() -> void:
 	# Set these after the node enters the tree, once Sky3D has created its
 	# TimeOfDay/SunLight/MoonLight/SkyDome children.
 	sky.set("current_time", 13.25)
-	sky.set("minutes_per_day", 24.0)
+	# A child should explore a daylight session before night begins. A 24-minute
+	# cycle repeatedly threw the live demo into its darkest phase while testing.
+	sky.set("minutes_per_day", 48.0)
 	sky.set("update_interval", 0.20)
 	sky.set("clouds_enabled", true)
 	sky.set("cloud_intensity", 0.24)
 	sky.set("sun_energy", 1.30)
 	# Adventure night remains atmospheric but navigable: children must be able
 	# to read the ground, trail and landmark silhouettes without a flashlight.
-	sky.set("moon_energy", 0.82)
-	sky.set("sky_contribution", 0.62)
-	sky.set("night_sky_contribution", 0.92)
+	sky.set("moon_energy", 1.15)
+	sky.set("ambient_energy", 1.15)
+	sky.set("sky_contribution", 0.52)
+	# Sky3D only reveals ambient energy at night when this is lower than the
+	# daytime sky contribution. The previous 0.92 value was clamped to 0.62,
+	# making a full night effectively unlit.
+	sky.set("night_ambient_boost", true)
+	sky.set("night_sky_contribution", 0.16)
 	sky.set("tonemap_exposure", 1.02)
 	# Existing Environment fog is already tuned to hide the large-world horizon;
 	# do not stack Sky3D's fullscreen fog shader over it.
 	sky.set("fog_enabled", false)
-	for legacy_light_name in ["DirectionalLight3D", "FillLight"]:
+	# Sky3D supplies the changing key light. Retain the scene's low-energy,
+	# shadowless FillLight as a stable readability floor; it prevents an outdoor
+	# sandbox from becoming unplayably black during a clouded moonlit phase.
+	var night_fill := get_node_or_null("FillLight") as DirectionalLight3D
+	if night_fill != null:
+		_adventure_legacy_fill_light_state = {
+			"energy": night_fill.light_energy,
+			"color": night_fill.light_color,
+		}
+		var time_of_day := sky.get_node_or_null("TimeOfDay")
+		if time_of_day != null and time_of_day.has_signal("time_changed"):
+			time_of_day.time_changed.connect(_update_adventure_fill_light.bind(sky))
+		_update_adventure_fill_light(float(sky.get("current_time")), sky)
+	for legacy_light_name in ["DirectionalLight3D"]:
 		var legacy_light := get_node_or_null(legacy_light_name) as DirectionalLight3D
 		if legacy_light != null:
 			_adventure_legacy_light_visibility[legacy_light_name] = legacy_light.visible
@@ -803,8 +869,25 @@ func _teardown_adventure_sky() -> void:
 		if legacy_light != null:
 			legacy_light.visible = bool(_adventure_legacy_light_visibility[legacy_light_name])
 	_adventure_legacy_light_visibility.clear()
+	var fill_light := get_node_or_null("FillLight") as DirectionalLight3D
+	if fill_light != null and not _adventure_legacy_fill_light_state.is_empty():
+		fill_light.light_energy = float(_adventure_legacy_fill_light_state.get("energy", fill_light.light_energy))
+		fill_light.light_color = _adventure_legacy_fill_light_state.get("color", fill_light.light_color)
+	_adventure_legacy_fill_light_state.clear()
 	_adventure_legacy_environment = null
 	_adventure_legacy_environment_resource = null
+
+
+## Keep daylight contrast intact while giving moonlit play a predictable
+## readability floor. Sky3D owns the key lights; this is only a shadowless fill
+## that follows its actual night state instead of permanently washing the day.
+func _update_adventure_fill_light(_time: float, sky: WorldEnvironment) -> void:
+	var fill_light := get_node_or_null("FillLight") as DirectionalLight3D
+	if fill_light == null or sky == null or not is_instance_valid(sky):
+		return
+	var is_night := bool(sky.call("is_night")) if sky.has_method("is_night") else false
+	fill_light.light_energy = 0.62 if is_night else 0.24
+	fill_light.light_color = Color(0.48, 0.62, 0.88, 1.0) if is_night else Color(0.75, 0.85, 1.0, 1.0)
 
 
 ## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
@@ -2052,19 +2135,10 @@ func _rebuild_hotbar_panel(active_slot: int) -> void:
 		icon.offset_bottom = -14
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.add_child(icon)
-		# Tiny numeric hint is retained for older children/keyboard use; all
-		# gameplay meaning comes from the picture rather than a word label.
-		var num_label := Label.new()
-		num_label.text = "%d" % (i + 1)
-		num_label.add_theme_font_size_override("font_size", 13)
-		num_label.add_theme_color_override("font_color", Color.WHITE)
-		num_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-		num_label.add_theme_constant_override("shadow_offset_x", 2)
-		num_label.add_theme_constant_override("shadow_offset_y", 2)
-		num_label.position = Vector2(10, 8)
-		num_label.size = Vector2(16, 18)
-		num_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(num_label)
+		# The hotbar is picture-first for children who cannot read. Keyboard and
+		# accessibility names remain available through the non-rendered tooltip;
+		# the visible numeric overlay made every otherwise-icon-led slot feel like
+		# a debug control legend in the captured Adventure opening.
 		_hotbar_panel.add_child(slot)
 
 
@@ -2201,13 +2275,16 @@ func _build_hud() -> void:
 	menu.expand_icon = true
 	menu.focus_mode = Control.FOCUS_ALL
 	menu.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	menu.offset_left = 28
-	menu.offset_top = 28
-	menu.offset_right = 80
-	menu.offset_bottom = 80
-	menu.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.38, 0.62, 0.76), 0.82))
-	menu.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.50, 0.74, 0.88), 0.96))
-	menu.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.24, 0.46, 0.62), 0.96))
+	# This is an infrequent escape/customization utility, not a primary HUD
+	# element. Keep it intentionally quieter and smaller than the world-facing
+	# image hotbar so the opening reads as a game scene rather than an editor.
+	menu.offset_left = 20
+	menu.offset_top = 20
+	menu.offset_right = 60
+	menu.offset_bottom = 60
+	menu.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.22, 0.32, 0.38), 0.62))
+	menu.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.38, 0.58, 0.66), 0.88))
+	menu.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.16, 0.26, 0.32), 0.90))
 	menu.add_theme_stylebox_override("focus", _hud_panel_style(Color(1.0, 0.86, 0.38), 0.96))
 	var menu_popup := menu.get_popup()
 	menu_popup.add_icon_item(HUD_ICON_STAR, "Wygląd postaci", 1)
@@ -3144,17 +3221,17 @@ func _input(event: InputEvent) -> void:
 	# before dynamically spawned vehicle nodes, so consume egress first or E can
 	# be swallowed by the generic interaction path and trap the player inside.
 	if _active_vehicle != null and is_instance_valid(_active_vehicle) \
-		and event.is_action_pressed("exit_vehicle"):
+		and Input.is_action_pressed("exit_vehicle"):
 		_active_vehicle.exit_vehicle()
 		var viewport := get_viewport()
 		if viewport != null:
 			viewport.set_input_as_handled()
 		return
-	if event.is_action_pressed("interact"):
+	if Input.is_action_pressed("interact"):
 		_activate_world_interaction()
 		get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed("ui_cancel"):
+	if Input.is_action_pressed("ui_cancel"):
 		# ESC only ever TOGGLES the mouse cursor — it never ends the
 		# session. The old two-press "second ESC quits" fired on the
 		# first press whenever the cursor was already visible (kid on
@@ -3524,6 +3601,9 @@ func _on_customize_pressed() -> void:
 func _on_customization_panel_changed(c: CharacterCustomization) -> void:
 	if c == null:
 		return
+	# A deliberate swatch choice opts out of the authored first-run wardrobe;
+	# persist that choice so a new session cannot silently overwrite it.
+	c.use_signature_outfit = false
 	_customization = c
 	if _player_controller != null and _player_controller.has_method("apply_customization"):
 		_player_controller.apply_customization(c)

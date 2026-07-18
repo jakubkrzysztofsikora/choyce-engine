@@ -105,7 +105,10 @@ func set_suspension_damping(_value: float) -> void: pass
 
 
 func _input(event: InputEvent) -> void:
-	if is_active and event.is_action_just_pressed("exit_vehicle"):
+	# InputEvent does not have is_action_just_pressed() - that is an Input singleton
+	# method. Use Input.is_action_just_pressed() to check if the exit_vehicle action
+	# was pressed, regardless of whether this specific event triggered it.
+	if is_active and Input.is_action_just_pressed("exit_vehicle"):
 		exit_vehicle()
 
 

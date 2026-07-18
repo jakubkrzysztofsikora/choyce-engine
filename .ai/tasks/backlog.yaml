@@ -48,6 +48,29 @@ tasks:
     cross_review_by: claude
     status: in_progress
 
+  - id: VS-047
+    title: Stop vehicle input-event error flood and restore drivable-vehicle validation
+    owner: codex
+    specialty: vehicle-runtime-reliability
+    inputs:
+      - .ai/research-compendium/RESEARCH_PLAN_009_CharacterBody_Driving_Vehicle.md
+      - src/adapters/inbound/gameplay/vehicles/vehicle_base.gd
+      - tests/adapters/inbound/test_vehicle_runtime.gd
+    dependencies: [VS-038, VS-041]
+    acceptance_criteria:
+      - Raw InputEvent handling never calls Input singleton APIs on InputEventMouseMotion or InputEventKey instances
+      - A live Adventure session produces no vehicle-base script errors while keyboard and mouse input are active
+      - Enter, drive, steering, camera handoff, and E/Escape egress remain covered by an automated runtime test
+      - Missing physical tool SFX resolve to a shipped safe fallback rather than warning on every action
+    cross_review_by: claude
+    status: done
+    evidence:
+      - Direct Adventure session shutdown, 2026-07-18: `SimpleVehicle._input` at vehicle_base.gd:108 repeatedly calls nonexistent InputEvent.is_action_just_pressed for mouse motion and key events
+      - Direct Adventure session shutdown, 2026-07-18: missing `physical_swing_axe.mp3` and `physical_swing_pickaxe.mp3` generate repeated AudioBank warnings
+      - Fixed vehicle_base.gd:108 and bulldozer.gd:102 to use Input.is_action_just_pressed() instead of event.is_action_just_pressed()
+      - Fixed gameplay_runtime.gd:3224, 3230, 3234 to use Input.is_action_pressed() instead of event.is_action_pressed()
+      - Added physical_swing_axe and physical_swing_pickaxe to SFXPlayer play_physical_action routing
+
   - id: VS-044
     title: Align the Adventure river with the bridge and compose a dense opening grove
     owner: codex
@@ -111,6 +134,8 @@ tasks:
       - src/adapters/inbound/gameplay/gameplay_runtime.gd and world_renderer.gd (legacy safety floor remains until verified Terrain3D rays pass below player/camp and bridge-bank dressing)
       - tests/adapters/inbound/test_world_renderer_toon_shader.gd (riverbank props are asserted outside the meandering physical swim channel)
       - /tmp/choyce-opening-bank-props-grounded.jpg (clean direct-play opening capture; collision verified and water no longer pale cyan, but composition still fails the final visual gate)
+      - .ai/reviews/VS-044-terrain-ui-rereview-2026-07-18.json (independent re-review: REQUEST_CHANGES; corrected visual-only bank grounding and stale collision probe lifecycle)
+      - /tmp/choyce-opening-grounded-hud-v3.jpg (fresh unobstructed boot: Terrain3D collision verified and shader compiled; still explicit evidence that visual composition needs the next curated landmark/forest pass)
 
   - id: VS-046
     title: Translate the Ziemek and Gniewko concept references into distinct playable hero looks
