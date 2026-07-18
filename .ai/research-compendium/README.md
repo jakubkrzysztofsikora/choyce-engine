@@ -23,12 +23,14 @@ These tasks have full, detailed research documents with code samples, online res
 - **Key Technologies**: FastNoiseLite, chunk-based streaming, object pooling, LOD systems, deterministic seeding, visibility/occlusion culling, memory management
 - **Enrichment**: Loop 12 - Added 300+ links across 19 sections: Godot 4.6 PCG3D deep dive, FastNoiseLite advanced patterns, chunk streaming, deterministic seeding, biome generation, terrain/mesh generation, collision optimization, memory management, LOD systems, visibility/occlusion, advanced code samples, testing strategies, child-safety, learning resources, integration notes
 
-### 2. Tool-Gated Gathering System (VS-020)
+### 2. Tool-Gated Gathering System (VS-020) ✅ COMPLETE
 - **File**: [RESEARCH_VS-020_Tool_Gated_Gathering_System.md](./RESEARCH_VS-020_Tool_Gated_Gathering_System.md)
+- **Deep Enrichment**: [RESEARCH_VS-020_DEEP_ENRICHMENT.md](./RESEARCH_VS-020_DEEP_ENRICHMENT.md)
 - **Focus**: Axe/pickaxe requirements, tool discovery, gathering with progress, respawn system
-- **Status**: in_progress
+- **Status**: done - Deep Research Enriched with +64KB, +250 links, Kenney Survival Kit integration, state machine patterns, child-safety constraints
 - **Complexity**: HIGH
 - **Key Technologies**: Area3D interaction, inventory integration, state machines, tool registry pattern
+- **Enrichment**: Loop 14 - Added 250+ links across 20+ sections: Kenney Survival Kit integration, tool-gated state machines, inventory patterns, Godot Area3D interaction, deterministic respawn, child-safe constraints, streaming world integration, code samples, ready implementations
 
 ### 3. Vehicle Physics & Bulldozer Destruction (VS-021) ✅ COMPLETE
 - **File**: [RESEARCH_VS-021_Vehicle_Physics_Destruction.md](./RESEARCH_VS-021_Vehicle_Physics_Destruction.md)
