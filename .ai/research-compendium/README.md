@@ -64,6 +64,13 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: Enemy state machines, wind-up telegraph system, child-safe creature design
 
+### 8. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
+- **File**: [RESEARCH_VS-005_Combat_Telegraphs_Feedback.md](./RESEARCH_VS-005_Combat_Telegraphs_Feedback.md)
+- **Focus**: Hitstop, screen shake, aim assist, damage numbers, particle effects, weapon differentiation
+- **Status**: in_review
+- **Complexity**: HIGH
+- **Key Technologies**: CameraShaker, HitstopManager, FeedbackQueue, GPUParticles3D, AnimationTree
+
 ---
 
 ## Task Research Index
@@ -281,21 +288,18 @@ These tasks have full, detailed research documents with code samples, online res
 - **Assets**: Kenney packs, KayKit, Quaternius
 - **Links**: [Godot PBR Tutorial](https://docs.godotengine.org/en/stable/tutorials/3d/materials_in_godot_4_x.html)
 
-### VS-005: Combat Telegraphs and Feedback
+### VS-005: Combat Telegraphs and Feedback ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-005_Combat_Telegraphs_Feedback.md](./RESEARCH_VS-005_Combat_Telegraphs_Feedback.md)
 - **Status**: in_review
 - **Specialty**: combat-feel
-- **Research**: Enemy wind-up/recovery, hit feedback, soft aim assist
-- **Technical**: Animation state machines, particle effects, camera shake
-- **Current Evidence**: enemy_controller.gd (WINDUP state), player_controller.gd (combo, squash, aim assist)
-- **Research Needed**:
-  - Animation blending for smooth transitions
-  - Hitstop implementation (brief frame freeze on hit)
-  - Screen shake systems for impact feedback
-  - Damage number popups (floating text)
-- **Links**:
-  - [Godot Animation Tree](https://docs.godotengine.org/en/stable/classes/class_animationtree.html)
-  - [Camera Shake Tutorial](https://www.youtube.com/watch?v=5oL3XhM99KY)
-  - [Hitstop Implementation](https://github.com/GodotExplorer/Godot-Demo-Projects/tree/master/2D/hitstop)
+- **Research**: Enemy wind-up/recovery, hit feedback, soft aim assist, weapon differentiation
+- **Technical**: Animation state machines, particle effects, camera shake, hitstop, crosshair tinting
+- **Current Evidence**: enemy_controller.gd (WINDUP state), player_controller.gd (combo, squash, aim assist), gameplay_runtime.gd (damage numbers, hit-stop)
+- **Blocking Fixes Identified**:
+  - Crosshair tinting when enemy in range (comment only at line 1966)
+  - combat_difficulty serialization in ParentalControlPolicy
+  - EASY mode multipliers (hp_mult *= 0.6, contact_damage *= 0.5)
+- **Deep Research**: ✅ COMPLETE - 56KB comprehensive document with code samples, best practices, child-safety constraints
 
 ### VS-006: Audio Visual Accessibility Quality
 - **Status**: in_progress
@@ -553,21 +557,17 @@ These tasks have full, detailed research documents with code samples, online res
 The following tasks will receive full research documents based on priority:
 
 ### High Priority (Completed ✅)
-1. **VS-006**: Audio Visual Accessibility - Full audio bus architecture, accessibility systems - ✅ DONE
-2. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
-3. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
-4. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
-
-### High Priority (Completed ✅)
-1. **VS-006**: Audio Visual Accessibility - Full audio bus architecture, accessibility systems - ✅ DONE
-2. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
-3. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
-4. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
+1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist, weapon differentiation - ✅ DONE - 56KB comprehensive compendium with blocking fixes identified
+2. **VS-006**: Audio Visual Accessibility - Full audio bus architecture, accessibility systems - ✅ DONE
+3. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
+4. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking, heal - ✅ DONE
 5. **VS-022**: Character Customization - Mesh swapping, material overrides, persistence - ✅ DONE
-6. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking, heal - ✅ DONE
+6. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
+7. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
 
 ### Medium Priority (Next to Research)
-1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist (partial research needed)
+1. **VS-012**: Modern Game UI - HUD replacement, controls, iconography (needs research)
+2. **VS-014**: Modern Game UI - Duplicate/similar to VS-012 (needs clarification)
 
 ### Low Priority
 1. **VS-011, VS-016**: Visual Acceptance - Screenshot capture, performance validation
