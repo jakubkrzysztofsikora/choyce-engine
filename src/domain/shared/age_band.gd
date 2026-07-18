@@ -43,3 +43,23 @@ func is_restricted() -> bool:
 
 func equals(other: AgeBand) -> bool:
 	return other != null and band == other.band
+
+
+## Small, forward-compatible persistence contract used by PlayerProfile. Store
+## the enum label rather than an ordinal so a future enum insertion cannot turn
+## a child profile into a different age band.
+func to_dict() -> Dictionary:
+	return {"band": Band.keys()[band]}
+
+
+static func from_dict(data: Dictionary) -> AgeBand:
+	var raw: Variant = data.get("band", Band.CHILD_6_8)
+	if raw is int and raw >= Band.CHILD_6_8 and raw <= Band.PARENT:
+		var parsed_band: Band = int(raw)
+		return AgeBand.new(parsed_band)
+	var label := String(raw).to_upper()
+	for candidate in Band.keys():
+		if candidate == label:
+			var selected_band: Band = int(Band[candidate])
+			return AgeBand.new(selected_band)
+	return AgeBand.new(Band.CHILD_6_8)

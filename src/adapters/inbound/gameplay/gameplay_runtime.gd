@@ -135,6 +135,22 @@ var _interaction_prompt_icon: TextureRect = null
 var _nearby_world_interactable: Node3D = null
 var _interaction_feedback_until: float = 0.0
 const SILLY_FART_REACTION_RANGE := 10.0
+## A reaction is a tiny social beat, not a crowd of voices competing at once.
+## Every nearby NPC gets a turn, while new fart-triggered dialogue waits until
+## the current group has finished. Physical gags still happen immediately.
+const SILLY_FART_REACTION_GAP_SECONDS := 0.12
+const SILLY_FART_MAX_QUEUED_REACTIONS := 12
+const SILLY_FART_VOICE_TIMEOUT_SECONDS := 12.0
+## FIFO of nearby NPC reaction turns. Entries keep a WeakRef so streamed-out
+## NPCs can disappear safely before their turn without holding their scene
+## nodes alive.
+var _npc_reaction_queue: Array[Dictionary] = []
+var _npc_reaction_queue_active := false
+var _active_npc_reaction_line := ""
+var _active_npc_reaction_name := ""
+var _active_npc_reaction_audio_started := false
+var _active_npc_reaction_audio_finished := false
+var _active_npc_reaction_audio_skipped := false
 
 # Parental gates (Adv 2 TB-1, TB-2 fix). Default policy = combat off
 # until parent toggles on. Without a policy injection, _spawn_starter_enemies
@@ -195,6 +211,10 @@ func _ready() -> void:
 		eleven_key = OS.get_environment("ELEVEN_LABS_API_KEY").strip_edges()
 	var eleven_voice := OS.get_environment("ELEVENLABS_VOICE_ID").strip_edges()
 	_npc_voice = ElevenLabsVoicePromptAdapter.new().setup(self, eleven_key, eleven_voice)
+	if _npc_voice != null:
+		_npc_voice.playback_started.connect(_on_npc_voice_playback_started)
+		_npc_voice.playback_finished.connect(_on_npc_voice_playback_finished)
+		_npc_voice.playback_skipped.connect(_on_npc_voice_playback_skipped)
 
 	# Ambient music is now driven by AudioBank (play_music called from PlayShell
 	# when the world is chosen). The _ambient_player node is kept so the scene
@@ -1142,7 +1162,7 @@ func _on_npc_trigger_exited(body: Node, npc_root: Node3D) -> void:
 
 ## Lazily build a single shared dialogue label at the bottom-center.
 ## Kept on the HUD CanvasLayer so it sits above 3D geometry.
-func _show_npc_dialogue(name_pl: String, line_pl: String) -> void:
+func _show_npc_dialogue(name_pl: String, line_pl: String, speak_line: bool = true) -> void:
 	if _npc_dialogue_label == null:
 		_npc_dialogue_label = _build_npc_dialogue_label()
 	if _npc_dialogue_label == null:
@@ -1150,7 +1170,7 @@ func _show_npc_dialogue(name_pl: String, line_pl: String) -> void:
 	_npc_dialogue_label.text = "%s: %s" % [name_pl, line_pl]
 	_npc_dialogue_label.visible = true
 	# Speak the line aloud (ElevenLabs). Caption stays as the fallback.
-	if _npc_voice != null:
+	if speak_line and _npc_voice != null:
 		_npc_voice.speak(line_pl)
 
 
@@ -1170,7 +1190,9 @@ func _animate_npc_speech(
 	for child in _npc_root.get_children():
 		if not (child is Node3D) or String(child.get_meta("npc_id", "")) != npc_id:
 			continue
-		var facial = child.get_meta("facial_performance", null)
+		if not child.has_meta("facial_performance"):
+			return
+		var facial = child.get_meta("facial_performance")
 		if facial != null and is_instance_valid(facial):
 			facial.speak_for(_speech_duration_for_line(line), emotion)
 		return
@@ -2487,27 +2509,107 @@ func _on_player_farted(effect_origin: Vector3) -> void:
 		_effect_spawner.spawn_stink_cloud(effect_origin)
 	if _npc_root == null:
 		return
-	var closest: Dictionary = {}
+	# Do not build an ever-growing second social queue when the kid presses G
+	# again before the current group has had its short turn.
+	if _npc_reaction_queue_active:
+		return
 	for npc_variant in _npc_root.get_children():
 		var npc_root := npc_variant as Node3D
 		if npc_root == null or npc_root.global_position.distance_to(effect_origin) > SILLY_FART_REACTION_RANGE:
 			continue
 		var reaction := _fart_reaction_for(npc_root)
-		_show_npc_reaction_bubble(npc_root, String(reaction.line))
-		_animate_npc_speech(String(npc_root.get_meta("npc_id", "")), String(reaction.line), int(reaction.emotion))
 		_match_npc_fart_animation(npc_root, String(reaction.action))
-		if closest.is_empty() or npc_root.global_position.distance_to(effect_origin) < float(closest.distance):
-			closest = {
-				"root": npc_root,
-				"line": String(reaction.line),
-				"distance": npc_root.global_position.distance_to(effect_origin),
-			}
-	# One nearby reaction gets voiced/captioned through the existing single-line
-	# channel. All others retain their own speech bubbles, preventing the old
-	# overlapping-voice problem.
-	if not closest.is_empty():
-		var speaker := closest.root as Node3D
-		_show_npc_dialogue(String(speaker.get_meta("npc_name_pl", "")), String(closest.line))
+		_queue_npc_reaction(npc_root, reaction)
+
+
+## Every NPC in range gets an in-character line. The queue deliberately owns
+## the single shared subtitle/voice channel so a crowd does not talk over or
+## mute itself. If another fart happens while these reactions are playing, its
+## visible effect still runs but its social beat waits behind the first group.
+func _queue_npc_reaction(npc_root: Node3D, reaction: Dictionary) -> void:
+	if npc_root == null:
+		return
+	if _npc_reaction_queue.size() >= SILLY_FART_MAX_QUEUED_REACTIONS:
+		return
+	var line := String(reaction.get("line", "")).strip_edges()
+	if line.is_empty():
+		return
+	_npc_reaction_queue.append({
+		"npc": weakref(npc_root),
+		"npc_id": String(npc_root.get_meta("npc_id", "")),
+		"name_pl": String(npc_root.get_meta("npc_name_pl", "Ktoś")),
+		"line": line,
+		"emotion": int(reaction.get("emotion", FacialPerformance.Emotion.HAPPY)),
+	})
+	if _npc_reaction_queue_active or not is_inside_tree():
+		return
+	_npc_reaction_queue_active = true
+	_drain_npc_reaction_queue()
+
+
+func _drain_npc_reaction_queue() -> void:
+	while not _npc_reaction_queue.is_empty():
+		var turn: Dictionary = _npc_reaction_queue.pop_front()
+		var npc_ref := turn.get("npc", null) as WeakRef
+		var npc_root := npc_ref.get_ref() as Node3D if npc_ref != null else null
+		if npc_root == null or not is_instance_valid(npc_root):
+			continue
+		var line := String(turn.get("line", ""))
+		var name_pl := String(turn.get("name_pl", "Ktoś"))
+		_show_npc_reaction_bubble(npc_root, line)
+		_animate_npc_speech(String(turn.get("npc_id", "")), line, int(turn.get("emotion", FacialPerformance.Emotion.HAPPY)))
+		_active_npc_reaction_line = line
+		_active_npc_reaction_name = name_pl
+		_active_npc_reaction_audio_started = false
+		_active_npc_reaction_audio_finished = false
+		_active_npc_reaction_audio_skipped = false
+		if _npc_voice != null and _npc_voice.is_available():
+			# The caption waits for playback_started; it cannot get ahead of a
+			# slow ElevenLabs synthesis or replace an audible previous line.
+			_npc_voice.speak(line)
+			var voice_deadline_msec := Time.get_ticks_msec() + int(SILLY_FART_VOICE_TIMEOUT_SECONDS * 1000.0)
+			while not _active_npc_reaction_audio_finished and is_inside_tree():
+				if Time.get_ticks_msec() >= voice_deadline_msec:
+					# HTTPRequest also owns a timeout, but retain a runtime circuit
+					# breaker so a misbehaving custom adapter cannot stall the world.
+					_npc_voice.cancel()
+					_active_npc_reaction_audio_skipped = true
+					_active_npc_reaction_audio_finished = true
+					break
+				await get_tree().process_frame
+			if _active_npc_reaction_audio_skipped and is_inside_tree():
+				_show_npc_dialogue(name_pl, line, false)
+				await get_tree().create_timer(_speech_duration_for_line(line)).timeout
+			_hide_npc_dialogue()
+		else:
+			# Offline mode remains accessible through a timed visual caption.
+			_show_npc_dialogue(name_pl, line, false)
+			var tree := get_tree()
+			if tree == null:
+				break
+			await tree.create_timer(_speech_duration_for_line(line) + SILLY_FART_REACTION_GAP_SECONDS).timeout
+			_hide_npc_dialogue()
+		_active_npc_reaction_line = ""
+		_active_npc_reaction_name = ""
+	_npc_reaction_queue_active = false
+
+
+func _on_npc_voice_playback_started(line: String) -> void:
+	if _active_npc_reaction_line != line:
+		return
+	_active_npc_reaction_audio_started = true
+	_show_npc_dialogue(_active_npc_reaction_name, line, false)
+
+
+func _on_npc_voice_playback_finished(line: String) -> void:
+	if _active_npc_reaction_line == line:
+		_active_npc_reaction_audio_finished = true
+
+
+func _on_npc_voice_playback_skipped(line: String) -> void:
+	if _active_npc_reaction_line == line:
+		_active_npc_reaction_audio_skipped = true
+		_active_npc_reaction_audio_finished = true
 
 
 func _fart_reaction_for(npc_root: Node3D) -> Dictionary:
@@ -2540,9 +2642,16 @@ func _show_npc_reaction_bubble(npc_root: Node3D, line: String) -> void:
 		npc_root.add_child(bubble)
 	bubble.text = line
 	bubble.visible = true
-	get_tree().create_timer(2.8).timeout.connect(func() -> void:
-		if is_instance_valid(bubble):
-			bubble.visible = false)
+	var tree := get_tree()
+	if tree == null:
+		return
+	# Keep a weak reference: streamed NPCs can be freed before the timeout and
+	# a lambda must never retain (or dereference) their old speech bubble.
+	var bubble_ref: WeakRef = weakref(bubble)
+	tree.create_timer(2.8).timeout.connect(func() -> void:
+		var captured_bubble: Label3D = bubble_ref.get_ref() as Label3D
+		if captured_bubble != null and is_instance_valid(captured_bubble):
+			captured_bubble.visible = false)
 
 
 func _match_npc_fart_animation(npc_root: Node3D, action: String) -> void:
