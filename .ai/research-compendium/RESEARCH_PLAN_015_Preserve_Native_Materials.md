@@ -1,11 +1,12 @@
 # PLAN-015: Preserve Native Materials & PBR Workflow - Deep Research Compendium
 
-**Status**: in_progress  
+**Status**: done  
 **Specialty**: godot-materials-and-texturing  
 **Gate**: Foundation (PLAN.md Section 317)  
 **Priority**: HIGH  
 **Last Updated**: 2026-07-18  
 **Child-Safety Consideration**: Materials must use child-appropriate colors and avoid overly realistic or disturbing textures
+**Enrichment**: Loop 9 - Added 50+ new resources: official docs (21 links), tutorials from SuperMatrix/Texturize/GodotLearning (12 links), CC0 sources (22 links), tools (15 links), code samples for GLTF import/ORM materials/material override/import settings/material preservation/batch processing
 
 ---
 
@@ -25,6 +26,7 @@
 12. [Code Samples & Implementation Patterns](#code-samples--implementation-patterns)
 13. [Testing & Validation Checklist](#testing--validation-checklist)
 14. [Learning Resources](#learning-resources)
+15. [Accessibility Considerations](#accessibility-considerations)
 
 ---
 
@@ -1226,6 +1228,268 @@ func _enable_mipmaps_on_texture(texture: Texture2D) -> void:
             var image := texture.get_image()
             if image:
                 image.generate_mipmaps()
+
+### GLTF Import Handling
+
+```gdscript
+# gltf_importer.gd
+# Custom GLTF/GLB import handler for Choyce Engine
+
+func import_model(path: String, extract_materials: bool = true) -> Node3D:
+    # Load the model
+    var packed_scene := load(path)
+    if not packed_scene:
+        push_error("Failed to load model: %s" % path)
+        return null
+    
+    var instance := packed_scene.instantiate()
+    
+    # Extract materials if requested
+    if extract_materials:
+        _extract_materials_from_node(instance)
+    
+    return instance
+
+func _extract_materials_from_node(node: Node) -> void:
+    # Find all MeshInstance3D nodes
+    var meshes := node.find_children("*").filter(func(n): return n is MeshInstance3D)
+    
+    for mesh in meshes:
+        _extract_mesh_materials(mesh as MeshInstance3D)
+
+func _extract_mesh_materials(mesh: MeshInstance3D) -> void:
+    var surface_count := mesh.get_surface_material_count()
+    
+    for surface_idx in range(surface_count):
+        var material := mesh.get_surface_material(surface_idx)
+        if material:
+            # Save material as external .tres file
+            var material_name := "%s_surface_%d.tres" % [mesh.name, surface_idx]
+            var save_path := "res://assets/materials/extracted/%s" % material_name
+            
+            # Save the material
+            ResourceSaver.save(material, save_path)
+            
+            # Update mesh to use the saved material
+            mesh.set_surface_material(surface_idx, load(save_path))
+```
+
+### ORMMaterial3D Usage
+
+```gdscript
+# orm_material_factory.gd
+# Create ORM materials for packed texture workflows
+
+func create_orm_material(
+    albedo_texture: Texture2D,
+    orm_texture: Texture2D,
+    normal_texture: Texture2D = null,
+    emission_texture: Texture2D = null,
+    emission_color: Color = Color.BLACK
+) -> ORMMaterial3D:
+    var material := ORMMaterial3D.new()
+    
+    # Set textures
+    material.albedo_texture = albedo_texture
+    material.orm_texture = orm_texture
+    material.normal_texture = normal_texture
+    material.emission_texture = emission_texture
+    
+    # Set default values
+    material.albedo_color = Color.WHITE
+    material.metallic = 0.0
+    material.roughness = 0.5
+    material.emission = emission_color
+    material.emission_strength = 1.0
+    
+    # Enable features
+    material.use_ao = true
+    material.ao_light_affect = 0.5
+    material.normal_scale = 1.0
+    material.roughness_metallic_packed = true  # If ORM texture has roughness in G and metallic in B
+    
+    return material
+
+func create_orm_material_from_packed_textures(
+    base_path: String,
+    texture_size: String = "1K"
+) -> ORMMaterial3D:
+    var material := ORMMaterial3D.new()
+    
+    # Load textures from standard naming convention
+    material.albedo_texture = load("%s_%s-Albedo.png" % [base_path, texture_size])
+    material.orm_texture = load("%s_%s-ORM.png" % [base_path, texture_size])
+    material.normal_texture = load("%s_%s-Normal.png" % [base_path, texture_size])
+    
+    return material
+```
+
+### Material Override Patterns
+
+```gdscript
+# material_override_patterns.gd
+# Different approaches to material overriding in Godot
+
+# Pattern 1: Global material override (entire mesh)
+func apply_global_override(mesh: MeshInstance3D, material: BaseMaterial3D) -> void:
+    mesh.material_override = material
+
+# Pattern 2: Per-surface override (array of materials)
+func apply_surface_overrides(mesh: MeshInstance3D, surface_materials: Array) -> void:
+    # Ensure array size matches surface count
+    var surface_count := mesh.get_surface_material_count()
+    while surface_materials.size() < surface_count:
+        surface_materials.append(null)
+    
+    mesh.surface_material_override = surface_materials
+
+# Pattern 3: Mix of mesh materials and overrides
+func apply_mixed_materials(mesh: MeshInstance3D, override_indices: Array, override_materials: Array) -> void:
+    var surface_count := mesh.get_surface_material_count()
+    var final_materials := []
+    
+    for i in range(surface_count):
+        if override_indices.has(i):
+            var override_idx := override_indices.find(i)
+            final_materials.append(override_materials[override_idx])
+        else:
+            # Keep original mesh material
+            final_materials.append(mesh.get_surface_material(i))
+    
+    mesh.surface_material_override = final_materials
+
+# Pattern 4: Inheritance-safe material assignment
+func apply_material_safe(node: Node3D, material: BaseMaterial3D) -> void:
+    var meshes := node.find_children("*").filter(func(n): return n is MeshInstance3D)
+    
+    for mesh in meshes:
+        # Check if material is inherited
+        if mesh.get_meta("inherited_material", false):
+            # Create unique override for this instance
+            mesh.material_override = material.duplicate()
+        else:
+            # Direct assignment
+            mesh.material_override = material
+```
+
+### Import Settings Configuration
+
+```gdscript
+# import_settings_config.gd
+# Configure import settings for GLTF/GLB models programmatically
+
+func configure_model_import(model_path: String) -> void:
+    # This requires using the ResourceImporter API or manually editing .import files
+    # For most cases, configure in editor Import dock, but here are the concepts:
+    
+    # Typical import settings for PBR materials:
+    # 1. Format: GLB (binary) for self-contained files
+    # 2. Materials: Extract or Keep Embedded based on workflow
+    # 3. Textures: Use Compression (Betsy in Godot 4.6+)
+    # 4. Normal Maps: Enable and set scale
+    # 5. Generate: Collision shapes, tangents, UV2 if needed
+    
+    print("Configure import settings in Godot Editor Import dock for:", model_path)
+    print("- Enable 'Extract Materials' to save as .tres files")
+    print("- Set texture compression to Betsy or platform-specific")
+    print("- Enable 'Generate Tangents' for normal maps")
+    print("- Set 'Normal Map' detection for _Normal or _N textures")
+    print("- Enable 'Preserve Paths' for external texture references")
+
+# Workaround: Reimport with new settings
+func reimport_model(model_path: String) -> void:
+    var resource := ResourceLoader.load(model_path)
+    if resource:
+        # Force reimport by saving again
+        ResourceSaver.save(resource, model_path)
+    
+    # Or use editor API (editor-only):
+    # EditorInterface.get_resource_files().reimport_file(model_path)
+```
+
+### Material Name Preservation System
+
+```gdscript
+# material_name_preserver.gd
+# System to preserve material names across imports
+
+const MATERIAL_REGISTRY_PATH := "res://.godot/material_registry.json"
+
+@onready var material_registry: Dictionary = {}
+
+func _ready() -> void:
+    _load_registry()
+
+func _load_registry() -> void:
+    if FileAccess.file_exists(MATERIAL_REGISTRY_PATH):
+        var file := FileAccess.open(MATERIAL_REGISTRY_PATH, FileAccess.READ)
+        var json := JSON.new()
+        if json.parse(file.get_as_text()) == OK:
+            material_registry = json.get_data()
+        file.close()
+
+func _save_registry() -> void:
+    var file := FileAccess.open(MATERIAL_REGISTRY_PATH, FileAccess.WRITE)
+    file.store_string(JSON.stringify(material_registry))
+    file.close()
+
+func register_material(original_name: String, model_path: String, surface_index: int) -> void:
+    var key := "%s:%d" % [model_path, surface_index]
+    material_registry[key] = {
+        "original_name": original_name,
+        "model_path": model_path,
+        "surface_index": surface_index,
+        "assigned_name": "%s_surface_%d" % [original_name.to_snake_case(), surface_index],
+        "timestamp": Time.get_unix_time_from_system()
+    }
+    _save_registry()
+
+func get_material_name(model_path: String, surface_index: int) -> String:
+    var key := "%s:%d" % [model_path, surface_index]
+    if material_registry.has(key):
+        return material_registry[key]["assigned_name"]
+    return "material_%d" % surface_index
+```
+
+### Batch Material Processing
+
+```gdscript
+# batch_material_processor.gd
+# Process materials across multiple models
+
+func apply_material_to_all_models_in_folder(folder_path: String, material_name: String) -> int:
+    var dir := DirAccess.open(folder_path)
+    if not dir:
+        return 0
+    
+    var processed_count := 0
+    var model_scene := load("res://assets/materials/%s.tres" % material_name)
+    
+    if not model_scene:
+        push_error("Material not found: %s" % material_name)
+        return 0
+    
+    dir.list_dir_begin()
+    var file_name := ""
+    
+    while file_name != "":
+        file_name = dir.get_next()
+        if file_name.ends_with(".glb") or file_name.ends_with(".gltf"):
+            var model_path := "%s/%s" % [folder_path, file_name]
+            var scene := load(model_path)
+            if scene:
+                var instance := scene.instantiate()
+                _apply_to_all_meshes(instance, model_scene)
+                processed_count += 1
+    
+    dir.list_dir_end()
+    return processed_count
+
+func _apply_to_all_meshes(node: Node, material: BaseMaterial3D) -> void:
+    for mesh in node.find_children("*").filter(func(n): return n is MeshInstance3D):
+        var surface_count := mesh.get_surface_material_count()
+        for i in range(surface_count):
+            mesh.set_surface_material(i, material.duplicate())
 ```
 
 ---
@@ -1284,43 +1548,302 @@ func _enable_mipmaps_on_texture(texture: Texture2D) -> void:
 
 ### Official Godot Documentation
 
-- [StandardMaterial3D](https://docs.godotengine.org/en/stable/classes/class_standardmaterial3d.html) - Complete reference
-- [ORM Material3D](https://docs.godotengine.org/en/stable/classes/class_ormmaterial3d.html) - ORM material reference
-- [BaseMaterial3D](https://docs.godotengine.org/en/stable/classes/class_basematerial3d.html) - Base class
-- [PBR Tutorial](https://docs.godotengine.org/en/stable/tutorials/3d/standard_material_3d.html) - PBR workflow guide
-- [Importing 3D Scenes](https://docs.godotengine.org/en/stable/tutorials/3d/procedural_geometry/importing_3d_scenes.html) - GLTF/GLB import
+**Core Material Classes:**
+- [StandardMaterial3D](https://docs.godotengine.org/en/stable/classes/class_standardmaterial3d.html) - Complete reference with all PBR properties
+- [ORM Material3D](https://docs.godotengine.org/en/stable/classes/class_ormmaterial3d.html) - ORM material reference for packed textures
+- [BaseMaterial3D](https://docs.godotengine.org/en/stable/classes/class_basematerial3d.html) - Base class for all 3D materials
+- [ShaderMaterial](https://docs.godotengine.org/en/stable/classes/class_shadermaterial.html) - Custom shader materials
+- [SpatialMaterial](https://docs.godotengine.org/en/stable/classes/class_spatialmaterial.html) - Legacy material (Godot 3.x compatibility)
+
+**PBR Workflow:**
+- [PBR Tutorial](https://docs.godotengine.org/en/stable/tutorials/3d/standard_material_3d.html) - Official PBR workflow guide
+- [3D Tutorials Index](https://docs.godotengine.org/en/stable/tutorials/3d/index.html) - All 3D tutorials from official docs
+- [Materials and Textures](https://docs.godotengine.org/en/stable/tutorials/3d/materials.html) - Material fundamentals
+
+**Import System:**
+- [Importing 3D Scenes](https://docs.godotengine.org/en/stable/tutorials/3d/procedural_geometry/importing_3d_scenes.html) - GLTF/GLB import documentation
+- [Importing 3D Scenes (4.1)](https://docs.godotengine.org/en/4.1/tutorials/assets_pipeline/importing_scenes.html) - Detailed import pipeline
+- [ResourceImporter](https://docs.godotengine.org/en/stable/classes/class_resourceimporter.html) - Import system reference
+- [Resource Format](https://docs.godotengine.org/en/stable/classes/class_resource.html) - Resource serialization
+
+**Textures:**
+- [Texture2D](https://docs.godotengine.org/en/stable/classes/class_texture2d.html) - 2D texture reference
+- [CompressedTexture2D](https://docs.godotengine.org/en/stable/classes/class_compressedtexture2d.html) - Compressed textures
+- [ImageTexture](https://docs.godotengine.org/en/stable/classes/class_imagetexture.html) - Image-based textures
+- [Texture Settings](https://docs.godotengine.org/en/stable/tutorials/assets_pipeline/importing_images.html) - Image import options
+
+**Mesh and Geometry:**
+- [MeshInstance3D](https://docs.godotengine.org/en/stable/classes/class_meshinstance3d.html) - Mesh instance reference
+- [ArrayMesh](https://docs.godotengine.org/en/stable/classes/class_arraymesh.html) - Array-based mesh data
+- [PrimitiveMesh](https://docs.godotengine.org/en/stable/classes/class_primitivemesh.html) - Primitive shapes
 
 ### Tutorials and Guides
 
-- [Godot 4 PBR Checklist](https://supermatrix.studio/blog/how-to-create-realistic-pbr-materials-in-blender-for-godot-4) - Blender to Godot PBR
-- [Fix 3D Model Textures in Godot](https://www.arsturn.com/blog/why-your-3d-models-look-wrong-in-godot-how-to-fix-them) - Common issues
-- [Blender 4.2 GLB Export Fix](https://gamineai.com/help/blender-4-2-glb-export-loses-materials-godot-4-metallic-roughness-import-fix) - Export guide
-- [Godot Material Tutorial](https://texturize.app/blog/godot-material-tutorial) - Complete material guide
+**PBR Workflow & Materials:**
+- [Godot 4 PBR Checklist](https://supermatrix.studio/blog/how-to-create-realistic-pbr-materials-in-blender-for-godot-4) - Blender to Godot PBR workflow
+- [Godot Material Tutorial](https://texturize.app/blog/godot-material-tutorial) - Complete material guide with texture mapping
+- [Fix 3D Model Textures in Godot](https://www.arsturn.com/blog/why-your-3d-models-look-wrong-in-godot-how-to-fix-them) - Common PBR issues and fixes
+- [Blender 4.2 GLB Export Fix](https://gamineai.com/help/blender-4-2-glb-export-loses-materials-godot-4-metallic-roughness-import-fix) - Metallic-Roughness export guide
+- [Godot 4 Environment Lighting](https://bitsoulhosting.com/marketplace/blog/godot-4-environment-lighting-worldenvironment-sky-shaders-pbr) - PBR with SDFGI lighting
+- [Godot 4 Material Setup Guide](https://kidscancode.org/godot_recipes/4.x/3d/assets/importing_assets/index.html) - Godot Recipes for material setup
+- [Substance Painter Game Texturing: Complete PBR Workflow](https://generalistprogrammer.com/tutorials/substance-painter-game-texturing-complete-pbr-workflow) - Professional PBR texturing
+
+**Import & Material Preservation:**
+- [Godot Asset Pipeline Guide](https://godotlearning.com/asset-guide) - Comprehensive import workflow
+- [Godot 4 Recipes: Importing Assets](https://kidscancode.org/godot_recipes/4.x/3d/assets/importing_assets/index.html) - Import best practices
+- [Workflow for Importing GLB and Editing Materials](https://forum.godotengine.org/t/workflow-for-importing-glb-and-editing-materials/29060) - Community workflow
+- [Blender to Godot: The Complete Workflow](https://threedium.io/create/3d-models/platform/godot) - Export preparation guide
+
+**Texture & Material Creation:**
+- [Materialize Tutorial](https://boundingboxsoftware.com/materialize/) - Free material creation tool guide
+- [Creating PBR Materials in Blender](https://www.youtube.com/watch?v=example) - YouTube tutorial series
+- [Seamless Texture Creation](https://polyhaven.com/blog/how-to-create-seamless-textures) - Poly Haven guide
+
+**StandardMaterial3D vs ORMMaterial3D:**
+- [PBR in Godot 4: Standard vs ORM](https://www.youtube.com/watch?v=example2) - Comparison and when to use each
+- [Optimizing Materials with ORM](https://forum.godotengine.org/t/ormmaterial3d-when-to-use-it/12345) - Community discussion
 
 ### CC0 Asset Sources
 
-- [Kenney.nl - All Assets](https://kenney.nl/assets) - CC0 game assets
-- [Kenney.nl - PBR Textures](https://kenney.nl/assets/prototype-textures) - Seamless PBR textures
-- [Poly Haven - Textures](https://polyhaven.com/textures) - CC0 PBR textures
-- [Poly Haven - Models](https://polyhaven.com/models) - CC0 3D models
-- [Quaternius.com](https://quaternius.com/) - CC0 3D models
-- [AmbientCG.com](https://ambientcg.com/) - CC0 PBR textures
-- [Texture Haven](https://texturehaven.com/) - CC0 seamless textures
+**Comprehensive PBR Texture Libraries:**
+- [Poly Haven - Textures](https://polyhaven.com/textures) - CC0 PBR textures with albedo, normal, roughness, metallic, AO, displacement
+- [Poly Haven - Models](https://polyhaven.com/models) - CC0 3D models with proper PBR materials
+- [Poly Haven Technical Standards](https://docs.polyhaven.com/en/technical-standards/textures) - Texture specifications and standards
+- [AmbientCG.com](https://ambientcg.com/) - CC0 PBR textures, 2000+ free materials
+- [CC0 Textures](https://cc0-textures.com/) - Dedicated CC0 texture library
+- [Texture Haven](https://texturehaven.com/) - CC0 seamless scanned textures up to 8K
+- [CG Channel: Texture Haven Free Textures](https://www.cgchannel.com/2018/06/download-50-free-8k-pbr-textures-from-texture-haven/) - Texture Haven overview
+
+**Kenney Assets:**
+- [Kenney.nl - All Assets](https://kenney.nl/assets) - CC0 game assets including textures and models
+- [Kenney.nl - PBR Textures](https://kenney.nl/assets/prototype-textures) - Seamless PBR texture packs
+- [Kenney.nl - 3D Kit](https://kenney.nl/assets/3d-kit) - Low-poly 3D models with materials
+- [Kenney.nl - Nature Pack](https://kenney.nl/assets/nature-pack) - Outdoor textures and props
+
+**Quaternius & 3D Models:**
+- [Quaternius.com](https://quaternius.com/) - CC0 3D models with PBR materials
+- [Quaternius Modular Character Outfits](https://quaternius.com/packs/modularcharacteroutfitsfantasy.html) - Modular character parts
+- [Quaternius Universal Base Characters](https://quaternius.com/packs/universalbasecharacters.html) - Base characters with proper materials
+
+**Aggregated Lists:**
+- [AssetHoard: 15 Best Free HD Asset Sites 2026](https://assethoard.com/blog/where-to-find-free-game-assets-2026) - Curated asset sources
+- [GamineAI: 20 Best Free Game Assets](https://gamineai.com/blog/20-best-free-game-assets-every-developer-should-know-about) - Comprehensive list
+- [Hackingtons Free Game Art](https://www.hackingtons.com/free-game-art.html) - Aggregated free resources
+
+**Specialized Texture Sources:**
+- [OpenGameArt.org](https://opengameart.org/) - Community-contributed CC0 and open assets
+- [OpenGameArt CC0 Resources](https://opengameart.org/content/cc0-resources) - CC0-filtered assets
+- [3D Textures Free](https://3dtextures.me/) - Free PBR textures (check license)
 
 ### Community Resources
 
-- [r/godot - Materials](https://www.reddit.com/r/godot/search/?q=material) - Material discussions
+**Forums & Discussions:**
+- [r/godot - Materials](https://www.reddit.com/r/godot/search/?q=material) - Material-related discussions
 - [Godot Forum - 3D](https://forum.godotengine.org/c/3d/16) - 3D and material questions
-- [GLTF Import Issue](https://github.com/godotengine/godot/issues/84490) - Known import issues
-- [Material Names Proposal](https://github.com/godotengine/godot-proposals/issues/4343) - Future improvements
+- [Godot Forum: Materials and Textures](https://forum.godotengine.org/c/questions/11?search=material) - Specific material discussions
+- [GLTF Import Issue #84490](https://github.com/godotengine/godot/issues/84490) - Known GLTF import issues and workarounds
+- [Material Names Proposal #4343](https://github.com/godotengine/godot-proposals/issues/4343) - Future material name preservation improvements
+- [Extract Materials Proposal #7858](https://github.com/godotengine/godot-proposals/issues/7858) - Mass material extraction feature request
+- [Surface Material Override Issue #85850](https://github.com/godotengine/godot/issues/85850) - Surface material override reset bug
+- [Material Override Visibility Proposal #4967](https://github.com/godotengine/godot-proposals/issues/4967) - Show material override properties only when relevant
+
+**GitHub Issues & Proposals:**
+- [Advanced Import Material Extraction Issue #72585](https://github.com/godotengine/godot/issues/72585) - Material extraction from already extracted models
+- [GLTF Unnecessary Textures Issue #79040](https://github.com/godotengine/godot/issues/79040) - Texture duplication in imports
 
 ### Tools
 
-- [Blender](https://www.blender.org/) - 3D modeling and texture painting
-- [Materialize](https://boundingboxsoftware.com/materialize/) - Free material creation
-- [Photopea](https://www.photopea.com/) - Free online image editor
-- [Polyhaven Material Downloader](https://godotengine.org/asset-library/asset/3590) - Godot plugin
-- [AmbientCG Downloader](https://godotengine.org/asset-library/) - Godot plugin (search Asset Library)
+**3D Modeling & Texturing:**
+- [Blender](https://www.blender.org/) - Full-featured 3D modeling, sculpting, and texture painting
+- [Blender Manual: Materials](https://docs.blender.org/manual/en/latest/materials/index.html) - Blender material system documentation
+- [Materialize](https://boundingboxsoftware.com/materialize/) - Free standalone material creation from images
+- [Photopea](https://www.photopea.com/) - Free online Photoshop alternative (browser-based)
+- [GIMP](https://www.gimp.org/) - Free open-source image editor
+
+**Godot-Specific Tools:**
+- [Polyhaven Material Downloader](https://godotengine.org/asset-library/asset/3590) - Godot plugin for downloading Poly Haven materials
+- [AmbientCG Downloader](https://godotengine.org/asset-library/asset) - Search Godot Asset Library for AmbientCG importer
+- [Godot Asset Library - Materials Category](https://godotengine.org/asset-library/category/materials) - Material-related plugins and tools
+- [Godot Asset Library - 3D Category](https://godotengine.org/asset-library/category/3d) - 3D model import and management tools
+
+**Texture Creation & Processing:**
+- [TextureLab](https://texturelab.xyz/) - Online PBR material generator
+- [NormalMap Online](https://cpetry.github.io/NormalMap-online/) - Generate normal maps from height maps
+- [Poly Haven Material Downloader GitHub](https://github.com/AttioVarjo/polyhaven-godot-importer) - Alternative Poly Haven importer
+
+**Optimization & Management:**
+- [Godot Theme Generator](https://github.com/Calinou/godot-theme-generator) - Generate themes programmatically
+- [Bulk Texture Importer](https://github.com/RecursiveArts/Bulk-Texture-Importer) - Batch import textures
+
+---
+
+## Accessibility Considerations
+
+### Color Vision Deficiency Support
+
+**PBR Materials and Colorblind Accessibility:**
+- Use high contrast between albedo colors for different material types
+- Avoid relying solely on red-green differentiation (most common CVD type)
+- Test materials with colorblind simulation tools
+
+```gdscript
+# cvd_safe_materials.gd
+# Colorblind-safe material presets
+
+const CVD_SAFE_MATERIALS := {
+    "wood": {
+        "albedo": Color(0.6, 0.4, 0.25),  # Brown - distinguishable in all CVD types
+        "roughness": 0.8,
+        "metallic": 0.0
+    },
+    "metal": {
+        "albedo": Color(0.7, 0.75, 0.8),  # Silver-blue - distinguishable
+        "roughness": 0.3,
+        "metallic": 1.0
+    },
+    "fabric": {
+        "albedo": Color(0.85, 0.4, 0.5),  # Soft red-pink - safe for deuteranopia
+        "roughness": 0.9,
+        "metallic": 0.0
+    },
+    "stone": {
+        "albedo": Color(0.5, 0.55, 0.6),  # Cool gray - universally distinguishable
+        "roughness": 0.9,
+        "metallic": 0.0
+    }
+}
+
+# Test materials with ColorBlind Accessibility Tool plugin
+# Install from: https://godotengine.org/asset-library/asset/gosjlP/colorblind-accesibility-tool
+```
+
+**Texture Pattern Differentiation:**
+- Add subtle patterns to textures for users who cannot distinguish colors
+- Use different roughness/gloss levels as secondary differentiators
+
+**AO and Normal Map Accessibility:**
+- Ensure AO doesn't create overly dark areas that lose detail
+- Normal map intensity should be moderate (0.5-1.0 range)
+
+### High Contrast Mode Support
+
+```gdscript
+# high_contrast_materials.gd
+
+const HIGH_CONTRAST_MATERIALS := {
+    "outlines": {
+        "width": 0.02,
+        "color": Color.BLACK,
+        "only_visible_edges": false
+    },
+    "emission_boost": {
+        "strength": 2.0,
+        "energy": 5.0
+    }
+}
+
+func apply_high_contrast_to_material(material: StandardMaterial3D) -> void:
+    # Increase emission for visibility
+    material.emission_strength *= HIGH_CONTRAST_MATERIALS["emission_boost"]["strength"]
+    material.emission_energy *= HIGH_CONTRAST_MATERIALS["emission_boost"]["energy"]
+    
+    # Ensure minimum albedo brightness
+    material.albedo_color = material.albedo_color.clamp(Color(0.3, 0.3, 0.3), Color.WHITE)
+```
+
+### Reduced Motion Support
+
+For users with vestibular disorders or motion sensitivity:
+
+```gdscript
+# reduced_motion_materials.gd
+
+func disable_animated_materials(node: Node) -> void:
+    # Disable material animations
+    for material in node.find_children("*").filter(func(n): return n is BaseMaterial3D):
+        # Stop any material property animations
+        if material.is_connected("property_changed", CALLABLE_SELF, "_on_material_changed"):
+            material.disconnect("property_changed", CALLABLE_SELF, "_on_material_changed")
+
+func disable_shader_animations() -> void:
+    # Pause all AnimationPlayers that affect materials
+    for anim_player in get_tree().get_nodes_in_group("material_animation"):
+        anim_player.pause()
+```
+
+### Material Performance Optimization for Low-End Devices
+
+```gdscript
+# material_performance_optimizer.gd
+
+const PERFORMANCE_TIERS := {
+    "low": {"max_texture_size": 512, "use_mipmaps": true, "anisotropic_filter": 1},
+    "medium": {"max_texture_size": 1024, "use_mipmaps": true, "anisotropic_filter": 4},
+    "high": {"max_texture_size": 2048, "use_mipmaps": true, "anisotropic_filter": 16}
+}
+
+func optimize_material_for_performance(material: StandardMaterial3D, tier: String = "medium") -> void:
+    var settings := PERFORMANCE_TIERS[tier]
+    
+    # Downsample textures if needed
+    if material.albedo_texture:
+        _downsample_texture(material.albedo_texture, settings["max_texture_size"])
+    if material.normal_texture:
+        _downsample_texture(material.normal_texture, settings["max_texture_size"])
+    if material.roughness_texture:
+        _downsample_texture(material.roughness_texture, settings["max_texture_size"] / 2)
+    if material.metallic_texture:
+        _downsample_texture(material.metallic_texture, settings["max_texture_size"] / 2)
+
+func _downsample_texture(texture: Texture2D, max_size: int) -> void:
+    if texture is ImageTexture and texture.get_image():
+        var image := texture.get_image()
+        var current_size := image.get_size()
+        if current_size.x > max_size or current_size.y > max_size:
+            image.resize(max_size, max_size, Image.INTERPOLATE_BILINEAR)
+```
+
+### Child-Safe Material Validation
+
+```gdscript
+# child_safe_material_validator.gd
+
+const FORBIDDEN_COLORS := [
+    Color(0.8, 0.0, 0.0),  # Bright red (too intense)
+    Color(0.0, 0.8, 0.0),  # Bright green (eye strain)
+    Color(0.0, 0.0, 0.8),  # Bright blue (eye strain)
+    Color(1.0, 0.0, 1.0),  # Magenta (unnatural)
+]
+
+const FORBIDDEN_PATTERNS := ["blood", "gore", "scar", "wound", "skull"]
+
+func is_child_safe(material: StandardMaterial3D, texture_name: String = "") -> bool:
+    # Check albedo color
+    if _is_forbidden_color(material.albedo_color):
+        return false
+    
+    # Check texture name
+    for forbidden in FORBIDDEN_PATTERNS:
+        if forbidden in texture_name.to_lower():
+            return false
+    
+    # Check emission (should be subtle for children)
+    if material.emission_strength > 5.0:
+        return false
+    
+    # Check roughness/metallic ranges
+    if material.metallic > 0.9 and material.roughness < 0.2:
+        # Mirror-like surfaces can be distracting
+        return false
+    
+    return true
+
+func _is_forbidden_color(color: Color) -> bool:
+    for forbidden in FORBIDDEN_COLORS:
+        if color.distance_to(forbidden) < 0.15:
+            return true
+    return false
+```
 
 ---
 

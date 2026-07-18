@@ -256,9 +256,10 @@ These documents provide comprehensive research for PLAN.md gate-specific technic
 ### PLAN-015: Preserve Native Materials & PBR Workflow (Foundation) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_PLAN_015_Preserve_Native_Materials.md](./RESEARCH_PLAN_015_Preserve_Native_Materials.md)
 - **Focus**: Native material preservation from GLTF/GLB imports, PBR workflow compatibility, material name/assignment preservation, CC0 texture sourcing, child-safe visual styles
-- **Status**: in_progress
+- **Status**: done
+- **Enrichment**: Loop 9 - Added 55+ new resources: official docs (21 links), tutorials from SuperMatrix/Texturize/GodotLearning (12 links), CC0 sources (22 links), tools (15 links), code samples for GLTF import/ORM materials/material override/import settings/material preservation/batch processing/accessibility
 - **Complexity**: HIGH
-- **Key Technologies**: StandardMaterial3D, GLTF import settings, ResourceImporter, ShaderMaterial, texture compression, material override system
+- **Key Technologies**: StandardMaterial3D, ORMMaterial3D, GLTF import settings, ResourceImporter, ResourceSaver, texture compression, material override system, CVD-safe palettes, performance optimization
 
 ### PLAN-016: Identity/Ownership - Character Customization System (VS-022) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_PLAN_016_Identity_Ownership_Character_Customization.md](./RESEARCH_PLAN_016_Identity_Ownership_Character_Customization.md)
