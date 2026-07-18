@@ -1482,6 +1482,22 @@ tasks:
     cross_review_by: claude
     status: in_progress
 
+  - id: VS-033
+    title: Wire onboarding events to the active shell event bus
+    owner: codex
+    specialty: launcher-onboarding
+    inputs:
+      - src/adapters/inbound/main.gd
+      - src/adapters/inbound/scenes/create/create_shell.gd
+      - src/application/onboarding_service.gd
+    dependencies: [VS-014]
+    acceptance_criteria:
+      - Launcher startup emits no "OnboardingService: event_bus not wired" warning
+      - Onboarding steps reach the visible shell after dependency composition completes
+      - Automated launch-path test proves the event bus is available before onboarding begins
+    cross_review_by: claude
+    status: todo
+
   - id: VS-005
     title: Improve age-appropriate combat telegraphs and feedback
     owner: mistral
