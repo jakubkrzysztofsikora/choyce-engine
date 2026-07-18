@@ -97,6 +97,8 @@ const HUD_ICON_STONE: Texture2D = preload("res://data/models/kenney/survival_kit
 const HUD_ICON_WORKBENCH: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/workbench.png")
 const HUD_ICON_BEDROLL: Texture2D = preload("res://data/models/kenney/survival_kit/Previews/bedroll.png")
 const HUD_ICON_STAR: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/star.png")
+const HUD_ICON_RETURN: Texture2D = preload("res://data/textures/ui/PNG/Blue/Double/arrow_basic_w.png")
+const HUD_ICON_UNDO: Texture2D = preload("res://data/textures/ui/PNG/Yellow/Double/arrow_basic_w.png")
 
 # Goal + lose-condition injection (Wave 3 W3-A/B). Populated by
 # setup_goal() from main.gd composition root, sourced from the
@@ -1737,9 +1739,27 @@ func _on_player_defeated() -> void:
 				_player_controller.hp_changed.emit(h.current_hp, h.max_hp)
 
 
-## Kid-facing HUD: a Wróć button + control hint so a 5-7 year-old sees what to
-## do after world load. Previously start_session hid PlayShell.Layout, left
-## mouse captured, and gave no on-screen affordances — kid perceived a hang.
+## Image-first shell controls keep the always-visible HUD understandable before
+## a child can read. Tooltips remain for parents, keyboard users, and assistive
+## technology; the visual affordance itself does not depend on words.
+func _make_hud_icon_button(name: String, icon: Texture2D, tooltip: String, accent: Color) -> Button:
+	var button := Button.new()
+	button.name = name
+	button.text = ""
+	button.tooltip_text = tooltip
+	button.custom_minimum_size = Vector2(64, 64)
+	button.icon = icon
+	button.expand_icon = true
+	button.focus_mode = Control.FOCUS_ALL
+	button.add_theme_stylebox_override("normal", _hud_panel_style(accent, 0.90))
+	button.add_theme_stylebox_override("hover", _hud_panel_style(accent.lightened(0.16), 0.98))
+	button.add_theme_stylebox_override("pressed", _hud_panel_style(accent.darkened(0.18), 0.98))
+	button.add_theme_stylebox_override("focus", _hud_panel_style(Color(1.0, 0.94, 0.48), 0.98))
+	return button
+
+
+## Kid-facing HUD: image-led controls and a small contextual prompt so a 5-7
+## year-old sees what to do after world load without an on-screen legend.
 func _build_hud() -> void:
 	if has_node("HUD"):
 		return
@@ -1748,54 +1768,33 @@ func _build_hud() -> void:
 	hud.layer = 5
 	add_child(hud)
 
-	var back := Button.new()
+	var back := _make_hud_icon_button("BackBtn", HUD_ICON_RETURN, "Wróć do menu", Color(0.32, 0.72, 0.92))
 	back.name = "BackBtn"
-	back.text = "Wróć"
-	back.custom_minimum_size = Vector2(160, 56)
-	back.add_theme_font_size_override("font_size", 28)
 	back.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	back.offset_left = 32
 	back.offset_top = 32
-	back.offset_right = 192
-	back.offset_bottom = 88
-	back.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.32, 0.72, 0.92), 0.88))
-	back.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.42, 0.82, 1.0), 0.96))
-	back.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.22, 0.52, 0.72), 0.96))
-	back.add_theme_color_override("font_color", Color(0.92, 0.97, 1.0))
+	back.offset_right = 96
+	back.offset_bottom = 96
 	back.pressed.connect(end_session)
 	hud.add_child(back)
 
-	var undo_btn := Button.new()
+	var undo_btn := _make_hud_icon_button("UndoBtn", HUD_ICON_UNDO, "Cofnij ostatnią zmianę", Color(0.92, 0.72, 0.30))
 	undo_btn.name = "UndoBtn"
-	undo_btn.text = "Cofnij"
-	undo_btn.custom_minimum_size = Vector2(160, 56)
-	undo_btn.add_theme_font_size_override("font_size", 28)
 	undo_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	undo_btn.offset_left = 208
+	undo_btn.offset_left = 108
 	undo_btn.offset_top = 32
-	undo_btn.offset_right = 368
-	undo_btn.offset_bottom = 88
-	undo_btn.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.92, 0.72, 0.30), 0.88))
-	undo_btn.add_theme_stylebox_override("hover", _hud_panel_style(Color(1.0, 0.82, 0.40), 0.96))
-	undo_btn.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.72, 0.52, 0.20), 0.96))
-	undo_btn.add_theme_color_override("font_color", Color(1.0, 0.97, 0.92))
+	undo_btn.offset_right = 172
+	undo_btn.offset_bottom = 96
 	undo_btn.pressed.connect(_on_hud_undo_pressed)
 	hud.add_child(undo_btn)
 
-	var customize_btn := Button.new()
+	var customize_btn := _make_hud_icon_button("CustomizeBtn", HUD_ICON_STAR, "Zmień wygląd bohatera", Color(0.62, 0.46, 0.78))
 	customize_btn.name = "CustomizeBtn"
-	customize_btn.text = "Postać"
-	customize_btn.custom_minimum_size = Vector2(160, 56)
-	customize_btn.add_theme_font_size_override("font_size", 28)
 	customize_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	customize_btn.offset_left = 384
+	customize_btn.offset_left = 184
 	customize_btn.offset_top = 32
-	customize_btn.offset_right = 544
-	customize_btn.offset_bottom = 88
-	customize_btn.add_theme_stylebox_override("normal", _hud_panel_style(Color(0.62, 0.46, 0.78), 0.88))
-	customize_btn.add_theme_stylebox_override("hover", _hud_panel_style(Color(0.72, 0.56, 0.88), 0.96))
-	customize_btn.add_theme_stylebox_override("pressed", _hud_panel_style(Color(0.50, 0.34, 0.66), 0.96))
-	customize_btn.add_theme_color_override("font_color", Color(0.96, 0.93, 1.0))
+	customize_btn.offset_right = 248
+	customize_btn.offset_bottom = 96
 	customize_btn.pressed.connect(_on_customize_pressed)
 	hud.add_child(customize_btn)
 
@@ -2160,7 +2159,6 @@ func _physics_process(delta: float) -> void:
 	if _world_renderer != null and _player_controller != null and is_instance_valid(_player_controller):
 		_world_renderer.set_exploration_focus(_player_controller.global_position)
 	_tick_world_interactions()
-	# Adv Y H4 fix: tint crosshair red when enemy is in range
 	if _interaction_feedback_until > 0.0:
 		_interaction_feedback_until -= delta
 		if _interaction_feedback_until <= 0.0 and _interaction_prompt_label != null:
