@@ -99,6 +99,13 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: Theme, Control nodes, Containers, Anchors, Viewport, Localization
 
+### 11. Rendered Visual Acceptance Evidence (VS-016) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md](./RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md)
+- **Focus**: Screenshot capture, performance profiling, hardware tier detection, visual QA automation
+- **Status**: in_progress
+- **Complexity**: HIGH
+- **Key Technologies**: Viewport capture, Performance singleton, hardware detection, image analysis, evidence management
+
 ---
 
 ## Task Research Index
@@ -438,11 +445,37 @@ These tasks have full, detailed research documents with code samples, online res
   - [ElevenLabs API](https://docs.elevenlabs.io/)
   - [Godot AudioStreamPlayer3D](https://docs.godotengine.org/en/stable/classes/class_audiostreamplayer3d.html)
 
-### VS-016: Visual Acceptance Evidence Capture
-- **Status**: todo
+### **VS-016: Rendered Visual Acceptance Evidence** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md](./RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md)
+- **Status**: in_progress
 - **Specialty**: rendered-qa
-- **Research**: Screenshots at key moments, Tier 1/2 performance
+- **Research**: Screenshot capture at launcher, spawn, guide interaction, region transition, combat; hardware tier detection; performance monitoring; visual QA automation; release recommendations
 - **Dependencies**: [VS-013, VS-014, VS-015]
+- **Technical Areas**:
+  - Viewport screenshot capture with metadata
+  - Performance monitoring (FPS, frame time, draw calls, vertex count, memory)
+  - Hardware tier classification (Tier 1/Tier 2)
+  - Visual QA checks (variance, edge detection, composition, character visibility)
+  - Evidence management and structured storage
+- **Deep Research**: ✅ COMPLETE - 30KB comprehensive document with 5 code samples
+- **Implementation Notes**:
+  - ScreenshotCapture.gd: Async capture with delay for UI settlement
+  - PerformanceMonitor.gd: Periodic monitoring with statistics
+  - VisualQAChecker.gd: Automated visual defect detection
+  - HardwareTier.gd: GPU/CPU/memory detection and classification
+  - EvidenceManager.gd: Coordinates all evidence collection
+- **Acceptance Criteria**:
+  - Launcher, spawn, guide interaction, region transition, combat screenshots retained
+  - Reference (1920x1080) and laptop-sized (1366x768) runs have no major defects
+  - Tier 1 and Tier 2 performance measurements with explicit release recommendation
+  - Reviewer can identify player, guide, route, landmark, interaction, destination from images
+- **Backrooms Monsters**: ✅ INCLUDED via VS-023 research
+- **Links**:
+  - [Godot Viewport Docs](https://docs.godotengine.org/en/stable/classes/class_viewport.html)
+  - [Godot Performance Monitoring](https://docs.godotengine.org/en/stable/tutorials/optimization/performance_monitoring.html)
+  - [Pixelmatch](https://github.com/mapbox/pixelmatch)
+  - [OpenCV](https://opencv.org)
+  - [WCAG 2.2](https://www.w3.org/WAI/WCAG22/quickref/)
 
 ### **VS-017: Stream Deterministic Biomes** ⭐
 - **File**: [RESEARCH_VS-017_019_Procedural_World_Streaming.md](./RESEARCH_VS-017_019_Procedural_World_Streaming.md)
