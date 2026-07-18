@@ -236,6 +236,7 @@ tasks:
       - .ai/research-compendium/RESEARCH_VS-030_BasicMultiplayer_Evaluation.md
       - .codex/skills/ai-safety/SKILL.md
       - src/domain/gameplay/player_inventory.gd
+      - .ai/specifications/VS-051-private-family-session-design.md
     dependencies: [VS-050, TASK-045]
     acceptance_criteria:
       - No implementation starts before local co-op proves shared-state authority and disconnect-safe persistence
