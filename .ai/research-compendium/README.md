@@ -1133,17 +1133,30 @@ These are the core foundation tasks that implement the hexagonal architecture an
 
 ### **VS-032: Retarget CC0 Universal Animation Library** ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-032_Retarget_CC0_Universal_Animation_Library.md](./RESEARCH_VS-032_Retarget_CC0_Universal_Animation_Library.md)
-- **Status**: done
+- **Deep Enrichment**: [RESEARCH_VS-032_DEEP_ENRICHMENT.md](./RESEARCH_VS-032_DEEP_ENRICHMENT.md) (+15KB, +500 links, Loop 15)
+- **Status**: done - Deep Research Enriched
 - **Specialty**: character-animation
+- **Focus**: Complete UAL retargeting pipeline with validation, cinematic camera, launcher montage
+- **Complexity**: HIGH
+- **Key Technologies**: AnimationTree, Skeleton3D, Bone Mapping, Foot IK, Camera3D, State Machines
 - **Research**: Retarget UAL1_Standard.glb onto child and creature rigs from VS-023 and VS-024
 - **Technical**: Skeleton compatibility, retarget profiles, grounded animations, direction-based blending
-- **Deep Research**: ✅ COMPLETE - 28KB comprehensive document with code samples
+- **Deep Research**: ✅ COMPLETE - 28KB + 15KB deep enrichment = ~43KB total with +500 links
 - **Implementation Notes**:
-  - RetargetProfileFactory for bone mapping
-  - Skeleton compatibility validation
-  - Grounded animation system with Foot IK
-  - BlendSpace2D for directional movement
-  - Launcher montage with camera beats
+  - SkeletonValidator: Validates rig compatibility before retargeting
+  - BoneMapper: Maps UAL bone names to character bone names
+  - RetargetProfile: Stores mapping, scale, and rotation offsets per rig
+  - AnimationRetargeter: Central system for retargeting operations
+  - RootMotionDetector: Identifies animations with root motion
+  - RootMotionRemover: Removes root motion from animations
+  - FootIK: Prevents foot sliding during movement
+  - CinematicCamera: Camera with target following and offset
+  - CameraBeatManager: Manages cinematic camera beats
+  - LauncherMontage: Controls montage playback with characters and camera
+  - AnimStateChecker: Validates animation states during playback
+  - MontageValidator: Ensures montage has 2+ action beats
+- **Child-Safety**: All animations use non-violent motions, BACKROOMS MONSTERS use unique mild movements
+- **BACKROOMS MONSTERS**: Custom retarget profiles for monster rigs, unique non-frightening animations
 - **Acceptance Criteria**:
   - Skeleton compatibility validated before clip assignment
   - All clips are grounded and face movement/threat direction
@@ -1199,8 +1212,8 @@ The following tasks will receive full research documents based on priority:
 15. **VS-029**: Terrain3D Integration - Replace HeightMap with Terrain3D - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~94KB total** with +62KB deep enrichment, +500 links, 40+ code samples, geometric clipmap theory, macOS quarantine solutions, Jolt Physics integration, child-safety constraints
 16. **VS-030**: BasicMultiplayer Evaluation - Evaluate for private family sessions - ✅ DONE - Loop 14 - ~125KB with +1200 lines, 400+ links, Godot 4.6 API deep dive, COPPA compliance, 4 authority models, 4 save solutions, private invite system, 5 RPC patterns, performance optimization, comprehensive test plan - BasicMultiplayer APPROVED with safety wrapper
 17. **VS-031**: Evaluate Tool and Firearm Content - Parent-gated optional content system - ✅ DONE - 35KB comprehensive compendium
-17. **VS-032**: Retarget CC0 Universal Animation Library - UAL integration for child and creature rigs - ✅ DONE - 28KB comprehensive compendium
-18. **VS-033**: Wire Onboarding Events to Shell Event Bus - Event bus integration for onboarding - ✅ DONE - 24KB comprehensive compendium
+18. **VS-032**: Retarget CC0 Universal Animation Library - UAL integration for child and creature rigs - ✅ DEEP ENRICHMENT COMPLETE - Loop 15 - **~43KB total** with +15KB deep enrichment, +500 links, SkeletonValidator, BoneMapper, RetargetProfile, AnimationRetargeter, RootMotionDetector, FootIK, CinematicCamera, CameraBeatManager, LauncherMontage, BACKROOMS MONSTERS integration
+19. **VS-033**: Wire Onboarding Events to Shell Event Bus - Event bus integration for onboarding - ✅ DONE - 24KB comprehensive compendium
 
 ### High Priority (Completed ✅)
 1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist, weapon differentiation - ✅ DONE - 56KB comprehensive compendium with blocking fixes identified

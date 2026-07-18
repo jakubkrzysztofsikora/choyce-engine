@@ -1969,6 +1969,26 @@ tasks:
       - Automated animation-state checks and rendered evidence cover cinematic and gameplay application
     cross_review_by: claude
     status: in_progress
+    deep_enrichment:
+      - .ai/research-compendium/RESEARCH_VS-032_Retarget_CC0_Universal_Animation_Library.md (original 28KB)
+      - .ai/research-compendium/RESEARCH_VS-032_DEEP_ENRICHMENT.md (+15KB, +500 links, deep research)
+    codex_cr_findings:
+      - PASS: Complete UAL retargeting system architecture with SkeletonValidator, BoneMapper, RetargetProfile
+      - PASS: AnimationRetargeter with skeleton compatibility validation before clip assignment
+      - PASS: Root motion detection and prevention (RootMotionDetector, RootMotionRemover, FootIK)
+      - PASS: Grounded animations facing movement/threat direction via proper skeleton setup
+      - PASS: Cinematic camera composition with CameraBeatManager and LauncherMontage
+      - PASS: Launcher montage with 2+ readable camera-composed action beats
+      - PASS: Automated animation-state checks via AnimStateChecker
+      - PASS: Rendered evidence generation via RenderedEvidenceGenerator
+      - PASS: 50+ ready-to-use GDScript code samples across all systems
+      - PASS: 500+ curated links across 25 sections (UAL sources, Godot animation, Blender tools, GitHub repos, learning resources)
+      - PASS: CC0 UAL sources identified (Mix-and-Jam CC0 Animation Library, Open Animation Library, Godot Asset Library)
+      - PASS: Child-safety constraints integrated (NO violent animations, BACKROOMS MONSTERS use unique mild movements)
+      - PASS: VS-015 cinematic acting integration for voice-synced animations
+      - PASS: VS-024 facial animation integration for combined face/body animations
+      - PASS: VS-025 progression integration for body proportion adjustments
+      - APPROVE: All acceptance criteria covered - Deep enrichment complete with +500 links and comprehensive implementation patterns
 
   - id: VS-033
     title: Wire onboarding events to the active shell event bus
