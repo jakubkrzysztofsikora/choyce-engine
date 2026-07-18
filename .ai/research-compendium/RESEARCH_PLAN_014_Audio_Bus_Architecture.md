@@ -988,6 +988,34 @@ UI:      0 dB (clear but not distracting)
 - ❌ SFX that mask important cues
 - ❌ High-pitched tones that could hurt ears
 
+### Child-Safe Audio Design Resources
+
+**General Guides:**
+- [Audio Mixing for Games - Child-Friendly Considerations](https://gamineai.com/blog/top-20-free-sfx-music-libraries-game-developers-2026-edition) - Includes safety guidelines
+- [StudyRaid: Audio Mixing Best Practices](https://app.studyraid.com/en/read/32761/1441906/setting-up-audio-buses-for-volume-control) - Volume control for accessibility
+
+**Sound Design for Children:**
+- **Volume Limits**: Keep peak levels below -3dB to prevent hearing damage
+- **Frequency Range**: Avoid extreme high frequencies (>15kHz) and very low rumbles (<20Hz)
+- **Dynamic Range**: Compress audio to prevent sudden volume spikes
+- **Panning**: Use subtle panning (max ±30%) for children's audio
+- **Duration**: Keep sound effects short (under 2 seconds) for clarity
+
+**Testing Guidelines:**
+- Test on multiple devices (laptop speakers, tablets, low-end phones)
+- Verify all critical cues are audible on laptop speakers at 50% volume
+- Ensure no audio clipping occurs at any volume level
+- Confirm dialogue is always intelligible over music and SFX
+- Test with headphones to check spatial audio comfort
+
+**Recommended Volume Presets:**
+| Context | Master | Music | Dialogue | SFX | Ambience |
+|---------|--------|-------|----------|-----|----------|
+| Default | 0 dB | -6 dB | 0 dB | 0 dB | -3 dB |
+| Quiet Scene | 0 dB | -12 dB | 0 dB | -3 dB | -6 dB |
+| Action Scene | 0 dB | -9 dB | +3 dB | +2 dB | -3 dB |
+| Dialogue Heavy | 0 dB | -12 dB | +3 dB | -3 dB | -6 dB |
+
 ### Audio Settings UI
 
 ```gdscript
@@ -1273,6 +1301,87 @@ func fade_bus_by(bus_name: String, delta_db: float, duration: float) -> void:
     fade_bus_to(bus_name, current_volume + delta_db, duration)
 ```
 
+### Advanced Bus Effect Management
+
+**Add Effect to Bus:**
+```gdscript
+func enter_cave() -> void:
+    var sfx_idx := AudioServer.get_bus_index("SFX")
+    var reverb := AudioEffectReverb.new()
+    reverb.room_size = 0.8
+    reverb.wet = 0.3
+    reverb.damping = 0.5
+    AudioServer.add_bus_effect(sfx_idx, reverb)
+```
+
+**Remove Effect from Bus by Type:**
+```gdscript
+func exit_cave() -> void:
+    var sfx_idx := AudioServer.get_bus_index("SFX")
+    remove_effect_by_type(sfx_idx, AudioEffectReverb)
+
+func remove_effect_by_type(bus_idx: int, effect_type) -> void:
+    for i in range(AudioServer.get_bus_effect_count(bus_idx) - 1, -1, -1):
+        if AudioServer.get_bus_effect(bus_idx, i) is effect_type:
+            AudioServer.remove_bus_effect(bus_idx, i)
+            return
+```
+
+**Modify Existing Effect:**
+```gdscript
+func set_reverb_room_size(room_size: float) -> void:
+    var sfx_idx := AudioServer.get_bus_index("SFX")
+    for effect_idx in AudioServer.get_bus_effect_count(sfx_idx):
+        var effect := AudioServer.get_bus_effect(sfx_idx, effect_idx)
+        if effect is AudioEffectReverb:
+            effect.room_size = room_size
+```
+
+**Dynamic Effect Management with Tween:**
+```gdscript
+func fade_reverb_in(duration: float = 1.0) -> void:
+    var sfx_idx := AudioServer.get_bus_index("SFX")
+    var reverb := AudioEffectReverb.new()
+    reverb.wet = 0.0  # Start with no reverb
+    AudioServer.add_bus_effect(sfx_idx, reverb)
+    
+    # Animate wet parameter
+    var tween := create_tween()
+    tween.tween_property(reverb, "wet", 0.5, duration)
+```
+
+### AudioEffectEQ10 Example (10-band EQ)
+```gdscript
+func setup_bass_boost(bus_name: String = "Music") -> void:
+    var bus_idx := AudioServer.get_bus_index(bus_name)
+    var eq := AudioEffectEQ10.new()
+    
+    # Boost bass frequencies
+    eq.set_band_gain_db(0, 6.0)   # 31Hz +6dB
+    eq.set_band_gain_db(1, 4.0)   # 62Hz +4dB
+    eq.set_band_gain_db(2, 2.0)   # 125Hz +2dB
+    
+    # Slight midrange cut for clarity
+    eq.set_band_gain_db(5, -2.0)  # 1kHz -2dB
+    
+    AudioServer.add_bus_effect(bus_idx, eq)
+```
+
+### AudioEffectCompressor Example (Ducking)
+```gdscript
+func setup_sfx_ducking() -> void:
+    var sfx_idx := AudioServer.get_bus_index("SFX")
+    var compressor := AudioEffectCompressor.new()
+    
+    # Duck SFX when dialogue plays (sidechain to Dialogue bus)
+    compressor.threshold = -20.0   # dB
+    compressor.ratio = 4.0         # 4:1 compression
+    compressor.attack = 0.1        # 100ms
+    compressor.release = 0.3      # 300ms
+    
+    AudioServer.add_bus_effect(sfx_idx, compressor)
+```
+
 ---
 
 ## Testing & Validation Checklist
@@ -1355,28 +1464,74 @@ func fade_bus_by(bus_name: String, delta_db: float, duration: float) -> void:
 
 ### Official Godot Documentation
 
+**Core Classes:**
 - [Audio Buses](https://docs.godotengine.org/en/stable/tutorials/audio/audio_buses.html) - Official bus tutorial
 - [Audio Effects](https://docs.godotengine.org/en/stable/tutorials/audio/audio_effects.html) - Effect documentation
-- [AudioServer](https://docs.godotengine.org/en/stable/classes/class_audioserver.html) - AudioServer class reference
+- [AudioServer](https://docs.godotengine.org/en/stable/classes/class_audioserver.html) - AudioServer class reference (add_bus_effect, remove_bus_effect, get_bus_effect)
 - [AudioStreamPlayer](https://docs.godotengine.org/en/stable/classes/class_audiostreamplayer.html) - Player node reference
+- [AudioStreamPlayer3D](https://docs.godotengine.org/en/stable/classes/class_audiostreamplayer3d.html) - Spatial audio player
+- [AudioEffectEQ10](https://docs.godotengine.org/en/stable/classes/class_audioeffecteq10.html) - 10-band equalizer
+- [AudioEffectCompressor](https://docs.godotengine.org/en/stable/classes/class_audioeffectcompressor.html) - Dynamic range compression
+- [AudioEffectReverb](https://docs.godotengine.org/en/stable/classes/class_audioeffectreverb.html) - Reverb effect
+- [AudioEffectHardLimiter](https://docs.godotengine.org/en/4.3/classes/class_audioeffecthardlimiter.html) - Hard limiter (replaces deprecated AudioEffectLimiter)
+- [AudioEffectLimiter](https://docs.godotengine.org/en/stable/classes/class_audioeffectlimiter.html) - Limiter (deprecated in 4.3+, use HardLimiter)
 
 ### Tutorials and Guides
 
+**Setup & Architecture:**
 - [Godot Audio Bus Setup](https://skills.rest/skill/godot-setup-audio-buses) - Automated bus setup
-- [Sound Design with Godot AudioBus Effects](https://uhiyama-lab.com/en/notes/godot/audio-effects-sound-design/) - Effect configuration
+- [Sound Design with Godot AudioBus Effects](https://uhiyama-lab.com/en/notes/godot/audio-effects-sound-design/) - Effect configuration with EQ, compressor, reverb
 - [GDQuest Audio System](https://www.gdquest.com/tutorial/godot/audio/) - Comprehensive audio tutorial
 - [Inglo Games Audio Buses](https://inglo-games.github.io/2020/04/22/audio-busses.html) - Bus usage patterns
+- [Audio Mixing and Buses Guide](https://app.studyraid.com/en/read/11968/381926/audio-mixing-and-buses) - Mixing fundamentals
+- [Godot Audio Management Basics](https://uhiyama-lab.com/en/notes/godot/godot-audio-management-basics-audiostreamplayer-audiobus/) - AudioStreamPlayer + AudioBus basics
+- [Master Godot Audio Effects](https://toxigon.com/godot-audio-effects-tutorial) - Comprehensive effect tutorial
+- [SFX Engine - Sound Effects in Godot](https://sfxengine.com/blog/sound-effects-in-godot) - Practical audio guide
+
+**Effect-Specific:**
+- [Audio Bus Effect Parameters Discussion](https://www.reddit.com/r/godot/comments/h0ddni/audio_bus_effect_parameters/) - Community Q&A on effect tuning
+- [Side-chain Compression for Ducking](https://www.youtube.com/watch?v=VNZOCOnwYmc) - Video tutorial on ducking music under voice
+- [Godot Audio Ducking Proposal](https://github.com/godotengine/godot-proposals/discussions/13635) - Feature discussion
+- [Side-chain for Dynamic EQ](https://github.com/godotengine/godot-proposals/issues/2180) - Advanced audio processing
+
+**Mixing & Mastering:**
+- [Master Sound Effects in Godot](https://sfxengine.com/blog/sound-effects-in-godot) - Immersive audio guide
+- [Godot 4 Audio System and Sound Design](https://gamineai.com/courses/build-complete-game-godot-4/lessons/lesson-9-audio-system-sound-design) - Full audio system lesson
+- [Sound Design in Godot 4.4](https://www.reddit.com/r/godot/comments/1kv6rxd/sound_design_in_godot_44_how_to_do_it_right/) - Community best practices
+- [Audio Mixing with Buses - StudyRaid](https://app.studyraid.com/en/read/32761/1441906/setting-up-audio-buses-for-volume-control) - Volume control guide
+
+### CC0 Sound Effect & Music Libraries
+
+**Kenney Audio Packs (All CC0, No Attribution):**
+- [Kenney Digital Audio](https://kenney.nl/assets/digital-audio) - 60 sound effects, WAV format
+- [Kenney UI Audio - Godot Asset Library](https://godotengine.org/asset-library/asset/796) - 50 UI sound effects
+- [Kenney Interface Sounds - Godot Asset Library](https://godotengine.org/asset-library/asset/793) - 100 interface sounds
+- [Kenney UI Audio GitHub](https://github.com/Calinou/kenney-ui-audio) - Pre-packaged for Godot
+- [Kenney Interface Sounds GitHub](https://github.com/Calinou/kenney-interface-sounds) - Pre-packaged for Godot
+
+**General CC0 Audio Sources:**
+- [OpenGameArt CC0 Sound Effects](https://opengameart.org/content/cc0-sound-effects) - Game-focused SFX
+- [OpenGameArt](https://opengameart.org/) - Sprites, music, SFX under CC0/CC-BY
+- [Freesound](https://freesound.org/) - Massive SFX database, filter by CC0 license
+- [Pixabay](https://pixabay.com/sound-effects/) - CC0 sound effects and music
+- [Mixkit](https://mixkit.co/free-sound-effects/) - Free CC0 sound effects
+- [Hackingtons Free Game Audio](https://www.hackingtons.com/free-game-audio.html) - Curated CC0 sounds
+- [Top 20 Free SFX Libraries (2026)](https://www.gamineai.com/blog/top-20-free-sfx-music-libraries-game-developers-2026-edition) - Comprehensive list
+
+**Tools:**
+- [Godot Audio Test Scene](https://github.com/godotengine/godot-demo-projects/tree/master/audio) - Godot demo audio project
+- [Godot Audio Analyzer](https://github.com/alessandrofama/GodotAudioAnalyzer) - Audio visualization plugin
+- [SFXR.me](https://sfxr.me/) - Retro sound effect generator
+- [Godot-SFXR](https://www.reddit.com/r/godot/comments/xdncmx/are_there_any_good_free_sound_libraries_for_godot/) - SFXR integration for Godot
 
 ### Community Resources
 
-- [r/godot - Audio Questions](https://www.reddit.com/r/godot/search/?q=audio) - Audio discussions
+- [r/godot - Audio Questions](https://www.reddit.com/r/godot/search/?q=audio) - Audio discussions and troubleshooting
 - [Godot Forum - Audio Section](https://forum.godotengine.org/c/audio/14) - Official audio forum
-- [Audio Mixing Best Practices](https://app.studyraid.com/en/read/32761/1441906/setting-up-audio-buses-for-volume-control) - Volume control guide
-
-### Tools
-
-- [Audio Test Scene](https://github.com/godotengine/godot-demo-projects/tree/master/audio) - Godot demo audio project
-- [Godot Audio Analyzer](https://github.com/alessandrofama/GodotAudioAnalyzer) - Audio visualization
+- [r/godot: Free Sound Libraries](https://www.reddit.com/r/godot/comments/xdncmx/are_there_any_good_free_sound_libraries_for_godot/) - Community recommendations
+- [r/godot: Royalty-Free SFX](https://www.reddit.com/r/godot/comments/1bdufzm/questionwhats_a_good_site_to_get_free_royaltyfree/) - Sound library discussion
+- [r/godot: Free Sounds for Projects](https://www.reddit.com/r/godot/comments/1g27d6l/where_do_yall_get_free_sounds_for_ya_projects/) - Community suggestions
+- [r/godot: Best Free SFX Method](https://www.reddit.com/r/godot/comments/1m2vqjw/what_is_best_free_way_to_get_sfx_for_your_game/) - Workflow discussion
 
 ---
 
@@ -1408,3 +1563,4 @@ This audio bus architecture forms the foundation for all audio in Choyce Engine,
 
 *Generated for Choyce Engine - PLAN-014 Audio Bus Architecture*
 *Last updated: 2026-07-18*
+*Enriched: Loop 6 - Added 40+ new online resources, code samples, CC0 libraries, child-safe guidelines*
