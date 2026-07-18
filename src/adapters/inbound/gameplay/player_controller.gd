@@ -513,6 +513,11 @@ func _input(event: InputEvent) -> void:
 		return
 	if _input_disabled:
 		return
+	# A single mouse cannot control two third-person cameras.  P2 uses the
+	# prefixed keypad actions processed in _process(), so it must ignore raw
+	# pointer motion/buttons instead of quietly mirroring P1's aim and attacks.
+	if not _act_prefix.is_empty():
+		return
 
 	# Mouse motion alone rotates the camera. The cursor is captured for the
 	# 3D session so motion deltas are raw. ESC releases capture so the kid can
@@ -558,13 +563,22 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if not is_processing():
 		return
-	# Camera rotation: Q/E keys (fallback) + controller right-stick.
-	# Right-mouse drag is handled in _input.
+	# Camera rotation: P1 retains Q/E as a simple fallback; P2 must not read
+	# those global keys or both cameras rotate at once. The keypad's 7/9 pair is
+	# intentionally local to P2 and stays usable on one keyboard.
+	# Right-mouse drag is intentionally P1-only; a single mouse cannot aim two
+	# third-person cameras independently.
 	var rot := 0.0
-	if Input.is_key_pressed(KEY_Q):
-		rot += 1.0
-	if Input.is_key_pressed(KEY_E):
-		rot -= 1.0
+	if _act_prefix.is_empty():
+		if Input.is_key_pressed(KEY_Q):
+			rot += 1.0
+		if Input.is_key_pressed(KEY_E):
+			rot -= 1.0
+	else:
+		if Input.is_action_pressed(_act("look_left")):
+			rot += 1.0
+		if Input.is_action_pressed(_act("look_right")):
+			rot -= 1.0
 	if rot != 0.0:
 		rotate_y(rot * KEY_ROTATE_SPEED * delta)
 	# Controller right-stick: axis 2 = X (yaw), axis 3 = Y (pitch).
@@ -1161,7 +1175,9 @@ func _process_build_input() -> void:
 		_try_place_block()
 	if Input.is_action_just_pressed(_act("break_block")):
 		_try_break_block()
-	if Input.is_action_just_pressed(_act("undo")) or Input.is_action_just_pressed("undo"):
+	# Never fall back to P1's global undo here.  In split-screen that made one
+	# U press pop two history entries from the shared BuildGrid.
+	if Input.is_action_just_pressed(_act("undo")):
 		_try_undo()
 
 

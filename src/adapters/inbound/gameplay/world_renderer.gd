@@ -1614,21 +1614,32 @@ func _build_adventure_route() -> void:
 	_add_visual_asset("drogowskaz", Vector3(-4, 0, -8), Vector3.ONE * 0.9, 0.35)
 
 
-## A physical, clearly readable river crossing. The supplied covered-bridge
-## mesh is a tiny decorative prop whose stretched roof read as a grey block;
-## this has an actual 20m deck, planks and rails at child walking scale.
+## A physical, clearly readable river crossing. Build the visible structure
+## from Nature Kit bridge modules (made for this exact use) rather than a grid
+## of floor tiles plus unrelated house fences. The continuous collision skin
+## below stays the authoritative walking contract.
 func _build_opening_bridge() -> void:
-	# The single ready-made bridge model is a tiny decorative asset and failed to
-	# render reliably at this river span.  Build a physical, PBR modular bridge
-	# from the same supplied Quaternius kit as the starter home instead: every
-	# deck tile and rail is visible at child walking scale and matches collision.
-	var floor_tile := QUATERNIUS_VILLAGE + "Floor_WoodLight.gltf"
-	var fence_segment := QUATERNIUS_VILLAGE + "Prop_WoodenFence_Extension2.gltf"
+	# These three modules share one authored material/shape language: a broad
+	# wood deck in the middle and raised wooden sides at either edge. They remove
+	# the repeated square-floor pattern that made the former crossing read as a
+	# construction blockout in the player-facing camera.
+	var deck_center := KENNEY_NK + "bridge_center_wood.glb"
+	var deck_side := KENNEY_NK + "bridge_side_wood.glb"
+	var deck_cap := KENNEY_NK + "bridge_center_woodRound.glb"
 	var approach_stair := QUATERNIUS_VILLAGE + "Stairs_Exterior_NoFirstStep.gltf"
-	for x in [-1.0, 1.0]:
-		for z in range(-33, -13, 2):
-			_add_visual_asset("OpeningBridgeDeckTile_%d_%d" % [int(x), abs(z)],
-				Vector3(x, 0.69, float(z)), Vector3.ONE, 0.0, floor_tile, false)
+	for z in range(-32, -14, 2):
+		_add_visual_asset("OpeningBridgeDeckCenter_%d" % abs(z),
+			Vector3(0.0, 0.70, float(z)), Vector3(1.92, 1.0, 1.0), 0.0, deck_center, false)
+		_add_visual_asset("OpeningBridgeDeckSideL_%d" % abs(z),
+			Vector3(-1.90, 0.70, float(z)), Vector3.ONE, 0.0, deck_side, false)
+		_add_visual_asset("OpeningBridgeDeckSideR_%d" % abs(z),
+			Vector3(1.90, 0.70, float(z)), Vector3(-1.0, 1.0, 1.0), 0.0, deck_side, false)
+	# Rounded end caps soften the silhouette at both banks, so the bridge visibly
+	# meets the ramps instead of ending as a hard square slice above the water.
+	_add_visual_asset("OpeningBridgeDeckCapSouth", Vector3(0.0, 0.70, -14.15),
+		Vector3(1.92, 1.0, 1.0), 0.0, deck_cap, false)
+	_add_visual_asset("OpeningBridgeDeckCapNorth", Vector3(0.0, 0.70, -32.85),
+		Vector3(1.92, 1.0, 1.0), PI, deck_cap, false)
 	# A child capsule stopped on the former decorative step mesh before reaching
 	# the deck: its generic proxy had a vertical lip. These shallow visible wood
 	# ramps share the exact convex collision surface, so the bridge can be walked
@@ -1649,14 +1660,15 @@ func _build_opening_bridge() -> void:
 			Vector3(1.0, 1.0, 1.8), PI, approach_stair, false)
 	for side in [-1.0, 1.0]:
 		for z in [-32.0, -28.0, -24.0, -20.0, -16.0]:
-			# Rail segments carry their own collision; no separate invisible box needed.
-			# This ensures collision matches the visible fence geometry per VS-040.
-			# Each visible rail owns a narrow matching physical profile.  Keep the
-			# central deck fully walkable while stopping a child from stepping through
-			# an apparently solid fence into the river.
+			# The side modules establish the visual rail rhythm. These narrow, local
+			# collision profiles complete their physical boundary without putting a
+			# generic fence collider across the playable deck.
 			_add_visual_asset("OpeningBridgeRail_%s_%d" % ["L" if side < 0.0 else "R", abs(int(z))],
-				Vector3(side * 1.92, 0.69, z), Vector3.ONE, PI * 0.5, fence_segment, true,
-				Vector3(3.55, 1.18, 0.22))
+				Vector3(side * 1.92, 0.70, z), Vector3.ONE, 0.0, deck_side, true,
+				# The kit module is aligned along Z here, so the collision must be
+				# narrow in X and long in Z. The old fence-sized X profile reached
+				# into the middle of the 4m deck and formed an invisible wall.
+				Vector3(0.22, 1.18, 3.55))
 	_build_opening_bridge_shoreline()
 
 

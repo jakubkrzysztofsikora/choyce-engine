@@ -499,11 +499,11 @@ func get_sandbox_state() -> SandboxState:
 	if _player_controller != null:
 		state.player_position = _player_controller.global_position
 
-	# --- inventory (single source of truth: rules_runtime context) ---
-	if _rules_runtime != null:
-		var raw: Variant = _rules_runtime.get_context_value("inventory")
-		if raw is Dictionary:
-			state.inventory = (raw as Dictionary).duplicate(true)
+	# --- inventory ---
+	# RulesRuntime is authoritative when injected, but a launcher/direct/co-op
+	# session can intentionally run without it. Persist the same local fallback
+	# used by the live inventory UI instead of silently saving an empty backpack.
+	state.inventory = _get_inventory().duplicate(true)
 
 	# --- placed blocks from build grid cell map ---
 	if _build_grid != null and is_instance_valid(_build_grid):
@@ -540,6 +540,7 @@ func restore_sandbox_state(state: SandboxState) -> void:
 
 	# --- inventory → rules_runtime context ---
 	if not state.inventory.is_empty():
+		_local_inventory = state.inventory.duplicate(true)
 		if _rules_runtime != null:
 			_rules_runtime.set_context_value("inventory", state.inventory.duplicate(true))
 		_refresh_inventory_panel(state.inventory)
@@ -2007,6 +2008,34 @@ func _execute_npc_completions(player_text: String, request_id: int = -1) -> void
 	else:
 		inv_str = inv_str.left(inv_str.length() - 2)
 
+	var player_hp_ratio := 1.0
+	if _player_controller != null and _player_controller.get_health() != null:
+		player_hp_ratio = float(_player_controller.get_health().current_hp) / float(_player_controller.get_health().max_hp)
+
+	var psych_context := ""
+	if active_npc != null:
+		active_npc.update_emotional_state(player_hp_ratio, _score)
+		psych_context = "\n\nProfil psychologiczny postaci (OCEAN & Emocje):\n" \
+			+ "- Otwartość (Openness): %.2f\n" \
+			+ "- Sumienność (Conscientiousness): %.2f\n" \
+			+ "- Ekstrawersja (Extraversion): %.2f\n" \
+			+ "- Ugodowość (Agreeableness): %.2f\n" \
+			+ "- Neurotyczność (Neuroticism): %.2f\n" \
+			+ "- Zadowolenie (Happiness): %.2f\n" \
+			+ "- Irytacja (Irritability): %.2f\n" \
+			+ "- Lęk (Anxiety): %.2f\n" \
+			+ "Twoje zachowanie, wypowiedzi i decyzje o przyznaniu/odebraniu przedmiotów, zdrowia lub punktów muszą być spójne z powyższym profilem psychologicznym oraz Twoim aktualnym stanem emocjonalnym."
+		psych_context = psych_context % [
+			active_npc.openness,
+			active_npc.conscientiousness,
+			active_npc.extraversion,
+			active_npc.agreeableness,
+			active_npc.neuroticism,
+			active_npc.happiness,
+			active_npc.irritability,
+			active_npc.anxiety
+		]
+
 	var sys_prompt := "Jesteś postacią w grze przygodowej dla dzieci. " \
 		+ "Nazywasz się: %s.\n" \
 		+ "Twoja rola to: %s (guide = pomocnik/trener, vendor = kupiec, hostile = wróg).\n" \
@@ -2014,7 +2043,7 @@ func _execute_npc_completions(player_text: String, request_id: int = -1) -> void
 		+ "- Punkty gracza: %d\n" \
 		+ "- Życie gracza: %d/%d\n" \
 		+ "- Ekwipunek gracza: %s\n\n" \
-		+ "Odpowiadaj po polsku. Pisz krótko (1-3 zdania), przyjaźnie i zgodnie ze swoją rolą.\n" \
+		+ "Odpowiadaj po polsku. Pisz krótko (1-3 zdania), dostosowując ton do swojego charakteru.\n" \
 		+ "Możesz modyfikować stan gry (dawać/odbierać przedmioty, leczyć, zadawać obrażenia, dawać punkty).\n" \
 		+ "Jeśli podejmiesz decyzję o zmianie stanu gry, na samym końcu swojej odpowiedzi dopisz dokładnie blok w tagu <decision>:\n" \
 		+ "<decision>\n" \
@@ -2024,7 +2053,8 @@ func _execute_npc_completions(player_text: String, request_id: int = -1) -> void
 		+ "  \"amount\": 1\n" \
 		+ "}\n" \
 		+ "</decision>\n" \
-		+ "W zwykłym tekście nie wspomominaj o tym bloku ani o tagach."
+		+ "W zwykłym tekście nie wspomominaj o tym bloku ani o tagach." \
+		+ "%s"
 
 	sys_prompt = sys_prompt % [
 		npc_name_pl,
@@ -2032,8 +2062,10 @@ func _execute_npc_completions(player_text: String, request_id: int = -1) -> void
 		_score,
 		_player_controller.get_health().current_hp if _player_controller != null and _player_controller.get_health() != null else 100,
 		_player_controller.get_health().max_hp if _player_controller != null and _player_controller.get_health() != null else 100,
-		inv_str
+		inv_str,
+		psych_context
 	]
+
 
 	var prompt_text := ""
 	for msg in _npc_dialogue_history[_active_npc_id]:
@@ -2301,7 +2333,7 @@ func _on_player_tool_used_for(actor: PlayerController, tool_id: String, effect_o
 		return
 	if _audio_bus != null:
 		_audio_bus.emit_sfx("tool_axe_wood" if tool_id == "tool_axe" else "tool_pickaxe_stone", target.global_position)
-	var visual_variant: Variant = target.get_meta("resource_visual", null)
+	var visual_variant: Variant = target.get_meta("resource_visual") if target.has_meta("resource_visual") else null
 	if visual_variant is Node3D and is_instance_valid(visual_variant):
 		var visual := visual_variant as Node3D
 		var base_rotation := visual.rotation
@@ -2314,7 +2346,7 @@ func _on_player_tool_used_for(actor: PlayerController, tool_id: String, effect_o
 		_interaction_feedback("%s %d/3" % ["Rąbiesz drzewo" if tool_id == "tool_axe" else "Rozbijasz skałę", hits],
 			"gather_wood" if tool_id == "tool_axe" else "gather_stone")
 		return
-	_gather_world_resource(target)
+	_gather_world_resource(target, actor)
 
 
 func _on_enemy_damaged(amount: int, position: Vector3) -> void:
@@ -2612,8 +2644,14 @@ func _creative_catalog_item_ids() -> Array[String]:
 
 
 func _select_creative_catalog_item(item_id: String) -> void:
-	if _player_controller != null and _player_controller.has_method("select_creative_item"):
-		_player_controller.select_creative_item(item_id)
+	_select_creative_catalog_item_for(_player_controller, item_id)
+
+
+## Co-op seam: creative selection is player-local while the selected blocks,
+## resources and world grid remain shared by this runtime.
+func _select_creative_catalog_item_for(actor: PlayerController, item_id: String) -> void:
+	if actor != null and is_instance_valid(actor) and actor.has_method("select_creative_item"):
+		actor.select_creative_item(item_id)
 
 
 func _has_recipe_materials(recipe_id: String, inventory: Dictionary = {}) -> bool:
@@ -2629,10 +2667,16 @@ func _has_recipe_materials(recipe_id: String, inventory: Dictionary = {}) -> boo
 
 
 func _craft_inventory_recipe(recipe_id: String) -> void:
+	_craft_inventory_recipe_for(_player_controller, recipe_id)
+
+
+## Co-op seam: recipes debit the one shared backpack, but healing, feedback and
+## sound originate from the child who pressed the craft button.
+func _craft_inventory_recipe_for(actor: PlayerController, recipe_id: String) -> bool:
 	var inventory := _get_inventory()
 	if not _has_recipe_materials(recipe_id, inventory):
 		_interaction_feedback("Brakuje składników.")
-		return
+		return false
 	var recipe: Dictionary = SANDBOX_RECIPES[recipe_id]
 	var needs: Dictionary = recipe.get("needs", {})
 	var gives: Dictionary = recipe.get("gives", {})
@@ -2642,16 +2686,17 @@ func _craft_inventory_recipe(recipe_id: String) -> void:
 		inventory[item_id] = int(inventory.get(item_id, 0)) + int(gives[item_id])
 	_commit_inventory(inventory, recipe_id)
 	if recipe_id == "stick":
-		_apply_tier(1, "Patyk", 7, inventory)
+		_apply_tier_for(actor, 1, "Patyk", 7, inventory)
 	elif recipe_id == "sword_iron":
-		_apply_tier(2, "Żelazny miecz", 12, inventory)
-	elif recipe_id == "meal" and _player_controller != null and _player_controller.get_health() != null:
-		var health := _player_controller.get_health()
+		_apply_tier_for(actor, 2, "Żelazny miecz", 12, inventory)
+	elif recipe_id == "meal" and actor != null and is_instance_valid(actor) and actor.get_health() != null:
+		var health := actor.get_health()
 		health.heal(20)
-		_player_controller.hp_changed.emit(health.current_hp, health.max_hp)
-	if _audio_bus != null and _player_controller != null:
-		_audio_bus.emit_sfx("collect", _player_controller.global_position)
+		actor.hp_changed.emit(health.current_hp, health.max_hp)
+	if _audio_bus != null and actor != null and is_instance_valid(actor):
+		_audio_bus.emit_sfx("collect", actor.global_position)
 	_interaction_feedback("Gotowe: %s" % String(recipe.get("label", recipe_id)))
+	return true
 
 
 func _pretty_item_name(item_id: String) -> String:
@@ -2680,7 +2725,7 @@ func _inventory_texture_for(item_id: String) -> Texture2D:
 ## GearProgressionService (Adv 1 H1 — pure RefCounted, no Godot leak).
 ## Falls back to the legacy inline `_weapon_tiers` Array when no
 ## GearTierResource files are loaded so existing kid runs don't break.
-func _try_auto_upgrade_weapon(inv: Dictionary) -> void:
+func _try_auto_upgrade_weapon(inv: Dictionary, actor: PlayerController = _player_controller) -> void:
 	# Service-driven path — Resource-backed tier ladder.
 	if not _gear_tiers.is_empty() and _gear_service != null:
 		var next_idx := _gear_service.next_eligible_tier(
@@ -2691,7 +2736,7 @@ func _try_auto_upgrade_weapon(inv: Dictionary) -> void:
 		var tier_res: GearTierResource = _gear_tiers[next_idx]
 		if not _gear_service.consume_materials(inv, tier_res.recipe):
 			return
-		_apply_tier(next_idx, tier_res.display_name, tier_res.weapon_damage, inv)
+		_apply_tier_for(actor, next_idx, tier_res.display_name, tier_res.weapon_damage, inv)
 		return
 
 	# Legacy inline ladder — kept until res://data/gear/*.tres exists
@@ -2706,24 +2751,31 @@ func _try_auto_upgrade_weapon(inv: Dictionary) -> void:
 			return
 	for k in needs.keys():
 		inv[k] = int(inv.get(k, 0)) - int(needs[k])
-	_apply_tier(_current_weapon_index + 1, String(next_tier.get("label", "")),
+	_apply_tier_for(actor, _current_weapon_index + 1, String(next_tier.get("label", "")),
 		int(next_tier.get("damage", 4)), inv)
 
 
 func _apply_tier(index: int, label: String, damage: int, inv: Dictionary) -> void:
+	_apply_tier_for(_player_controller, index, label, damage, inv)
+
+
+## Weapon tier ownership is visual and mechanical per local child. The recipe
+## inventory itself stays shared, so one player can gather while the other
+## crafts, without teleporting the newly crafted tool into P1's hand.
+func _apply_tier_for(actor: PlayerController, index: int, label: String, damage: int, inv: Dictionary) -> void:
 	if _rules_runtime != null:
 		_rules_runtime.set_context_value("inventory", inv)
 	_current_weapon_index = index
-	if _player_controller != null and _player_controller.has_method("equip_weapon_damage"):
-		_player_controller.equip_weapon_damage(damage)
-	if _player_controller != null and _player_controller.has_method("set_weapon_visual"):
-		_player_controller.set_weapon_visual(String(_weapon_tiers[index].get("id", "")))
+	if actor != null and is_instance_valid(actor) and actor.has_method("equip_weapon_damage"):
+		actor.equip_weapon_damage(damage)
+	if actor != null and is_instance_valid(actor) and actor.has_method("set_weapon_visual"):
+		actor.set_weapon_visual(String(_weapon_tiers[index].get("id", "")))
 	if _weapon_label != null:
 		_weapon_label.text = "%s" % label
 	if _screen_feedback != null:
 		_screen_feedback.flash(Color(1.0, 0.95, 0.4), 0.3)
-	if _effect_spawner != null and _player_controller != null:
-		_effect_spawner.spawn_sparkle_burst(_player_controller.global_position)
+	if _effect_spawner != null and actor != null and is_instance_valid(actor):
+		_effect_spawner.spawn_sparkle_burst(actor.global_position)
 	print("[gear] upgraded to %s (%d dmg)" % [label, damage])
 	_refresh_inventory_panel(inv)
 	# Refresh hotbar slot 0 so the weapon icon reflects new tier
@@ -3476,7 +3528,7 @@ func _start_training_session(anchor: Node3D) -> void:
 	_nearby_world_interactable = null
 
 
-func _gather_world_resource(anchor: Node3D) -> void:
+func _gather_world_resource(anchor: Node3D, actor: PlayerController = _player_controller) -> void:
 	if anchor == null or not is_instance_valid(anchor):
 		return
 	var item_id := String(anchor.get_meta("resource_item_id", ""))
@@ -3486,9 +3538,8 @@ func _gather_world_resource(anchor: Node3D) -> void:
 	inventory[item_id] = int(inventory.get(item_id, 0)) + 1
 	_commit_inventory(inventory, item_id)
 	if _rules_runtime != null:
-		_rules_runtime.on_event("inventory_changed", {"item": item_id})
 		_rules_runtime.on_event("collect_%s" % item_id, {})
-	_try_auto_upgrade_weapon(inventory)
+	_try_auto_upgrade_weapon(inventory, actor)
 	if _audio_bus != null:
 		var action := String(anchor.get_meta("resource_action", ""))
 		var tool_sfx := "tool_axe_wood" if action == "gather_wood" else "tool_pickaxe_stone"
@@ -3496,7 +3547,7 @@ func _gather_world_resource(anchor: Node3D) -> void:
 		_audio_bus.emit_sfx("collect", anchor.global_position)
 	if _effect_spawner != null:
 		_effect_spawner.spawn_collect_effect(anchor.global_position)
-	var visual_variant: Variant = anchor.get_meta("resource_visual", null)
+	var visual_variant: Variant = anchor.get_meta("resource_visual") if anchor.has_meta("resource_visual") else null
 	if visual_variant is Node and is_instance_valid(visual_variant):
 		(visual_variant as Node).queue_free()
 	anchor.remove_from_group("world_interactable")

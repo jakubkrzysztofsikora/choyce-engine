@@ -45,6 +45,22 @@ const _NAME_MAP := {
 	"npc_mayor": "Burmistrz",
 }
 
+## NPC Personality Profiles (Big Five: openness, conscientiousness, extraversion, agreeableness, neuroticism)
+const _PERSONALITY_MAP := {
+	"npc_explorer": [0.9, 0.6, 0.8, 0.7, 0.2],
+	"npc_pirate": [0.3, 0.4, 0.7, 0.2, 0.6],
+	"npc_robot": [0.5, 1.0, 0.2, 0.8, 0.0],
+	"npc_coach": [0.6, 0.9, 0.8, 0.8, 0.3],
+	"npc_shopkeeper": [0.4, 0.8, 0.6, 0.7, 0.3],
+	"npc_banker": [0.3, 0.9, 0.4, 0.5, 0.4],
+	"npc_baker": [0.7, 0.7, 0.5, 0.9, 0.2],
+	"npc_merchant": [0.5, 0.7, 0.7, 0.6, 0.3],
+	"npc_farmer": [0.5, 0.8, 0.4, 0.8, 0.2],
+	"npc_scarecrow": [0.4, 0.3, 0.3, 0.9, 0.7],
+	"npc_parrot": [0.8, 0.3, 0.9, 0.7, 0.5],
+	"npc_mayor": [0.6, 0.8, 0.7, 0.8, 0.3],
+}
+
 var _cache: Dictionary = {}   ## template_id -> Array[NPCCharacter]
 var _raw_loaded: bool = false
 var _raw_data: Dictionary = {}
@@ -72,15 +88,22 @@ func load_npcs_for_template(template_id: String) -> Array:
 		var lines: Dictionary = lines_variant
 		var role: String = _ROLE_MAP.get(npc_id, NPCCharacter.ROLE_GUIDE)
 		var name_pl: String = _NAME_MAP.get(npc_id, String(npc_id))
+		var traits: Array = _PERSONALITY_MAP.get(npc_id, [0.5, 0.5, 0.5, 0.5, 0.5])
 		npcs.append(NPCCharacter.new(
 			String(npc_id),
 			role,
 			name_pl,
 			lines,
 			String(npc_id),  # visual_id falls back to npc_id; adapter resolves
+			traits[0],
+			traits[1],
+			traits[2],
+			traits[3],
+			traits[4]
 		))
 	_cache[template_id] = npcs
 	return npcs
+
 
 
 ## Apply parental combat policy: hostile NPCs degrade to guides when

@@ -51,25 +51,23 @@ func _run() -> void:
 	_assert(walk_collision != null and walk_collision.shape is ConcavePolygonShape3D,
 		"bridge deck and both ramps share one continuous collision surface")
 	
-	# Check that bridge rails are collidable
-	# Rails use native GLTF collision: Node3D root with StaticBody3D child
+	# Check that bridge rails are collidable. They are explicit tight StaticBody3D
+	# profiles because the kit mesh itself does not ship a reliable Godot collider.
 	var rail_l_32 := world.find_child("OpeningBridgeRail_L_32", true, false)
 	var rail_l_28 := world.find_child("OpeningBridgeRail_L_28", true, false)
 	var rail_r_32 := world.find_child("OpeningBridgeRail_R_32", true, false)
 	
-	# Verify rail nodes exist and have StaticBody3D children (native GLTF collision)
+	# Verify rail nodes own narrow matching collision profiles.
 	_assert(rail_l_32 != null,
 		"Left rail at z=-32 exists")
 	_assert(rail_r_32 != null,
 		"Right rail at z=-32 exists")
 	if rail_l_32 != null:
-		var rail_l_body := rail_l_32.get_child(0) as StaticBody3D if rail_l_32.get_child_count() > 0 else null
-		_assert(rail_l_body != null,
-			"Left rail at z=-32 has native StaticBody3D collision from GLTF")
+		_assert(rail_l_32 is StaticBody3D and _first_collision(rail_l_32 as StaticBody3D) != null,
+			"Left rail at z=-32 has an explicit matching StaticBody3D collision profile")
 	if rail_r_32 != null:
-		var rail_r_body := rail_r_32.get_child(0) as StaticBody3D if rail_r_32.get_child_count() > 0 else null
-		_assert(rail_r_body != null,
-			"Right rail at z=-32 has native StaticBody3D collision from GLTF")
+		_assert(rail_r_32 is StaticBody3D and _first_collision(rail_r_32 as StaticBody3D) != null,
+			"Right rail at z=-32 has an explicit matching StaticBody3D collision profile")
 	
 	# Check that water volume exists and is properly configured
 	var water := world.find_child("StarterRiver", true, false)
@@ -98,24 +96,22 @@ func _run() -> void:
 	body_south_to_north.add_child(body_collision)
 	world.add_child(body_south_to_north)
 
-	# Start at south of bridge (z=-38 is south of south ramp at z=-35.2)
-	body_south_to_north.global_position = Vector3(0.0, 2.0, -38.0)
+	# Start at south of bridge. Keep the capsule bottom at the visual walk deck;
+	# this is a real multi-frame character traversal, not one 5m/s tick asked to
+	# cover the entire bridge.
+	body_south_to_north.global_position = Vector3(0.0, 1.60, -38.0)
 	await physics_frame
 
 	# Move north across the bridge
 	var south_to_north_targets := [
-		Vector3(0.0, 2.0, -35.0),  # south ramp
-		Vector3(0.0, 2.0, -24.0),  # bridge center (at z=-24 where river crosses)
-		Vector3(0.0, 2.0, -15.0),  # north ramp
+		Vector3(0.0, 1.60, -35.0),  # south ramp
+		Vector3(0.0, 1.60, -24.0),  # bridge center (at z=-24 where river crosses)
+		Vector3(0.0, 1.60, -15.0),  # north ramp
 	]
 
 	for target in south_to_north_targets:
-		body_south_to_north.velocity = (target - body_south_to_north.global_position).normalized() * 5.0
-		body_south_to_north.move_and_slide()
-		await physics_frame
-		# Verify body can reach each target position (with some tolerance for collision)
-		var distance := body_south_to_north.global_position.distance_to(target)
-		_assert(distance < 2.0,
+		var distance := await _walk_toward(body_south_to_north, target)
+		_assert(distance < 0.70,
 			"CharacterBody3D can traverse south-to-north to %s (reached within %.2fm)" % [target, distance])
 
 	body_south_to_north.queue_free()
@@ -125,27 +121,24 @@ func _run() -> void:
 	var body_north_to_south := CharacterBody3D.new()
 	body_north_to_south.name = "TraversalTestBody_NorthToSouth"
 	var body_collision_ns := CollisionShape3D.new()
-	body_collision_ns.shape = body_shape.clone()
+	body_collision_ns.shape = body_shape.duplicate()
 	body_north_to_south.add_child(body_collision_ns)
 	world.add_child(body_north_to_south)
 
 	# Start at north of bridge (z=-12 is north of north ramp at z=-12.8)
-	body_north_to_south.global_position = Vector3(0.0, 2.0, -12.0)
+	body_north_to_south.global_position = Vector3(0.0, 1.60, -12.0)
 	await physics_frame
 
 	# Move south across the bridge
 	var north_to_south_targets := [
-		Vector3(0.0, 2.0, -15.0),  # north ramp
-		Vector3(0.0, 2.0, -24.0),  # bridge center
-		Vector3(0.0, 2.0, -35.0),  # south ramp
+		Vector3(0.0, 1.60, -15.0),  # north ramp
+		Vector3(0.0, 1.60, -24.0),  # bridge center
+		Vector3(0.0, 1.60, -35.0),  # south ramp
 	]
 
 	for target in north_to_south_targets:
-		body_north_to_south.velocity = (target - body_north_to_south.global_position).normalized() * 5.0
-		body_north_to_south.move_and_slide()
-		await physics_frame
-		var distance := body_north_to_south.global_position.distance_to(target)
-		_assert(distance < 2.0,
+		var distance := await _walk_toward(body_north_to_south, target)
+		_assert(distance < 0.70,
 			"CharacterBody3D can traverse north-to-south to %s (reached within %.2fm)" % [target, distance])
 
 	body_north_to_south.queue_free()
@@ -154,3 +147,26 @@ func _run() -> void:
 	world.queue_free()
 
 	quit(_exit_code)
+
+
+func _first_collision(body: StaticBody3D) -> CollisionShape3D:
+	if body == null:
+		return null
+	for child in body.get_children():
+		if child is CollisionShape3D:
+			return child as CollisionShape3D
+	return null
+
+
+func _walk_toward(body: CharacterBody3D, target: Vector3) -> float:
+	for _frame in 360:
+		var delta := target - body.global_position
+		delta.y = 0.0
+		if delta.length() < 0.55:
+			body.velocity = Vector3.ZERO
+			return body.global_position.distance_to(target)
+		body.velocity = delta.normalized() * 5.0
+		body.move_and_slide()
+		await physics_frame
+	body.velocity = Vector3.ZERO
+	return body.global_position.distance_to(target)

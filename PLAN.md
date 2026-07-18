@@ -866,6 +866,35 @@ problem; it is tracked as VS-051 and remains design-only until local co-op is
 proven and reviewed. This keeps private family multiplayer possible without
 pretending a second viewport is a peer-to-peer implementation.
 
+Implementation evidence, 2026-07-18: VS-049 now has a shared local-inventory
+fallback as well as the rules-backed path, so a sandbox launched without the
+optional rules adapter saves and restores its collected materials and placed
+blocks. VS-050 now launches from PlayShell into Ziemek + Gniewko local split
+screen over one World3D and BuildGrid. Each child has an explicit inventory
+control (P1 `I`, P2 keypad `.`), a complete safe creative catalog, shared
+resource collection/crafting, actor-owned crafted gear, and restored solo
+arrow bindings when co-op closes. LAN/P2P remains intentionally unimplemented
+behind VS-051's parent-authorized host/save safety gate.
+
+Local-co-op control hardening, 2026-07-18: P2 no longer follows P1's mouse or
+Q/E camera movement, and instead turns with its own keypad `7`/`9` pair. The
+same shared `BuildGrid` now receives a P1 undo exactly once—P2 cannot consume
+the global `U` fallback—while P2 retains keypad `*` for its own undo. The
+regression suite exercises the isolated pointer path, P2 look rotation,
+shared-resource craft/build state, save/restore and teardown. This is still
+one-screen local co-op, not a LAN or P2P implementation; VS-051 owns the
+separate parent-authorized transport boundary.
+
+Visual-route follow-up, 2026-07-18: the opening bridge no longer renders as a
+grid of generic floor tiles with unrelated fence props. It now uses the shipped
+Kenney Nature Kit centre, side, and rounded-cap bridge modules over the existing
+continuous walk surface. A real `CharacterBody3D` regression now walks every
+south/north ramp and deck checkpoint in both directions; that test exposed and
+fixed a rail-collider axis error which had reached into the middle of the deck.
+This improves the authored crossing and removes an invisible block, but does
+not close the visual-rescue gate: fresh rendered opening/river evidence and an
+independent visual review are still required.
+
 ## References
 
 - `.ai/tasks/backlog.yaml`

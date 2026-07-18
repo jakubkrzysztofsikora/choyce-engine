@@ -687,7 +687,11 @@ func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 		and WorldRenderer.CHOYCE_WATER_DEEP.get_luminance() < 0.18,
 		"river palette is materially darker than the sky instead of a white floor")
 	_assert(deck != null and deck_collision != null,
-		"bridge exposes one continuous deck collision beneath its visual tile assembly")
+		"bridge exposes one continuous deck collision beneath its visual bridge assembly")
+	_assert(r.find_children("OpeningBridgeDeckCenter_*", "Node3D", false, false).size() >= 8
+		and r.find_child("OpeningBridgeDeckCapSouth", true, false) != null
+		and r.find_child("OpeningBridgeDeckCapNorth", true, false) != null,
+		"bridge uses complete purpose-built deck modules and rounded bank caps instead of floor-tile blockout")
 	_assert(south_ramp != null and north_ramp != null \
 		and south_stairs.size() == 2 and north_stairs.size() == 2 \
 		and deck_collision != null and deck_collision.shape is ConcavePolygonShape3D,

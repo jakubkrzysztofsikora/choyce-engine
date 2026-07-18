@@ -39,8 +39,9 @@ func _ready() -> void:
     _ensure_action("train_pull", [KEY_APOSTROPHE])
     _ensure_action("train_balance", [KEY_O])
 
-    # Player 2 (local split-screen co-op) — right-hand keys so both kids share
-    # one keyboard. Arrows move, RCtrl attacks, RShift sprints, Enter jumps.
+    # Player 2 (local split-screen co-op) — keypad cluster keeps every action
+    # on one side of a shared keyboard. The 7/9 look pair is separate
+    # from P1's Q/E camera fallback; otherwise both children turn together.
     _ensure_action("p2_move_forward", [KEY_UP])
     _ensure_action("p2_move_back", [KEY_DOWN])
     _ensure_action("p2_move_left", [KEY_LEFT])
@@ -51,11 +52,14 @@ func _ready() -> void:
     _ensure_action("p2_place_block", [KEY_KP_ADD])
     _ensure_action("p2_break_block", [KEY_KP_SUBTRACT])
     _ensure_action("p2_undo", [KEY_KP_MULTIPLY])
+    _ensure_action("p2_inventory", [KEY_KP_PERIOD])
     _ensure_action("p2_hotbar_1", [KEY_KP_2])
     _ensure_action("p2_hotbar_2", [KEY_KP_3])
     _ensure_action("p2_hotbar_3", [KEY_KP_4])
     _ensure_action("p2_hotbar_4", [KEY_KP_5])
     _ensure_action("p2_hotbar_5", [KEY_KP_6])
+    _ensure_action("p2_look_left", [KEY_KP_7])
+    _ensure_action("p2_look_right", [KEY_KP_9])
     print("InputMap initialized")
 
 func _ensure_action(action_name: String, keycodes: Array) -> void:

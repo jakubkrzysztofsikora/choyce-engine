@@ -22,6 +22,9 @@ var _runtime: Node = null            ## the wrapped GameplayRuntime (P1 world ow
 var _p2: PlayerController = null
 var _p2_viewport: SubViewport = null
 var _p1_events_stripped := false
+var _p2_inventory_overlay: PanelContainer = null
+var _p2_inventory_rows: VBoxContainer = null
+var _p2_inventory_open := false
 
 
 func _ready() -> void:
@@ -94,6 +97,7 @@ func attach_second_player() -> void:
 		spawn = p1.global_position + Vector3(2, 0, 0)
 	_p2.spawn_at(spawn)
 	_p2.visible = true
+	_build_p2_inventory_overlay()
 	# P2 attacks the shared enemies too (enemy group is world-wide).
 	if _runtime.has_method("_on_enemy_defeated") and _p2.has_signal("attacked"):
 		pass  # P2 damages via its own arc scan in player_controller
@@ -114,6 +118,144 @@ func attach_second_player() -> void:
 	divider.grow_vertical = Control.GROW_DIRECTION_BOTH
 	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(divider)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _p2 == null or not is_instance_valid(_p2):
+		return
+	if event.is_action_pressed("p2_inventory"):
+		_toggle_p2_inventory_overlay()
+		get_viewport().set_input_as_handled()
+
+
+## A deliberately compact local panel rather than a duplicate HUD. It gives
+## Gniewko equal access to the same creative catalog and recipes while keeping
+## one authoritative inventory in GameplayRuntime.
+func _build_p2_inventory_overlay() -> void:
+	if _p2_inventory_overlay != null:
+		return
+	var panel := PanelContainer.new()
+	panel.name = "P2SharedInventoryOverlay"
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.offset_left = -300
+	panel.offset_top = 36
+	panel.offset_right = -20
+	panel.offset_bottom = 420
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(panel)
+	_p2_inventory_overlay = panel
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 7)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
+	scroll.add_child(content)
+	var title := Label.new()
+	title.text = "PLECAK GNIEWKO • WSPÓLNY"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 16)
+	content.add_child(title)
+	var rows := VBoxContainer.new()
+	rows.name = "SharedInventoryRows"
+	content.add_child(rows)
+	_p2_inventory_rows = rows
+	var catalog_title := Label.new()
+	catalog_title.text = "Kreatywnie — wybierz"
+	content.add_child(catalog_title)
+	var catalog := GridContainer.new()
+	catalog.name = "P2CreativeCatalog"
+	catalog.columns = 4
+	content.add_child(catalog)
+	for item_id in _p2_creative_item_ids():
+		var button := Button.new()
+		button.name = "P2Creative_%s" % item_id
+		button.text = _p2_item_label(item_id)
+		button.custom_minimum_size = Vector2(62, 30)
+		button.pressed.connect(func() -> void:
+			if _runtime != null:
+				_runtime.call("_select_creative_catalog_item_for", _p2, item_id)
+		)
+		catalog.add_child(button)
+	var craft_title := Label.new()
+	craft_title.text = "Zrób"
+	content.add_child(craft_title)
+	for recipe_id in ["meal", "stick", "sword_iron"]:
+		var craft := Button.new()
+		craft.name = "P2Craft_%s" % recipe_id
+		craft.text = _p2_recipe_label(recipe_id)
+		craft.pressed.connect(func() -> void:
+			if _runtime != null:
+				_runtime.call("_craft_inventory_recipe_for", _p2, recipe_id)
+			_refresh_p2_inventory_overlay()
+		)
+		content.add_child(craft)
+	var hint := Label.new()
+	hint.text = "Num. . plecak • 7/9 obróć kamerę"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.modulate = Color(0.76, 0.84, 0.90)
+	content.add_child(hint)
+
+
+func _toggle_p2_inventory_overlay() -> void:
+	if _p2_inventory_overlay == null:
+		return
+	_p2_inventory_open = not _p2_inventory_open
+	_p2_inventory_overlay.visible = _p2_inventory_open
+	_p2.set_input_disabled(_p2_inventory_open)
+	if _p2_inventory_open:
+		_refresh_p2_inventory_overlay()
+
+
+func _refresh_p2_inventory_overlay() -> void:
+	if _p2_inventory_rows == null or _runtime == null:
+		return
+	for child in _p2_inventory_rows.get_children():
+		child.queue_free()
+	var inventory: Dictionary = _runtime.call("_get_inventory") as Dictionary
+	if inventory.is_empty():
+		var empty := Label.new()
+		empty.text = "Jeszcze nic — zetnij drzewo!"
+		_p2_inventory_rows.add_child(empty)
+		return
+	for item_id in inventory.keys():
+		var count := int(inventory[item_id])
+		if count <= 0:
+			continue
+		var row := Label.new()
+		row.text = "%s ×%d" % [_p2_item_label(String(item_id)), count]
+		_p2_inventory_rows.add_child(row)
+
+
+func _p2_creative_item_ids() -> Array[String]:
+	if _runtime != null and _runtime.has_method("_creative_catalog_item_ids"):
+		var catalog: Variant = _runtime.call("_creative_catalog_item_ids")
+		if catalog is Array:
+			var item_ids: Array[String] = []
+			for item in catalog:
+				item_ids.append(String(item))
+			if not item_ids.is_empty():
+				return item_ids
+	return ["tool_axe", "tool_pickaxe", "grass", "wood_oak", "stone", "brick", "wood_plank", "torch"]
+
+
+func _p2_recipe_label(recipe_id: String) -> String:
+	match recipe_id:
+		"meal": return "Posiłek (jabłko)"
+		"stick": return "Patyk (3 drewno)"
+		"sword_iron": return "Miecz (3 drewno, 2 żelazo)"
+		_: return recipe_id
+
+
+func _p2_item_label(item_id: String) -> String:
+	match item_id:
+		"tool_axe": return "Topór"
+		"tool_pickaxe": return "Kilof"
+		"wood_oak": return "Drewno"
+		"ore_iron": return "Żelazo"
+		"wood_plank": return "Deski"
+		"sword_iron": return "Miecz"
+		_: return item_id.capitalize()
 
 
 ## Build a P2 CharacterBody3D matching the inline P1 in gameplay_runtime.tscn:
@@ -194,6 +336,8 @@ func _restore_p1_arrow_bindings() -> void:
 
 func teardown() -> void:
 	_restore_p1_arrow_bindings()
+	if _p2 != null and is_instance_valid(_p2):
+		_p2.set_input_disabled(false)
 	if _p2 != null and is_instance_valid(_p2):
 		_p2.queue_free()
 	queue_free()
