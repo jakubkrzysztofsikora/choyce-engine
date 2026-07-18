@@ -37,6 +37,7 @@ var _audio_bus: AudioEventBus
 var _sfx_player: SFXPlayer
 ## Live NPC voice (ElevenLabs TTS). Silent no-op without ELEVENLABS_API_KEY.
 var _npc_voice: VoicePromptPort = null
+var _npc_library_service: NPCAnswerLibraryService = null
 var _local_npc_voice: AudioStreamPlayer = null
 var _local_npc_voice_line := ""
 var _local_npc_voice_request_id := -1
@@ -378,6 +379,7 @@ func _ready() -> void:
 		_npc_voice.playback_finished.connect(_on_npc_voice_playback_finished)
 		_npc_voice.playback_skipped.connect(_on_npc_voice_playback_skipped)
 	_setup_local_npc_voice()
+	_npc_library_service = preload("res://src/application/npc_answer_library_service.gd").new()
 
 	# Ambient music is now driven by AudioBank (play_music called from PlayShell
 	# when the world is chosen). The _ambient_player node is kept so the scene
@@ -2067,6 +2069,23 @@ func _execute_npc_completions(player_text: String, request_id: int = -1) -> void
 		psych_context
 	]
 
+	# Load candidates from our pregenerated/dynamic ready answers library
+	var ready_sentences: Array[Dictionary] = []
+	if _npc_library_service != null and active_npc != null:
+		ready_sentences = _npc_library_service.load_library(_active_npc_id, active_npc.lines_pl)
+
+	var ready_sentences_str := ""
+	if not ready_sentences.is_empty():
+		ready_sentences_str = "\n\nOpcjonalne gotowe zdania z Twojej biblioteki wypowiedzi (możesz użyć jednego z nich, jeśli idealnie pasuje, zwracając tag np. <use_ready>0</use_ready>, lub wygenerować całkowicie nową unikalną wypowiedź. Zawsze twórz nową wypowiedź, jeśli gotowa nie pasuje idealnie):\n"
+		for item in ready_sentences:
+			var desc := ""
+			if not str(item.get("player_prompt", "")).is_empty():
+				desc = " (poprzednia reakcja na: '%s')" % item["player_prompt"]
+			ready_sentences_str += "[%d]: \"%s\"%s\n" % [item["index"], item["text"], desc]
+		ready_sentences_str += "\nInstrukcja wyboru gotowej wypowiedzi:\n" \
+			+ "- Jeśli gotowa wypowiedź pasuje idealnie do słów gracza i Twojego profilu/roli, zwróć dokładnie tag z indeksem: <use_ready>indeks</use_ready>\n"
+
+	sys_prompt = sys_prompt + ready_sentences_str
 
 	var prompt_text := ""
 	for msg in _npc_dialogue_history[_active_npc_id]:
@@ -2114,6 +2133,27 @@ func _execute_npc_completions(player_text: String, request_id: int = -1) -> void
 				var end := reply_text.find("</decision>")
 				decision_json = reply_text.substr(start, end - start).strip_edges()
 				clean_text = reply_text.substr(0, reply_text.find("<decision>")).strip_edges()
+
+			# Handle <use_ready> tag selection
+			var is_ready_selection := false
+			if clean_text.contains("<use_ready>") and clean_text.contains("</use_ready>"):
+				var start_idx := clean_text.find("<use_ready>") + 11
+				var end_idx := clean_text.find("</use_ready>")
+				var idx_str := clean_text.substr(start_idx, end_idx - start_idx).strip_edges()
+				if idx_str.is_valid_int():
+					var idx := idx_str.to_int()
+					if idx >= 0 and idx < ready_sentences.size():
+						clean_text = ready_sentences[idx]["text"]
+						is_ready_selection = true
+
+			# Persist dynamic generated sentences so the NPC's library grows!
+			if not is_ready_selection and not clean_text.is_empty() and _npc_library_service != null:
+				var emotion_str := "happiness: %.2f, irritability: %.2f, anxiety: %.2f" % [
+					captured_authored_npc.happiness if captured_authored_npc != null else 0.5,
+					captured_authored_npc.irritability if captured_authored_npc != null else 0.2,
+					captured_authored_npc.anxiety if captured_authored_npc != null else 0.1
+				]
+				_npc_library_service.save_new_answer(npc_id, clean_text, player_text, emotion_str)
 
 			_present_npc_reply(npc_id, captured_npc_name, clean_text)
 			_active_npc_dialogue_request_id = -1
