@@ -110,6 +110,10 @@ tasks:
       - MEDIUM: Cosmetic vertex-wave amplitude exceeds the fixed water-volume contact tolerance; reduce or recalibrate it.
       - MEDIUM: Contracts must inspect material runtime parameters and generated mesh density, not only shader source fragments.
       - LOW: Headless exits report resource leaks; improve isolated teardown before using tests as clean runtime-safety evidence.
+      - HIGH: The initial black-crown failure is fixed, but the forest still needs deeper material variation and stronger environmental integration to stop reading as a uniform tree wall.
+      - HIGH: The white shoreline cube is removed, but the opening remains a broad bare lawn with a flat water band and sparse foreground. Add terrain-conforming bank and layered low/mid vegetation, then retain a bridge-to-forest child-height traversal capture.
+      - MEDIUM: Scale the chosen trunk profile with each generated visual scale; fixed world-space contact was incorrect for 2.45-3.95x tree variation.
+      - MEDIUM: Use instantiated material and collider assertions rather than text-only path checks; live rendered evidence remains the acceptance authority.
       - REQUEST_CHANGES: River-volume, foreground density/material cohesion, visual water depth and traversal evidence remain open. Floating wet banks, generic bridge colliders, prototype forest composition, hero direction and night proof remain open.
     evidence:
       - src/adapters/inbound/gameplay/world_renderer.gd (single-offset river transform, seeded colliding woodland clusters, calibrated named trunk/canopy materials)
