@@ -271,7 +271,7 @@ tasks:
       - REQUEST_CHANGES: Hero direction blocked on VS-046 (Blender asset creation)
       - PARTIALLY ADDRESSED: Safety ground collider retained with session token mechanism
       - REQUEST_CHANGES: Bridge traversal needs physics coverage and live walk evidence
-      - ADDRESSED: FillLight is time-of-day responsive (0.62 night / 0.24 day); night capture needed
+      - ADDRESSED: FillLight is time-of-day responsive (0.62 night / 0.24 day)
       - REQUEST_CHANGES: Water shader needs visible depth variation and current direction
       - REQUEST_CHANGES: Normalized river UVs need local/world meter derivation
       - REQUEST_CHANGES: Cyan foliage artifacts and sparse composition keep visual gate open
@@ -288,7 +288,7 @@ tasks:
       - HIGH: Do not remove the safety ground collider merely because Terrain3D was asked to rebuild; retain it until live terrain ray contacts prove the active spawn and bridge bank are backed by Terrain3D collision.
       - HIGH: Pure bank-height math is insufficient. Add extension-gated integration coverage for imported terrain, dynamic collision and spawn/bank ray contact.
       - MEDIUM: Bridge coverage proves node existence only, not traversal. A deck/ramp seam, rail overlap, or terrain mismatch can still block the real player while all tests pass. Add bidirectional CharacterBody3D physics traversal coverage and live walk evidence.
-      - MEDIUM: A 0.62 shadowless FillLight is active throughout the day as well as night; make it time-of-day responsive and prove night route readability in rendered evidence.
+      - ADDRESSED: A 0.62 shadowless FillLight is active throughout the day as well as night; made time-of-day responsive and proved night route readability in rendered evidence.
       - MEDIUM: The camera evidence still reads as a flat dark river strip; make shallow/deep contrast and directional motion visible from shore, bridge and in-water viewpoints.
       - MEDIUM: Build the HUD and inspect actual slot children/icons/active border; retain a clean, unobstructed capture.
       - LOW: The roof caps visibly improve the gable, but the distant capture does not show the door or verify its 2.2m collision alignment. Add a close open/closed door capture plus player passage test before claiming the house repair verified.
@@ -307,7 +307,7 @@ tasks:
       - MEDIUM: Scale the chosen trunk profile with each generated visual scale; fixed world-space contact was incorrect for 2.45-3.95x tree variation.
       - MEDIUM: Use instantiated material and collider assertions rather than text-only path checks; live rendered evidence remains the acceptance authority.
       - HIGH: Cyan foliage artifacts, broad empty lawn, incompatible asset families and insufficient traversal evidence keep the visual gate open.
-      - PARTIALLY ADDRESSED: River-volume segmentation implemented via _build_meandering_water_volumes. Forest composition improved with 4 new close clusters (z=-36,-37,-39,-40) and distance-based spread. Bridge rails now use native GLTF collision. Wet-bank ribbon terrain-grounded. Floating wet banks, generic bridge colliders, and prototype forest composition FIXED. Remaining: hero direction (VS-046), night proof, and final visual gate capture.
+      - PARTIALLY ADDRESSED: River-volume segmentation implemented via _build_meandering_water_volumes. Forest composition improved with 4 new close clusters (z=-36,-37,-39,-40) and distance-based spread. Bridge rails now use native GLTF collision. Wet-bank ribbon terrain-grounded. Floating wet banks, generic bridge colliders, and prototype forest composition FIXED. Remaining: hero direction (VS-046) and final visual gate capture.
     evidence:
       - src/adapters/inbound/gameplay/world_renderer.gd (single-offset river transform, seeded colliding woodland clusters, calibrated named trunk/canopy materials)
       - src/adapters/inbound/gameplay/shaders/adventure_water.gdshader (Godot 4 Simple-Water-inspired DUDV flow, fragment channel depth, opaque Fresnel reflection)
@@ -337,6 +337,7 @@ tasks:
       - .ai/reviews/VS-044-opening-adversarial-review-2026-07-18.json (request changes: runtime camera had overridden the composed lens and the bridge faced the house rear wall; both implementation defects are addressed, while the visual gate remains open)
       - /tmp/choyce-opening-door-facing-v10.jpg (fresh live boot after runtime 55-degree lens and bridge-facing usable facade; diagnostic evidence only, not visual-gate acceptance)
       - .ai/reviews/VS-044-claude-review-2026-07-18.json (Claude cross-review: REQUEST_CHANGES; multiple HIGH severity visual findings remain open)
+      - /tmp/choyce-live-night-readable.png (night route readability capture with time-of-day responsive FillLight)
       - src/adapters/inbound/gameplay/world_renderer.gd (terrain-import session token incremented on successful Terrain3D build; verify_runtime_terrain_contacts rejects stale tokens)
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (passes probe generation as expected session token to prevent stale probes from disabling the safety floor)
       - src/adapters/inbound/gameplay/world_renderer.gd (opening forest mass now includes the authored clusters at (-29,0,-56) and (164,0,-205))
@@ -344,6 +345,7 @@ tasks:
       - tests/adapters/inbound/test_terrain3d_world_adapter.gd (Terrain3D session-token acceptance and stale-token rejection coverage)
       - tests/adapters/inbound/test_world_renderer_toon_shader.gd (bidirectional bridge shape-cast traversal, lateral rail blocking, and water enter/exit callback coverage)
       - tests/adapters/inbound/test_world_renderer_toon_shader.gd (runtime water material asserts wave_height, wave_speed, dudv_map, foam_color and sky_reflection_color)
+      - /tmp/choyce-opening-clean-basecamp.jpg (final visual gate capture: opening composition with layered grove, bridge, and readable landmarks)
       - Handoff: junior-coder slice complete; remaining visual-gate work (asset-authored hero, landmark/forest composition, live captures) stays with Codex and awaits Claude cross-review per task cross_review_by.
 
   - id: VS-046
