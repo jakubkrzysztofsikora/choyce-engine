@@ -69,6 +69,7 @@ func _run_tests() -> void:
 	_test_environment_assets_get_pbr_detail_layer()
 	_test_procedural_tree_scale_and_palm_source_are_human_scale()
 	_test_opening_grove_has_a_dense_human_scale_frame()
+	_test_opening_grove_has_dense_foreground_foliage()
 	_test_opening_bridge_shore_uses_the_textured_stone_path()
 	_test_opening_riverbank_has_layered_thickets_outside_the_bridge_lane()
 	_test_opening_riverbank_visuals_stay_out_of_swim_channel()
@@ -81,6 +82,8 @@ func _run_tests() -> void:
 	_test_outer_chunks_do_not_spill_past_world_floor()
 	_test_generation_is_queued_not_built_by_focus_request()
 	_test_river_keeps_a_bridge_width_dry_crossing()
+	await _test_bridge_shape_cast_traversal()
+	await _test_water_volume_enter_exit_callbacks()
 
 	quit(_exit_code)
 
@@ -335,9 +338,11 @@ func _test_procedural_tree_scale_and_palm_source_are_human_scale() -> void:
 		and source.contains("return rng.randi_range(5, 7)"),
 		"procedural forest chunks use human-scale canopies and real canopy density")
 	_assert(source.contains("Vector3(-13.5, 0, -12), 1.95")
-		and source.contains("float(entry[1]) * 0.56")
+		and source.contains("const OPENING_NEAR_FOREST_TREE_PATHS := [")
+		and source.contains("nature/CommonTree_4.fbx")
+		and source.contains("float(entry[1]) * 1.24")
 		and source.contains("backdrop_rng.randf_range(1.20, 1.90)"),
-		"opening forest uses adult-scale tree silhouettes rather than miniature props")
+		"opening forest uses one adult-scale CC0 tree family rather than miniature props")
 
 
 ## The curated spawn is a clearing framed by a layered grove, not a lawn with
@@ -349,8 +354,22 @@ func _test_opening_grove_has_a_dense_human_scale_frame() -> void:
 	_assert(source.contains("Vector3(-20.5, 0, -5.5), 2.30")
 		and source.contains("Vector3(27.5, 0, -10.2), 2.48")
 		and source.contains("Vector3(-60, 0, -64), 3.25")
-		and source.contains("Vector3(58, 0, -68), 3.18"),
-		"opening uses a layered, human-scale tree frame rather than sparse prototype scatter")
+		and source.contains("Vector3(58, 0, -68), 3.18")
+		and source.contains("gateway_left_path := \"res://data/models/quaternius/nature/CommonTree_4.fbx\"")
+		and source.contains("gateway_right_path := \"res://data/models/quaternius/nature/PineTree_4.fbx\""),
+		"opening uses a layered, human-scale Quaternius tree frame rather than sparse prototype scatter")
+
+
+## VS-044: Enhanced foreground foliage density for visual gate
+func _test_opening_grove_has_dense_foreground_foliage() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains("Vector3(-3.0, 0, -8)")  # New bush positions
+		and source.contains("Vector3(3.0, 0, -9)")
+		and source.contains("opening_grove_grass_")  # New grass clusters
+		and source.contains("opening_grove_flower_")  # New flower accents
+		and source.contains("grass_large.glb")  # Grass asset path
+		and source.contains("flower_purpleA.glb"),  # Flower asset path
+		"opening grove has dense foreground foliage: bushes, grass, flowers in immediate clearing")
 
 
 ## The visible river approach uses supplied cliff modules. Their import has a
@@ -462,8 +481,8 @@ func _test_opening_forest_mass_is_a_real_colliding_volume() -> void:
 		and source.contains("forest-canopy-stylized-v2.png")
 		and source.contains("bark012/Bark012_1K-JPG_Color.jpg")
 		and source.contains("func _make_bark_toon_material()")
-		and source.contains("Vector3(-29.0, 0.0, -56.0)")
-		and source.contains("Vector3(164.0, 0.0, -205.0)")
+		and source.contains("Vector3(-29.0, 0.0, -46.0)")  # Moved closer to river
+		and source.contains("Vector3(164.0, 0.0, -195.0)")  # Moved closer to river
 		and source.contains('const OPENING_OAK_TREE := "res://data/models/props/oak_tree.gltf"')
 		and source.contains("const OPENING_FOREST_TREE_PATHS := [")
 		and source.contains("nature/CommonTree_1.fbx")
@@ -557,21 +576,31 @@ func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 	var south_stairs := r.find_children("OpeningBridgeSouthApproach_*", "Node3D", false, false)
 	var north_stairs := r.find_children("OpeningBridgeNorthApproach_*", "Node3D", false, false)
 	var rails := r.find_children("OpeningBridgeRail_*", "Node3D", false, false)
-	# Verify each rail node has its own StaticBody3D from the GLTF (native collision)
+	# Every visible rail must own a narrow collision profile; the imported GLTF
+	# does not supply usable collision by itself.
 	var rails_with_collision := 0
 	for rail in rails:
-		var rail_body := rail.get_child_count() > 0 and rail.get_child(0) is StaticBody3D
+		var rail_body := rail is StaticBody3D and r._first_collision_shape(rail as StaticBody3D) != null
 		if rail_body:
 			rails_with_collision += 1
 	_assert(river != null and river_visual != null and river.position.y > 0.0 \
 		and river_mesh != null and river_mesh.get_surface_count() > 0,
 		"river keeps its raised curved-surface and physical-volume contract")
 	var water_material := river_visual.material_override as ShaderMaterial if river_visual != null else null
+	var runtime_dudv_tiling = water_material.get_shader_parameter("dudv_tiling") if water_material != null else null
+	var runtime_dudv_strength = water_material.get_shader_parameter("dudv_strength") if water_material != null else null
+	var runtime_wave_height = water_material.get_shader_parameter("wave_height") if water_material != null else null
+	var runtime_wave_speed = water_material.get_shader_parameter("wave_speed") if water_material != null else null
 	_assert(water_material != null
-		and float(water_material.get_shader_parameter("dudv_tiling")) >= 0.12
-		and float(water_material.get_shader_parameter("dudv_tiling")) <= 0.20
-		and float(water_material.get_shader_parameter("dudv_strength")) >= 0.03,
-		"local-world river flow retains repeated SimpleWater distortion at runtime")
+		and runtime_dudv_tiling is float and float(runtime_dudv_tiling) >= 0.12
+		and float(runtime_dudv_tiling) <= 0.20
+		and runtime_dudv_strength is float and float(runtime_dudv_strength) >= 0.03
+		and runtime_wave_height is float and float(runtime_wave_height) <= 0.02
+		and runtime_wave_speed is float and float(runtime_wave_speed) > 0.0
+		and water_material.get_shader_parameter("dudv_map") != null
+		and water_material.get_shader_parameter("foam_color") is Color
+		and water_material.get_shader_parameter("sky_reflection_color") is Color,
+		"local-world river flow retains repeated SimpleWater distortion, gentle waves and authored reflection tint at runtime")
 	var water_vertices := river_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array if river_mesh != null else PackedVector3Array()
 	_assert(water_vertices.size() >= WorldRenderer.RIVER_RENDER_SEGMENT_COUNT * WorldRenderer.RIVER_RENDER_WIDTH_SUBDIVISIONS * 6,
 		"river render mesh has the required tessellated surface, not only a matching constant")
@@ -621,6 +650,51 @@ func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 	r.queue_free()
 
 
+## A capsule-sized shape cast must be able to walk the bridge in both
+## directions on the continuous deck, while the rails block a lateral crossing.
+func _test_bridge_shape_cast_traversal() -> void:
+	var r := _make_renderer()
+	r._add_water_crossing()
+	r._build_opening_bridge()
+	for _frame in 4:
+		await physics_frame
+	var south_to_north := _shape_cast_fraction(Vector3(0.0, 1.1, -8.0), Vector3(0.0, 1.1, -40.0), 0.35)
+	var north_to_south := _shape_cast_fraction(Vector3(0.0, 1.1, -40.0), Vector3(0.0, 1.1, -8.0), 0.35)
+	var lateral_through_rails := _shape_cast_fraction(Vector3(-2.2, 1.1, -24.0), Vector3(2.2, 1.1, -24.0), 0.35)
+	_assert(is_equal_approx(south_to_north, 1.0),
+		"shape cast can traverse the bridge deck from south bank to north bank")
+	_assert(is_equal_approx(north_to_south, 1.0),
+		"shape cast can traverse the bridge deck from north bank to south bank")
+	_assert(lateral_through_rails < 1.0,
+		"shape cast is blocked when crossing the bridge rails laterally")
+	r.queue_free()
+
+
+## The river Area3D must forward enter/exit state to bodies that expose
+## set_in_water, so gameplay can transition between walk and swim states.
+func _test_water_volume_enter_exit_callbacks() -> void:
+	var r := _make_renderer()
+	r._add_water_crossing()
+	var river := r.get_node_or_null("StarterRiver") as Area3D
+	var body_script := GDScript.new()
+	body_script.source_code = "extends Node3D\nvar in_water := false\nfunc set_in_water(value: bool) -> void:\n\tin_water = value\n"
+	body_script.reload()
+	var body := Node3D.new()
+	body.set_script(body_script)
+	body.name = "WaterCallbackProbe"
+	r.add_child(body)
+	_assert(river != null and river.body_entered.get_connections().size() > 0,
+		"water volume has body_entered connected")
+	river.body_entered.emit(body)
+	_assert(body.get("in_water") == true,
+		"entering water calls set_in_water(true) on the body")
+	river.body_exited.emit(body)
+	_assert(body.get("in_water") == false,
+		"exiting water calls set_in_water(false) on the body")
+	body.queue_free()
+	r.queue_free()
+
+
 # ---------------------------------------------------------------------------
 # Utility
 # ---------------------------------------------------------------------------
@@ -633,3 +707,21 @@ func _find_mesh_instance(parent: Node) -> MeshInstance3D:
 		if found != null:
 			return found
 	return null
+
+
+## Returns the collision-free fraction of a sphere sweep through the current
+## 3D physics space. 1.0 means the entire motion is clear.
+func _shape_cast_fraction(from: Vector3, to: Vector3, radius: float) -> float:
+	var space_state := get_root().get_world_3d().direct_space_state
+	var shape := SphereShape3D.new()
+	shape.radius = radius
+	var params := PhysicsShapeQueryParameters3D.new()
+	params.shape = shape
+	params.transform = Transform3D(Basis.IDENTITY, from)
+	params.motion = to - from
+	params.collide_with_bodies = true
+	params.collide_with_areas = false
+	var result := space_state.cast_motion(params)
+	if result.is_empty():
+		return 1.0
+	return float(result[0])
