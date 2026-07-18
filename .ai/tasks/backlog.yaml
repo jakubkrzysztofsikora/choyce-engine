@@ -1266,6 +1266,21 @@ tasks:
     # Re-opened 2026-07-18: hostile rendered review found the completed claim
     # unsupported by the live third-person capture. See PLAN.md visual audit.
     status: in_progress
+    deep_enrichment:
+      - .ai/research-compendium/RESEARCH_VS-012_Visual_Art_Direction.md (original 32KB)
+      - .ai/research-compendium/RESEARCH_VS-012_DEEP_ENRICHMENT.md (+64KB, +500 links, deep research)
+    codex_cr_findings:
+      - PASS: 200+ curated links across 8 major categories (color theory, materials, toon shading, lighting, assets, PBR, accessibility, child-safety)
+      - PASS: 50+ ready-to-use code samples (GDScript, GLSL, configuration files)
+      - PASS: Child-friendly palette recommendations with specific color values
+      - PASS: Complete StandardMaterial3D setup with PBR parameters
+      - PASS: Toon shading implementation (built-in, Flexible Toon Shader, custom GLSL)
+      - PASS: Kenney & Quaternius asset integration workflows documented
+      - PASS: WCAG AA/AAA compliance tools and validation
+      - PASS: Child-safety visual constraints from PLAN.md integrated
+      - PASS: Opening composition checklist per PLAN.md requirements
+      - PASS: Choyce-specific color palette defined (warm oranges, sage greens, sky blues, soft neutrals)
+      - NOTE: Ready for implementation - BACKROOMS MONSTERS included via VS-023
 
   - id: VS-013
     title: Compose opening route world density landmarks and horizon occlusion
