@@ -106,6 +106,20 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: Viewport capture, Performance singleton, hardware detection, image analysis, evidence management
 
+### 12. Template Transforms Preservation (VS-001) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-001_Template_Transforms_Preservation.md](./RESEARCH_VS-001_Template_Transforms_Preservation.md)
+- **Focus**: Preserve node transforms, properties, rule source_blocks, active state through TemplateLoader
+- **Status**: in_review
+- **Complexity**: HIGH
+- **Key Technologies**: JSON serialization, Vector3/Quaternion/Color normalization, Factory pattern, hexagonal architecture boundary enforcement
+
+### 13. Trigger Metadata Propagation (VS-002) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-002_Trigger_Metadata_Propagation.md](./RESEARCH_VS-002_Trigger_Metadata_Propagation.md)
+- **Focus**: Propagate trigger metadata from templates to Area3D nodes with type handlers and collision
+- **Status**: in_review
+- **Complexity**: HIGH
+- **Key Technologies**: Area3D, CollisionShape3D, Trigger type registry, Handler pattern, Signal dispatching
+
 ---
 
 ## Task Research Index
@@ -288,6 +302,87 @@ These tasks have full, detailed research documents with code samples, online res
 #### TASK-044: Versioned Prompt Templates
 - **Status**: done
 - **Research**: Use-case, locale, role, age-band variants
+
+---
+
+## Foundation Tasks (VS-001 to VS-004)
+
+These are the core foundation tasks that implement the hexagonal architecture and template system.
+
+### **VS-001: Preserve Template Transforms, Properties, Rule Metadata** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-001_Template_Transforms_Preservation.md](./RESEARCH_VS-001_Template_Transforms_Preservation.md)
+- **Status**: in_review
+- **Specialty**: runtime-data
+- **Focus**: TemplateLoader preserves node position/rotation/scale/properties, rule source_blocks/active state, JSON-to-domain conversion
+- **Dependencies**: None
+- **Technical Areas**:
+  - JSON serialization with type preservation
+  - Vector3/Quaternion/Color normalization at renderer boundary
+  - Factory pattern for domain entity creation
+  - Hexagonal architecture boundary enforcement
+  - Round-trip serialization testing
+- **Deep Research**: ✅ COMPLETE - 40KB comprehensive document with 5 code samples
+- **Implementation Notes**:
+  - TemplateLoader._create_scene_node() preserves all node data
+  - TemplateLoader._create_game_rule() preserves source_blocks and active state
+  - Normalization functions handle multiple JSON formats
+  - Domain entities extend RefCounted (no Godot dependencies)
+  - Renderer converts domain types to Godot types at boundary
+- **Acceptance Criteria**:
+  - TemplateLoader preserves node position, rotation, scale, and properties ✅
+  - TemplateLoader preserves rule source_blocks and active state ✅
+  - JSON-to-domain tests prove authored fields are not discarded ✅
+  - Renderer boundary normalizes JSON vectors/colors ✅
+- **Links**:
+  - [Godot JSON Class](https://docs.godotengine.org/en/stable/classes/class_json.html)
+  - [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/)
+  - [Factory Pattern](https://refactoring.guru/design-patterns/factory-method)
+
+### **VS-002: Propagate Trigger Metadata** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-002_Trigger_Metadata_Propagation.md](./RESEARCH_VS-002_Trigger_Metadata_Propagation.md)
+- **Status**: in_review
+- **Specialty**: gameplay-runtime
+- **Focus**: Area3D receives stable node names, authored metadata, collision sizes; runtime recognizes collectible/checkpoint/win/win_zone semantics
+- **Dependencies**: [VS-001]
+- **Technical Areas**:
+  - Area3D signal handling (body_entered, area_entered)
+  - Collision shape creation (Box, Sphere, Capsule, Cylinder)
+  - Trigger type registry with handler pattern
+  - Trigger metadata propagation from template to runtime
+  - Cooldown and one-time trigger support
+- **Deep Research**: ✅ COMPLETE - 50KB comprehensive document with 8 code samples
+- **Implementation Notes**:
+  - TriggerTypeRegistry: Singleton for type/handler mapping
+  - TriggerHandler: Base class with on_body_entered()
+  - CollectibleHandler, CheckpointHandler, WinHandler, etc.: Type-specific implementations
+  - TriggerManager: Central registration and signal dispatching
+  - WorldRenderer: Creates Area3D with collision and metadata
+  - TemplateLoader: Preserves trigger_type, trigger_metadata, trigger_collision
+- **Acceptance Criteria**:
+  - Trigger Area3D receives stable node name and authored metadata ✅
+  - Trigger collision uses authored size ✅
+  - Runtime recognizes collectible semantics ✅
+  - Runtime recognizes checkpoint semantics ✅
+  - Runtime recognizes win semantics ✅
+  - Runtime recognizes win_zone semantics ✅
+  - Renderer integration tests cover metadata and JSON property normalization
+- **Links**:
+  - [Godot Area3D](https://docs.godotengine.org/en/stable/classes/class_area3d.html)
+  - [Godot Collision Shapes](https://docs.godotengine.org/en/stable/tutorials/physics/physics_shapes.html)
+  - [Observer Pattern](https://refactoring.guru/design-patterns/observer)
+  - [Strategy Pattern](https://refactoring.guru/design-patterns/strategy)
+
+### VS-003: NPC Scene-Tree Lifecycle
+- **Status**: todo
+- **Specialty**: runtime-reliability
+- **Focus**: NPC nodes enter tree before transform use, headless Adventure smoke produces no errors
+- **Dependencies**: []
+
+### VS-004: Clean-Profile Adventure Charter
+- **Status**: todo
+- **Specialty**: manual-qa
+- **Focus**: Fresh profile reaches Adventure, island has landmarks/dressing/no edge, guide before combat, free-play session
+- **Dependencies**: [VS-001, VS-002, VS-003]
 
 ---
 
