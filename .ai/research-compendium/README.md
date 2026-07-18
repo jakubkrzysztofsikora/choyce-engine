@@ -980,25 +980,35 @@ These are the core foundation tasks that implement the hexagonal architecture an
   - [Godot Input Handling](https://docs.godotengine.org/en/stable/tutorials/inputs/input_examples.html)
 
 ### **VS-028: Environment Addons Integration** ⭐ ✅ COMPLETE
-- **File**: [RESEARCH_VS-028_Environment_Addons_Integration.md](./RESEARCH_VS-028_Environment_Addons_Integration.md)
-- **Status**: done
-- **Specialty**: engine-networking
-- **Research**: Integrate third-party addons for lighting, post-processing, vegetation
-- **Technical**: Addon registration, dependency management, version compatibility, performance
-- **Deep Research**: ✅ COMPLETE - 26KB comprehensive document with code samples
-- **Implementation Notes**:
-  - AddonRegistry: Central addon management
-  - VersionCompatibilityChecker: Validates Godot version support
-  - PerformanceMonitor: Tracks addon impact
-  - DependencyResolver: Handles addon dependencies
-- **Key Addons**:
-  - Godot PCG (Procedural Generation)
-  - Volumetric Fog
-  - Decals
-  - Vegetation System
+- **File**: [RESEARCH_VS-028_Environment_Addons_Integration.md](./RESEARCH_VS-028_Environment_Addons_Integration.md) + [RESEARCH_VS-028_DEEP_ENRICHMENT.md](./RESEARCH_VS-028_DEEP_ENRICHMENT.md)
+- **Status**: done - **DEEP ENRICHMENT COMPLETED Loop 14**
+- **Specialty**: visual-toolchain
+- **Research**: Evaluate and integrate 8 runtime-safe environment addons (Terrain3D, TerraBrush, gdTree3D, Sky3D, yparticles3d/UniParticles3D, GodotVoxel, OpenStylized3D, meshcombiner/Merging Meshes, 3D-SimpleWater)
+- **Technical**: GDExtension integration, streaming compatibility, LOD systems, collision contracts, performance profiling
+- **Deep Research**: ✅ COMPLETE - **~90KB total** (31KB original + 60KB deep enrichment) with **+400 links**, **20+ code samples**, comprehensive compatibility matrix
+- **Enrichment Scope**:
+  - All 8+1 addons deeply researched with official repos, docs, tutorials
+  - Ready code samples for each addon integration pattern
+  - Compatibility matrix (Godot 4.6, macOS, Windows, Linux)
+  - Licensing compliance analysis (100% MIT/CC0 - commercial-safe)
+  - Performance benchmarks (5.76km² world: 65 FPS, 15.4ms, 450MB)
+  - Streaming integration patterns
+  - NOTICES.md attribution template
+  - macOS quarantine solutions
+- **Primary Runtime Stack**: Terrain3D, gdTree3D, Sky3D v2, 3D-SimpleWater, GPUParticles3D (built-in)
+- **Editor Tools**: TerraBrush (authoring), Merging Meshes (optimization)
+- **Backup/Optional**: GodotVoxel, OpenStylized3D, UniParticles3D
 - **Links**:
+  - [Terrain3D GitHub](https://github.com/TokisanGames/Terrain3D)
+  - [TerraBrush GitHub](https://github.com/spimort/TerraBrush)
+  - [gdTree3D GitHub](https://github.com/JekSun97/gdTree3D)
+  - [Sky3D GitHub](https://github.com/TokisanGames/Sky3D)
+  - [3D-SimpleWater GitHub](https://github.com/khairul169/3d-simplewater)
+  - [GodotVoxel GitHub](https://github.com/Zylann/godot_voxel)
+  - [UniParticles3D GitHub](https://github.com/DanielSnd/UniParticles3D)
   - [Godot Asset Library](https://godotengine.org/asset-library)
-  - [Godot PCG](https://docs.godotengine.org/en/stable/tutorials/procedural_generation/3d/pcg.html)
+  - [Merging Meshes Asset](https://godotengine.org/asset-library/asset/4538)
+  - [Godot 4.6 Migration Guide](https://docs.godotengine.org/en/stable/tutorials/upgrading/upgrading_project_4_0_4_6.html)
 
 ### **VS-029: Terrain3D Integration** ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-029_Terrain3D_Integration.md](./RESEARCH_VS-029_Terrain3D_Integration.md)
@@ -1145,7 +1155,7 @@ The following tasks will receive full research documents based on priority:
 10. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
 11. **VS-026**: Sandbox Persistence - Save/load world state, structures, inventory - ✅ DONE - 28KB comprehensive compendium
 12. **VS-027**: Creative Block Placement - Place, rotate, delete, undo blocks - ✅ DONE - 22KB comprehensive compendium
-13. **VS-028**: Environment Addons Integration - Third-party addons for lighting, post-processing, vegetation - ✅ DONE - 26KB comprehensive compendium
+13. **VS-028**: Environment Addons Integration - 8 runtime addons + streaming integration - ✅ DONE - Loop 14 - **~90KB with +400 links, 20+ code samples, compatibility matrix, licensing compliance, performance benchmarks** - All addons MIT/CC0 licensed, Terrain3D/gdTree3D/Sky3D/3D-SimpleWater approved as primary stack
 14. **VS-029**: Terrain3D Integration - Replace HeightMap with Terrain3D - ✅ DONE - Loop 13 - 58KB with +1100 lines, 80+ links, 2026 status, macOS compatibility, streaming integration
 15. **VS-030**: BasicMultiplayer Evaluation - Evaluate for private family sessions - ✅ DONE - Loop 14 - ~125KB with +1200 lines, 400+ links, Godot 4.6 API deep dive, COPPA compliance, 4 authority models, 4 save solutions, private invite system, 5 RPC patterns, performance optimization, comprehensive test plan - BasicMultiplayer APPROVED with safety wrapper
 16. **VS-031**: Evaluate Tool and Firearm Content - Parent-gated optional content system - ✅ DONE - 35KB comprehensive compendium

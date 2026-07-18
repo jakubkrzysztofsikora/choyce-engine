@@ -1,0 +1,55 @@
+{
+  "task_id": "TASK-040",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Explicit experimental rollout flags added in deployment defaults: ai_experimental_tools and ai_beta_features. These control access to experimental AI capabilities.",
+      "path": "src/application/deployment_config.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Environment-based startup feature overrides implemented via CHOYCE_FEATURE_OVERRIDES environment variable. Supports both JSON and CSV parsing for flexibility in different deployment scenarios.",
+      "path": "src/application/deployment_config.gd, src/application/feature_flag_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Strict hard-disable enforcement ensures restricted mode flags cannot be force-enabled by overrides. This prevents security bypass via environment variable manipulation.",
+      "path": "src/application/feature_flag_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Robust deployment-mode env parsing aliases for CHOYCE_DEPLOYMENT_MODE added, providing flexible environment configuration options.",
+      "path": "src/application/deployment_config.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Deployment and feature-flag checks converted into ApplicationTest and wired into the application suite (run_application_tests.gd), ensuring proper test coverage.",
+      "path": "tests/application/test_feature_flag_service.gd, tests/application/run_application_tests.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Full quality gate suite remains green with new coverage included. No regressions introduced by deployment/feature-flag changes.",
+      "path": "scripts/ci/run-application-suite.sh, scripts/run-quality-gates.sh"
+    },
+    {
+      "severity": "info",
+      "message": "Backlog.yaml updated to reflect TASK-040 implementation and deployment configuration changes.",
+      "path": ".ai/tasks/backlog.yaml"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "experimental_rollout_flags": "PASS - Explicit experimental rollout flags (ai_experimental_tools, ai_beta_features) added to deployment defaults",
+      "feature_flags_environments": "PASS - Feature flags controlled by environment/deployment profile and parent policy"
+    },
+    "security": "PASS - Strict hard-disable enforcement prevents restricted mode bypass via overrides",
+    "flexibility": "PASS - Environment-based overrides support JSON and CSV parsing for deployment flexibility",
+    "deployment_modes": "PASS - Robust deployment-mode parsing with CHOYCE_DEPLOYMENT_MODE aliases",
+    "test_coverage": "PASS - Deployment/feature-flag checks converted to ApplicationTest with proper coverage",
+    "quality_gates": "PASS - Full quality gate suite remains green with new coverage",
+    "safety_policy": "PASS - Mode-default policy expectations confirmed; overrides cannot bypass safety restrictions"
+  },
+  "summary": "APPROVE. TASK-040 implementation is complete and production-ready. Deployment presets for local-only, family cloud, and classroom policy modes with feature flags for experimental AI capabilities are fully implemented. All acceptance criteria are met: explicit experimental rollout flags, feature flags controlled by environment/deployment profile/parent policy. Safety implications of env-based overrides reviewed and confirmed safe."
+}

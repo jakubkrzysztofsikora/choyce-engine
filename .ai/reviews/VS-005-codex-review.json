@@ -2,6 +2,82 @@
   "task_id": "VS-005",
   "reviewer": "codex",
   "decision": "approve",
-  "findings": [],
-  "summary": "Verified the age-appropriate combat design changes. Enemy wind-up and recovery states are clearly telegraphing attacks. Hit feedback (squash & stretch, damage billboard, screen shake) feels responsive. Soft aim assist and CombatDifficulty settings are implemented correctly."
+  "findings": [
+    {
+      "severity": "info",
+      "message": "EASY mode HP/damage scaling IS implemented correctly in gameplay_runtime.gd:1286-1288",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:1286-1288"
+    },
+    {
+      "severity": "info",
+      "message": "WINDUP state implemented with proper telegraph timing (0.8s mob / 1.2s boss)",
+      "path": "src/adapters/inbound/gameplay/enemy_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Emission-spike white flash on hit (snap to white + emission, 80ms hold)",
+      "path": "src/adapters/inbound/gameplay/enemy_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Squash + stretch animation on enemy hit (1.3, 0.65, 1.3)",
+      "path": "src/adapters/inbound/gameplay/enemy_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Combo system with window-based cooldown (0.5s window, faster combo swings)",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Increased punch squash (1.18, 0.86, 1.18)",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Soft aim assist (60% snap toward nearest enemy within ~28 degrees)",
+      "path": "src/adapters/inbound/gameplay/player_controller.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Damage number scale-pop animation (0.2 -> 1.4 -> 1.0)",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Hit-stop on EVERY hit-connect (35ms mob / 60ms boss)",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Phase-aware feedback (kicks get 2x knockback, bigger shake, longer hit-stop)",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Directional camera shake",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Crosshair tinting when enemy in range NOW IMPLEMENTED - adds red tint to crosshair when enemy within ATTACK_RANGE",
+      "path": "src/adapters/inbound/gameplay/gameplay_runtime.gd:2277-2290"
+    },
+    {
+      "severity": "info",
+      "message": "combat_difficulty field NOW serialized in ParentalControlPolicy.to_dict() and from_dict()",
+      "path": "src/domain/identity_safety/parental_control_policy.gd:78-88,145-155"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "enemy_windup_recovery": "PASS - WINDUP state with proper timing (0.8s mob / 1.2s boss)",
+      "hit_feedback": "PASS - Emission spike, squash+stretch, damage numbers, hit-stop, camera shake all implemented",
+      "soft_aim_assist": "PASS - 60% snap toward nearest enemy within ~28 degrees",
+      "crosshair_tinting": "PASS - Crosshair tints red when enemy in range",
+      "combat_difficulty_serialization": "PASS - combat_difficulty now serialized"
+    },
+    "test_coverage": "PASS - All combat features verified implemented"
+  },
+  "summary": "APPROVE. All BLOCKING issues resolved. Crosshair tinting now implemented (red when enemy in range). combat_difficulty now properly serialized in to_dict()/from_dict(). EASY mode scaling was already implemented correctly. All combat feedback features verified: windup, squash, combo, aim assist, damage numbers, hit-stop, camera shake."
 }

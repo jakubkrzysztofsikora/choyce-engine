@@ -364,13 +364,26 @@ func _test_generation_is_queued_not_built_by_focus_request() -> void:
 func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 	var r := _make_renderer()
 	r._add_water_crossing()
+	r._build_opening_bridge()
 	var river := r.get_node_or_null("StarterRiver") as Area3D
 	var river_visual := river.get_node_or_null("WaterSurface") as MeshInstance3D if river != null else null
 	var river_collision := river.get_node_or_null("WaterVolumeShape") as CollisionShape3D if river != null else null
-	var river_mesh := river_visual.mesh as BoxMesh if river_visual != null else null
+	var river_mesh := river_visual.mesh as PlaneMesh if river_visual != null else null
+	var deck := r.get_node_or_null("OpeningBridgeDeck") as StaticBody3D
+	var deck_collision := r._first_collision_shape(deck) if deck != null else null
+	var south_ramp := r.get_node_or_null("OpeningBridgeRampSouth") as StaticBody3D
+	var north_ramp := r.get_node_or_null("OpeningBridgeRampNorth") as StaticBody3D
+	var left_rail := r.get_node_or_null("OpeningBridgeRail_L") as StaticBody3D
+	var right_rail := r.get_node_or_null("OpeningBridgeRail_R") as StaticBody3D
 	_assert(river != null and river_visual != null and river.position.y > 0.0 \
-		and river_collision != null and river_mesh != null and river_mesh.size.z >= 18.0,
-		"river is a raised physical water volume; bridge supplies the traversable crossing without invisible blockers")
+		and river_collision != null and river_mesh != null and river_mesh.size.y >= 18.0,
+		"river keeps its raised animated-surface and physical-volume contract")
+	_assert(deck != null and deck_collision != null,
+		"bridge exposes one continuous deck collision beneath its visual tile assembly")
+	_assert(south_ramp != null and north_ramp != null,
+		"bridge exposes explicit collision approaches at both banks")
+	_assert(left_rail != null and right_rail != null,
+		"bridge exposes narrow rail collision bodies at both sides")
 	r.queue_free()
 
 

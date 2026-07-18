@@ -5,6 +5,8 @@ extends Node3D
 # (both glTF prop instances and primitive-mesh fallbacks).
 const TOON_CEL_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/toon_cel.gdshader")
 const ENVIRONMENT_DETAIL_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/environment_detail.gdshader")
+const ADVENTURE_WATER_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/adventure_water.gdshader")
+const ADVENTURE_PATH_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/adventure_path.gdshader")
 const PBR_DETAIL_ALBEDO: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Color.jpg")
 const PBR_DETAIL_NORMAL: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_NormalGL.jpg")
 const PBR_DETAIL_ROUGHNESS: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Roughness.jpg")
@@ -363,6 +365,8 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 	var name_key := String(display_name).strip_edges().to_lower()
 	var fallback_tint: Variant = PROP_TINT_BY_NAME.get(name_key, null)
 	var force_opening_palette := false
+	var force_farm_animal_palette := false
+	var force_bridge_stair_palette := false
 	# Curated opening assets are loaded by their concrete kit paths rather than
 	# generic display names. The Nature Kit source uses near-white palette
 	# swatches for several of these meshes, so give those known prefixes the
@@ -379,6 +383,19 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 	elif name_key.begins_with("opening_path"):
 		fallback_tint = Color(0.49, 0.34, 0.18)
 		force_opening_palette = true
+	elif name_key.contains("chicken") or name_key.contains("kura"):
+		# The supplied low-poly chicken has a near-white flat material and no
+		# texture. Against the grass it read as a glowing broken pickup rather
+		# than wildlife, especially around the opening fence. Give every reuse of
+		# this source a restrained brown-and-cream farm-animal palette.
+		fallback_tint = Color(0.54, 0.31, 0.15)
+		force_farm_animal_palette = true
+	elif name_key.contains("openingbridge") and name_key.contains("stair"):
+		# The otherwise useful modular stair source imports as chalk-white here.
+		# Lock it to the bridge's dark weathered wood family rather than leaving a
+		# bright prefab fragment in the centre of the opening composition.
+		fallback_tint = Color(0.34, 0.20, 0.095)
+		force_bridge_stair_palette = true
 	# owned=false so programmatically-instanced glTF nodes (no SceneTree owner) are found.
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = node
@@ -394,13 +411,18 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 		# Real kit materials carry a texture atlas, normal detail and carefully
 		# authored roughness. Replacing them with the prototype toon shader was
 		# the reason trees and buildings looked half-rendered. Preserve them.
-		if tex != null:
+		if tex != null and not force_farm_animal_palette and not force_bridge_stair_palette:
 			continue
 		# When the model carries a real texture atlas, use it — don't flatten
 		# to a name-tint. The name-keyed tint only rescues genuinely untextured
 		# placeholder props (near-white baseColorFactor, no texture).
-		if tex == null and fallback_tint != null and (force_opening_palette or (color.r >= 0.7 and color.g >= 0.7 and color.b >= 0.7)):
+		if fallback_tint != null and (force_opening_palette or force_farm_animal_palette or force_bridge_stair_palette or (color.r >= 0.7 and color.g >= 0.7 and color.b >= 0.7)):
 			color = fallback_tint
+		if force_farm_animal_palette or force_bridge_stair_palette:
+			# The source's white texture is what made the chicken read as a broken
+			# glowing pickup at normal third-person distance; the stair has the same
+			# failure mode against the river. Use a coherent material and silhouette.
+			tex = null
 		if _uses_environment_detail(name_key):
 			mi.material_override = _make_environment_detail_material(color, _environment_detail_profile(name_key))
 		else:
@@ -536,26 +558,24 @@ func _build_opening_grove() -> void:
 	# This gives the player a dirt path, a bridge route ahead, and two natural
 	# branches into the village/forest without placing opaque obstacles in the
 	# centre of the camera.
-	var path := KENNEY_NK + "ground_pathStraight.glb"
-	# The river occupies z=-33..-15. Stop the trail at each bank and let the
-	# bridge be the only crossing cue rather than drawing dirt beneath water.
-	for z in range(-6, -15, -2):
-		_add_visual_asset("opening_path_%d" % abs(z), Vector3(0.0, 0.08, float(z)),
-			Vector3(2.2, 1.0, 2.2), 0.0, path, false)
-	for z in range(-36, -49, -2):
-		_add_visual_asset("opening_path_far_%d" % abs(z), Vector3(0.0, 0.08, float(z)),
-			Vector3(2.2, 1.0, 2.2), 0.0, path, false)
-	# The far-bank branch turns the bridge route toward the livable house rather
-	# than leaving it as a distant background prop.
-	for x in range(2, 19, 2):
-		_add_visual_asset("opening_path_home_%d" % x, Vector3(float(x), 0.08, -46.0),
-			Vector3(2.2, 1.0, 2.2), PI * 0.5, path, false)
-	for x in range(-2, -27, -2):
-		_add_visual_asset("opening_path_forest_%d" % abs(x), Vector3(float(x), 0.08, -10.0),
-			Vector3(2.2, 1.0, 2.2), PI * 0.5, path, false)
-	for x in range(2, 27, 2):
-		_add_visual_asset("opening_path_village_%d" % x, Vector3(float(x), 0.08, -10.0),
-			Vector3(2.2, 1.0, 2.2), PI * 0.5, path, false)
+	# The imported 1m path tiles became chunky, repeated brown bands when
+	# enlarged for child-scale traversal. Continuous textured trail meshes make
+	# each route read as ground rather than as a row of tabletop props.
+	# The river occupies z=-33..-15, so the trails stop at each bank and the
+	# bridge remains the only crossing cue.
+	_add_opening_dirt_trail("OpeningTrailBridgeNear", Vector3(0.0, 0.035, -10.0), 2.8, 11.0)
+	_add_opening_dirt_trail("OpeningTrailBridgeFar", Vector3(0.0, 0.035, -42.0), 2.8, 13.0)
+	# Reach the door on the south facade, never the colliding left wall. The path
+	# first turns outside the home footprint, then approaches the real doorway.
+	_add_opening_dirt_trail("OpeningTrailHomeApproach", Vector3(4.4, 0.035, -51.0), 2.7, 10.5, 2.09)
+	_add_opening_dirt_trail("OpeningTrailHomeFront", Vector3(13.0, 0.035, -53.6), 2.7, 8.0, PI * 0.5)
+	_add_opening_dirt_trail("OpeningTrailHomeDoor", Vector3(16.9, 0.035, -52.7), 2.35, 2.1)
+	# The two near branches establish discovery routes.
+	# Start each side route beyond the opening, then angle it toward its landmark.
+	# Joining both at x=0 formed a flat brown crossbar through the camera view.
+	_add_opening_dirt_trail("OpeningTrailForestJoin", Vector3(-6.0, 0.035, -12.6), 2.45, 14.0, -PI * 0.5)
+	_add_opening_dirt_trail("OpeningTrailForest", Vector3(-14.0, 0.035, -13.2), 2.35, 10.0, -1.85)
+	_add_opening_dirt_trail("OpeningTrailVillage", Vector3(14.0, 0.035, -7.0), 2.35, 8.0, 1.30)
 
 	var tree_path := KENNEY_NK + "tree_default.glb"
 	var pine_path := KENNEY_NK + "tree_pineRoundA.glb"
@@ -563,7 +583,8 @@ func _build_opening_grove() -> void:
 	var flower_path := KENNEY_NK + "flower_yellowA.glb"
 	var tree_positions := [
 		[Vector3(-7.5, 0, -5), 2.15, tree_path], [Vector3(7.5, 0, -6), 2.25, pine_path],
-		[Vector3(-15, 0, -12), 2.35, pine_path], [Vector3(15, 0, -13), 2.15, tree_path],
+		# Keep the forest-route corridor open; this tree previously sat inside it.
+		[Vector3(-20, 0, -7), 2.35, pine_path], [Vector3(15, 0, -13), 2.15, tree_path],
 		[Vector3(-22, 0, -25), 2.4, tree_path], [Vector3(22, 0, -27), 2.3, pine_path],
 		[Vector3(-31, 0, -39), 2.55, pine_path], [Vector3(31, 0, -42), 2.45, tree_path],
 	]
@@ -572,7 +593,7 @@ func _build_opening_grove() -> void:
 		_add_visual_asset("opening_grove_tree_%d" % i, entry[0], Vector3.ONE * float(entry[1]),
 			float(i) * 0.71, String(entry[2]), true, Vector3(1.45, 3.6, 1.45))
 	var bush_positions := [
-		Vector3(-5.5, 0, -5), Vector3(5.5, 0, -6), Vector3(-9, 0, -14), Vector3(9, 0, -15),
+		Vector3(-5.5, 0, -5), Vector3(5.5, 0, -6), Vector3(-9, 0, -18), Vector3(9, 0, -15),
 		Vector3(-18, 0, -20), Vector3(18, 0, -22), Vector3(-26, 0, -35), Vector3(25, 0, -36),
 	]
 	for i in bush_positions.size():
@@ -588,6 +609,97 @@ func _build_opening_grove() -> void:
 	_add_visual_asset("opening_fence_right", Vector3(6.6, 0, -4.2), Vector3.ONE * 1.2,
 		PI, KENNEY_NK + "fence_simple.glb", true, Vector3(3.0, 1.2, 0.35))
 
+	# VS-025: Add food spawning nodes near the opening grove
+	_build_food_spawn_points()
+
+
+func _add_opening_dirt_trail(node_name: String, trail_position: Vector3, width: float, length: float, rotation_y: float = 0.0) -> void:
+	var trail := MeshInstance3D.new()
+	trail.name = node_name
+	var mesh := PlaneMesh.new()
+	mesh.size = Vector2(width, length)
+	mesh.subdivide_width = 2
+	mesh.subdivide_depth = maxi(2, roundi(length * 0.35))
+	trail.mesh = mesh
+	trail.position = trail_position
+	trail.rotation.y = rotation_y
+	trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# A feathered PBR edge prevents this curated route from reading as a hard
+	# brown rectangle stamped over the Terrain3D grass.
+	var material := ShaderMaterial.new()
+	material.shader = ADVENTURE_PATH_SHADER
+	material.set_shader_parameter("detail_albedo", PBR_DETAIL_ALBEDO)
+	material.set_shader_parameter("detail_normal", PBR_DETAIL_NORMAL)
+	material.set_shader_parameter("detail_roughness", PBR_DETAIL_ROUGHNESS)
+	material.set_shader_parameter("earth_color", Color(0.43, 0.30, 0.17))
+	material.set_shader_parameter("detail_scale", 3.2)
+	trail.material_override = material
+	add_child(trail)
+
+
+## The starting camera looks down the bridge route (-Z).  Keep a human-scale
+## shelter in its forward-right third and close the far bank with a proper
+## treeline/landmark layer; otherwise the 2.4km terrain correctly exists but
+## reads as a tiny empty test field in the first screenshot.
+func _build_opening_sightline_layer() -> void:
+	# A small yard creates a middle-distance destination before the child reaches
+	# the house. It is deliberately outside the central bridge lane.
+	_add_visual_asset("OpeningYardWell", Vector3(9.0, 0.0, -39.0), Vector3.ONE * 1.8,
+		0.2, KAYKIT_BUILDER + "well.gltf.glb", true, Vector3(2.3, 2.0, 2.3))
+	_add_visual_asset("OpeningYardFarm", Vector3(29.0, 0.0, -45.0), Vector3.ONE * 1.6,
+		0.0, KAYKIT_BUILDER + "farm_plot.gltf.glb", true, Vector3(5.0, 0.8, 4.0))
+	_add_visual_asset("OpeningYardFence", Vector3(14.0, 0.0, -52.0), Vector3.ONE * 2.4,
+		PI * 0.5, KENNEY_NK + "fence_simple.glb", true, Vector3(0.35, 1.4, 4.8))
+
+	# The large forest silhouette sits beyond the river and frames, rather than
+	# blocks, the bridge. These are view-only trees: collision belongs to the
+	# traversable forest farther out, not to a distant backdrop.  They are placed
+	# as irregular masses rather than a ruler-straight tree grid, which was making
+	# the large island read like a miniature test board from the opening camera.
+	var backdrop_tree_paths := [
+		KENNEY_NK + "tree_default.glb",
+		KENNEY_NK + "tree_pineRoundA.glb",
+		KENNEY_NK + "tree_pineRoundC.glb",
+		KENNEY_NK + "tree_oak.glb",
+	]
+	var backdrop_clusters := [
+		Vector3(-104.0, 0.0, -72.0), Vector3(-68.0, 0.0, -84.0),
+		Vector3(-35.0, 0.0, -76.0), Vector3(33.0, 0.0, -76.0),
+		Vector3(72.0, 0.0, -83.0), Vector3(108.0, 0.0, -94.0),
+		Vector3(-118.0, 0.0, -119.0), Vector3(-75.0, 0.0, -116.0),
+		Vector3(-27.0, 0.0, -106.0), Vector3(24.0, 0.0, -111.0),
+		Vector3(67.0, 0.0, -126.0), Vector3(111.0, 0.0, -113.0),
+	]
+	var backdrop_rng := RandomNumberGenerator.new()
+	backdrop_rng.seed = hash("%s_opening_backdrop_clusters" % PROCEDURAL_GENERATOR_VERSION)
+	for cluster_index in backdrop_clusters.size():
+		var cluster_center: Vector3 = backdrop_clusters[cluster_index]
+		var tree_count := 3 + cluster_index % 3
+		for tree_index in tree_count:
+			var position := cluster_center + Vector3(
+				backdrop_rng.randf_range(-12.0, 12.0), 0.0,
+				backdrop_rng.randf_range(-8.0, 8.0))
+			# Keep the bridge and home routes visible; density frames the journey,
+			# it must not create a wall directly in front of the child.
+			if absf(position.x) < 12.0 and position.z > -96.0:
+				continue
+			var scale := backdrop_rng.randf_range(3.6, 6.2)
+			var backdrop_tree := _add_visual_asset(
+				"opening_backdrop_tree_%d_%d" % [cluster_index, tree_index], position,
+				Vector3.ONE * scale, backdrop_rng.randf_range(0.0, TAU),
+				String(backdrop_tree_paths[backdrop_rng.randi_range(0, backdrop_tree_paths.size() - 1)]), false)
+			if backdrop_tree != null:
+				var green := Color(0.15, 0.28, 0.16) if position.z < -100.0 else Color(0.19, 0.38, 0.21)
+				_apply_toon_tint(backdrop_tree, green)
+
+	# A high, warm landmark gives the eye a destination across the water without
+	# resorting to UI arrows or text. It is far enough not to compete with the
+	# home, but big enough to survive the camera's atmospheric depth.
+	_add_visual_asset("OpeningDistantWindmill", Vector3(78.0, 0.0, -118.0),
+		Vector3.ONE * 4.1, -0.18, KAYKIT_BUILDER + "mill.gltf.glb", false)
+	_add_visual_asset("OpeningDistantHill", Vector3(-72.0, 0.0, -126.0),
+		Vector3.ONE * 5.0, 0.25, KAYKIT_BUILDER + "detail_hill.gltf.glb", false)
+
 
 func _build_adventure_regions(seed_source: String) -> void:
 	var rng := RandomNumberGenerator.new()
@@ -602,6 +714,12 @@ func _build_adventure_regions(seed_source: String) -> void:
 		["Stodoła", "Wiatrak", "Płot", "Koryto", "Skrzynia", "Trawa duża"], 22, rng)
 	_spawn_region_props("village_animals", Vector3(44, 0, 42), 10.0, ["Kura"], 6, rng, true)
 	_add_visual_asset("drogowskaz", Vector3(35, 0, 42), Vector3.ONE * 0.9, 1.2)
+	
+	# VS-025: Add training equipment interaction areas
+	_build_training_equipment()
+	
+	# VS-025: Add procedural food spawning in regions
+	_build_procedural_food(rng)
 
 	# A dense forest region gives the kid a reason to leave the central trail.
 	# The sign and first resources remain close enough to invite discovery, but
@@ -637,8 +755,13 @@ func _build_adventure_regions(seed_source: String) -> void:
 
 func _add_gatherable_resource(id: String, item_id: String, position: Vector3, prop_name: String, prompt: String, action: String) -> void:
 	var is_tree := action == "gather_wood"
-	var scale := Vector3.ONE * (2.15 if is_tree else 1.25)
-	var collision_size := Vector3(1.25, 3.8, 1.25) if is_tree else Vector3(1.8, 1.4, 1.8)
+	var is_food := item_id.begins_with("food_") or prop_name in ["Jabłko", "Jajko"]
+	# Do not make an apple or egg share the rock/resource scale. Besides looking
+	# absurd in the opening, the old 1.8m box made a tiny pickup feel like an
+	# invisible wall. Food gets a hand-sized mesh and a tight collision proxy;
+	# the forgiving interaction Area remains larger for young players.
+	var scale := Vector3.ONE * (2.15 if is_tree else (0.46 if is_food else 1.25))
+	var collision_size := Vector3(1.25, 3.8, 1.25) if is_tree else (Vector3(0.42, 0.42, 0.42) if is_food else Vector3(1.8, 1.4, 1.8))
 	var visual := _add_visual_asset("resource_%s" % id, position, scale, 0.0,
 		_prop_path_for_name(prop_name), true, collision_size)
 	var anchor := _add_interaction_anchor(id, position + Vector3(0.0, 0.15, 0.0), "E  %s" % prompt, action)
@@ -693,15 +816,179 @@ func _build_dense_forest_region(seed_source: String, center: Vector3) -> void:
 					_prop_path_for_name("Trawa duża"), true, Vector3(1.2, 1.0, 1.2))
 
 
+func _build_food_spawn_points() -> void:
+	# Food supports the sandbox loop, but raw apple/egg meshes around the player
+	# spawn were reading as random bright render artefacts in the composition.
+	# Keep the first discoveries a short walk down each route, not in the opening
+	# hero frame or beside the wildlife/fence silhouette.
+	_add_gatherable_resource("food_apple_1", "food_apple", Vector3(-18.0, 0, -24.0),
+		"Jabłko", "Znajdź jabłko", "find_food")
+	_add_gatherable_resource("food_apple_2", "food_apple", Vector3(18.0, 0, -27.0),
+		"Jabłko", "Znajdź jabłko", "find_food")
+	_add_gatherable_resource("food_egg_1", "food_egg", Vector3(24.0, 0, -43.0),
+		"Jajko", "Znajdź jajko", "find_food")
+	
+	# More food in the village area
+	_add_gatherable_resource("food_apple_3", "food_apple", Vector3(40.0, 0, 38.0),
+		"Jabłko", "Znajdź jabłko", "find_food")
+	
+	_add_gatherable_resource("food_egg_2", "food_egg", Vector3(45.0, 0, 40.0),
+		"Jajko", "Znajdź jajko", "find_food")
+	
+	_add_gatherable_resource("food_apple_4", "food_apple", Vector3(35.0, 0, 42.0),
+		"Jabłko", "Znajdź jabłko", "find_food")
+
+
+func _build_training_equipment() -> void:
+	# VS-025: Add training equipment interaction areas
+	# These create Area3D zones that trigger training when the player enters
+	# and presses the appropriate action
+	
+	# Jump training area near the opening
+	_add_interaction_anchor("train_jump_1", Vector3(-15.0, 0, -5.0), "E  Trenuj skok", "train_jump")
+	
+	# Run training area (open space)
+	_add_interaction_anchor("train_run_1", Vector3(20.0, 0, -5.0), "E  Trenuj bieg", "train_run")
+	
+	# Climb training area near the forest
+	_add_interaction_anchor("train_climb_1", Vector3(-30.0, 0, 20.0), "E  Trenuj wspinaczkę", "train_climb")
+	
+	# Push training area near the village
+	_add_interaction_anchor("train_push_1", Vector3(40.0, 0, 30.0), "E  Trenuj pchanie", "train_push")
+	
+	# Pull training area
+	_add_interaction_anchor("train_pull_1", Vector3(45.0, 0, 45.0), "E  Trenuj ciągnięcie", "train_pull")
+	
+	# Balance training area
+	_add_interaction_anchor("train_balance_1", Vector3(35.0, 0, 48.0), "E  Trenuj równowagę", "train_balance")
+
+
+func _build_procedural_food(rng: RandomNumberGenerator) -> void:
+	# VS-025: Add procedural food spawning in the forest region
+	# Spawns additional food items procedurally
+	
+	var food_positions := [
+		Vector3(-30.0, 0, 30.0),
+		Vector3(-40.0, 0, 20.0),
+		Vector3(-25.0, 0, 15.0),
+		Vector3(-35.0, 0, 25.0)
+	]
+	
+	var food_types := ["Jabłko", "Jajko"]
+	
+	for i in food_positions.size():
+		var pos: Vector3 = food_positions[i] as Vector3
+		var food_type: String = String(food_types[rng.randi_range(0, food_types.size() - 1)])
+		var food_id := "food_%s_%d" % [food_type.to_lower(), i + 10]
+		var item_id := "food_%s" % food_type.to_lower()
+		var prompt := "Znajdź %s" % food_type.to_lower()
+		_add_gatherable_resource(food_id, item_id, pos, food_type, prompt, "find_food")
+
+
 func _build_adventure_route() -> void:
 	# A bridge, camp, and a visible guide destination make the route feel
 	# authored even before the player discovers the four regional biomes. The
 	# player walks directly on the continuous world floor rather than on tile
 	# plates that reveal the construction grid.
 	_add_water_crossing()
-	_add_visual_asset("most zadaszony", Vector3(0, 0.9, -24), Vector3.ONE * 2.0, 0.0, "", true, Vector3(8.0, 2.4, 5.0))
+	_build_opening_bridge()
 	_add_visual_asset("obóz bazowy", Vector3(0, 0, -12), Vector3.ONE * 1.25, 0.0)
 	_add_visual_asset("drogowskaz", Vector3(-4, 0, -8), Vector3.ONE * 0.9, 0.35)
+
+
+## A physical, clearly readable river crossing. The supplied covered-bridge
+## mesh is a tiny decorative prop whose stretched roof read as a grey block;
+## this has an actual 20m deck, planks and rails at child walking scale.
+func _build_opening_bridge() -> void:
+	# A 4m × 20m authored Quaternius assembly matches the PBR starter house.
+	# It replaces the old exposed BoxMesh deck, rails and stretched stair prop,
+	# while the simple invisible bodies below remain the collision authority.
+	var floor_tile := QUATERNIUS_VILLAGE + "Floor_WoodLight.gltf"
+	var fence_segment := QUATERNIUS_VILLAGE + "Prop_WoodenFence_Extension2.gltf"
+	var approach_stair := QUATERNIUS_VILLAGE + "Stairs_Exterior_NoFirstStep.gltf"
+	_add_box_obstacle("OpeningBridgeDeck", Vector3(0.0, 0.52, -24.0),
+		Vector3(4.0, 0.18, 20.0), Color.TRANSPARENT, false)
+	for x in [-1.0, 1.0]:
+		for z in range(-33, -13, 2):
+			_add_visual_asset("OpeningBridgeDeckTile_%d_%d" % [int(x), abs(z)],
+				Vector3(x, 0.69, float(z)), Vector3.ONE, 0.0, floor_tile, false)
+	# The deck is raised above the river banks, so make the approach a genuine
+	# physical slope. A child should be able to walk onto it without jumping
+	# into a vertical collision face.
+	# The ramps sit *outside* the deck: their high edges meet its two end faces
+	# exactly. Keeping them underneath the deck leaves the deck's vertical wall
+	# exposed and makes the route look traversable while physics blocks it.
+	_add_opening_bridge_ramp("OpeningBridgeRampSouth", Vector3(0.0, 0.0, -11.9), true)
+	_add_opening_bridge_ramp("OpeningBridgeRampNorth", Vector3(0.0, 0.0, -36.1), false)
+	# Two full-width visual bays sit over each smooth physics approach. Their
+	# low ends are buried into the bank; their 1m top is aligned to the 0.69m
+	# deck rather than leaving a visible raised primitive wedge.
+	for x in [-1.1, 1.1]:
+		_add_visual_asset("OpeningBridgeSouthApproach_%s" % str(x), Vector3(x, -0.31, -11.9),
+			Vector3(1.0, 1.0, 1.8), 0.0, approach_stair, false)
+		_add_visual_asset("OpeningBridgeNorthApproach_%s" % str(x), Vector3(x, -0.31, -36.1),
+			Vector3(1.0, 1.0, 1.8), PI, approach_stair, false)
+	for side in [-1.0, 1.0]:
+		_add_box_obstacle("OpeningBridgeRail_%s" % ("L" if side < 0.0 else "R"),
+			Vector3(side * 1.92, 1.14, -24.0), Vector3(0.16, 0.9, 20.0), Color.TRANSPARENT, false)
+		for z in [-32.0, -28.0, -24.0, -20.0, -16.0]:
+			_add_visual_asset("OpeningBridgeRail_%s_%d" % ["L" if side < 0.0 else "R", abs(int(z))],
+				Vector3(side * 1.92, 0.69, z), Vector3.ONE, PI * 0.5, fence_segment, false)
+
+
+func _add_opening_bridge_ramp(node_name: String, ramp_position: Vector3, rises_toward_negative_z: bool) -> void:
+	var ramp := StaticBody3D.new()
+	ramp.name = node_name
+	ramp.position = ramp_position
+	# A rotated BoxShape3D still has a vertical 22cm leading face. CharacterBody3D
+	# treats that as a wall. Use a proper convex wedge, whose low end meets the
+	# terrain at 2cm and whose high end meets the raised deck at 69cm.
+	var half_width := 2.2
+	var half_length := 1.9
+	var deck_height := 0.69
+	var low_height := 0.02
+	var negative_z_height := deck_height if rises_toward_negative_z else low_height
+	var positive_z_height := low_height if rises_toward_negative_z else deck_height
+	var points := PackedVector3Array([
+		Vector3(-half_width, 0.0, -half_length),
+		Vector3(half_width, 0.0, -half_length),
+		Vector3(-half_width, 0.0, half_length),
+		Vector3(half_width, 0.0, half_length),
+		Vector3(-half_width, negative_z_height, -half_length),
+		Vector3(half_width, negative_z_height, -half_length),
+		Vector3(-half_width, positive_z_height, half_length),
+		Vector3(half_width, positive_z_height, half_length),
+	])
+	var mesh_instance := MeshInstance3D.new()
+	mesh_instance.mesh = _create_opening_bridge_ramp_mesh(points)
+	# This wedge is intentionally collision-only. Its visible primitive surface
+	# made the approach read as an unfinished brown block rather than a bridge.
+	mesh_instance.visible = false
+	ramp.add_child(mesh_instance)
+	var collision := CollisionShape3D.new()
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = points
+	collision.shape = shape
+	ramp.add_child(collision)
+	add_child(ramp)
+
+
+func _create_opening_bridge_ramp_mesh(points: PackedVector3Array) -> ArrayMesh:
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var triangles := [
+		[0, 2, 3], [0, 3, 1], # bottom
+		[4, 5, 7], [4, 7, 6], # sloped top
+		[0, 1, 5], [0, 5, 4], # negative-Z end
+		[2, 6, 7], [2, 7, 3], # positive-Z end
+		[0, 4, 6], [0, 6, 2], # left side
+		[1, 3, 7], [1, 7, 5], # right side
+	]
+	for triangle in triangles:
+		for vertex_index in triangle:
+			surface.add_vertex(points[int(vertex_index)])
+	surface.generate_normals()
+	return surface.commit()
 
 
 func _build_horizon_dressing() -> void:
@@ -986,7 +1273,10 @@ func _build_starter_homestead() -> void:
 	# tabletop prop. The ready-made house is used as a textured exterior shell;
 	# the dimensions below establish a 12m × 11m interior, a full-height door,
 	# and furniture with adult-scale clearance around it.
-	var center := Vector3(24, 0, 12)
+	# The former house was behind the player/camera at (+24, +12), so the first
+	# view never proved that the world contained a real livable place. Move it
+	# beside the forward village branch, clear of the bridge and camera boom.
+	var center := Vector3(18, 0, -46)
 	_add_box_obstacle("HomeBackWall", center + Vector3(0, 2.2, 5.85), Vector3(12.5, 4.4, 0.32), Color.TRANSPARENT, false)
 	_add_box_obstacle("HomeLeftWall", center + Vector3(-6.1, 2.2, 0), Vector3(0.32, 4.4, 11.7), Color.TRANSPARENT, false)
 	_add_box_obstacle("HomeRightWall", center + Vector3(6.1, 2.2, 0), Vector3(0.32, 4.4, 11.7), Color.TRANSPARENT, false)
@@ -1126,21 +1416,22 @@ func _add_water_crossing() -> void:
 	water.name = "StarterRiver"
 	water.add_to_group("water_volume")
 	water.monitoring = true
-	var mesh := BoxMesh.new()
+	var mesh := PlaneMesh.new()
 	# A long, readable river continues beyond the opening bridge so it reads as
 	# geography rather than a blue test strip. The authored floor remains under
 	# it as a shallow safe-water bed for this kid-friendly prototype.
 	# Give the bridge a readable waterway in the opening frame. The previous
 	# 14m strip was so thin from the third-person camera that it read as a line.
-	mesh.size = Vector3(2300.0, 0.12, 18.0)
+	mesh.size = Vector2(2300.0, 18.0)
+	# ~9m longitudinal cells keep the broad animated waves smooth without
+	# paying for a full high-density mesh across the 2.3km world river.
+	mesh.subdivide_width = 256
+	mesh.subdivide_depth = 8
 	var visual := MeshInstance3D.new()
 	visual.name = "WaterSurface"
 	visual.mesh = mesh
-	var water_material := StandardMaterial3D.new()
-	water_material.albedo_color = Color(0.08, 0.34, 0.48, 0.72)
-	water_material.roughness = 0.2
-	water_material.metallic = 0.08
-	water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var water_material := ShaderMaterial.new()
+	water_material.shader = ADVENTURE_WATER_SHADER
 	visual.material_override = water_material
 	water.add_child(visual)
 	var water_collision := CollisionShape3D.new()

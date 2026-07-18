@@ -1,0 +1,57 @@
+{
+  "task_id": "TASK-032",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "PolishFirstLanguagePolicyService is fully implemented. Kid profile locale is forced to pl-PL, while parent non-Polish locale is allowed only when ParentalControlPolicy.language_override_allowed is true.",
+      "path": "src/application/polish_first_language_policy_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Polish-first policy integrated into AI text prompt wrappers in request_ai_creation_help_service.gd and request_gameplay_hint_service.gd. Both services resolve locale via PolishFirstLanguagePolicyService with fallback to localization policy.",
+      "path": "src/application/request_ai_creation_help_service.gd, src/application/request_gameplay_hint_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Voice governance now wired to parental language policy controls in audio_governance_service.gd. Added optional dependencies for ParentalPolicyStorePort and PolishFirstLanguagePolicyService. Voice locale resolution uses policy service with kid forced Polish and parent override-controlled.",
+      "path": "src/application/audio_governance_service.gd:19-26"
+    },
+    {
+      "severity": "info",
+      "message": "Backward compatibility maintained in audio_governance_service.gd via _is_parent_override_enabled() which checks actor.preferences as fallback. Metadata language stays Polish by default and only switches for parent when policy override is enabled.",
+      "path": "src/application/audio_governance_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "ElevenLabs TTS adapter now includes explicit override metadata. get_last_request_metadata() payload includes allow_language_override flag for proper policy enforcement.",
+      "path": "src/adapters/outbound/elevenlabs_tts_adapter.gd:29-30"
+    },
+    {
+      "severity": "info",
+      "message": "Contract tests expanded for voice override behavior in audio_governance_service_contract_test.gd. New checks verify parent with policy override can use non-Polish voice locale while kid remains Polish even when parent override exists.",
+      "path": "tests/contracts/audio_governance_service_contract_test.gd:32-36"
+    },
+    {
+      "severity": "info",
+      "message": "Focused TASK-032 contract runner created (run_task_032_tests.gd) covering PolishFirstLanguagePolicyService, RequestGameplayHintService, RequestAICreationHelpService, and AudioGovernanceService. All tests pass: Tests: 4  Checks: 45  Failed tests: 0.",
+      "path": "tests/contracts/run_task_032_tests.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Contracts documentation updated in tests/contracts/README.md to reflect new language policy integration.",
+      "path": "tests/contracts/README.md"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "polish_default_kid_parent": "PASS - Kid AI interactions forced to pl-PL, parent can use non-Polish with policy override",
+      "parent_override_preserves_safety": "PASS - Parent non-Polish locale enabled only with language_override_allowed parental policy; kid path remains Polish"
+    },
+    "hexagonal_architecture": "PASS - PolishFirstLanguagePolicyService extends application service pattern, uses injected dependencies (ParentalPolicyStorePort, LocalizationPolicyPort)",
+    "backward_compatibility": "PASS - Legacy actor.preferences path preserved as fallback in audio governance",
+    "test_coverage": "PASS - 4 tests, 45 checks, all passing; covers both default and override scenarios"
+  },
+  "summary": "APPROVE. TASK-032 implementation is complete and production-ready. Polish-first language policy is fully integrated across AI text and voice paths with proper parental policy controls. All acceptance criteria are met: kid AI interactions default to Polish, parent override works while preserving kid-mode safety. All tests pass and hexagonal architecture boundaries are respected."
+}

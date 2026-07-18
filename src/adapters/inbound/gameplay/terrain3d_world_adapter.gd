@@ -84,8 +84,12 @@ func _configure_materials() -> void:
 	var assets: Object = ClassDB.instantiate(&"Terrain3DAssets") as Object
 	if assets == null:
 		return
-	assets.call("set_texture", 0, _make_texture_asset("Meadow", PBR_GRASS, Color(0.76, 0.88, 0.72), 0.10))
-	assets.call("set_texture", 1, _make_texture_asset("Earth", PBR_DIRT, Color(0.72, 0.62, 0.48), 0.055))
+	# The original scales made individual photographic grass blades and stones
+	# enormous from the third-person camera.  Use denser, desaturated PBR layers
+	# so the terrain reads as one calm surface beside the stylized character and
+	# architecture instead of a stretched photograph.
+	assets.call("set_texture", 0, _make_texture_asset("Meadow", PBR_GRASS, Color(0.60, 0.70, 0.54), 0.30))
+	assets.call("set_texture", 1, _make_texture_asset("Earth", PBR_DIRT, Color(0.58, 0.49, 0.36), 0.18))
 	terrain.set("assets", assets)
 	var material: Object = terrain.get("material") as Object
 	if material == null:
@@ -93,8 +97,8 @@ func _configure_materials() -> void:
 	material.set("auto_shader", true)
 	material.call("set_shader_param", "auto_slope", 0.47)
 	material.call("set_shader_param", "blend_sharpness", 0.72)
-	material.call("set_shader_param", "dual_scale_near", 42.0)
-	material.call("set_shader_param", "dual_scale_far", 260.0)
+	material.call("set_shader_param", "dual_scale_near", 28.0)
+	material.call("set_shader_param", "dual_scale_far", 170.0)
 	material.call("set_shader_param", "world_noise_height", 0.0)
 
 

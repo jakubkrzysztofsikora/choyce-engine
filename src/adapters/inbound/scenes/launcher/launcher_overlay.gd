@@ -30,6 +30,15 @@ const CINEMATIC_MONSTER_SCALE := 0.72
 const HERO_A_NAME := "ZIEMEK"
 const HERO_B_NAME := "GNIEWKO"
 const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
+## VS-015: Voice durations in seconds for caption synchronization
+const VOICE_DURATIONS := {
+	"cinematic_ziemek_attack": 1.67,
+	"cinematic_ziemek_monster": 1.44,
+	"cinematic_gniewko_ready": 0.88,
+	"cinematic_gniewko_help": 1.07,
+}
+## VS-015: Extra time after voice finishes before caption fades (seconds)
+const CAPTION_FADEOUT_DELAY := 0.25
 
 var _root: Control
 var _title: Label
@@ -510,16 +519,23 @@ func _cinematic_melee(style: String) -> void:
 
 
 func _show_cinematic_line(speaker: String, line: String, voice_name: String, pitch_scale: float) -> void:
+	# Face timing and caption timing must share one value. Keep it outside the
+	# optional caption branch so cinematic facial animation also works if the
+	# caption node is temporarily unavailable.
+	var voice_duration: float = float(VOICE_DURATIONS.get(voice_name, 1.5))
 	if _cinematic_caption != null:
 		_cinematic_caption.text = "%s  •  %s" % [speaker, line]
 		var caption_tween := create_tween()
 		caption_tween.tween_property(_cinematic_caption, "modulate:a", 1.0, 0.08)
-		caption_tween.tween_interval(1.25)
+		## VS-015: Use actual voice duration + delay for caption timing
+		var fade_start: float = voice_duration + CAPTION_FADEOUT_DELAY
+		caption_tween.tween_interval(fade_start)
 		caption_tween.tween_property(_cinematic_caption, "modulate:a", 0.0, 0.24).set_trans(Tween.TRANS_SINE)
 	_cinematic_voice(voice_name, pitch_scale)
 	var face = _hero_a_face if speaker == HERO_A_NAME else _hero_b_face
 	if face != null:
-		face.speak_for(1.32, FacialPerformance.Emotion.HAPPY)
+		## VS-015: Use actual voice duration for facial animation
+		face.speak_for(voice_duration, FacialPerformance.Emotion.HAPPY)
 
 
 func _play_cinematic_sequence() -> void:

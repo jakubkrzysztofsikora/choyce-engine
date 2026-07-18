@@ -173,6 +173,17 @@ var _shell_bridge: Object = null
 var _customization: CharacterCustomization = null
 var _customization_panel: CharacterCustomizationPanel = null
 
+# VS-025: Nutrition and training state
+var _nutrition: Nutrition = null
+var _training: Training = null
+var _body_progression: BodyProgression = null
+
+# VS-025: Nutrition/Training HUD references
+var _nutrition_panel: PanelContainer = null
+var _protein_bar: ProgressBar = null
+var _carbs_bar: ProgressBar = null
+var _training_label: Label = null
+var _body_level_label: Label = null
 
 ## Inject the optional shell bridge. main.gd's _build_default_ports_phase_2
 ## passes the WebSocketShellBridgeAdapter when registered; otherwise this
@@ -360,6 +371,11 @@ func start_session(world: World, session: Session) -> void:
 	# gameplay_runtime is rooted at scene-tree root so it stays visible.
 	_set_main_layout_visible(false)
 
+	# VS-025: Initialize nutrition, training, and body progression
+	_nutrition = Nutrition.new()
+	_training = Training.new()
+	_body_progression = BodyProgression.new()
+
 	# Session-init effects + HUD + spawns moved OUT of _set_main_layout_visible
 	# (Adv D bug #4 — they were running on every layout toggle including
 	# session-end, double-spawning enemies + HUD). Now run once here.
@@ -498,6 +514,20 @@ func _setup_adventure_sky() -> void:
 		legacy_environment.environment = null
 	# Sky3D owns the sky material; retain the existing fog, GI and colour grade.
 	environment.sky = null
+	# Adventure needs a readable daylight grade, not the high-ambient gray wash
+	# inherited from the generic runtime scene. Keep surfaces warm but restrained,
+	# preserve shadow contrast under trees and reduce horizon haze without showing
+	# the world boundary.
+	environment.ambient_light_energy = 0.74
+	environment.ambient_light_sky_contribution = 0.62
+	environment.tonemap_exposure = 0.90
+	environment.adjustment_enabled = true
+	environment.adjustment_saturation = 0.88
+	environment.adjustment_contrast = 1.12
+	environment.fog_density = 0.0019
+	environment.fog_light_color = Color(0.58, 0.67, 0.72, 1.0)
+	environment.fog_light_energy = 0.46
+	environment.fog_aerial_perspective = 0.46
 	var sky := SKY3D_SCRIPT.new() as WorldEnvironment
 	if sky == null:
 		push_warning("Adventure Sky3D could not be created; retaining the static sky")
@@ -524,16 +554,16 @@ func _setup_adventure_sky() -> void:
 	_adventure_sky = sky
 	# Set these after the node enters the tree, once Sky3D has created its
 	# TimeOfDay/SunLight/MoonLight/SkyDome children.
-	sky.set("current_time", 9.5)
+	sky.set("current_time", 13.25)
 	sky.set("minutes_per_day", 24.0)
 	sky.set("update_interval", 0.20)
 	sky.set("clouds_enabled", true)
-	sky.set("cloud_intensity", 0.42)
-	sky.set("sun_energy", 1.15)
+	sky.set("cloud_intensity", 0.24)
+	sky.set("sun_energy", 1.30)
 	sky.set("moon_energy", 0.32)
-	sky.set("sky_contribution", 0.76)
+	sky.set("sky_contribution", 0.62)
 	sky.set("night_sky_contribution", 0.56)
-	sky.set("tonemap_exposure", 1.0)
+	sky.set("tonemap_exposure", 0.90)
 	# Existing Environment fog is already tuned to hide the large-world horizon;
 	# do not stack Sky3D's fullscreen fog shader over it.
 	sky.set("fog_enabled", false)
@@ -1560,6 +1590,18 @@ func _refresh_xp_hud() -> void:
 		_xp_label.text = "Lv %d  •  %d/%d XP" % [_xp_level, _xp_current, needed]
 
 
+## VS-025: Refresh nutrition and training HUD
+func _refresh_nutrition_hud() -> void:
+	if _protein_bar == null or _carbs_bar == null or _nutrition == null:
+		return
+	_protein_bar.value = _nutrition.protein_level
+	_carbs_bar.value = _nutrition.carbohydrate_level
+	if _training_label != null and _training != null:
+		_training_label.text = "Trening: %d sesji" % _training.total_sessions()
+	if _body_level_label != null and _body_progression != null:
+		_body_level_label.text = "Forma: %s" % _body_progression.get_body_level_name()
+
+
 ## Kid-friendly level-up: flash + sparkle + audio cue + STAT BOOST
 ## (Adv F/H #5 fix — was purely cosmetic, kid saw "Lv 3" but felt
 ## nothing). Now: +5 max_hp per level (cap +50) and +1 weapon
@@ -1797,6 +1839,67 @@ func _build_hud() -> void:
 	customize_btn.offset_bottom = 96
 	customize_btn.pressed.connect(_on_customize_pressed)
 	hud.add_child(customize_btn)
+
+	# VS-025: Nutrition/Training panel (bottom-right)
+	_nutrition_panel = PanelContainer.new()
+	_nutrition_panel.name = "NutritionPanel"
+	_nutrition_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_nutrition_panel.offset_left = -280
+	_nutrition_panel.offset_top = -200
+	_nutrition_panel.offset_right = -16
+	_nutrition_panel.offset_bottom = -16
+	_nutrition_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.45, 0.85, 0.55), 0.84))
+	
+	var nutrition_vbox := VBoxContainer.new()
+	nutrition_vbox.add_theme_constant_override("separation", 4)
+	_nutrition_panel.add_child(nutrition_vbox)
+	
+	# Nutrition bars
+	var nutrition_label := Label.new()
+	nutrition_label.text = "Odżywianie"
+	nutrition_label.add_theme_font_size_override("font_size", 18)
+	nutrition_label.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0))
+	nutrition_vbox.add_child(nutrition_label)
+	
+	_protein_bar = ProgressBar.new()
+	_protein_bar.name = "ProteinBar"
+	_protein_bar.min_value = 0
+	_protein_bar.max_value = 100
+	_protein_bar.value = 0
+	_protein_bar.custom_minimum_size = Vector2(140, 16)
+	_protein_bar.add_theme_color_override("font_color", Color.WHITE)
+	nutrition_vbox.add_child(_protein_bar)
+	
+	_carbs_bar = ProgressBar.new()
+	_carbs_bar.name = "CarbsBar"
+	_carbs_bar.min_value = 0
+	_carbs_bar.max_value = 100
+	_carbs_bar.value = 0
+	_carbs_bar.custom_minimum_size = Vector2(140, 16)
+	_carbs_bar.add_theme_color_override("font_color", Color.WHITE)
+	nutrition_vbox.add_child(_carbs_bar)
+	
+	# Training and body level
+	_training_label = Label.new()
+	_training_label.name = "TrainingLabel"
+	_training_label.text = "Trening: 0 sesji"
+	_training_label.add_theme_font_size_override("font_size", 16)
+	_training_label.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
+	nutrition_vbox.add_child(_training_label)
+	
+	_body_level_label = Label.new()
+	_body_level_label.name = "BodyLevelLabel"
+	_body_level_label.text = "Forma: Podstawowy"
+	_body_level_label.add_theme_font_size_override("font_size", 16)
+	_body_level_label.add_theme_color_override("font_color", Color(0.96, 0.93, 1.0))
+	nutrition_vbox.add_child(_body_level_label)
+	
+	hud.add_child(_nutrition_panel)
+	# Nutrition and training are secondary sandbox systems. Keeping their
+	# developer-style text card permanently visible breaks the image-first HUD
+	# and competes with the world. State still updates in the background and can
+	# later be surfaced from the inventory/character screen.
+	_nutrition_panel.visible = false
 
 	# HP bar + score panel (top-right). 7yo combat HUD.
 	var stats_panel := PanelContainer.new()

@@ -1,0 +1,42 @@
+{
+  "task_id": "VS-033",
+  "reviewer": "claude",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "main.gd now passes _phase1_event_bus to _create_shell.setup() as the 11th parameter. This ensures the event bus is available before onboarding begins.",
+      "path": "src/adapters/inbound/main.gd:988-998"
+    },
+    {
+      "severity": "info",
+      "message": "create_shell.gd receives event_bus parameter and passes it to onboarding_service.setup() at line 457. Also subscribes to onboarding events (lines 458-460).",
+      "path": "src/adapters/inbound/scenes/create/create_shell.gd:454-460"
+    },
+    {
+      "severity": "info",
+      "message": "onboarding_service.gd properly stores event_bus and uses it in _emit() method. Warning is only emitted if event_bus is null AND not already warned (prevents spam).",
+      "path": "src/application/onboarding_service.gd:15,80-85"
+    },
+    {
+      "severity": "info",
+      "message": "test_onboarding_integration.gd updated to create event_bus and pass it to create_shell.setup(). This proves the event bus is available before onboarding begins.",
+      "path": "tests/adapters/inbound/test_onboarding_integration.gd:39-49"
+    },
+    {
+      "severity": "info",
+      "message": "Dependency VS-014 is done, so all prerequisites are satisfied.",
+      "path": ".ai/tasks/backlog.yaml:1583"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "no_event_bus_not_wired_warning": "PASS - _phase1_event_bus passed from main.gd to create_shell.setup()",
+      "onboarding_reaches_visible_shell": "PASS - Event bus available, onboarding flow unchanged",
+      "automated_test_proves_event_bus_available": "PASS - test_onboarding_integration.gd passes event_bus to create_shell"
+    },
+    "event_bus_wiring": "PASS - Complete chain: main.gd -> create_shell -> onboarding_service",
+    "hexagonal_architecture": "PASS - Event bus is passed as dependency, not hardcoded"
+  },
+  "summary": "APPROVE. VS-033 wiring is complete and correct. The _phase1_event_bus is now properly passed through the dependency chain, eliminating the warning. Test updated to verify event bus availability. All acceptance criteria met."
+}

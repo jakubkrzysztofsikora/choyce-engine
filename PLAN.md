@@ -183,6 +183,52 @@ headless tests.
 - Run the same checks at the project reference resolution and a laptop-sized
   window; no major label, HUD, or camera framing break is acceptable.
 
+### Visual-rescue re-audit — 2026-07-18
+
+The rendered opening remains a **technical prototype**, not a presentable demo.
+An independent hostile visual review rejected the prior VS-012/VS-013 completion
+claims from a live capture. The next implementation order is fixed by those
+findings:
+
+1. Replace the repeated two-tree horizon grid with composition-constrained,
+   varied biome clusters that preserve verified source materials. The supplied
+   Quaternius Medieval Village architecture is approved for the focal house;
+   its FBX nature set is currently rejected at runtime because it renders black
+   ground/underside artefacts under the existing material path.
+2. Replace the sharp plane-overlay trails with terrain-native, feathered,
+   terrain-conforming ground treatment; a darker rectangle over grass is not
+   acceptable as a path.
+3. Replace the primitive bridge ramps and straight translucent water strip with
+   coherent bridge/embankment geometry, animated water material, varied banks,
+   and a render review from both approaches.
+4. Complete one material/lighting contract across terrain, foliage,
+   architecture, animals, NPCs, interactables, and HUD. Native PBR materials
+   remain preferred; category-specific replacements are allowed only for a
+   demonstrated broken source asset.
+
+The 2026-07-18 water/bridge review also returned `request_changes`: the water
+surface is now animated and the old wedge is collision-only, but the exposed
+primitive deck and disconnected stair meshes still read as blockout. Before
+this route can pass, replace it with one material-preserving authored bridge
+assembly, use bounded/low-frequency water deformation with banks/shallows, and
+add a true player-collider traversal test across both ramps and the deck.
+
+A subsequent fresh capture review again returned `request_changes`. Its
+blocking finding is broader: the opening mixes photographic terrain, flat
+low-poly vegetation, selectively preserved textured architecture, toy
+characters, and marker-like props. It also identifies overlapping path planes,
+rectangular river geometry, repeated horizon silhouettes, unclear object scale,
+and persistent debug-like HUD chrome. The visual rescue gate therefore remains
+blocked until one cohesive opening material/asset contract, terrain-authored
+paths and banks, scale/grounding cleanup, and contextual image-first onboarding
+are rendered and independently accepted.
+
+Completed immediate remediation: overscaled food pickup collision was reduced
+to a hand-sized proxy and moved out of the opening hero frame; the white chicken
+source now has an explicit farm-animal material override. Terrain layer scale
+and saturation were reduced after render inspection. These are cleanup steps,
+not visual-gate acceptance evidence.
+
 ### Adversarial review status — 2026-07-17
 
 - Two independent hostile reviews were run after the world-scale pass. Both

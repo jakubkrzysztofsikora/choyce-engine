@@ -129,6 +129,9 @@ var _anim_player: AnimationPlayer
 var _current_anim: String = ""
 var _world_interaction_lock: float = 0.0
 var _in_water: bool = false
+## Optional runtime cache used by the nutrition/training extension. Keep the
+## controller independent from GameplayRuntime at compile time.
+var _gameplay_runtime: Object = null
 const WALK_VELOCITY_THRESHOLD := 0.5
 
 func _ready() -> void:
@@ -305,6 +308,9 @@ func _physics_process(delta: float) -> void:
 	_process_build_input()
 	_update_ghost_preview()
 	_update_muay_thai_idle(delta)
+
+	# VS-025: Handle nutrition and training input actions
+	_process_nutrition_training_input(delta)
 
 	# Landing detection and squash
 	if is_on_floor() and not _was_on_floor:
@@ -1197,3 +1203,232 @@ func _tint_mesh(mesh: MeshInstance3D, color: Color) -> void:
 		fallback.metallic = 0.0
 		fallback.roughness = 0.6
 		mesh.material_override = fallback
+
+
+## VS-025: Process nutrition and training input actions
+func _process_nutrition_training_input(_delta: float) -> void:
+	# Find food action - scan for nearby food items
+	if Input.is_action_just_pressed("find_food"):
+		_try_find_food()
+	
+	# Training actions - perform training when player presses training keys
+	# and is near training equipment
+	if Input.is_action_just_pressed("train_jump") and _is_near_training_equipment("jump"):
+		_perform_training("jump")
+	if Input.is_action_just_pressed("train_run") and _is_near_training_equipment("run"):
+		_perform_training("run")
+	if Input.is_action_just_pressed("train_climb") and _is_near_training_equipment("climb"):
+		_perform_training("climb")
+	if Input.is_action_just_pressed("train_push") and _is_near_training_equipment("push"):
+		_perform_training("push")
+	if Input.is_action_just_pressed("train_pull") and _is_near_training_equipment("pull"):
+		_perform_training("pull")
+	if Input.is_action_just_pressed("train_balance") and _is_near_training_equipment("balance"):
+		_perform_training("balance")
+
+
+## VS-025: Try to find and collect nearby food
+func _try_find_food() -> void:
+	# Scan for nearby food items in the world
+	var nearest_food := _find_nearest_food()
+	if nearest_food != null:
+		var food_type: String = String(nearest_food.get_meta("resource_item_id", ""))
+		if food_type != "":
+			# Consume the food
+			var category: int = _get_food_category(food_type)
+			if category >= 0:
+				# Add to nutrition
+				var nutrition_added := _add_food_to_nutrition(food_type, category)
+				if nutrition_added:
+					# Remove the food from the world
+					nearest_food.queue_free()
+					# Show feedback
+					_show_food_feedback(food_type)
+
+
+## VS-025: Find nearest food item
+func _find_nearest_food() -> Node3D:
+	var nearest: Node3D = null
+	var nearest_dist := float(INF)
+	var search_radius := 5.0  # 5 meter radius
+	
+	# Search for food items in the world
+	for child_variant in get_tree().get_nodes_in_group("world_interactable"):
+		var child := child_variant as Area3D
+		if child != null:
+			# Check if this is a food item
+			var item_id: String = String(child.get_meta("resource_item_id", ""))
+			if item_id != "" and item_id.begins_with("food_"):
+				var dist := global_position.distance_to(child.global_position)
+				if dist < search_radius and dist < nearest_dist:
+					nearest = child
+					nearest_dist = dist
+					search_radius = dist  # Optimize: don't search beyond nearest
+	
+	return nearest
+
+
+## VS-025: Get food category from item_id
+func _get_food_category(item_id: String) -> int:
+	# Import Nutrition at runtime to avoid circular dependency
+	if "apple" in item_id:
+		return 1  # PROTEIN
+	elif "egg" in item_id:
+		return 1  # PROTEIN
+	elif "bread" in item_id or "rice" in item_id or "grains" in item_id:
+		return 2  # CARBOHYDRATE
+	elif "banana" in item_id or "grapes" in item_id:
+		return 3  # FRUIT
+	elif "carrot" in item_id or "potato" in item_id:
+		return 4  # VEGETABLE
+	return -1
+
+
+## VS-025: Add food to nutrition tracking
+func _add_food_to_nutrition(item_id: String, category: int) -> bool:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return false
+	var nutrition: Variant = runtime.get("_nutrition")
+	if nutrition == null:
+		return false
+	
+	# Map category to food type
+	var food_type := ""
+	match category:
+		1:
+			food_type = "apple"  # PROTEIN
+		2:
+			food_type = "bread"  # CARBOHYDRATE
+		3:
+			food_type = "banana"  # FRUIT
+		4:
+			food_type = "carrot"  # VEGETABLE
+		_:
+			return false
+	
+	# Add food to nutrition
+	var success: bool = bool(nutrition.call("add_food", food_type, 1))
+	if success:
+		# Consume the food (this increases nutrition levels)
+		nutrition.call("consume_food", food_type, 1)
+		# Refresh HUD
+		runtime.call("_refresh_nutrition_hud")
+			
+		# Check if nutrition level reached threshold for body progression
+		if float(nutrition.call("average_nutrition")) >= 50.0:
+			# Progress body level
+			var progression: Variant = runtime.get("_body_progression")
+			if progression != null:
+				progression.call("progress_level")
+			runtime.call("_refresh_nutrition_hud")
+			
+	return success
+
+
+## VS-025: Check if player is near training equipment
+func _is_near_training_equipment(training_type: String) -> bool:
+	var search_radius := 5.0  # 5 meter radius
+	
+	# Check for training equipment areas
+	for child_variant in get_tree().get_nodes_in_group("world_interactable"):
+		var child := child_variant as Area3D
+		if child != null:
+			var action: String = String(child.get_meta("resource_action", ""))
+			if action != "" and action.begins_with("train_"):
+				# Check if this is the right type of training equipment
+				var expected_action := "train_%s" % training_type
+				if action == expected_action:
+					var dist := global_position.distance_to(child.global_position)
+					if dist <= search_radius:
+						return true
+	
+	return false
+
+
+## VS-025: Perform training
+func _perform_training(training_type: String) -> void:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return
+	var training: Variant = runtime.get("_training")
+	if training == null:
+		return
+	
+	# Perform training
+	var success: bool = bool(training.call("perform_training", training_type))
+	if success:
+		# Update body progression based on training
+		var total_sessions: int = int(training.call("total_sessions"))
+		var body_level := int(total_sessions / 5)
+		var progression: Variant = runtime.get("_body_progression")
+		if progression != null and body_level > int(progression.call("get_body_level")):
+			progression.call("set_body_level", body_level)
+			
+		# Refresh HUD
+		runtime.call("_refresh_nutrition_hud")
+			
+		# Show feedback
+		_show_training_feedback(training_type)
+
+
+## VS-025: Show food collection feedback
+func _show_food_feedback(food_type: String) -> void:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return
+	var prompt_label := runtime.get("_interaction_prompt_label") as Label
+	var prompt_panel := runtime.get("_interaction_prompt_panel") as Control
+	if prompt_label == null or prompt_panel == null:
+		return
+	
+	# Show feedback message
+	prompt_label.text = "Znaleziono %s!" % food_type
+	runtime.set("_interaction_feedback_until", 2.0)
+	prompt_panel.visible = true
+
+
+## VS-025: Show training feedback
+func _show_training_feedback(training_type: String) -> void:
+	var runtime := get_gameplay_runtime()
+	if runtime == null:
+		return
+	var prompt_label := runtime.get("_interaction_prompt_label") as Label
+	var prompt_panel := runtime.get("_interaction_prompt_panel") as Control
+	if prompt_label == null or prompt_panel == null:
+		return
+	
+	# Show feedback message
+	var training_name := ""
+	match training_type:
+		"jump":
+			training_name = "skok"
+		"run":
+			training_name = "bieg"
+		"climb":
+			training_name = "wspinaczkę"
+		"push":
+			training_name = "pchanie"
+		"pull":
+			training_name = "ciągnięcie"
+		"balance":
+			training_name = "równowagę"
+		_:
+			training_name = "trening"
+	
+	prompt_label.text = "Trenowano %s!" % training_name
+	runtime.set("_interaction_feedback_until", 2.0)
+	prompt_panel.visible = true
+
+## VS-025: Helper to get GameplayRuntime reference
+func get_gameplay_runtime() -> Object:
+	if _gameplay_runtime != null and is_instance_valid(_gameplay_runtime):
+		return _gameplay_runtime
+	# Try to find GameplayRuntime in the scene tree
+	if has_node("/root/GameplayRuntime"):
+		_gameplay_runtime = get_node("/root/GameplayRuntime")
+	elif get_parent() != null and get_parent().has_node("GameplayRuntime"):
+		_gameplay_runtime = get_parent().get_node("GameplayRuntime")
+	elif get_tree() != null and get_tree().root.get_node_or_null("GameplayRuntime") != null:
+		_gameplay_runtime = get_tree().root.get_node_or_null("GameplayRuntime")
+	return _gameplay_runtime

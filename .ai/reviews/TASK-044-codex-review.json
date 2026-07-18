@@ -1,0 +1,58 @@
+{
+  "task_id": "TASK-044",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "PromptTemplateRegistryPort properly defines the outbound port interface with resolve_template(use_case, locale, role, age_band, version), list_versions(use_case), and get_regression_fixtures(use_case) methods.",
+      "path": "src/ports/outbound/prompt_template_registry_port.gd:26-29"
+    },
+    {
+      "severity": "info",
+      "message": "InRepoPromptTemplateRegistry adapter loads templates and fixtures from JSON files. Resolution logic scores candidates by locale/role/age-band compatibility, chooses newest semantic version among best-compatible templates, enforces Polish locale for kid/child age-band requests, and supports explicit version pinning.",
+      "path": "src/adapters/outbound/in_repo_prompt_template_registry.gd:31-37"
+    },
+    {
+      "severity": "info",
+      "message": "Versioned prompt templates in data/ai/prompt_templates.json include use-case templates for creation help, creation explain, gameplay hints, and parent script prompts, with locale variants (pl-PL, en-US) and versioned entries including 1.1.0 kid creation template.",
+      "path": "data/ai/prompt_templates.json:40-43"
+    },
+    {
+      "severity": "info",
+      "message": "Regression fixtures tracked in data/ai/prompt_regression_fixtures.json for use by quality-gate suites, enabling consistent validation of prompt template behavior.",
+      "path": "data/ai/prompt_regression_fixtures.json"
+    },
+    {
+      "severity": "info",
+      "message": "RequestAICreationHelpService now optionally consumes registry templates for ai_creation_help and ai_creation_explain. RequestGameplayHintService consumes templates for gameplay_hint. ParentScriptEditorService consumes templates for parent_script_explain and parent_script_refactor.",
+      "path": "src/application/request_ai_creation_help_service.gd, src/application/request_gameplay_hint_service.gd, src/application/parent_script_editor_service.gd:47-54"
+    },
+    {
+      "severity": "info",
+      "message": "Existing behavior preserved via fallback: when registry is not injected, services continue to use their existing fallback prompts, ensuring backward compatibility.",
+      "path": "src/application/request_ai_creation_help_service.gd, src/application/request_gameplay_hint_service.gd, src/application/parent_script_editor_service.gd:55"
+    },
+    {
+      "severity": "info",
+      "message": "Contract test coverage added for port and adapter behavior. Integration contract verifies kid path remains Polish by default, parent language override path uses non-Polish templates when policy allows, and prompt content reflects resolved templates.",
+      "path": "tests/contracts/prompt_template_registry_port_contract_test.gd, tests/contracts/in_repo_prompt_template_registry_adapter_contract_test.gd, tests/contracts/prompt_template_policy_integration_contract_test.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Focused TASK-044 test runner created and passes with Tests: 3  Checks: 27  Failed tests: 0. Regression validation via run_task_032_tests.gd also passes with Tests: 4  Checks: 51.",
+      "path": "tests/contracts/run_task_044_tests.gd"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "versioned_templates": "PASS - Prompt templates versioned by use-case, locale, role, and age-band policy",
+      "regression_fixtures_tracked": "PASS - Regression fixtures tracked in-repo and referenced by quality gates",
+      "parent_override_enforced": "PASS - Parent-approved language override enforced without breaking Polish-default kid policy"
+    },
+    "hexagonal_architecture": "PASS - PromptTemplateRegistryPort (outbound port), InRepoPromptTemplateRegistry (adapter) follow clean separation; services use injected registry",
+    "backward_compatibility": "PASS - Existing behavior preserved when registry not injected",
+    "test_coverage": "PASS - Port, adapter, and integration contracts all passing (27+51 checks)"
+  },
+  "summary": "APPROVE. TASK-044 implementation is complete and production-ready. Versioned prompt template registry with in-repo fixtures is fully implemented and integrated into core AI prompt-building paths. All acceptance criteria are met: templates versioned by use-case/locale/role/age-band, regression fixtures tracked, parent override enforced without breaking Polish defaults. All tests pass."
+}

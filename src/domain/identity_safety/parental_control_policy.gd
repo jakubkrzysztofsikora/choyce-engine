@@ -84,6 +84,7 @@ func to_dict() -> Dictionary:
 		"language_override_allowed": language_override_allowed,
 		"cloud_sync_consent": cloud_sync_consent,
 		"combat_enabled": combat_enabled,
+		"combat_difficulty": _combat_difficulty_to_string(combat_difficulty),
 		"combat_wave_cap": combat_wave_cap,
 	}
 
@@ -151,6 +152,7 @@ static func from_dict(data: Dictionary) -> ParentalControlPolicy:
 		bool(data.get("language_override_allowed", false)),
 		bool(data.get("cloud_sync_consent", false)),
 		bool(data.get("combat_enabled", false)),
+		_combat_difficulty_from_string(str(data.get("combat_difficulty", "easy"))),
 		int(data.get("combat_wave_cap", 0)),
 	)
 
@@ -166,6 +168,7 @@ func equals(other: ParentalControlPolicy) -> bool:
 		and language_override_allowed == other.language_override_allowed
 		and cloud_sync_consent == other.cloud_sync_consent
 		and combat_enabled == other.combat_enabled
+		and combat_difficulty == other.combat_difficulty
 		and combat_wave_cap == other.combat_wave_cap
 	)
 
@@ -188,3 +191,21 @@ static func _ai_access_from_string(value: String) -> AIAccessLevel:
 			return AIAccessLevel.FULL
 		_:
 			return AIAccessLevel.CREATIVE_ONLY
+
+
+static func _combat_difficulty_to_string(difficulty: CombatDifficulty) -> String:
+	match difficulty:
+		CombatDifficulty.EASY:
+			return "easy"
+		CombatDifficulty.NORMAL:
+			return "normal"
+		_:
+			return "easy"
+
+
+static func _combat_difficulty_from_string(value: String) -> CombatDifficulty:
+	match value.strip_edges().to_lower():
+		"normal":
+			return CombatDifficulty.NORMAL
+		_:
+			return CombatDifficulty.EASY

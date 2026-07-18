@@ -1,0 +1,23 @@
+{
+  "task_id": "VS-012/VS-013-water-bridge",
+  "reviewer": "codex-adversarial-visual-review",
+  "decision": "request_changes",
+  "findings": [
+    {
+      "severity": "blocker",
+      "summary": "The bridge still reads as primitive deck geometry with disconnected stair chunks rather than a coherent authored crossing."
+    },
+    {
+      "severity": "high",
+      "summary": "The 2.3km water surface has insufficient mesh density for its wave frequency and lacks convincing shore/depth treatment."
+    },
+    {
+      "severity": "high",
+      "summary": "Current coverage validates the water mesh but not bidirectional player traversal, dry deck behavior, or rail collision."
+    },
+    {
+      "severity": "medium",
+      "summary": "Path overlays still use hard-edged fixed-height planes and visibly break at bridge approaches."
+    }
+  ]
+}

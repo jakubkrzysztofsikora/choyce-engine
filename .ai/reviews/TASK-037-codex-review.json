@@ -1,0 +1,69 @@
+{
+  "task_id": "TASK-037",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "PlayShell now renders kid status summary from KidStatusReadModel, providing visibility into kid project status and progress.",
+      "path": "src/adapters/inbound/scenes/play/play_shell.gd, src/adapters/inbound/scenes/play/play_shell.tscn"
+    },
+    {
+      "severity": "info",
+      "message": "ParentZoneShell now renders minimized dashboard summaries from ParentAuditReadModel and AIPerformanceReadModel, giving parents visibility into audit timeline and AI performance.",
+      "path": "src/adapters/inbound/scenes/parent/parent_zone_shell.gd, src/adapters/inbound/scenes/parent/parent_zone_shell.tscn"
+    },
+    {
+      "severity": "info",
+      "message": "InboundMain wiring passes read-model ports into Play/Parent shells, ensuring proper dependency injection and component connectivity.",
+      "path": "src/adapters/inbound/main.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Hardening updates implemented: profile-isolated kid status read-model queries ensure data separation between different player profiles.",
+      "path": "src/adapters/kid_status_read_model_adapter.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Data minimization enforced: recursive ad-tech key redaction applied to kid/parent/AI dashboard payloads, ensuring no advertising identifiers are exposed in telemetry data.",
+      "path": "src/adapters/kid_status_read_model_adapter.gd, src/adapters/ai_performance_read_model_adapter.gd, src/adapters/outbound/parent_audit_read_model_adapter.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Improved AI performance metrics added: failed_executions and avg_latency_ms provide better visibility into AI system health, with deterministic fallback for robustness.",
+      "path": "src/adapters/ai_performance_read_model_adapter.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Contract test coverage added: kid_status_read_model_contract_test.gd, ai_performance_read_model_contract_test.gd, parent_audit_read_model_adapter_contract_test.gd all validate read model behavior.",
+      "path": "tests/contracts/kid_status_read_model_contract_test.gd, tests/contracts/ai_performance_read_model_contract_test.gd, tests/contracts/parent_audit_read_model_adapter_contract_test.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Integration test added: test_dashboard_read_models_integration.gd provides end-to-end validation of dashboard read model integration.",
+      "path": "tests/adapters/inbound/test_dashboard_read_models_integration.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Localization updated: data/localization/ui_pl.json includes Polish translations for dashboard UI elements.",
+      "path": "data/localization/ui_pl.json"
+    },
+    {
+      "severity": "info",
+      "message": "Validation confirms all checks pass: run-inbound-shell-regression.sh, run-contract-tests.sh, and run-quality-gates.sh all execute successfully.",
+      "path": "scripts/ci/run-inbound-shell-regression.sh, scripts/run-contract-tests.sh, scripts/run-quality-gates.sh"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "read_models_power_views": "PASS - KidStatusReadModel, ParentAuditReadModel, AIPerformanceReadModel power their respective dashboard views",
+      "analytics_data_minimization": "PASS - Analytics excludes ad-tech identifiers with recursive redaction, preserves data minimization requirements"
+    },
+    "child_safety": "PASS - UX copy, data minimization, and role-safe visibility behavior all confirmed",
+    "profile_isolation": "PASS - Profile-isolated queries prevent cross-profile data leakage",
+    "data_minimization": "PASS - Recursive ad-tech key redaction ensures compliance with data minimization",
+    "test_coverage": "PASS - Contract tests and integration test validate all read model adapters",
+    "localization": "PASS - Polish UI translations added for dashboard elements"
+  },
+  "summary": "APPROVE. TASK-037 implementation is complete and production-ready. Child-safe telemetry dashboards with read models for kid status, parent audit, and AI performance are fully implemented. All acceptance criteria are met: read models power their views, analytics excludes ad-tech identifiers with proper data minimization. All validation checks pass."
+}

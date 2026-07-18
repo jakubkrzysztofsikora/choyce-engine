@@ -937,35 +937,79 @@ func _remove_legacy_greeting() -> void:
 
 ### Official Godot Documentation
 
+**Core UI Classes:**
 - [Control Nodes](https://docs.godotengine.org/en/stable/classes/class_control.html) - Base UI class
 - [CanvasLayer](https://docs.godotengine.org/en/stable/classes/class_canvaslayer.html) - UI layer system
-- [SubViewport](https://docs.godotengine.org/en/stable/classes/class_subviewport.html) - 3D in UI
-- [Container Controls](https://docs.godotengine.org/en/stable/tutorials/ui/index.html) - UI layout
+- [SubViewport](https://docs.godotengine.org/en/stable/classes/class_subviewport.html) - Render 3D in UI
+- [SubViewportContainer](https://docs.godotengine.org/en/stable/classes/class_subviewportcontainer.html) - Display SubViewport in UI
+- [Camera3D](https://docs.godotengine.org/en/stable/classes/class_camera3d.html) - 3D camera for SubViewport
+- [Container Controls](https://docs.godotengine.org/en/stable/tutorials/ui/index.html) - UI layout containers
 - [Theme System](https://docs.godotengine.org/en/stable/tutorials/ui/theming/index.html) - Styling UI
+- [Using the Theme Editor](https://docs.godotengine.org/en/stable/tutorials/ui/gui_using_theme_editor.html) - Visual theme editing
+- [Theme Type Variations](https://docs.godotengine.org/en/stable/tutorials/ui/gui_theme_type_variations.html) - StyleBox properties
+- [Using Fonts](https://docs.godotengine.org/en/stable/tutorials/ui/gui_using_fonts.html) - Font setup and management
+- [First 2D Game: HUD](https://docs.godotengine.org/en/stable/getting_started/first_2d_game/06.heads_up_display.html) - Basic HUD tutorial
 
 ### Tutorials and Guides
 
+**UI System & HUD:**
 - [GDQuest: UI System in Godot 4](https://www.gdquest.com/tutorial/godot/ui/) - Comprehensive UI tutorial
 - [GDQuest: Heads Up Display](https://www.gdquest.com/tutorial/godot/2d/hud/) - HUD implementation
-- [Godot Docs: First 2D Game - HUD](https://docs.godotengine.org/en/stable/getting_started/first_2d_game/06.heads_up_display.html) - Basic HUD
-- [SubViewport Tutorial](https://www.gdquest.com/tutorial/godot/3d/subviewport/) - 3D in UI
+- [GDQuest: SubViewport Tutorial](https://www.gdquest.com/tutorial/godot/3d/subviewport/) - 3D in UI
+- [GDQuest: UI Containers Overview](https://school.gdquest.com/courses/learn_2d_gamedev_godot_4/start_a_dialogue/all_the_containers) - Container usage patterns
+
+**Core UI Concepts:**
+- [Febucci: How to Create UI in Godot 4 - Core Concepts Part 1](https://blog.febucci.com/2024/11/godots-ui-tutorial-part-one/) - Control nodes, anchors, containers
+- [Febucci: How to Dynamically Scale Font Size in Godot](https://blog.febucci.com/2025/08/how-to-dynamically-scale-font-size-in-godot/) - Scalable text for accessibility
+- [Cursa: UI, HUD, and Menus with Control Nodes](https://cursa.app/en/page/ui-hud-and-menus-with-control-nodes-in-godot-4) - Step-by-step UI guide
+- [Godot Learning: Complete Beginner Tutorial](https://godotlearning.com/blog/godot-4-complete-beginner-tutorial-first-game) - Includes UI basics
+
+**SubViewport & 3D in UI:**
+- [UhiyamaLab: SubViewport Techniques](https://uhiyama-lab.com/en/notes/godot/subviewport-techniques/) - Minimaps, 3D in 2D UI, render textures
+- [GameDev Academy: SubViewport Complete Guide](https://gamedevacademy.org/subviewport-in-godot-complete-guide/) - Step-by-step with code
+- [YouTube: Godot 4 Sub-Viewport Tutorial](https://www.youtube.com/watch?v=K_mZeYLYpgg) - Visual walkthrough
+- [YouTube: Overview of Control Nodes](https://www.youtube.com/watch?v=KfydpMuTBvA) - GUI/HUD creation
+- [Reddit: SubViewport with External Camera3D](https://www.reddit.com/r/godot/comments/15ikgr4/is_it_possible_for_a_subviewport_to_use_a/) - Advanced usage
+
+**Modern HUD Design:**
+- [Febucci: Godot 4 Visual Design Guide](https://artofstyleframe.com/blog/godot-game-art-visual-design-guide/) - Art direction for UI
+- [YouTube: Godot 4.4 Dynamic UI Scaling](https://www.youtube.com/watch?v=N8fQeB56yN4) - Responsive UI tutorial
 
 ### Community Resources
 
-- [r/godot - UI Questions](https://www.reddit.com/r/godot/search/?q=ui) - UI discussions
+- [r/godot - UI Questions](https://www.reddit.com/r/godot/search/?q=ui) - UI discussions and troubleshooting
 - [Godot Forum - UI Section](https://forum.godotengine.org/c/ui/15) - Official UI forum
-- [UI Best Practices](https://forum.godotengine.org/t/ui-nodes-good-practice/77720) - Community advice
+- [UI Best Practices Thread](https://forum.godotengine.org/t/ui-nodes-good-practice/77720) - Community advice
+- [Theme Override Discussion](https://www.reddit.com/r/godot/comments/1it240d/how_to_edit_stylebox_of_a_panelcontainer_through/) - Code examples for StyleBox
+- [Stack Overflow: StyleBox Override](https://stackoverflow.com/questions/76111264/why-doesnt-my-stylebox-get-overwritten-correctly-to-my-panel) - Common pitfalls
 
 ### Asset Sources
 
-- [Kenney UI Packs](https://kenney.nl/assets?category=UI) - Free UI assets
-- [Quaternius 3D Models](https://quaternius.com/) - 3D models (including ninja)
-- [OpenGameArt UI](https://opengameart.org/) - Free UI assets
+**UI Asset Packs (All CC0):**
+- [Kenney UI Pack](https://kenney.nl/assets/ui-pack) - 430+ UI assets, comprehensive pack
+- [Kenney UI Category](https://kenney.nl/assets?category=UI) - All Kenney UI assets
+- [Quaternius](https://quaternius.com/) - Stylized low-poly assets, 3D and 2D
+- [OpenGameArt UI](https://opengameart.org/) - Community UI assets
+- [OpenGameArt CC0 Resources](https://opengameart.org/content/cc0-resources) - CC0-filtered assets
+- [GamineAI: 20 Best Free Game Assets](https://gamineai.com/blog/20-best-free-game-assets-every-developer-should-know-about) - Curated list
+- [AssetHoard: 15 Best Free HD Asset Sites](https://assethoard.com/blog/where-to-find-free-game-assets-2026) - 2026 guide
+- [Hackingtons Free Game Art](https://www.hackingtons.com/free-game-art.html) - Aggregated resources
+
+**3D Ninja/Character Models:**
+- [Quaternius Ninja Models](https://quaternius.com/) - Search for "ninja" or "character"
+- [Kenney RPG Kit](https://kenney.nl/assets/rpg-kit) - Character sprites and assets
+
+### Accessibility Tools & Resources
+
+- [ColorBlind Accessibility Tool - Godot Asset Library](https://godotassetlibrary.com/asset/3460) - Add colorblind filters
+- [ColorBlind Accessibility Tool](https://godotengine.org/asset-library/asset/gosjlP/colorblind-accesibility-tool) - Color-changing options
+- [Generalist Programmer: Game Accessibility Guide](https://generalistprogrammer.com/game-accessibility) - Inclusive design principles
+- [r/godot: Accessibility Discussion](https://www.reddit.com/r/godot/comments/1d2nn4n/ah_right_accessibility_is_easy/) - Community tips
 
 ### Tools
 
-- [Godot Theme Generator](https://github.com/Calinou/godot-theme-generator) - Generate themes
-- [GDQuest UI Framework](https://github.com/GDQuest/godot-ui-framework) - UI utilities
+- [Godot Theme Generator](https://github.com/Calinou/godot-theme-generator) - Generate themes programmatically
+- [GDQuest UI Framework](https://github.com/GDQuest/godot-ui-framework) - UI utilities and components
 
 ---
 

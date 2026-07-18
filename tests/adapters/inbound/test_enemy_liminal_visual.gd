@@ -33,4 +33,5 @@ func _run() -> void:
 	_assert(enemy._collision != null, "model encounter retains a physical collision shape")
 	enemy.queue_free()
 	player.queue_free()
+	await process_frame
 	quit(_exit_code)

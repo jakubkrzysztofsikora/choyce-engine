@@ -1,0 +1,52 @@
+{
+  "task_id": "TASK-047",
+  "reviewer": "copilot",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "All four codex review findings have been successfully addressed. Provenance badges are now wired into all user surfaces (Create/Play/Library/Parent shells) with proper visibility in normal user flows.",
+      "path": "src/adapters/inbound/scenes/create/create_shell.gd, src/adapters/inbound/scenes/play/play_shell.gd, src/adapters/inbound/scenes/library/library_shell.gd, src/adapters/inbound/scenes/parent/parent_zone_shell.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Runtime provenance population is now implemented across all AI generation services: request_ai_creation_help_service.gd (text), visual_asset_generation_service.gd (visuals), audio_governance_service.gd (audio), and apply_world_edit_service.gd (world edits). Each service creates ProvenanceData with source type, model name, and audit ID linkage.",
+      "path": "src/application/request_ai_creation_help_service.gd, src/application/visual_asset_generation_service.gd, src/application/audio_governance_service.gd, src/application/apply_world_edit_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Project metadata now stores AI provenance summary with audit linkage. filesystem_project_store.gd serializes and deserializes provenance data, and _collect_ai_provenance_manifest() generates a comprehensive manifest of all AI-generated content in the project.",
+      "path": "src/adapters/outbound/filesystem_project_store.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Provenance badge UI has been localized with Polish-first defaults. All badge labels and tooltips now use localization keys (ui.provenance.human, ui.provenance.ai_text, etc.) with Polish text as fallback, addressing the hardcoded English issue.",
+      "path": "src/adapters/inbound/shared/ui/provenance_badge.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Comprehensive test coverage added and wired into CI. New tests include: provenance_badge_localization_contract_test.gd, apply_world_edit_service_provenance_contract_test.gd, and updates to all service contract tests. run_task_047_tests.gd runs all 6 tests with 126 checks. Quality gates updated in scripts/run-quality-gates.sh to include TASK-047 suite.",
+      "path": "tests/contracts/run_task_047_tests.gd, tests/contracts/provenance_badge_localization_contract_test.gd, tests/contracts/apply_world_edit_service_provenance_contract_test.gd, scripts/run-quality-gates.sh"
+    },
+    {
+      "severity": "info",
+      "message": "Validation run confirms all tests pass: godot4 --headless --path . --script tests/contracts/run_task_047_tests.gd reports Tests: 6  Checks: 126  Failed tests: 0. Full quality gate suite also passes.",
+      "path": "tests/contracts/run_task_047_tests.gd"
+    }
+  ],
+  "checklist": {
+    "acceptance_criteria": {
+      "child_and_parent_surfaces_display_badges": "PASS - Provenance badges wired into Create, Play, Library, and Parent shells with localization support",
+      "project_metadata_stores_provenance": "PASS - filesystem_project_store.gd now stores and retrieves provenance data with audit linkage",
+      "transparency_ux_age_appropriate": "PASS - Badge text uses Polish-first localization, remains text-light, age-appropriate in kid mode"
+    },
+    "codex_review_findings": {
+      "badges_attached_to_surfaces": "RESOLVED - All four user surfaces now display provenance badges",
+      "runtime_provenance_population": "RESOLVED - All AI generation services populate ProvenanceData at runtime",
+      "test_coverage_wired": "RESOLVED - Tests integrated into run_task_047_tests.gd and run-quality-gates.sh",
+      "localization_policy": "RESOLVED - Badge copy uses localization keys with Polish defaults"
+    },
+    "hexagonal_architecture": "PASS - All changes respect hexagonal boundaries: domain ProvenanceData, application services, outbound filesystem adapter, inbound UI adapters"
+  },
+  "summary": "APPROVE. All codex review findings have been comprehensively addressed. TASK-047 implementation is complete with proper provenance badge visibility across all user surfaces, runtime provenance population for all AI generation flows, project metadata provenance storage, and comprehensive test coverage wired into CI. The implementation follows hexagonal architecture principles and Polish-first localization policy."
+}

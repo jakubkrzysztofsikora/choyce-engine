@@ -1,0 +1,53 @@
+{
+  "task_id": "TASK-027",
+  "reviewer": "copilot",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Codex review of TASK-027 implementation confirms all acceptance criteria are met. Tiered hinting with scaffold levels 1-3 is properly implemented with full-solution guardrails.",
+      "path": ".ai/reviews/TASK-027-codex-review.json"
+    },
+    {
+      "severity": "info",
+      "message": "Adaptive difficulty system via _build_adaptive_guidance() uses session context (recent_failures, recent_successes, stuck_seconds, age band) to compute gentle adjustments. The recommended_hint_level clamping (1-3) prevents abrupt difficulty changes.",
+      "path": "src/application/request_gameplay_hint_service.gd:46,193-230"
+    },
+    {
+      "severity": "info",
+      "message": "Full-solution detection via _looks_like_full_solution() effectively prevents revealing complete answers. Fallback hint substitution maintains helpfulness while avoiding solution spoilage.",
+      "path": "src/application/request_gameplay_hint_service.gd:123,249-255"
+    },
+    {
+      "severity": "info",
+      "message": "Quest suggestion system (_build_adaptive_quest) generates contextual guidance. All companion metadata (difficulty_adjustment, quest_suggestion, reveals_full_solution) is properly integrated into execute output.",
+      "path": "src/application/request_gameplay_hint_service.gd:32-35,231-234"
+    },
+    {
+      "severity": "info",
+      "message": "Failsafe and model-unavailable paths preserve functionality with rules-based fallback. Adaptive metadata continues to work even when LLM is unavailable.",
+      "path": "src/application/request_gameplay_hint_service.gd:37-40,137-145"
+    },
+    {
+      "severity": "info",
+      "message": "Test coverage is comprehensive. run_task_027_tests.gd passes with 12 checks, and regression validation via run_task_032_tests.gd passes with 51 checks. No failures reported.",
+      "path": "tests/contracts/run_task_027_tests.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Handoff documentation (TASK-027-handoff-to-claude.md) is thorough and maps all acceptance criteria to implementation details. Validation results are clearly documented.",
+      "path": ".ai/handoffs/TASK-027-handoff-to-claude.md"
+    }
+  ],
+  "checklist": {
+    "codex_review": "APPROVE - Codex review confirms all acceptance criteria met with APPROVE decision",
+    "acceptance_criteria": {
+      "hinting_scaffold_no_full_solutions": "PASS - Guardrail system prevents full solution revelation while maintaining helpful hints",
+      "adaptive_difficulty_gentle": "PASS - Difficulty adapts gently using session context with appropriate clamping"
+    },
+    "hexagonal_architecture": "PASS - Service properly extends port and uses injected dependencies (LLMPort, ModerationPort, etc.)",
+    "safety": "PASS - HINT_SCAFFOLD_GUARD event and full-solution detection provide appropriate safety measures",
+    "test_coverage": "PASS - All tests pass with 12+51 checks covering core and regression scenarios"
+  },
+  "summary": "APPROVE. TASK-027 codex review and implementation are both complete and correct. All acceptance criteria are met: tiered hinting avoids full solutions, adaptive difficulty uses session context gently. The codex review is thorough and the copilot cross review confirms all findings. TASK-027 is ready to proceed to next dependencies."
+}

@@ -36,3 +36,37 @@ func is_parent() -> bool:
 
 func is_restricted() -> bool:
 	return is_kid() and age_band.is_restricted()
+
+
+## Serialize to dictionary for persistence
+func to_dict() -> Dictionary:
+	return {
+		"profile_id": profile_id,
+		"display_name": display_name,
+		"role": role,
+		"age_band": age_band.to_dict() if age_band else {},
+		"language": language,
+		"preferences": preferences.duplicate(true)
+	}
+
+
+## Deserialize from dictionary
+static func from_dict(data: Dictionary) -> PlayerProfile:
+	var profile := PlayerProfile.new()
+	if data.has("profile_id"):
+		profile.profile_id = String(data["profile_id"])
+	if data.has("display_name"):
+		profile.display_name = String(data["display_name"])
+	if data.has("role"):
+		var role_str := str(data["role"])
+		if role_str == "PARENT":
+			profile.role = Role.PARENT
+		else:
+			profile.role = Role.KID
+	if data.has("age_band") and data["age_band"] is Dictionary:
+		profile.age_band = AgeBand.from_dict(data["age_band"])
+	if data.has("language"):
+		profile.language = String(data["language"])
+	if data.has("preferences") and data["preferences"] is Dictionary:
+		profile.preferences = (data["preferences"] as Dictionary).duplicate(true)
+	return profile

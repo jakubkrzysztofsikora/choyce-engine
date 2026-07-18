@@ -994,7 +994,8 @@ func _wire_shell_dependencies() -> void:
 		_ports.get(KEY_APPLY_WORLD_EDIT_PORT, null),
 		_ports.get(KEY_REQUEST_AI_HELP_PORT, null),
 		_ports.get(KEY_SPEECH_TO_TEXT_PORT, null),
-		_feature_flags
+		_feature_flags,
+		_phase1_event_bus
 	)
 	_play_shell.setup(
 		_navigator,

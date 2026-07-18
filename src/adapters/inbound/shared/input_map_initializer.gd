@@ -29,6 +29,15 @@ func _ready() -> void:
     _ensure_action("exit_vehicle", [KEY_E, KEY_ESCAPE])
     _ensure_action("blade_toggle", [KEY_Q])
 
+    # VS-025: Nutrition and training input actions
+    _ensure_action("find_food", [KEY_H])
+    _ensure_action("train_jump", [KEY_J])
+    _ensure_action("train_run", [KEY_K])
+    _ensure_action("train_climb", [KEY_L])
+    _ensure_action("train_push", [KEY_SEMICOLON])
+    _ensure_action("train_pull", [KEY_APOSTROPHE])
+    _ensure_action("train_balance", [KEY_O])
+
     # Player 2 (local split-screen co-op) — right-hand keys so both kids share
     # one keyboard. Arrows move, RCtrl attacks, RShift sprints, Enter jumps.
     _ensure_action("p2_move_forward", [KEY_UP])

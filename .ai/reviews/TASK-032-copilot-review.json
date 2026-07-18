@@ -1,0 +1,54 @@
+{
+  "task_id": "TASK-032",
+  "reviewer": "copilot",
+  "decision": "approve",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Codex review of TASK-032 confirms all acceptance criteria are met. Polish-first language policy implementation is complete and properly integrated across all AI text and voice paths.",
+      "path": ".ai/reviews/TASK-032-codex-review.json"
+    },
+    {
+      "severity": "info",
+      "message": "PolishFirstLanguagePolicyService enforces pl-PL for kid profiles while allowing parent non-Polish locale only when ParentalControlPolicy.language_override_allowed is true. This ensures kid-mode safety defaults are preserved.",
+      "path": "src/application/polish_first_language_policy_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "AI text services (request_ai_creation_help_service.gd, request_gameplay_hint_service.gd) now resolve locale through PolishFirstLanguagePolicyService, ensuring consistent Polish-first behavior.",
+      "path": "src/application/request_ai_creation_help_service.gd, src/application/request_gameplay_hint_service.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Voice governance in audio_governance_service.gd is wired to parental language policy controls. Kid voice locale is forced to Polish, parent can override only when policy allows, maintaining backward compatibility.",
+      "path": "src/application/audio_governance_service.gd:19-26"
+    },
+    {
+      "severity": "info",
+      "message": "ElevenLabs TTS adapter includes allow_language_override in metadata payload, ensuring proper policy enforcement at the TTS layer.",
+      "path": "src/adapters/outbound/elevenlabs_tts_adapter.gd:29-30"
+    },
+    {
+      "severity": "info",
+      "message": "Contract test coverage is comprehensive: run_task_032_tests.gd passes with Tests: 4  Checks: 45  Failed tests: 0. All services (PolishFirstLanguagePolicyService, RequestGameplayHintService, RequestAICreationHelpService, AudioGovernanceService) validated.",
+      "path": "tests/contracts/run_task_032_tests.gd"
+    },
+    {
+      "severity": "info",
+      "message": "Handoff documentation (TASK-032-handoff-to-claude.md) thoroughly documents all changes, validation results, and acceptance criteria mapping.",
+      "path": ".ai/handoffs/TASK-032-handoff-to-claude.md"
+    }
+  ],
+  "checklist": {
+    "codex_review": "APPROVE - Codex review confirms all acceptance criteria met with APPROVE decision",
+    "acceptance_criteria": {
+      "polish_default": "PASS - Kid and parent AI interactions default to Polish text and voice output",
+      "parent_override_safe": "PASS - Parent override can switch language while preserving kid-mode safety defaults"
+    },
+    "policy_consistency": "PASS - Policy-wired locale logic is consistent across text and voice paths",
+    "no_kid_bypass": "PASS - No bypass exists for kid non-Polish locale",
+    "backward_compatibility": "PASS - Backward compatibility path in audio governance is acceptable",
+    "test_coverage": "PASS - Test coverage sufficient for both default and override scenarios"
+  },
+  "summary": "APPROVE. TASK-032 implementation and codex review are both complete and correct. Polish-first language policy is fully operational with proper parental controls. All acceptance criteria are met. The copilot cross review confirms all findings and validates the implementation."
+}

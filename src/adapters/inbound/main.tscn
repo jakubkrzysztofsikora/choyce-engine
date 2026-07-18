@@ -1,13 +1,13 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://da8gxxbtrpa2h"]
 
-[ext_resource type="Script" path="res://src/adapters/inbound/main.gd" id="1_main_script"]
+[ext_resource type="Script" uid="uid://cpf83lhe0ou34" path="res://src/adapters/inbound/main.gd" id="1_main_script"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/create/create_shell.tscn" id="2_create_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/play/play_shell.tscn" id="3_play_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/library/library_shell.tscn" id="4_library_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/parent/parent_zone_shell.tscn" id="5_parent_scene"]
 [ext_resource type="PackedScene" path="res://src/adapters/inbound/scenes/landing/landing_screen.tscn" id="7_landing_scene"]
 
-[node name="Main" type="Control"]
+[node name="Main" type="Control" unique_id=60590729]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -16,7 +16,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_main_script")
 
-[node name="Layout" type="VBoxContainer" parent="."]
+[node name="Layout" type="VBoxContainer" parent="." unique_id=584178303]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -29,89 +29,68 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 14
 
-[node name="NavBar" type="PanelContainer" parent="Layout"]
+[node name="NavBar" type="PanelContainer" parent="Layout" unique_id=729192164]
 layout_mode = 2
 
-[node name="NavPill" type="HBoxContainer" parent="Layout/NavBar"]
+[node name="NavPill" type="HBoxContainer" parent="Layout/NavBar" unique_id=8732074]
 layout_mode = 2
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="Layout/NavBar/NavPill"]
+[node name="TitleLabel" type="Label" parent="Layout/NavBar/NavPill" unique_id=1788056015]
 custom_minimum_size = Vector2(200, 44)
 layout_mode = 2
 text = "Ziemek i Gniewko: Demo"
+vertical_alignment = 1
 
-[node name="NavCreate" type="Button" parent="Layout/NavBar/NavPill"]
+[node name="NavCreate" type="Button" parent="Layout/NavBar/NavPill" unique_id=1146673203]
 custom_minimum_size = Vector2(100, 44)
 layout_mode = 2
+disabled = true
 text = "🔨 Twórz"
 
-[node name="NavPlay" type="Button" parent="Layout/NavBar/NavPill"]
+[node name="NavPlay" type="Button" parent="Layout/NavBar/NavPill" unique_id=1042582326]
 custom_minimum_size = Vector2(100, 44)
 layout_mode = 2
 text = "▶ Graj"
 
-[node name="NavLibrary" type="Button" parent="Layout/NavBar/NavPill"]
+[node name="NavLibrary" type="Button" parent="Layout/NavBar/NavPill" unique_id=2050365497]
 custom_minimum_size = Vector2(120, 44)
 layout_mode = 2
+disabled = true
 text = "📚 Biblioteka"
 
-[node name="NavParent" type="Button" parent="Layout/NavBar/NavPill"]
+[node name="NavParent" type="Button" parent="Layout/NavBar/NavPill" unique_id=514358163]
 custom_minimum_size = Vector2(144, 44)
 layout_mode = 2
+disabled = true
 text = "🛡 Strefa rodzica"
 
-[node name="ActiveIndicator" type="PanelContainer" parent="."]
-layout_mode = 0
-offset_right = 100.0
-offset_bottom = 4.0
-
-[node name="Body" type="Control" parent="Layout"]
+[node name="Body" type="Control" parent="Layout" unique_id=132849165]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="LandingShell" parent="Layout/Body" instance=ExtResource("7_landing_scene")]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="LandingShell" parent="Layout/Body" unique_id=327493892 instance=ExtResource("7_landing_scene")]
 visible = false
+layout_mode = 1
 
-[node name="CreateShell" parent="Layout/Body" instance=ExtResource("2_create_scene")]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="CreateShell" parent="Layout/Body" unique_id=1943857800 instance=ExtResource("2_create_scene")]
 visible = false
+layout_mode = 1
 
-[node name="PlayShell" parent="Layout/Body" instance=ExtResource("3_play_scene")]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="PlayShell" parent="Layout/Body" unique_id=2053442785 instance=ExtResource("3_play_scene")]
 visible = false
+layout_mode = 1
 
-[node name="LibraryShell" parent="Layout/Body" instance=ExtResource("4_library_scene")]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="LibraryShell" parent="Layout/Body" unique_id=1919421381 instance=ExtResource("4_library_scene")]
 visible = false
+layout_mode = 1
 
-[node name="ParentZoneShell" parent="Layout/Body" instance=ExtResource("5_parent_scene")]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="ParentZoneShell" parent="Layout/Body" unique_id=1102573263 instance=ExtResource("5_parent_scene")]
 visible = false
+layout_mode = 1
+
+[node name="ActiveIndicator" type="PanelContainer" parent="." unique_id=1645546753]
+layout_mode = 0
+offset_right = 100.0
+offset_bottom = 4.0
