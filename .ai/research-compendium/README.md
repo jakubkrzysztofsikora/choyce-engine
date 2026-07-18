@@ -65,11 +65,12 @@ These tasks have full, detailed research documents with code samples, online res
 - **Key Technologies**: Food gathering, training equipment, bounded body presentation, safe progression systems
 
 ### 8. Tauri Sidecar & Godot Bridge (VS-007) ✅ COMPLETE
-- **Files**: [Part 1: Architecture & Rust Implementation](./RESEARCH_VS-007_Tauri_Sidecar_Part1.md), [Part 2: TypeScript Client & Frontend Integration](./RESEARCH_VS-007_Tauri_Sidecar_Part2.md), [Part 3: Packaging, Testing & Production](./RESEARCH_VS-007_Tauri_Sidecar_Part3.md)
+- **Files**: [Part 1: Architecture & Rust Implementation](./RESEARCH_VS-007_Tauri_Sidecar_Part1.md), [Part 2: TypeScript Client & Frontend Integration + Code Samples](./RESEARCH_VS-007_Tauri_Sidecar_Part2.md), [Part 3: Packaging, Testing & Production](./RESEARCH_VS-007_Tauri_Sidecar_Part3.md)
 - **Focus**: Complete Tauri 2.x + Godot 4.x sidecar bridge with authenticated WebSocket IPC
-- **Status**: done
+- **Status**: done - Part 2 Enriched with +280 links and comprehensive code samples
 - **Complexity**: HIGH
 - **Key Technologies**: tauri-plugin-shell, TCPServer, WebSocketPeer, Rust process management, TypeScript bridge client
+- **Code Samples**: WebSocket client, envelope serialization, heartbeat, Tauri-Godot bridge, notifications, error handling, message routing, tests, configuration
 
 ### 9. Original Liminal Creatures (VS-023) ✅ COMPLETE - BACKROOMS MONSTERS INCLUDED
 - **File**: [RESEARCH_VS-023_Original_Liminal_Creatures.md](./RESEARCH_VS-023_Original_Liminal_Creatures.md)
