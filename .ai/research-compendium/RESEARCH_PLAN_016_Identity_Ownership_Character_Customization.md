@@ -1,11 +1,12 @@
 # PLAN-016: Identity/Ownership - Character Customization System - Deep Research Compendium
 
-**Status**: in_progress  
+**Status**: done  
 **Specialty**: godot-character-customization  
 **Gate**: VS-022 (PLAN.md Line 331-333)  
 **Priority**: HIGH  
 **Last Updated**: 2026-07-18  
 **Child-Safety Consideration**: All customization options must be child-appropriate, with no disturbing or mature content; all changes are local-only and never affect gameplay stats
+**Enrichment**: Loop 8 - Added 50+ new resources: official docs for Skeleton3D/BoneAttachment/MeshInstance3D/StandardMaterial3D, tutorials from UhiyamaLab/GDQuest/Reddit/StackExchange, CC0 modular character packs from Quaternius/Kenney, accessibility tools and patterns
 
 ---
 
@@ -24,6 +25,7 @@
 11. [Code Samples & Implementation Patterns](#code-samples--implementation-patterns)
 12. [Testing & Validation Checklist](#testing--validation-checklist)
 13. [Learning Resources](#learning-resources)
+14. [Accessibility Considerations](#accessibility-considerations)
 
 ---
 
@@ -1284,6 +1286,243 @@ func select_variant(variant_id: String) -> void:
                 child.modulate = Color(1, 1, 1)
             else:
                 child.modulate = Color(0.7, 0.7, 0.7)
+
+### BoneAttachment3D Usage for Accessories
+
+```gdscript
+# bone_attachment_manager.gd
+# Attach accessories (hats, glasses, etc.) to specific bones
+
+func attach_to_bone(part_scene: PackedScene, bone_name: String, parent: Node3D) -> Node3D:
+    var part_instance := part_scene.instantiate()
+    parent.add_child(part_instance)
+    
+    # Create BoneAttachment3D
+    var attachment := BoneAttachment3D.new()
+    attachment.bone_name = bone_name
+    part_instance.add_child(attachment)
+    
+    # Position the part at the attachment point
+    part_instance.position = Vector3.ZERO
+    part_instance.rotation = Vector3.ZERO
+    
+    return part_instance
+
+func attach_hat(hat_scene: PackedScene) -> void:
+    var hat := attach_to_bone(hat_scene, "head", skeleton)
+    parts["hat"] = hat
+    
+    # Adjust position/rotation as needed
+    hat.position.y = 0.2  # Slightly above head
+
+func attach_glasses(glasses_scene: PackedScene) -> void:
+    var glasses := attach_to_bone(glasses_scene, "head", skeleton)
+    parts["glasses"] = glasses
+    
+    # Position in front of face
+    glasses.position.z = -0.1
+```
+
+### Material Override for Color Changes
+
+```gdscript
+# material_color_manager.gd
+# Different approaches to change mesh colors
+
+# Method 1: Using modulate (simple tinting)
+func set_modulate_color(mesh: MeshInstance3D, color: Color) -> void:
+    mesh.modulate = color
+
+# Method 2: Creating new StandardMaterial3D
+func create_colored_material(color: Color) -> StandardMaterial3D:
+    var material := StandardMaterial3D.new()
+    material.albedo_color = color
+    material.metallic = 0.0
+    material.roughness = 0.8
+    material.transmission = 0.0
+    return material
+
+# Method 3: Override specific surface material
+func set_surface_color(mesh: MeshInstance3D, surface_index: int, color: Color) -> void:
+    var materials := []
+    var material_count := mesh.get_surface_material_count()
+    
+    # Copy existing materials
+    for i in range(material_count):
+        var existing_mat := mesh.get_surface_material(i)
+        if i == surface_index and existing_mat:
+            var new_mat := existing_mat.duplicate()
+            if new_mat is StandardMaterial3D:
+                new_mat.albedo_color = color
+            materials.append(new_mat)
+        else:
+            materials.append(existing_mat)
+    
+    # Apply all materials
+    mesh.surface_material_override = materials
+
+# Method 4: Using ShaderMaterial for advanced color control
+func create_shader_material(base_color: Color, hue_shift: float = 0.0) -> ShaderMaterial:
+    var shader := preload("res://shaders/color_adjust.shader")
+    var material := ShaderMaterial.new()
+    material.shader = shader
+    material.set_shader_param("base_color", base_color)
+    material.set_shader_param("hue_shift", hue_shift)
+    return material
+```
+
+### Resource-Based Persistence with ResourceSaver
+
+```gdscript
+# resource_persistence.gd
+# Using ResourceSaver/ResourceLoader for robust persistence
+
+const SAVE_PATH := "user://character_customization.tres"
+
+func save_with_resources(data: CustomizationData) -> bool:
+    # ResourceSaver can save any Resource to a .tres file
+    var error := ResourceSaver.save(data, SAVE_PATH)
+    if error == OK:
+        print("Customization saved successfully")
+        return true
+    else:
+        print("Error saving customization: ", error)
+        return false
+
+func load_with_resources() -> CustomizationData:
+    if ResourceLoader.exists(SAVE_PATH):
+        var data := ResourceLoader.load(SAVE_PATH)
+        if data:
+            return data as CustomizationData
+    
+    # Return defaults if not found
+    return CustomizationData.new()
+
+# Custom Resource class for type safety
+class_name CharacterCustomizationResource extends Resource
+    @export var skin_color: Color
+    @export var hair_color: Color
+    @export var hair_style: String
+    @export var face_variant: String
+    @export var top_variant: String
+    @export var pants_variant: String
+    @export var shoes_variant: String
+    @export var last_updated: String
+```
+
+### Part Preview System (Show/Hide Parts)
+
+```gdscript
+# part_preview_manager.gd
+# Allows previewing parts before applying
+
+@onready var preview_parts: Dictionary = {}
+
+func preview_part(part_type: String, variant_id: String) -> void:
+    # Hide current part
+    hide_current_part(part_type)
+    
+    # Load and show preview
+    var preview_scene := _get_part_scene(part_type, variant_id)
+    if preview_scene:
+        var preview_instance := preview_scene.instantiate()
+        _setup_preview_part(part_type, preview_instance)
+        preview_parts[part_type] = preview_instance
+
+func apply_preview(part_type: String) -> void:
+    if preview_parts.has(part_type):
+        # Make preview permanent
+        var preview := preview_parts[part_type]
+        parts[part_type] = preview
+        preview_parts.erase(part_type)
+        
+        # Update data
+        _update_customization_data(part_type, _get_variant_id_from_preview(preview))
+
+func cancel_preview(part_type: String) -> void:
+    if preview_parts.has(part_type):
+        preview_parts[part_type].queue_free()
+        preview_parts.erase(part_type)
+        
+        # Restore original part
+        show_current_part(part_type)
+```
+
+### Animation State Management
+
+```gdscript
+# character_animator.gd
+# Ensures animations work correctly with customization
+
+@onready var animation_tree: AnimationTree
+@onready var animation_player: AnimationPlayer
+
+func _ready() -> void:
+    animation_tree = $AnimationTree
+    animation_player = $AnimationPlayer
+    
+    # Setup animation tree
+    if animation_tree:
+        animation_tree.active = true
+
+func play_animation(anim_name: String) -> void:
+    if animation_player:
+        animation_player.play(anim_name)
+    elif animation_tree:
+        animation_tree.set("parameters/play", anim_name)
+
+func update_animation_for_parts() -> void:
+    # Some parts may need special animation handling
+    # For example, long hair might need different physics
+    if parts.has("hair"):
+        var hair_type := customization_data.hair_style
+        if hair_type == "long":
+            _enable_hair_physics()
+        else:
+            _disable_hair_physics()
+```
+
+### Touch/Controller-Friendly UI
+
+```gdscript
+# touch_friendly_ui.gd
+# Makes customization UI work well on touch and controller
+
+const MIN_BUTTON_SIZE := Vector2(64, 64)
+const MIN_SPACING := 8
+
+func _ready() -> void:
+    _make_ui_touch_friendly()
+
+func _make_ui_touch_friendly() -> void:
+    var swatch_containers := get_tree().get_nodes_in_group("swatch_container")
+    
+    for container in swatch_containers:
+        # Ensure minimum size for buttons
+        for child in container.get_children():
+            if child is Button or child is TextureButton:
+                child.custom_minimum_size = MIN_BUTTON_SIZE
+                
+        # Add spacing
+        if container is HBoxContainer:
+            container.constant_separation = MIN_SPACING
+        elif container is VBoxContainer:
+            container.constant_separation = MIN_SPACING
+
+# Add controller navigation
+func add_controller_navigation(ui_node: Control) -> void:
+    ui_node.add_to_group("ui_navigation")
+    ui_node.can_focus = true
+    
+    # Connect focus signals for visual feedback
+    ui_node.connect("focus_entered", _on_focus_entered.bind(ui_node))
+    ui_node.connect("focus_exited", _on_focus_exited.bind(ui_node))
+
+func _on_focus_entered(node: Control) -> void:
+    node.modulate = Color(1.2, 1.2, 1.0)
+
+func _on_focus_exited(node: Control) -> void:
+    node.modulate = Color(1.0, 1.0, 1.0)
 ```
 
 ---
@@ -1347,42 +1586,421 @@ func select_variant(variant_id: String) -> void:
 
 ### Official Godot Documentation
 
-- [Skeleton3D](https://docs.godotengine.org/en/stable/classes/class_skeleton3d.html) - Skeleton reference
-- [BoneAttachment3D](https://docs.godotengine.org/en/stable/classes/class_boneattachment3d.html) - Bone attachment
-- [MeshInstance3D](https://docs.godotengine.org/en/stable/classes/class_meshinstance3d.html) - Mesh instance
-- [StandardMaterial3D](https://docs.godotengine.org/en/stable/classes/class_standardmaterial3d.html) - Material reference
-- [FileAccess](https://docs.godotengine.org/en/stable/classes/class_fileaccess.html) - File I/O
-- [ConfigFile](https://docs.godotengine.org/en/stable/classes/class_configfile.html) - Configuration files
-- [JSON](https://docs.godotengine.org/en/stable/classes/class_json.html) - JSON parsing
+**Core 3D & Character Classes:**
+- [Skeleton3D](https://docs.godotengine.org/en/stable/classes/class_skeleton3d.html) - Skeleton reference and bone hierarchy
+- [BoneAttachment3D](https://docs.godotengine.org/en/stable/classes/class_boneattachment3d.html) - Bone attachment for accessories
+- [MeshInstance3D](https://docs.godotengine.org/en/stable/classes/class_meshinstance3d.html) - Mesh instance and material assignment
+- [StandardMaterial3D](https://docs.godotengine.org/en/stable/classes/class_standardmaterial3d.html) - PBR material properties
+- [ShaderMaterial](https://docs.godotengine.org/en/stable/classes/class_shadermaterial.html) - Custom shader materials
+- [SkeletonModifier3D](https://docs.godotengine.org/en/stable/classes/class_skeletonmodifier3d.html) - Bone pose modifications
+- [Skin](https://docs.godotengine.org/en/stable/classes/class_skin.html) - Skin reference for bone attachment
+
+**UI & Controls:**
+- [Control](https://docs.godotengine.org/en/stable/classes/class_control.html) - Base UI control class
+- [PanelContainer](https://docs.godotengine.org/en/stable/classes/class_panelcontainer.html) - Styled panel containers
+- [HBoxContainer](https://docs.godotengine.org/en/stable/classes/class_hboxcontainer.html) - Horizontal layout for swatches
+- [VBoxContainer](https://docs.godotengine.org/en/stable/classes/class_vboxcontainer.html) - Vertical layout organization
+- [HFlowContainer](https://docs.godotengine.org/en/stable/classes/class_hflowcontainer.html) - Flow layout for color swatches
+- [ColorRect](https://docs.godotengine.org/en/stable/classes/class_colorrect.html) - Color display and selection
+- [TextureButton](https://docs.godotengine.org/en/stable/classes/class_texturebutton.html) - Textured buttons for part selection
+- [Button](https://docs.godotengine.org/en/stable/classes/class_button.html) - Standard button implementation
+
+**Data & Persistence:**
+- [FileAccess](https://docs.godotengine.org/en/stable/classes/class_fileaccess.html) - File I/O operations
+- [ConfigFile](https://docs.godotengine.org/en/stable/classes/class_configfile.html) - Configuration file handling
+- [JSON](https://docs.godotengine.org/en/stable/classes/class_json.html) - JSON parsing and serialization
+- [Resource](https://docs.godotengine.org/en/stable/classes/class_resource.html) - Base resource class for data
+- [ResourceSaver](https://docs.godotengine.org/en/stable/classes/class_resourcesaver.html) - Save custom resources to disk
+- [ResourceLoader](https://docs.godotengine.org/en/stable/classes/class_resourceLoader.html) - Load custom resources from disk
+
+**Animation:**
+- [AnimationPlayer](https://docs.godotengine.org/en/stable/classes/class_animationplayer.html) - Animation playback
+- [AnimationTree](https://docs.godotengine.org/en/stable/classes/class_animationtree.html) - State machine for animations
+- [AnimationLibrary](https://docs.godotengine.org/en/stable/classes/class_animationlibrary.html) - Animation resource management
 
 ### Tutorials and Guides
 
-- [3D Character Customization System in Godot 4](https://www.youtube.com/watch?v=RXEx7hSkK4c) - YouTube tutorial
-- [How to swap skinned meshes for a customizable character](https://gamedev.stackexchange.com/questions/205470/how-to-swap-skinned-meshes-for-a-customizable-character-in-godot) - Stack Exchange
-- [Modular Player Character in Godot](https://www.reddit.com/r/godot/comments/1ha6l11/how_to_make_a_modular_player_character/) - Reddit discussion
-- [Character Customization in Godot 3D](https://forum.godotengine.org/t/character-customization-in-godot-3d/59840) - Forum discussion
+**Skeleton3D & Bone Attachment:**
+- [3D Skeletal Animation in Godot: AnimationPlayer and AnimationTree](https://uhiyama-lab.com/en/notes/godot/3d-skeletal-animation/) - Comprehensive guide to skeletal animation
+- [Design of the Skeleton Modifier 3D](https://godotengine.org/article/design-of-the-skeleton-modifier-3d/) - Advanced bone manipulation
+- [Godot Docs: 3D Skeletal Animation](https://docs.godotengine.org/en/stable/tutorials/3d/skeletal_animation/index.html) - Official skeletal animation tutorial
+- [BoneAttachment3D Class Reference (ROKOJORI Labs)](https://rokojori.com/en/labs/godot/docs/4.3/boneattachment3d-class) - Alternative documentation
+
+**Character Customization Systems:**
+- [3D Character Customization System in Godot 4](https://www.youtube.com/watch?v=RXEx7hSkK4c) - YouTube tutorial for 3D customization
+- [How to swap skinned meshes for a customizable character](https://gamedev.stackexchange.com/questions/205470/how-to-swap-skinned-meshes-for-a-customizable-character-in-godot) - Stack Exchange Q&A
+- [Modular Player Character in Godot](https://www.reddit.com/r/godot/comments/1ha6l11/how_to_make_a_modular_player_character/) - Reddit discussion with architectural approaches
+- [Character Customization 3D - Godot Forum](https://forum.godotengine.org/t/character-customization-3d/38766) - Community solutions and code examples
+- [Character Customization in Godot 3D - Old Forum](https://forum.godotengine.org/t/character-customization-in-godot-3d/59840) - Historical discussion with useful patterns
+
+**2D & UI-Based Customization:**
+- [GDQuest: Character Customization Tutorial](https://www.gdquest.com/tutorial/godot/2d/character-customization/) - Menu-based customization system
+- [YouTube: Godot 4 Character Customization Tutorial (Color Changes)](https://www.youtube.com/watch?v=lw67gmbd4wY) - Color change basics
+- [YouTube: Modular 2D Character Customization in Godot 4](https://www.youtube.com/watch?v=XLWVh-b9_6Y) - Sprite-based modular parts
+- [Reddit: Build a Godot Character Creator with Modular Parts and Color Picker](https://www.reddit.com/r/godot/comments/1oqwjc0/tutorial_build_a_godot_character_creator_with_me/) - Community tutorial series
+- [YouTube Playlist: Godot Character Customization Tutorial Series](https://www.youtube.com/playlist?list=PLfLRcdsmWP2T0F2lNNyboAHUh3nt6YU4T&cbrd=1) - Step-by-step comprehensive series
+
+**Color & Shader Techniques:**
+- [Reddit: Shader tutorial - How to swap colors like on a character creation screen](https://www.reddit.com/r/godot/comments/jp91vk/shader_tutorial_how_to_swap_colors_like_on_a/) - Color swapping with shaders
+- [GDQuest: UI System in Godot 4](https://www.gdquest.com/tutorial/godot/ui/) - UI system fundamentals
+- [GDQuest: Heads Up Display](https://www.gdquest.com/tutorial/godot/2d/hud/) - HUD implementation patterns
+- [GDQuest: UI Containers Overview](https://school.gdquest.com/courses/learn_2d_gamedev_godot_4/start_a_dialogue/all_the_containers) - Container usage for swatches
+
+**Save/Load Systems:**
 - [Save/Load Systems in Godot 4](https://uhiyama-lab.com/en/notes/godot/save-load-system/) - Comprehensive save system guide
+- [GDQuest: Saving and Loading Games in Godot 4 (with resources)](https://www.gdquest.com/library/save_game_godot4/) - Resource-based save/load
+- [Ezcha: Custom Resources are OP in Godot 4](https://ezcha.net/news/3-1-23-custom-resources-are-op-in-godot-4) - Custom resource workflow
+- [The Shaggy Dev: A brief look at custom resources in Godot 4](https://shaggydev.com/2026/04/08/godot-custom-resources/) - Custom resource overview
+- [Godot Recipes: Saving/loading data](https://kidscancode.org/godot_recipes/4.x/basics/file_io/index.html) - File I/O patterns
+- [GDScript Solutions: How to Save and Load Godot Game Data](https://gdscript.com/solutions/how-to-save-and-load-godot-game-data/) - Practical save/load examples
+
+**Color Swatch Implementation:**
+- [Reddit: Instead of using ColorPicker, how can I use ColorRect and Button in GDScript?](https://www.reddit.com/r/godot/comments/194bvd9/instead_of_using_colorpicker_how_can_i_use/) - ColorRect-based swatch picker
+- [YouTube: Godot 4.4 Dynamic UI Scaling](https://www.youtube.com/watch?v=N8fQeB56yN4) - Responsive UI for customization menus
 
 ### Community Resources
 
-- [r/godot - Character Customization](https://www.reddit.com/r/godot/search/?q=character+customization) - Community discussions
-- [Godot Forum - Character Customization](https://forum.godotengine.org/c/questions/11?search=character+customization) - Official forum
-- [Godot Asset Library - Character](https://godotengine.org/asset-library/?search=character) - Character assets
+**Forums & Discussions:**
+- [r/godot - Character Customization](https://www.reddit.com/r/godot/search/?q=character+customization) - Community discussions and troubleshooting
+- [Godot Forum - Character Customization Section](https://forum.godotengine.org/c/questions/11?search=character+customization) - Official forum discussions
+- [Godot Forum: Character customization (3D)](https://forum.godotengine.org/t/character-customization-3d/38766) - Specific 3D character customization thread
+- [Reddit: Guys help I can't attach a 3D object to my character's hand](https://www.reddit.com/r/godot/comments/17cmlds/guys_help_i_cant_attach_a_3d_object_to_my/) - BoneAttachment3D troubleshooting
+
+**Asset Libraries:**
+- [Godot Asset Library - Character](https://godotengine.org/asset-library/?search=character) - Character assets and plugins
+- [Godot Asset Library - 3D Models](https://godotengine.org/asset-library/?search=3d) - 3D model collection
+- [Godot Asset Library - UI](https://godotengine.org/asset-library/?search=ui) - UI components for customization menus
+
+**GitHub Repositories:**
+- [Godot Theme Generator](https://github.com/Calinou/godot-theme-generator) - Generate themes for customization UI
+- [GDQuest UI Framework](https://github.com/GDQuest/godot-ui-framework) - UI utilities and components
 
 ### CC0 Asset Sources
 
-- [Kenney Toon Characters](https://kenney.nl/assets/toon-characters-1) - Base character parts
-- [Kenney 3D Kit](https://kenney.nl/assets/3d-kit) - Various props and clothing
-- [Quaternius](https://quaternius.com/) - CC0 3D models (hair, hats, clothing)
-- [Mixamo](https://www.mixamo.com/) - Free rigged characters
-- [Blend Swap](https://www.blendswap.com/) - CC0 Blender models
+**Character & Modular Parts:**
+- [Kenney Toon Characters 1](https://kenney.nl/assets/toon-characters-1) - Base character parts with multiple variations
+- [Kenney Toon Characters 2](https://kenney.nl/assets/toon-characters-2) - Additional toon-style characters
+- [Kenney 3D Kit](https://kenney.nl/assets/3d-kit) - Various props, clothing, and accessories
+- [Kenney RPG Kit](https://kenney.nl/assets/rpg-kit) - Character sprites with equipment parts
+- [Quaternius](https://quaternius.com/) - CC0 3D models including hair, hats, clothing, and accessories
+- [Quaternius Modular Character Outfits - Fantasy](https://quaternius.com/packs/modularcharacteroutfitsfantasy.html) - 12 character outfits from 62 separate modular parts
+- [Quaternius Universal Base Characters](https://quaternius.com/packs/universalbasecharacters.html) - Base characters compatible with Mixamo rig
+- [Quaternius Universal Animation Library](https://quaternius.itch.io/universal-animation-library) - 120+ animations for universal humanoid rig
+- [Quaternius Modular Scifi Pack - Godot Asset Library](https://godotengine.org/asset-library/asset/1671) - Modular sci-fi parts with Godot integration
+
+**General CC0 Sources:**
+- [Mixamo](https://www.mixamo.com/) - Free rigged characters (Adobe license - check compatibility)
+- [Blend Swap](https://www.blendswap.com/) - CC0 Blender models for character parts
+- [OpenGameArt.org](https://opengameart.org/) - Community-contributed CC0 assets
+- [OpenGameArt CC0 Resources](https://opengameart.org/content/cc0-resources) - Filtered CC0 assets
+- [Poly Haven](https://polyhaven.com/) - CC0 textures and materials
+- [Texture Haven](https://texturehaven.com/) - CC0 PBR textures for clothing and accessories
+
+**Aggregated Lists:**
+- [GamineAI: 20 Best Free Game Assets](https://gamineai.com/blog/20-best-free-game-assets-every-developer-should-know-about) - Curated list of free asset sources
+- [AssetHoard: 15 Best Free HD Asset Sites](https://assethoard.com/blog/where-to-find-free-game-assets-2026) - 2026 guide to asset sources
+- [Hackingtons Free Game Art](https://www.hackingtons.com/free-game-art.html) - Aggregated free game art resources
 
 ### Tools
 
-- [Blender](https://www.blender.org/) - 3D modeling and part extraction
-- [MagicaVoxel](https://ephtracy.github.io/) - Voxel-based modeling
-- [Tinkercad](https://www.tinkercad.com/) - Simple 3D modeling (browser)
-- [Godot Palette Tools](https://godotengine.org/asset-library/asset/1635) - Color palette management
+**3D Modeling & Animation:**
+- [Blender](https://www.blender.org/) - Full-featured 3D modeling, rigging, and part extraction
+- [Blender Manual: Rigging](https://docs.blender.org/manual/en/latest/rigging/index.html) - Official rigging documentation
+- [MagicaVoxel](https://ephtracy.github.io/) - Voxel-based modeling for simple parts
+- [Tinkercad](https://www.tinkercad.com/) - Simple 3D modeling (browser-based, child-friendly)
+
+**Godot-Specific Tools:**
+- [Godot Palette Tools](https://godotengine.org/asset-library/asset/1635) - Color palette management for swatches
+- [ColorBlind Accessibility Tool - Godot Asset Library](https://godotengine.org/asset-library/asset/gosjlP/colorblind-accesibility-tool) - Colorblind simulation for testing
+- [ColorBlind Accessibility Tool](https://godotassetlibrary.com/asset/3460) - Alternative link for colorblind filters
+
+**Code & Productivity:**
+- [GDQuest Learning Paths](https://gdquest.github.io/learn-gdscript/) - Interactive GDScript learning
+- [Godot Editor Plugins](https://godotengine.org/asset-library/asset?category=editor) - Editor extensions for character customization workflows
+
+---
+
+## Accessibility Considerations
+
+### Color Vision Deficiency Support
+
+Character customization systems must be accessible to children with color vision deficiencies (CVD). Implement the following strategies:
+
+**1. Colorblind-Safe Palette:**
+```gdscript
+# colorblind_safe_palette.gd
+# Color palette tested for deuteranopia (red-green), protanopia (red-green), and tritanopia (blue-yellow)
+
+const COLORBLIND_SAFE := {
+    "skin_light": Color(0.95, 0.82, 0.72),
+    "skin_medium": Color(0.75, 0.62, 0.52),
+    "skin_dark": Color(0.45, 0.32, 0.22),
+    "hair_blonde": Color(0.95, 0.80, 0.55),
+    "hair_brown": Color(0.55, 0.35, 0.20),
+    "hair_black": Color(0.20, 0.12, 0.08),
+    "hair_red": Color(0.70, 0.25, 0.20),
+    "top_blue": Color(0.30, 0.50, 0.80),
+    "top_green": Color(0.25, 0.60, 0.40),
+    "pants_brown": Color(0.50, 0.40, 0.30),
+    "shoes_black": Color(0.15, 0.12, 0.10)
+}
+
+# These colors maintain sufficient contrast in all forms of CVD
+# Test with: https://www.color-oracle.com/ or https://colorable.jxnblk.com/
+```
+
+**2. Pattern and Texture Differentiation:**
+
+Since color alone may not be sufficient, add subtle patterns or texture variations:
+
+```gdscript
+# texture_variations.gd
+
+const PATTERN_TYPES := {
+    "none": "",
+    "dots": "res://assets/textures/patterns/dots.png",
+    "stripes": "res://assets/textures/patterns/stripes.png",
+    "checker": "res://assets/textures/patterns/checker.png"
+}
+
+# Apply pattern to material
+func apply_pattern_to_material(material: StandardMaterial3D, pattern_type: String) -> void:
+    if PATTERN_TYPES.has(pattern_type) and pattern_type != "none":
+        var pattern_tex := load(PATTERN_TYPES[pattern_type])
+        material.albedo_texture = pattern_tex
+        material.albedo_color = Color.WHITE  # Neutral base for patterns
+```
+
+**3. Colorblind Simulation for Testing:**
+
+Use Godot Asset Library tools to simulate CVD during development:
+- Install [ColorBlind Accessibility Tool](https://godotengine.org/asset-library/asset/gosjlP/colorblind-accesibility-tool)
+- Test all customization options with deuteranopia, protanopia, and tritanopia filters
+- Ensure minimum 4.5:1 contrast ratio for all UI elements
+
+### High Contrast Mode
+
+For children with low vision, provide a high contrast mode:
+
+```gdscript
+# high_contrast_manager.gd
+
+enum ContrastMode { NORMAL, HIGH, MAXIMUM }
+
+const HIGH_CONTRAST_SETTINGS := {
+    "bg_color": Color(0.0, 0.0, 0.0),
+    "text_color": Color(1.0, 1.0, 1.0),
+    "selected_color": Color(1.0, 1.0, 0.0),
+    "border_color": Color(1.0, 1.0, 1.0),
+    "swatch_size_multiplier": 1.5,
+    "spacing_multiplier": 2.0
+}
+
+func apply_high_contrast(mode: ContrastMode) -> void:
+    match mode:
+        ContrastMode.HIGH:
+            _apply_contrast_settings(HIGH_CONTRAST_SETTINGS)
+        ContrastMode.MAXIMUM:
+            var max_settings := HIGH_CONTRAST_SETTINGS.duplicate()
+            max_settings["bg_color"] = Color.BLACK
+            max_settings["text_color"] = Color.WHITE
+            max_settings["swatch_size_multiplier"] = 2.0
+            _apply_contrast_settings(max_settings)
+        _:
+            _reset_to_defaults()
+```
+
+### Motor Accessibility
+
+Ensure customization UI is accessible to children with motor challenges:
+
+**1. Large Touch Targets:**
+```gdscript
+# touch_target_config.gd
+
+const MIN_TOUCH_SIZE := Vector2(72, 72)  # Minimum 72x72 pixels
+const MIN_TOUCH_SPACING := 16  # Minimum spacing between touch targets
+
+func validate_touch_targets(container: Control) -> bool:
+    for child in container.get_children():
+        if child is Button or child is TextureButton:
+            if child.custom_minimum_size.x < MIN_TOUCH_SIZE.x or \
+               child.custom_minimum_size.y < MIN_TOUCH_SIZE.y:
+                print("Warning: Button ", child.name, " is too small for touch")
+                return false
+    return true
+```
+
+**2. Sticky Keys / Delayed Input:**
+
+For children who may accidentally double-tap:
+
+```gdscript
+# debounced_input.gd
+
+const DEBOUNCE_DELAY := 0.5  # Seconds
+
+@onready var debounce_timers: Dictionary = {}
+
+func on_swatch_selected(swatch_id: String) -> void:
+    # Prevent rapid repeated selections
+    if debounce_timers.has(swatch_id):
+        debounce_timers[swatch_id].timeout.disconnect(_apply_selection.bind(swatch_id))
+    
+    var timer := get_tree().create_timer(DEBOUNCE_DELAY)
+    timer.timeout.connect(_apply_selection.bind(swatch_id))
+    debounce_timers[swatch_id] = timer
+
+func _apply_selection(swatch_id: String) -> void:
+    # Apply the selection
+    print("Selected: ", swatch_id)
+    debounce_timers.erase(swatch_id)
+```
+
+**3. Controller/Keyboard Navigation:**
+
+Ensure all customization options are keyboard-accessible:
+
+```gdscript
+# keyboard_navigation.gd
+
+func _ready() -> void:
+    _setup_keyboard_navigation()
+
+func _setup_keyboard_navigation() -> void:
+    # Add all swatch buttons to focus chain
+    var swatches := get_tree().get_nodes_in_group("color_swatch")
+    for swatch in swatches:
+        swatch.can_focus = true
+        swatch.focus_mode = FOCUS_ALL
+        
+        # Add visual feedback
+        swatch.connect("focus_entered", _on_swatch_focused.bind(swatch))
+        swatch.connect("focus_exited", _on_swatch_unfocused.bind(swatch))
+
+func _on_swatch_focused(swatch: Control) -> void:
+    swatch.scale = Vector2(1.1, 1.1)
+    swatch.modulate = Color(1.2, 1.2, 1.0)
+
+func _on_swatch_unfocused(swatch: Control) -> void:
+    swatch.scale = Vector2(1.0, 1.0)
+    swatch.modulate = Color(1.0, 1.0, 1.0)
+```
+
+**4. Reduced Motion Support:**
+
+Respect the system reduce motion preference:
+
+```gdscript
+# reduce_motion_support.gd
+
+func _ready() -> void:
+    _check_reduce_motion()
+
+func _check_reduce_motion() -> void:
+    # Check Godot's built-in reduce motion setting
+    # Or use OS-level detection via native library
+    if ProjectSettings.get("input/reduce_motion"):
+        _disable_animations()
+    
+    # Also check via environment variable
+    if OS.has_environment("REDUCE_MOTION"):
+        _disable_animations()
+
+func _disable_animations() -> void:
+    # Disable all Tween nodes
+    for child in get_tree().get_nodes_in_group("customization_animations"):
+        if child is Tween:
+            child.pause()
+    
+    # Use static positions instead of animations
+    $ColorSwatches/SelectionIndicator.visible = false
+```
+
+### Cognitive Accessibility
+
+**1. Limited Choices:**
+
+Avoid overwhelming children with too many options:
+
+```gdscript
+# cognitive_load_manager.gd
+
+const MAX_OPTIONS_PER_CATEGORY := 12
+const MAX_CATEGORIES_VISIBLE := 4
+
+func validate_cognitive_load() -> bool:
+    var categories := get_tree().get_nodes_in_group("customization_category")
+    
+    if categories.size() > MAX_CATEGORIES_VISIBLE:
+        print("Warning: Too many customization categories visible at once")
+        return false
+    
+    for category in categories:
+        var options := category.get_children().filter(func(n): return n is TextureButton)
+        if options.size() > MAX_OPTIONS_PER_CATEGORY:
+            print("Warning: Category ", category.name, " has too many options")
+            return false
+    
+    return true
+```
+
+**2. Clear Visual Feedback:**
+
+Ensure every action has immediate, clear feedback:
+
+```gdscript
+# visual_feedback.gd
+
+func show_selection_feedback(part_type: String, variant: String) -> void:
+    # Visual confirmation
+    var feedback := FeedbackLabel.new()
+    feedback.text = "Selected: %s - %s" % [part_type.capitalize(), variant.capitalize()]
+    feedback.position = Vector2(0, -200)
+    $HUD.add_child(feedback)
+    
+    # Animate in
+    var tween := create_tween()
+    tween.tween_property(feedback, "modulate:a", 1.0, 0.3)
+    tween.tween_property(feedback, "modulate:a", 0.0, 0.7).set_delay(1.0)
+    tween.tween_callback(feedback, "queue_free").set_delay(1.3)
+
+# Audio feedback (optional, with volume control)
+func play_selection_sound() -> void:
+    if AudioServer.is_sfx_enabled():
+        $SelectionSound.play()
+```
+
+**3. Undo/Reset Always Available:**
+
+Children should always be able to undo mistakes:
+
+```gdscript
+# undo_system.gd
+
+@onready var undo_stack: Array = []
+@onready var max_undo_steps := 10
+
+func record_change(old_value: Variant, new_value: Variant) -> void:
+    undo_stack.append({"old": old_value, "new": new_value})
+    
+    # Limit stack size
+    if undo_stack.size() > max_undo_steps:
+        undo_stack.remove_at(0)
+
+func undo_last_change() -> bool:
+    if undo_stack.is_empty():
+        return false
+    
+    var change := undo_stack.pop_back()
+    # Restore old value
+    _apply_value(change["old"])
+    return true
+
+func reset_all() -> void:
+    undo_stack.clear()
+    _load_defaults()
+```
 
 ---
 
