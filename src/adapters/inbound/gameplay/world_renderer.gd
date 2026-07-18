@@ -154,6 +154,7 @@ const KAYKIT_TILES := "res://data/models/kaykit/builder/tiles_square/"
 # Quaternius-style character rigs (CC0 via Poly Pizza).
 const QUATERNIUS := "res://data/models/quaternius/"
 const QUATERNIUS_NATURE := QUATERNIUS + "nature/"
+const QUATERNIUS_VILLAGE := QUATERNIUS + "medieval_village/"
 # Curated, credited CC-BY house-interior assets. Keep this separate from the
 # CC0 kits so distribution credits remain explicit and auditable.
 const POLY_PIZZA_ZSKY := "res://data/models/third_party/poly_pizza_zsky/"
@@ -963,23 +964,32 @@ func _build_starter_homestead() -> void:
 	# the dimensions below establish a 12m × 11m interior, a full-height door,
 	# and furniture with adult-scale clearance around it.
 	var center := Vector3(24, 0, 12)
-	_add_visual_asset("starter_house_exterior", center, Vector3.ONE * 2.6, 0.35, KAYKIT_BUILDER + "house.gltf.glb", false)
 	_add_box_obstacle("HomeBackWall", center + Vector3(0, 2.2, 5.85), Vector3(12.5, 4.4, 0.32), Color.TRANSPARENT, false)
 	_add_box_obstacle("HomeLeftWall", center + Vector3(-6.1, 2.2, 0), Vector3(0.32, 4.4, 11.7), Color.TRANSPARENT, false)
 	_add_box_obstacle("HomeRightWall", center + Vector3(6.1, 2.2, 0), Vector3(0.32, 4.4, 11.7), Color.TRANSPARENT, false)
-	_add_box_obstacle("HomeFrontWallL", center + Vector3(-4.55, 2.2, -5.85), Vector3(3.1, 4.4, 0.32), Color.TRANSPARENT, false)
-	_add_box_obstacle("HomeFrontWallR", center + Vector3(4.55, 2.2, -5.85), Vector3(3.1, 4.4, 0.32), Color.TRANSPARENT, false)
+	# Match the full visible facade: two 5m physical wings leave only the 2.2m
+	# central doorway passable. The old 3.1m wings left two invisible side gaps
+	# under window bays, which made the house feel inconsistent to navigate.
+	_add_box_obstacle("HomeFrontWallL", center + Vector3(-3.6, 2.2, -5.85), Vector3(5.0, 4.4, 0.32), Color.TRANSPARENT, false)
+	_add_box_obstacle("HomeFrontWallR", center + Vector3(3.6, 2.2, -5.85), Vector3(5.0, 4.4, 0.32), Color.TRANSPARENT, false)
 	_add_box_obstacle("HomeFloor", center + Vector3(0, -0.10, 0), Vector3(12.2, 0.18, 11.4), Color.TRANSPARENT, false)
 
-	var door := _add_box_obstacle("HomeDoor", center + Vector3(0, 1.6, -5.90), Vector3(2.2, 3.2, 0.22), Color.TRANSPARENT, false)
+	# Make the body origin the hinge, then offset its collision and rendered mesh
+	# into the doorway. Opening it now swings like a real door instead of
+	# rotating around its centre.
+	var door := _add_box_obstacle("HomeDoor", center + Vector3(-1.1, 1.6, -5.90), Vector3(2.2, 3.2, 0.22), Color.TRANSPARENT, false)
 	if door != null:
+		var door_collision := door.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if door_collision != null:
+			door_collision.position.x = 1.1
 		door.add_to_group("world_interactable")
 		door.set_meta("interaction_id", "home_door")
 		door.set_meta("interaction_prompt", "E  Otwórz drzwi")
 		door.set_meta("interaction_action", "door")
 		door.set_meta("door_open", false)
 		door.set_meta("door_closed_position", door.position)
-		door.set_meta("door_collision", door.get_node_or_null("CollisionShape3D"))
+		door.set_meta("door_collision", door_collision)
+	_build_modular_starter_house_shell(center, door)
 
 	# Real, adult-scale furniture replaces the placeholder bedroll/workbench.
 	# Each collision box describes the rendered object in world metres and is
@@ -1006,6 +1016,55 @@ func _build_starter_homestead() -> void:
 		0.0, POLY_PIZZA_ZSKY + "Floor Lamp.glb", true, Vector3(0.46, 1.72, 0.46))
 	_add_interaction_anchor("home_cook", center + Vector3(2.8, 0.0, 1.1), "E  Ugotuj posiłek", "cook")
 	_add_interaction_anchor("home_sit", center + Vector3(2.45, 0.0, 0.35), "E  Usiądź przy stole", "sit")
+
+
+## Assemble an actual 10m-class textured house from the Quaternius Village
+## MegaKit rather than scaling a small prefab until it becomes blurry. The
+## invisible wall bodies above remain the authoritative room collision while
+## these source meshes give the house a door, windows, roof, and chimney.
+func _build_modular_starter_house_shell(center: Vector3, door: StaticBody3D) -> void:
+	var window_wall := QUATERNIUS_VILLAGE + "Wall_Plaster_Window_Wide_Flat.gltf"
+	var solid_wall := QUATERNIUS_VILLAGE + "Wall_Plaster_Straight.gltf"
+	var door_wall := QUATERNIUS_VILLAGE + "Wall_Plaster_Door_Flat.gltf"
+	# Street facade: four window bays and a true central doorway establish a
+	# human-scale front that reads from the opening trail.
+	for bay in range(5):
+		var front_path := door_wall if bay == 2 else window_wall
+		_add_visual_asset("HomeFacade_%d" % bay,
+			center + Vector3(-4.0 + float(bay) * 2.0, 0.0, -5.72),
+			Vector3.ONE, PI, front_path, false)
+	# Back and side walls turn the house into a coherent volume instead of a
+	# front-only set. These meshes are 2m modular bays with source PBR maps.
+	for bay in range(5):
+		_add_visual_asset("HomeBack_%d" % bay,
+			center + Vector3(-4.0 + float(bay) * 2.0, 0.0, 5.72),
+			Vector3.ONE, 0.0, solid_wall, false)
+	for bay in range(5):
+		var z := -4.0 + float(bay) * 2.0
+		_add_visual_asset("HomeLeft_%d" % bay,
+			center + Vector3(-5.72, 0.0, z), Vector3.ONE, PI * 0.5, solid_wall, false)
+		_add_visual_asset("HomeRight_%d" % bay,
+			center + Vector3(5.72, 0.0, z), Vector3.ONE, -PI * 0.5, solid_wall, false)
+	# One authored 10m gabled roof avoids a flat slab silhouette and keeps the
+	# home visible above the opening grove without making it a miniature.
+	_add_visual_asset("HomeGabledRoof", center + Vector3(0.0, 3.05, 0.0), Vector3.ONE,
+		0.0, QUATERNIUS_VILLAGE + "Roof_RoundTiles_8x10.gltf", false)
+	_add_visual_asset("HomeChimney", center + Vector3(3.1, 5.1, 0.6), Vector3.ONE,
+		0.0, QUATERNIUS_VILLAGE + "Prop_Chimney.gltf", false)
+	if door == null:
+		return
+	var packed := load(QUATERNIUS_VILLAGE + "Door_2_Flat.gltf") as PackedScene
+	if packed == null:
+		return
+	var visual := packed.instantiate() as Node3D
+	if visual == null:
+		return
+	visual.name = "HomeDoorVisual"
+	visual.position = Vector3(1.1, -1.60, 0.0)
+	visual.rotation.y = PI
+	door.add_child(visual)
+	_apply_toon_to_prop(visual, "home wooden door")
+	door.set_meta("door_visual", visual)
 
 
 func _add_water_crossing() -> void:

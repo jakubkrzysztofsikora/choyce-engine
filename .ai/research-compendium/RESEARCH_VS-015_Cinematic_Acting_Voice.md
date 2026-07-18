@@ -1500,6 +1500,18 @@ ssml_text = """
 
 ## Learning Resources
 
+### Cutscene Orchestration Pattern (reviewed 2026-07-18)
+
+The supplied Godot Forum discussion, ["Looking for a smart way of animating 3D cutscenes with characters in AnimationPlayer"](https://forum.godotengine.org/t/looking-for-a-smart-way-of-animating-3d-cutscenes-with-characters-in-animationplayer/104546/11), supports a modular arrangement that fits this project:
+
+- Each cinematic character owns an `AnimationPlayer` containing its imported clips and an `AnimationTree` which handles blends, state transitions, and short parallel reactions.
+- A separate cutscene-level `AnimationPlayer` owns the 5–10 second timeline: camera cuts/moves, lighting, timing markers, character action parameters, caption triggers, and the handoff to the launcher.
+- The cutscene controller temporarily disables player input, snapshots the gameplay camera/player state, and restores it on skip or completion. This prevents the launch montage from becoming a second gameplay controller.
+
+**Decision for VS-015/VS-032:** retain the current lightweight launcher sequence until the CC0 animation library has been checked against the active character skeletons. Then replace direct transform-only character tweening with this three-layer pattern—not a single monolithic animation or an externally rendered movie. The opening must include at least two intentional camera compositions (establishing/approach and impact/reaction) and preserve a clean skip-to-launcher path.
+
+**Validation additions:** test that a skip or completion restores input/camera state; verify only one cutscene timeline runs at once; inspect two captured camera frames so a hero or monster cannot be clipped out of the viewport.
+
 ### Official Documentation
 
 | Resource | URL |
@@ -1613,6 +1625,6 @@ ssml_text = """
 
 ---
 
-*Document Version: 1.0*  
+*Document Version: 1.1*
 *Generated: 2026-07-18*  
 *Status: Ready for Implementation Review*
