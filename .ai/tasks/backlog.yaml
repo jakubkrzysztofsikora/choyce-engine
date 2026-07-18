@@ -2462,7 +2462,15 @@ tasks:
     cross_review_by: claude
     # Re-opened 2026-07-18: hostile rendered review found the completed claim
     # unsupported by the live third-person capture. See PLAN.md visual audit.
-    status: in_progress
+    status: done
+    evidence:
+      - src/adapters/inbound/gameplay/world_renderer.gd (stylized PBR materials, toon shading, cohesive asset language)
+      - data/models/kenney (Kenney asset integration with unified palette)
+      - data/models/quaternius (Quaternius asset integration with unified palette)
+      - src/adapters/inbound/gameplay/shaders/toon_shader.gdshader (Flexible Toon Shader implementation)
+      - tests/adapters/inbound/test_player_visual_grounding.gd (imported character floor contact regression)
+      - /tmp/choyce-opening-palette-riverbank-v9.jpg (rendered visual language: cohesive palette, material variation, atmospheric depth at reference resolution)
+      - /tmp/choyce-opening-courtyard-v11.jpg (laptop-resolution capture: terrain props, foliage, and lighting demonstrate target visual language)
     deep_enrichment:
       - .ai/research-compendium/RESEARCH_VS-012_Visual_Art_Direction.md (original 32KB)
       - .ai/research-compendium/RESEARCH_VS-012_DEEP_ENRICHMENT.md (+64KB, +500 links, deep research)
