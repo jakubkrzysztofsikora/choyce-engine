@@ -1362,18 +1362,19 @@ tasks:
 
   - id: VS-016
     title: Capture rendered visual acceptance evidence and performance measurements
-    owner: copilot
+    owner: codex
     specialty: rendered-qa
     inputs:
       - PLAN.md
       - docs/release/release-exit-criteria.md
+      - .ai/research-compendium/RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md
     dependencies: [VS-013, VS-014, VS-015]
     acceptance_criteria:
       - Launcher, spawn, guide interaction, region transition, and combat screenshots are retained
       - Reference and laptop-sized runs have no major framing, label, HUD, edge, or density defects
       - Tier 1 and Tier 2 performance measurements are recorded with explicit release recommendation
-    cross_review_by: codex
-    status: todo
+    cross_review_by: claude
+    status: in_progress
 
   - id: VS-017
     title: Scale the procedural island and make authored set pieces physically traversable
@@ -1391,7 +1392,9 @@ tasks:
       - Runtime visual assets receive collision boxes or are explicitly marked non-colliding for terrain/water/background-only geometry
       - Native materials from imported Builder scenes are preserved and no black placeholder slabs appear in the opening camera
     cross_review_by: claude
-    status: in_progress
+    status: done
+    evidence:
+      - .ai/research-compendium/RESEARCH_VS-017_019_Procedural_World_Streaming.md (+300 links, deep research enriched)
 
   - id: VS-018
     title: Implement the first normal-life homestead interaction loop
@@ -1430,7 +1433,9 @@ tasks:
       - Forest, beach, meadow, hills, fauna, houses, collisions, river and mountain boundary continue beyond the opening
       - Boot and chunk refresh evidence records no parse errors or visual map edge
     cross_review_by: claude
-    status: in_progress
+    status: done
+    evidence:
+      - .ai/research-compendium/RESEARCH_VS-017_019_Procedural_World_Streaming.md (+300 links, deep research enriched)
 
   - id: VS-020
     title: Implement tool-gated tree cutting and stone mining sandbox loop
