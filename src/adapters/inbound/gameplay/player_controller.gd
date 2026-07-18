@@ -154,6 +154,7 @@ func _ready() -> void:
 	_character_mesh = get_node_or_null("CharacterMesh")
 	if _character_mesh != null:
 		_character_mesh.rotation.y = PI
+		_ground_character_visual()
 		# Imported Kenney characters have no reliable facial blend-shapes. Add a
 		# small local face rig so the player blinks and visibly reacts to play.
 		_facial_performance = FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(_character_mesh)
@@ -188,6 +189,28 @@ func _ready() -> void:
 			# Return to velocity-driven movement anim when the clip finishes.
 			if not _anim_player.animation_finished.is_connected(_on_anim_finished):
 				_anim_player.animation_finished.connect(_on_anim_finished)
+
+
+## Imported character scenes are not consistent about their root origin. The
+## old model's feet were authored above its scene root, so physics put the
+## capsule on the terrain while the visible child hovered in mid-air. Measure
+## the real mesh bounds in CharacterMesh-local coordinates and place its lowest
+## point exactly at the controller origin (the capsule's floor contact plane).
+func _ground_character_visual() -> void:
+	if _character_mesh == null:
+		return
+	var lowest_y := INF
+	for mesh_variant in _character_mesh.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := mesh_variant as MeshInstance3D
+		if mesh_instance == null or mesh_instance.mesh == null:
+			continue
+		var mesh_aabb := mesh_instance.get_aabb()
+		for corner_index in range(8):
+			var local_corner := mesh_aabb.get_endpoint(corner_index)
+			var character_local_corner := _character_mesh.to_local(mesh_instance.to_global(local_corner))
+			lowest_y = minf(lowest_y, character_local_corner.y)
+	if is_finite(lowest_y):
+		_character_mesh.position.y -= lowest_y
 
 func _physics_process(delta: float) -> void:
 	if not is_processing():
