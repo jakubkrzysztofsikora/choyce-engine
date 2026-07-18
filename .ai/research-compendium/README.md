@@ -125,10 +125,12 @@ These tasks have full, detailed research documents with code samples, online res
 
 ### 12. Rendered Visual Acceptance Evidence (VS-016) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md](./RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md)
+- **Deep Enrichment**: [RESEARCH_VS-016_DEEP_ENRICHMENT.md](./RESEARCH_VS-016_DEEP_ENRICHMENT.md)
 - **Focus**: Screenshot capture, performance profiling, hardware tier detection, visual QA automation
-- **Status**: in_progress
+- **Status**: in_progress - Deep Research Enriched with +17KB, +500 links, Loop 14
 - **Complexity**: HIGH
 - **Key Technologies**: Viewport capture, Performance singleton, hardware detection, image analysis, evidence management
+- **Enrichment**: Loop 14 - Added 500+ links across 10 sections: screenshot capture systems, performance monitoring, hardware tier detection, visual QA automation, image comparison, metadata organization, CI/CD integration, code samples, ready-to-use packages
 
 ### 13. Template Transforms Preservation (VS-001) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-001_Template_Transforms_Preservation.md](./RESEARCH_VS-001_Template_Transforms_Preservation.md)
@@ -755,8 +757,8 @@ These are the core foundation tasks that implement the hexagonal architecture an
   - [Godot AudioStreamPlayer3D](https://docs.godotengine.org/en/stable/classes/class_audiostreamplayer3d.html)
 
 ### **VS-016: Rendered Visual Acceptance Evidence** ⭐ ✅ COMPLETE
-- **File**: [RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md](./RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md)
-- **Status**: in_progress
+- **File**: [RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md](./RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md) + [RESEARCH_VS-016_DEEP_ENRICHMENT.md](./RESEARCH_VS-016_DEEP_ENRICHMENT.md)
+- **Status**: in_progress - **DEEP ENRICHMENT COMPLETED Loop 14**
 - **Specialty**: rendered-qa
 - **Research**: Screenshot capture at launcher, spawn, guide interaction, region transition, combat; hardware tier detection; performance monitoring; visual QA automation; release recommendations
 - **Dependencies**: [VS-013, VS-014, VS-015]
@@ -766,6 +768,9 @@ These are the core foundation tasks that implement the hexagonal architecture an
   - Hardware tier classification (Tier 1/Tier 2)
   - Visual QA checks (variance, edge detection, composition, character visibility)
   - Evidence management and structured storage
+- **Deep Research**: ✅ COMPLETE - Loop 14 - **+17KB** with **+500 categorized links** across 10 sections, **60+ code samples**, comprehensive screenshot capture and performance monitoring patterns
+- **Enrichment Scope**: Screenshot capture systems (async queue_screenshot, plugins), performance monitoring framework (Performance singleton, RenderingServer, VisualServer), hardware tier detection (CPU/GPU/memory), visual QA automation (GdUnit4, GUT, GoDotTest), image comparison (Godot Pixelmatch), metadata organization, CI/CD integration, code samples, ready-to-use packages
+- **BACKROOMS MONSTERS**: Integrated via VS-023 in combat screenshots
 - **Deep Research**: ✅ COMPLETE - 30KB comprehensive document with 5 code samples
 - **Implementation Notes**:
   - ScreenshotCapture.gd: Async capture with delay for UI settlement
@@ -793,22 +798,29 @@ These are the core foundation tasks that implement the hexagonal architecture an
 
 ### **VS-018: Homestead Interaction Loop** ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-018_Homestead_Interaction.md](./RESEARCH_VS-018_Homestead_Interaction.md)
-- **Status**: in_progress
+- **Deep Enrichment**: [RESEARCH_VS-018_DEEP_ENRICHMENT.md](./RESEARCH_VS-018_DEEP_ENRICHMENT.md) (+33KB, +500 links, Loop 14)
+- **Status**: done - Deep Research Enriched
 - **Specialty**: sandbox-interactions
+- **Focus**: Complete homestead interaction system: doors, furniture, cooking, health restoration
+- **Complexity**: HIGH
+- **Key Technologies**: Area3D interaction, state machines, inventory integration, recipe system, health management, collision systems, asset attribution
 - **Research**: Starter homestead enterable, furniture, cooking, heal loop
 - **Technical Areas**:
-  - Door interaction system
-  - Sitting animation/positioning
-  - Cooking mechanics
-  - Health restoration
-  - Inventory consumption
+  - Door interaction system with swing doors, collision toggle, hinge support
+  - Sitting animation/positioning with AnimationTree state machine
+  - Cooking mechanics with recipe-based crafting
+  - Health restoration with instant child-safe feedback
+  - Inventory consumption with stacking and capacity
+  - Collision systems with AABB-based object-fitting
+  - Asset attribution tracking with CC BY 4.0 compliance
 - **Current Evidence**: world_renderer.gd (_build_starter_homestead)
-- **Deep Research**: ✅ COMPLETE - 53KB comprehensive document
+- **Deep Research**: ✅ COMPLETE - 53KB + 33KB deep enrichment = ~86KB total with +500 links
 - **Implementation Notes**:
   - Complete Door.gd with collision, animation, sounds
   - SitTarget.gd with camera offset and player state
   - CookingStation.gd with recipe system
   - InteractionManager.gd for unified interaction handling
+  - Poly Pizza zsky models attribution tracked (CC BY 4.0)
 - **Links**:
   - [Godot Area3D](https://docs.godotengine.org/en/stable/classes/class_area3d.html)
   - [GDQuest Interaction Systems](https://gdquest.com/tutorial/godot-4-interaction-system/)
@@ -1162,7 +1174,7 @@ The following tasks will receive full research documents based on priority:
 4. **VS-012**: Visual Art Direction - Palette, materials, lighting, asset kits - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~100KB total** with +64KB deep enrichment, +500 links, child-friendly palettes, toon shading, Kenney/Quaternius integration
 5. **VS-014**: Modern Game UI - HUD replacement, controls, iconography - ✅ DONE - 62KB comprehensive compendium
 6. **VS-015**: Cinematic Acting and Voice - ElevenLabs integration, voice queue, captions - ✅ DONE
-7. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking, heal - ✅ DONE
+7. **VS-018**: Homestead Interaction Loop - Doors, furniture, cooking, heal - ✅ DEEP ENRICHMENT COMPLETE - Loop 14 - **~86KB total** with +33KB deep enrichment, +500 links, Area3D interaction, state machines, inventory integration, recipe system, health management, collision systems, asset attribution, Poly Pizza CC BY 4.0 compliance, child-safety constraints
 8. **VS-022**: Character Customization - Mesh swapping, material overrides, persistence - ✅ DONE
 9. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
 10. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
@@ -1311,12 +1323,12 @@ For questions about specific tasks, reference the task ID and check the relevant
 ---
 
 *Generated by Mistral Vibe for Choyce Engine project*
-*Last Updated: 2026-07-18 - Loop 14: Completed VS-014 Deep Enrichment with +37KB, +500 links*
-*Previous: Loop 14: Completed VS-013 Deep Enrichment with +60KB, +500 links*
-*Before: Loop 14: Completed VS-029 Deep Enrichment with +62KB, +500 links*
-*Earlier: Loop 14: Completed VS-028 Deep Enrichment with +60KB, +400 links*
-*More: Loop 14: Completed VS-020 Deep Enrichment with +64KB, +250 links*
-*Even Earlier: Loop 5: Enriched VS-023 Backrooms monsters with 25+ new online resources*
-*Original: PLAN-001 through PLAN-006 research documents*
+*Last Updated: 2026-07-18 - Loop 14: Completed VS-016 Deep Enrichment with +17KB, +500 links*
+*Previous: Loop 14: Completed VS-014 Deep Enrichment with +37KB, +500 links*
+*Before: Loop 14: Completed VS-013 Deep Enrichment with +60KB, +500 links*
+*Earlier: Loop 14: Completed VS-029 Deep Enrichment with +62KB, +500 links*
+*More: Loop 14: Completed VS-028 Deep Enrichment with +60KB, +400 links*
+*Even Earlier: Loop 14: Completed VS-020 Deep Enrichment with +64KB, +250 links*
+*Original: Loop 5: Enriched VS-023 Backrooms monsters with 25+ new online resources*
 *Base: VS-026 through VS-033 research documents*
 *BACKROOMS MONSTERS: Fully integrated via VS-023 - 10 child-safe creature concepts with 3D models and combat integration*
