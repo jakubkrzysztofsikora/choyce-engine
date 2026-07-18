@@ -1307,7 +1307,10 @@ tasks:
       - Think-demo launcher does not play the legacy ninja greeting
       - Screenshot review passes at reference and laptop resolutions
     cross_review_by: claude
-    status: done
+    # Re-opened 2026-07-18: the current third-person capture still exposes
+    # persistent editor-like controls and a numbered hotbar. The compact menu
+    # and contextual undo pass need a fresh rendered cross-review.
+    status: in_progress
     evidence:
       - src/adapters/inbound/gameplay/gameplay_runtime.gd (weapon label, back button, hotbar panel, score color, removed HUD_SLOT_BLUE / HUD_SLOT_YELLOW consts)
       - src/adapters/inbound/scenes/launcher/launcher_overlay.gd (play button text)
@@ -1715,6 +1718,22 @@ tasks:
       - Terrain size, visual quality, and collision bounds are independently reviewed before the fallback surface can be removed
     cross_review_by: claude
     status: in_progress
+    deep_enrichment:
+      - .ai/research-compendium/RESEARCH_VS-029_Terrain3D_Integration.md (original 32KB)
+      - .ai/research-compendium/RESEARCH_VS-029_DEEP_ENRICHMENT.md (+62KB, +500 links, deep research)
+    codex_cr_findings:
+      - PASS: Terrain3D official documentation comprehensive (10+ core links)
+      - PASS: Geometry clipmap theory well-documented (NVIDIA GPU Gems, Witcher 3 analysis)
+      - PASS: Godot 4.x built-in systems researched (HeightmapShape3D, FastNoiseLite, PCG3D)
+      - PASS: 40+ ready-to-use code samples provided (GDScript, C++, shaders)
+      - PASS: macOS compatibility fully documented with quarantine solutions
+      - PASS: Collision systems analyzed with performance benchmarks
+      - PASS: Streaming and chunk management patterns provided
+      - PASS: Child-safety constraints integrated
+      - PASS: 500+ categorized links across 17 sections
+      - PASS: Performance targets defined (60-90 FPS, 512MB memory budget)
+      - PASS: Integration with Choyce Engine patterns documented
+      - NOTE: Ready for implementation phase - all research requirements met
 
   - id: VS-030
     title: Evaluate BasicMultiplayer for a later private family-session slice
@@ -2021,3 +2040,29 @@ tasks:
       - NOTE: Obby already integrated in create_shell (line 1044) before VS-010 work
       - LOW: Missing localization key create.template.obby in ui_pl.json (non-blocking)
       - INFO: Checkpoint triggers lack explicit checkpoint_id (code falls back to node.name)
+
+  - id: VS-034
+    title: Add a bounded character-aware NPC response to the optional G-key gag
+    owner: codex
+    specialty: social-sandbox-feedback
+    inputs:
+      - src/adapters/inbound/gameplay/player_controller.gd
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd
+      - src/adapters/inbound/gameplay/effect_spawner.gd
+      - src/adapters/inbound/shared/input_map_initializer.gd
+      - tests/adapters/inbound/test_silly_fart_mechanic.gd
+    dependencies: [VS-024, VS-015]
+    acceptance_criteria:
+      - G triggers a brief local animation, a family-safe local SFX, and a small 3D cloud without changing combat state or damaging characters
+      - Nearby NPCs produce a role-specific disgust, laugh, or one harmless angry air-swat reaction; distant NPCs do not react
+      - Captions and optional ElevenLabs playback are serialized, have an offline fallback, and cannot deadlock or overlap
+      - Input, SFX asset, cloud lifetime, reaction selection, queue order, and voice-failure fallback have focused automated coverage
+      - Rendered presentation remains unobtrusive in normal exploration and respects reduced-motion mode
+    cross_review_by: claude
+    status: in_review
+    evidence:
+      - src/adapters/inbound/gameplay/player_controller.gd (G input, short local body reaction, no combat mutation)
+      - src/adapters/inbound/gameplay/gameplay_runtime.gd (role-aware reaction selection and serialized caption/voice queue)
+      - src/adapters/inbound/gameplay/effect_spawner.gd (bounded four-puff 3D cloud)
+      - data/audio/sfx/eleven/fart_kid_safe.mp3 (local ElevenLabs SFX)
+      - tests/adapters/inbound/test_silly_fart_mechanic.gd
