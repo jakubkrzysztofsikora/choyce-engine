@@ -245,7 +245,10 @@ func _belongs_to_terrain_runtime(candidate: Variant, terrain_node: Node) -> bool
 
 func get_spawn_position(index: int = 0) -> Vector3:
 	if _spawn_points.is_empty():
-		return Vector3(0, 2, 0)
+		# The permanent safety floor and the Terrain3D opening both meet at y=0.
+		# A 2m fallback made any template import hiccup visibly launch the child
+		# above the rendered meadow, and hid the real spawn-marker regression.
+		return Vector3.ZERO
 	if index < 0 or index >= _spawn_points.size():
 		return _spawn_points[0]
 	return _spawn_points[index]
@@ -643,11 +646,13 @@ func _apply_toon_to_prop(root: Node, display_name: String = "") -> void:
 		# the removed card layers. Bind it to the grounded thicket palette too.
 		fallback_tint = CHOYCE_SOFT_GREEN.darkened(0.08)
 		force_opening_palette = true
-	elif name_key.begins_with("opening_grove_grass_foreground") \
+	elif name_key.begins_with("opening_grove_grass") \
 		or name_key.begins_with("openingriverbanklowbush"):
 		# Several imported bush/leaf cards carry a saturated turquoise palette swatch
-		# rather than a usable albedo. In the actual opening they read like stray
-		# UI glyphs; bind them to the same restrained foliage family as the trees.
+		# rather than a usable albedo. `opening_grove_grass_*` was accidentally
+		# excluded by the former `...grass_foreground` prefix, leaving the first
+		# frame dotted with cyan crystal-like clumps. Bind every opening grass
+		# instance to the same restrained foliage family as the trees.
 		fallback_tint = CHOYCE_SOFT_GREEN.darkened(0.12)
 		force_opening_palette = true
 	elif name_key.contains("chicken") or name_key.contains("kura"):
@@ -823,6 +828,8 @@ func _build_adventure_dressing(seed_source: String = "adventure") -> void:
 	_build_terrain3d_surface(seed_source)
 	_build_adventure_route()
 	_build_opening_grove()
+	_build_opening_flank_groundcover(seed_source)
+	_build_opening_basecamp_tableau()
 
 	# The first thirty metres must already feel like a place, not a runway.
 	# Use a visible house, yard, well, crops and a physical sign for the guide.
@@ -864,6 +871,75 @@ func _build_terrain3d_surface(seed_source: String) -> void:
 		_terrain_import_session_token += 1
 	else:
 		surface.queue_free()
+
+
+## A place to begin, not an empty arena.  This intentionally compact camp is
+## assembled from the supplied Survival Kit and lives off the central bridge
+## lane: it frames the first view, gives the guide and bird a believable place
+## to stand, and teaches the child that storage, rest and crafting belong to
+## the sandbox before the larger world opens up.
+func _build_opening_basecamp_tableau() -> void:
+	const CAMP := "res://data/models/kenney/survival_kit/Models/GLB format/"
+	# Keep the 4m central route clear from spawn to bridge.  The camp sits left
+	# of that line, where its firelight and tent silhouette create depth without
+	# becoming an invisible obstacle in the first ten seconds of play.
+	_add_visual_asset("OpeningBasecampTent", Vector3(-12.4, 0.0, -8.8),
+		Vector3.ONE * 2.35, -0.38, CAMP + "tent.glb", true, Vector3(3.3, 2.05, 3.15))
+	_add_visual_asset("OpeningBasecampHalfTent", Vector3(-15.6, 0.0, -6.2),
+		Vector3.ONE * 2.05, -0.78, CAMP + "tent-canvas-half.glb", true, Vector3(2.55, 1.55, 2.15))
+	_add_visual_asset("OpeningBasecampFire", Vector3(-8.3, 0.0, -9.5),
+		Vector3.ONE * 1.48, 0.15, CAMP + "campfire-pit.glb", true, Vector3(1.15, 0.42, 1.15))
+	_add_visual_asset("OpeningBasecampChest", Vector3(-13.5, 0.0, -12.2),
+		Vector3.ONE * 1.34, 0.45, CAMP + "chest.glb", true, Vector3(1.26, 0.92, 0.92))
+	_add_visual_asset("OpeningBasecampBarrel", Vector3(-10.9, 0.0, -12.3),
+		Vector3.ONE * 1.22, -0.20, CAMP + "barrel.glb", true, Vector3(0.82, 1.14, 0.82))
+	# Two low logs make the fire read as a camp circle. They use close-fit
+	# collision, so a child naturally walks around instead of through furniture.
+	_add_visual_asset("OpeningBasecampLogWest", Vector3(-9.9, 0.0, -8.0),
+		Vector3.ONE * 1.42, 1.20, CAMP + "tree-log-small.glb", true, Vector3(1.55, 0.46, 0.52))
+	_add_visual_asset("OpeningBasecampLogSouth", Vector3(-7.1, 0.0, -11.3),
+		Vector3.ONE * 1.42, -0.20, CAMP + "tree-log-small.glb", true, Vector3(1.55, 0.46, 0.52))
+	var firelight := OmniLight3D.new()
+	firelight.name = "OpeningBasecampFirelight"
+	firelight.position = _terrain_grounded_position(Vector3(-8.3, 0.0, -9.5)) + Vector3(0.0, 1.15, 0.0)
+	firelight.light_color = Color(1.0, 0.40, 0.14)
+	firelight.light_energy = 1.15
+	firelight.omni_range = 7.2
+	firelight.shadow_enabled = false
+	add_child(firelight)
+
+
+## A forest starts at ankle height, not with a row of canopy meshes. Build
+## deterministic flank clusters so each fresh session is navigable and familiar
+## while the 4m bridge lane and camp circle remain deliberately clear.
+func _build_opening_flank_groundcover(seed_source: String) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s_opening_flank_groundcover_v1" % seed_source)
+	var grass_path := KENNEY_NK + "grass_leafsLarge.glb"
+	var bush_path := KENNEY_NK + "plant_bushDetailed.glb"
+	var mushroom_path := KENNEY_NK + "mushroom_tanGroup.glb"
+	for index in range(44):
+		var side := -1.0 if index % 2 == 0 else 1.0
+		# Nothing comes within 7m of the bridge centre; positions are clustered
+		# rather than a uniform scatter so there are readable little clearings.
+		var position := Vector3(
+			side * rng.randf_range(8.5, 29.0),
+			0.0,
+			rng.randf_range(-4.0, -26.0))
+		if position.distance_to(Vector3(-8.3, 0.0, -9.5)) < 4.8:
+			continue # retain the campfire seating circle
+		if index % 5 == 0:
+			_add_visual_asset("opening_grove_bush_flank_%02d" % index, position,
+				Vector3.ONE * rng.randf_range(1.28, 1.68), rng.randf_range(0.0, TAU),
+				bush_path, true, Vector3(1.28, 1.10, 1.12))
+		elif index % 7 == 0:
+			_add_visual_asset("opening_grove_flower_flank_%02d" % index, position,
+				Vector3.ONE * rng.randf_range(0.95, 1.25), rng.randf_range(0.0, TAU),
+				mushroom_path, false)
+		else:
+			_add_visual_asset("opening_grove_grass_flank_%02d" % index, position,
+				Vector3.ONE * rng.randf_range(1.08, 1.62), rng.randf_range(0.0, TAU),
+				grass_path, false)
 
 
 func _build_opening_grove() -> void:
@@ -1209,6 +1285,10 @@ func _build_opening_forest_mass(seed_source: String) -> void:
 		# The first forest masses begin just beyond the north bank (z=-33).
 		# Bring them closer to fill the gap and frame the bridge exit into woodland.
 		# 10-15m behind the river creates a credible tree line without crowding the crossing.
+		# Close forest: directly behind the river bank (z=-33) for immediate framing
+		Vector3(-29.0, 0.0, -36.0), Vector3(-29.0, 0.0, -39.0),
+		Vector3(30.0, 0.0, -37.0), Vector3(30.0, 0.0, -40.0),
+		# Mid forest: transition zone
 		Vector3(-29.0, 0.0, -46.0), Vector3(-29.0, 0.0, -56.0),
 		Vector3(30.0, 0.0, -48.0),
 		Vector3(-56.0, 0.0, -72.0), Vector3(57.0, 0.0, -74.0),
@@ -1217,6 +1297,7 @@ func _build_opening_forest_mass(seed_source: String) -> void:
 		Vector3(-164.0, 0.0, -192.0), Vector3(164.0, 0.0, -195.0),
 		Vector3(164.0, 0.0, -205.0),
 		# Additional near clusters to establish immediate woodland edge
+		Vector3(-42.0, 0.0, -41.0), Vector3(42.0, 0.0, -43.0),
 		Vector3(-42.0, 0.0, -52.0), Vector3(42.0, 0.0, -54.0),
 	]
 	for cluster_index in forest_clusters.size():
@@ -1224,11 +1305,19 @@ func _build_opening_forest_mass(seed_source: String) -> void:
 		for tree_index in range(FOREST_MASS_TREES_PER_CLUSTER):
 			# The more distant groves have a larger footprint.  That creates a
 			# believable woodland boundary instead of identical circular clumps.
-			var spread_x := forest_rng.randf_range(10.0, 22.0 + cluster_index * 1.8)
-			var spread_z := forest_rng.randf_range(7.0, 17.0 + cluster_index * 1.25)
+			# distance_factor: 0.0 for clusters at z=-35, 1.0 for clusters at z=-55
+			var distance_factor := minf(1.0, maxf(0.0, (-cluster_center.z - 35.0) / 20.0))
+			var spread_x := forest_rng.randf_range(8.0, 10.0 + distance_factor * 12.0)
+			# Z spread: toward river (south/positive Z) is limited to 3m for close clusters,
+			# away from river (north/negative Z) extends up to 18m for distant clusters.
+			# This keeps trees north of the river (z <= -33) while allowing natural spread.
+			var spread_z_south := minf(3.0 + distance_factor * 7.0, 10.0)  # limit toward river
+			var spread_z_north := 10.0 + distance_factor * 8.0  # spread away from river
 			var position := cluster_center + Vector3(
 				forest_rng.randf_range(-spread_x, spread_x), 0.0,
-				forest_rng.randf_range(-spread_z, spread_z))
+				forest_rng.randf_range(-spread_z_north, spread_z_south))
+			# Clamp to keep forest trees north of the river (z <= -33). The north bank is at z=-33.
+			position.z = minf(position.z, -33.0)
 			# Never close the child-scale 20m bridge approach; the deeper silhouette
 			# can connect behind it without becoming an invisible collision wall.
 			if absf(position.x) < 18.0 and position.z > -132.0:
@@ -1561,13 +1650,13 @@ func _build_opening_bridge() -> void:
 			Vector3(1.0, 1.0, 1.8), PI, approach_stair, false)
 	for side in [-1.0, 1.0]:
 		for z in [-32.0, -28.0, -24.0, -20.0, -16.0]:
+			# Rail segments carry their own collision; no separate invisible box needed.
+			# This ensures collision matches the visible fence geometry per VS-040.
 			# Each visible rail owns a narrow matching physical profile.  Keep the
 			# central deck fully walkable while stopping a child from stepping through
 			# an apparently solid fence into the river.
 			_add_visual_asset("OpeningBridgeRail_%s_%d" % ["L" if side < 0.0 else "R", abs(int(z))],
 				Vector3(side * 1.92, 0.69, z), Vector3.ONE, PI * 0.5, fence_segment, true,
-				# The source segment is rotated 90 degrees, so its local long axis must
-				# be X for the world-space collider to extend along the river (Z).
 				Vector3(3.55, 1.18, 0.22))
 	_build_opening_bridge_shoreline()
 
@@ -2398,13 +2487,13 @@ func _build_meandering_river_shoreline() -> void:
 
 
 func _add_river_shore_quad(surface: SurfaceTool, inner0: Vector3, outer0: Vector3, inner1: Vector3, outer1: Vector3, t0: float, t1: float) -> void:
-	# The render ribbon is parented at +0.10m and authored at local y=+0.10m,
-	# therefore its real waterline is y=0.20. Feather down from that waterline
-	# to sampled terrain rather than floating a whole bank mesh above the island.
+	# Inner edge at water surface (y=0.203, matching the water mesh at y=0.10 + 0.103).
+	# Outer edge at exact terrain height to prevent floating. This grounds the
+	# wet-bank ribbon to the real world surface outside the flat opening.
 	inner0.y = 0.203
-	outer0.y = _terrain_grounded_position(Vector3(outer0.x, 0.0, outer0.z)).y + 0.018
+	outer0.y = _terrain_grounded_position(Vector3(outer0.x, 0.0, outer0.z)).y
 	inner1.y = 0.203
-	outer1.y = _terrain_grounded_position(Vector3(outer1.x, 0.0, outer1.z)).y + 0.018
+	outer1.y = _terrain_grounded_position(Vector3(outer1.x, 0.0, outer1.z)).y
 	surface.set_uv(Vector2(t0 * 28.0, 0.0)); surface.add_vertex(inner0)
 	surface.set_uv(Vector2(t0 * 28.0, 1.0)); surface.add_vertex(outer0)
 	surface.set_uv(Vector2(t1 * 28.0, 0.0)); surface.add_vertex(inner1)
