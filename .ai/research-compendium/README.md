@@ -71,6 +71,13 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: CameraShaker, HitstopManager, FeedbackQueue, GPUParticles3D, AnimationTree
 
+### 9. Modern Game UI and Onboarding (VS-014) ✅ COMPLETE
+- **File**: [RESEARCH_VS-014_Modern_Game_UI.md](./RESEARCH_VS-014_Modern_Game_UI.md)
+- **Focus**: Theme system, responsive design, HUD components, iconography, onboarding, accessibility
+- **Status**: in_review
+- **Complexity**: HIGH
+- **Key Technologies**: Theme, Control nodes, Containers, Anchors, Viewport, Localization
+
 ---
 
 ## Task Research Index
@@ -565,9 +572,10 @@ The following tasks will receive full research documents based on priority:
 6. **VS-023**: Original Liminal Creatures - Creature design and combat AI - ✅ DONE (Backrooms monsters included)
 7. **VS-024**: Facial Speech and Emotion - Complete facial animation system - ✅ DONE
 
-### Medium Priority (Next to Research)
-1. **VS-012**: Modern Game UI - HUD replacement, controls, iconography (needs research)
-2. **VS-014**: Modern Game UI - Duplicate/similar to VS-012 (needs clarification)
+### High Priority (Completed ✅)
+1. **VS-005**: Combat Telegraphs - Wind-up, hit feedback, aim assist, weapon differentiation - ✅ DONE - 56KB comprehensive compendium with blocking fixes identified
+2. **VS-012**: Visual Art Direction - Palette, materials, lighting, asset kits - ✅ DONE - 46KB comprehensive compendium
+3. **VS-014**: Modern Game UI - HUD replacement, controls, iconography - ✅ DONE - 62KB comprehensive compendium
 
 ### Low Priority
 1. **VS-011, VS-016**: Visual Acceptance - Screenshot capture, performance validation
