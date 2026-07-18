@@ -199,11 +199,18 @@ tasks:
       - Godot 4 blend-shape lookup uses MeshInstance3D APIs and safe no-ops for supplied models without compatible shapes
       - A controlled autoplay launch reaches a live Adventure session without GDScript runtime errors before world setup and audio wiring
     cross_review_by: claude
-    status: in_review
+    status: done
+    codex_cr_findings:
+      - PASS: Legacy NutritionHUD panel is correctly hidden in _ready() without aborting startup. The standalone CanvasLayer at layer 100 is handled safely with null checks.
+      - PASS: _find_first_mesh_instance() recursively searches Node3D hierarchy for MeshInstance3D, satisfying the requirement to resolve imported character roots without assuming structure.
+      - PASS: _set_named_blend_shape() uses MeshInstance3D.find_blend_shape_by_name() API and safely no-ops when blend shape index is -1, preventing errors on models without compatible shapes.
+      - PASS: Contract test verifies NutritionHUD scene typing, legacy panel hidden state, imported mesh resolution, and no-blend-shape acceptance.
+      - PASS: Controlled autoplay evidence confirms Adventure session launches in 2375ms with no GDScript runtime errors before world setup and audio wiring.
     evidence:
       - /tmp/choyce-world-audit-runtime-clean.png (controlled autoplay capture: image-led opening HUD without legacy nutrition text)
       - controlled autoplay log, 2026-07-18 (Adventure session live in 2375ms with no GDScript runtime errors)
       - tests/adapters/inbound/test_nutrition_hud_contract.gd (scene typing, hidden legacy panel, imported mesh and no-blend-shape contract)
+      - .ai/reviews/VS-045-codex-review-2026-07-18.json (APPROVE: all acceptance criteria met)
 
   - id: VS-042
     title: Explore bounded tailnet LiteLLM social intelligence for NPCs and monsters
