@@ -69,6 +69,11 @@ func _run_tests() -> void:
 	_test_environment_assets_get_pbr_detail_layer()
 	_test_procedural_tree_scale_and_palm_source_are_human_scale()
 	_test_opening_grove_has_a_dense_human_scale_frame()
+	_test_opening_bridge_shore_uses_the_textured_stone_path()
+	_test_opening_riverbank_has_layered_thickets_outside_the_bridge_lane()
+	_test_opening_riverbank_visuals_stay_out_of_swim_channel()
+	_test_quaternius_forest_surface_profiles_are_explicit()
+	_test_quaternius_forest_profiles_apply_at_runtime()
 	_test_opening_forest_mass_is_a_real_colliding_volume()
 	_test_opening_is_not_polluted_by_nearby_biomes_or_river_fence()
 	_test_streamed_procedural_chunks_stay_bounded()
@@ -348,16 +353,125 @@ func _test_opening_grove_has_a_dense_human_scale_frame() -> void:
 		"opening uses a layered, human-scale tree frame rather than sparse prototype scatter")
 
 
+## The visible river approach uses supplied cliff modules. Their import has a
+## near-white swatch, so preserve the regression guard that prevents a blank
+## cube from returning to the centre of the player-facing bridge frame.
+func _test_opening_bridge_shore_uses_the_textured_stone_path() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains('name_key.begins_with("openingbridgeshore")')
+		and source.contains('key.contains("openingbridgeshore")')
+		and source.contains("fallback_tint = CHOYCE_WARM_BEIGE.darkened(0.20)")
+		and source.contains('KENNEY_NK + "rock_largeD.glb"')
+		and not source.contains('KENNEY_NK + "cliff_blockSlope_stone.glb"'),
+		"opening bridge shoreline modules cannot render as white placeholder cubes")
+
+
+func _test_opening_riverbank_has_layered_thickets_outside_the_bridge_lane() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains("var bank_thickets := [")
+		and source.contains("Vector3(-10.2, 0.0, -7.8)")
+		and source.contains("Vector3(19.8, 0.0, -45.0)")
+		and source.contains("OpeningRiverbankThicketBush_")
+		and source.contains("OpeningRiverbankThicketRock_")
+		and source.contains('name_key.begins_with("openingriverbankthicket")')
+		and source.contains("Vector3(1.28 * thicket_scale, 1.10, 1.12 * thicket_scale)"),
+		"riverbank uses grounded, colliding bush-and-rock thickets outside the child bridge corridor")
+
+
+## Decorative plants placed inside a water volume appeared as floating cyan
+## shards in the live camera. Build the actual bank habitat and measure every
+## named bank prop against the renderer's meandering water cross-section.
+func _test_opening_riverbank_visuals_stay_out_of_swim_channel() -> void:
+	var r := _make_renderer()
+	r._build_opening_riverbank_habitat()
+	var all_on_land := true
+	for child_variant in r.get_children():
+		var child := child_variant as Node3D
+		if child == null or not String(child.name).begins_with("OpeningRiverbank"):
+			continue
+		var banks := r._river_bank_pair(child.position.x)
+		var left: Vector3 = banks[0]
+		var right: Vector3 = banks[1]
+		var center := (left + right) * 0.5
+		var side := Vector2(left.x - center.x, left.z - center.z).normalized()
+		var lateral_distance := absf(Vector2(child.position.x - center.x, child.position.z - center.z).dot(side))
+		var water_half_width := left.distance_to(right) * 0.5
+		if lateral_distance <= water_half_width + 0.25:
+			all_on_land = false
+			break
+	_assert(all_on_land, "opening riverbank vegetation and rocks remain outside the physical swim channel")
+	r.queue_free()
+
+
+## The imported CC0 trees expose Green/DarkGreen and Wood materials, but their
+## varied normals need the dedicated readable foliage shader. Bind every
+## selected source to an explicit profile rather than passing the same generic
+## 1.65 × 13 × 1.65m collider to unrelated trunk shapes.
+func _test_quaternius_forest_surface_profiles_are_explicit() -> void:
+	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
+	_assert(source.contains("const OPENING_FOREST_TREE_COLLISION_PROFILES := {")
+		and source.contains("CommonTree_1.fbx\": Vector3(1.20, 10.0, 1.20)")
+		and source.contains("PineTree_1.fbx\": Vector3(0.88, 10.5, 0.88)")
+		and source.contains("BirchTree_1.fbx\": Vector3(0.72, 12.0, 0.72)")
+		and source.contains("func _make_readable_forest_foliage_material(variant_tint: Color = Color.WHITE)")
+		and source.contains("var is_quaternius_forest_tree :=")
+		and source.contains("func _forest_foliage_tint_for_asset(name_key: String)")
+		and source.contains("trunk_collision"),
+		"CC0 forest variants use explicit readable foliage and trunk-collision profiles")
+
+
+## The prior review caught the exact failure source checks miss: valid paths
+## rendered as black crowns, while every tree used an unrelated collider. Build
+## the deterministic forest and verify the instantiated scene has the readable
+## foliage override and a trunk-sized world collision before accepting a change.
+func _test_quaternius_forest_profiles_apply_at_runtime() -> void:
+	var r := _make_renderer()
+	r._build_opening_forest_mass("runtime_profile_contract")
+	var forest_trees := r.find_children("OpeningForestMass_*", "StaticBody3D", false, false)
+	var readable_foliage_count := 0
+	var fitted_trunk_count := 0
+	for tree_variant in forest_trees:
+		var tree := tree_variant as StaticBody3D
+		var collision: CollisionShape3D = null
+		for child in tree.get_children():
+			if child is CollisionShape3D:
+				collision = child as CollisionShape3D
+				break
+		var shape := collision.shape as BoxShape3D if collision != null else null
+		if shape != null and shape.size.x >= 1.70 and shape.size.x <= 4.80 \
+			and shape.size.z >= 1.70 and shape.size.z <= 4.80 \
+			and shape.size.y >= 24.0 and shape.size.y <= 48.0:
+			fitted_trunk_count += 1
+		for mesh_variant in tree.find_children("*", "MeshInstance3D", true, false):
+			var mesh_instance := mesh_variant as MeshInstance3D
+			if mesh_instance.mesh == null:
+				continue
+			for surface_index in mesh_instance.mesh.get_surface_count():
+				var material := mesh_instance.get_surface_override_material(surface_index) as ShaderMaterial
+				if material != null and material.shader == r.FOREST_FOLIAGE_SHADER:
+					readable_foliage_count += 1
+	_assert(forest_trees.size() >= 80 and readable_foliage_count >= forest_trees.size()
+		and fitted_trunk_count == forest_trees.size(),
+		"instantiated CC0 forest has readable canopy overrides and bounded trunk collisions")
+	r.queue_free()
+
+
 func _test_opening_forest_mass_is_a_real_colliding_volume() -> void:
 	var source := FileAccess.get_file_as_string("res://src/adapters/inbound/gameplay/world_renderer.gd")
-	_assert(source.contains("const FOREST_MASS_CLUSTER_COUNT := 8")
-		and source.contains("const FOREST_MASS_TREES_PER_CLUSTER := 12")
-		and source.contains("Vector3(-46.0, 0.0, -90.0)")
-		and source.contains("Vector3(166.0, 0.0, -200.0)")
+	_assert(source.contains("const FOREST_MASS_TREES_PER_CLUSTER := 12")
+		and source.contains("forest-canopy-stylized-v2.png")
+		and source.contains("bark012/Bark012_1K-JPG_Color.jpg")
+		and source.contains("func _make_bark_toon_material()")
+		and source.contains("Vector3(-29.0, 0.0, -56.0)")
+		and source.contains("Vector3(164.0, 0.0, -205.0)")
 		and source.contains('const OPENING_OAK_TREE := "res://data/models/props/oak_tree.gltf"')
-		and source.contains('var tree_paths := [OPENING_OAK_TREE]')
-		and source.contains("forest_rng.randf_range(1.45, 2.35)")
-		and source.contains("Vector3(1.65, 13.0, 1.65)")
+		and source.contains("const OPENING_FOREST_TREE_PATHS := [")
+		and source.contains("nature/CommonTree_1.fbx")
+		and source.contains("nature/PineTree_1.fbx")
+		and source.contains("var tree_paths := OPENING_FOREST_TREE_PATHS")
+		and source.contains("forest_rng.randf_range(2.45, 3.95)")
+		and source.contains("OPENING_FOREST_TREE_COLLISION_PROFILES.get(tree_path")
+		and source.contains("trunk_collision")
 		and source.contains("_build_opening_forest_mass(seed_source)"),
 		"opening has deterministic, layered, human-scale colliding woodland beyond the bridge")
 
@@ -428,35 +542,81 @@ func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 	r._build_opening_bridge()
 	var river := r.get_node_or_null("StarterRiver") as Area3D
 	var river_visual := river.get_node_or_null("WaterSurface") as MeshInstance3D if river != null else null
-	var river_collision := river.get_node_or_null("WaterVolumeShape") as CollisionShape3D if river != null else null
 	var river_mesh := river_visual.mesh as ArrayMesh if river_visual != null else null
+	# These runtime shapes have no PackedScene owner; include unowned direct
+	# children so this test validates the actual generated water contract.
+	var water_volumes := river.find_children("WaterVolumeSegment_*", "CollisionShape3D", false, false) if river != null else []
+	var bridge_pair := r._river_bank_pair(0.0)
+	var bridge_center: Vector3 = (bridge_pair[0] + bridge_pair[1]) * 0.5
 	var deck := r.get_node_or_null("OpeningBridgeDeck") as StaticBody3D
 	var deck_collision := r._first_collision_shape(deck) if deck != null else null
-	var south_ramp := r.get_node_or_null("OpeningBridgeRampSouth") as StaticBody3D
-	var north_ramp := r.get_node_or_null("OpeningBridgeRampNorth") as StaticBody3D
-	var left_rail := r.get_node_or_null("OpeningBridgeRail_L") as StaticBody3D
-	var right_rail := r.get_node_or_null("OpeningBridgeRail_R") as StaticBody3D
+	var south_ramp := r.get_node_or_null("OpeningBridgeRampSouth") as Node3D
+	var north_ramp := r.get_node_or_null("OpeningBridgeRampNorth") as Node3D
+	# The supplied stair meshes are intentionally visual-only.  The continuous
+	# traversal surface below owns the single authoritative collision profile.
+	var south_stairs := r.find_children("OpeningBridgeSouthApproach_*", "Node3D", false, false)
+	var north_stairs := r.find_children("OpeningBridgeNorthApproach_*", "Node3D", false, false)
+	var rails := r.find_children("OpeningBridgeRail_*", "Node3D", false, false)
+	# Verify each rail node has its own StaticBody3D from the GLTF (native collision)
+	var rails_with_collision := 0
+	for rail in rails:
+		var rail_body := rail.get_child_count() > 0 and rail.get_child(0) is StaticBody3D
+		if rail_body:
+			rails_with_collision += 1
 	_assert(river != null and river_visual != null and river.position.y > 0.0 \
-		and river_collision != null and river_mesh != null and river_mesh.get_surface_count() > 0,
+		and river_mesh != null and river_mesh.get_surface_count() > 0,
 		"river keeps its raised curved-surface and physical-volume contract")
-	_assert(is_zero_approx(river.position.z) and is_equal_approx(river_collision.position.z, -24.0),
-		"river ribbon and swimming volume share the authored bridge crossing instead of applying the Z offset twice")
+	var water_material := river_visual.material_override as ShaderMaterial if river_visual != null else null
+	_assert(water_material != null
+		and float(water_material.get_shader_parameter("dudv_tiling")) >= 0.12
+		and float(water_material.get_shader_parameter("dudv_tiling")) <= 0.20
+		and float(water_material.get_shader_parameter("dudv_strength")) >= 0.03,
+		"local-world river flow retains repeated SimpleWater distortion at runtime")
+	var water_vertices := river_mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array if river_mesh != null else PackedVector3Array()
+	_assert(water_vertices.size() >= WorldRenderer.RIVER_RENDER_SEGMENT_COUNT * WorldRenderer.RIVER_RENDER_WIDTH_SUBDIVISIONS * 6,
+		"river render mesh has the required tessellated surface, not only a matching constant")
+	var runtime_shallow := water_material.get_shader_parameter("shallow_color") as Color if water_material != null else Color.BLACK
+	var runtime_deep := water_material.get_shader_parameter("deep_color") as Color if water_material != null else Color.BLACK
+	_assert(runtime_shallow.get_luminance() > runtime_deep.get_luminance()
+		and runtime_shallow.g > runtime_shallow.r
+		and runtime_deep.b > runtime_deep.r,
+		"runtime water material keeps a readable turquoise shore and deeper blue channel")
+	_assert(is_zero_approx(river.position.z) and is_equal_approx(bridge_center.z, -24.0)
+		and water_volumes.size() == WorldRenderer.RIVER_SEGMENT_COUNT,
+		"river ribbon and sampled swimming volumes share the authored bridge crossing without a fixed Z box")
+	var volume_widths_are_river_scale := true
+	for volume_variant in water_volumes:
+		var volume := volume_variant as CollisionShape3D
+		var shape := volume.shape as BoxShape3D if volume != null else null
+		if shape == null or shape.size.z < 14.5 or shape.size.x < 20.0:
+			volume_widths_are_river_scale = false
+			break
+	_assert(volume_widths_are_river_scale,
+		"every meander segment exposes a bank-to-bank shallow-water volume instead of a straight invisible strip")
 	_assert(water_shader_source.contains("depth_draw_opaque, unshaded, fog_disabled")
 		and water_shader_source.contains("float foam = crest_foam + bank_foam;")
 		and water_shader_source.contains("varying float river_depth;")
 		and water_shader_source.contains("uniform sampler2D dudv_map")
+		and water_shader_source.contains("float flow_streak_a = sin")
+		and water_shader_source.contains("MODEL_MATRIX * vec4(VERTEX, 1.0)")
+		and water_shader_source.contains("flow_position = world_pos.xz")
 		and water_shader_source.contains("float channel_depth = smoothstep")
 		and water_shader_source.contains("float fresnel = pow")
 		and water_shader_source.contains("ALPHA = 1.0"),
 		"river stays opaque, animated, depth-graded and sky-reflective without extra viewports")
+	_assert(WorldRenderer.RIVER_RENDER_SEGMENT_COUNT > WorldRenderer.RIVER_SEGMENT_COUNT
+		and WorldRenderer.RIVER_RENDER_WIDTH_SUBDIVISIONS >= 8,
+		"water render mesh has denser longitudinal and cross-river geometry than collision volumes")
 	_assert(WorldRenderer.CHOYCE_WATER_SHALLOW.get_luminance() < 0.25
 		and WorldRenderer.CHOYCE_WATER_DEEP.get_luminance() < 0.18,
 		"river palette is materially darker than the sky instead of a white floor")
 	_assert(deck != null and deck_collision != null,
 		"bridge exposes one continuous deck collision beneath its visual tile assembly")
-	_assert(south_ramp != null and north_ramp != null,
-		"bridge exposes explicit collision approaches at both banks")
-	_assert(left_rail != null and right_rail != null,
+	_assert(south_ramp != null and north_ramp != null \
+		and south_stairs.size() == 2 and north_stairs.size() == 2 \
+		and deck_collision != null and deck_collision.shape is ConcavePolygonShape3D,
+		"bridge exposes visible approaches on one continuous colliding walk surface")
+	_assert(rails_with_collision >= 2,
 		"bridge exposes narrow rail collision bodies at both sides")
 	r.queue_free()
 
