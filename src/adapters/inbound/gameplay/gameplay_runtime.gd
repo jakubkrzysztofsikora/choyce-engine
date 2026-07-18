@@ -2,6 +2,7 @@ class_name GameplayRuntime
 extends Node3D
 
 const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
+const SKY3D_SCRIPT := preload("res://addons/sky_3d/src/Sky3D.gd")
 
 signal session_ended
 ## Emitted at session-end with the WinOutcome so HUD/celebration
@@ -25,6 +26,10 @@ var _screen_feedback: ScreenFeedback
 var _victory_sequence: VictorySequence
 var _ambient_player: AudioStreamPlayer
 var _ambient_particles: GPUParticles3D
+var _adventure_sky: WorldEnvironment = null
+var _adventure_legacy_environment: WorldEnvironment = null
+var _adventure_legacy_environment_resource: Environment = null
+var _adventure_legacy_light_visibility: Dictionary = {}
 
 # Rules engine — injected by main.gd via setup_rules() before start_session.
 # Optional: GameplayRuntime keeps working with null rules (legacy worlds).
@@ -294,7 +299,12 @@ func start_session(world: World, session: Session) -> void:
 	# its world picker / show an in-session badge. No-op when shell bridge
 	# is off (default).
 	_notify_shell("notify_session_started", [world.world_id, _profile_id])
+	var use_adventure_sky := world.theme in ["adventure", "tropical_fantasy"]
+	if not use_adventure_sky:
+		_teardown_adventure_sky()
 	_world_renderer.render_world(world)
+	if use_adventure_sky:
+		_setup_adventure_sky()
 	_set_legacy_ground_visual_visible(not _world_renderer.has_runtime_terrain_surface())
 	_set_legacy_ground_collision_enabled(not _world_renderer.has_runtime_terrain_collision())
 	print("[gameplay] render_world done in %d ms" % (Time.get_ticks_msec() - t0))
@@ -381,6 +391,81 @@ func _set_legacy_ground_collision_enabled(value: bool) -> void:
 	var ground_collision := get_node_or_null("GroundPlane/GroundCollider") as CollisionShape3D
 	if ground_collision != null:
 		ground_collision.set_deferred("disabled", not value)
+
+
+## The installed MIT-licensed Sky3D addon replaces the static procedural sky
+## only for the Adventure world. We preserve the established Environment's
+## fog, GI, post-processing and restrained palette, while Sky3D supplies
+## moving daylight, moonlight and cloud layers that make the large island read
+## as an explorable place rather than a frozen test scene.
+func _setup_adventure_sky() -> void:
+	if _adventure_sky != null and is_instance_valid(_adventure_sky):
+		return
+	var legacy_environment := get_node_or_null("WorldEnvironment") as WorldEnvironment
+	var environment := Environment.new()
+	if legacy_environment != null and legacy_environment.environment != null:
+		_adventure_legacy_environment = legacy_environment
+		_adventure_legacy_environment_resource = legacy_environment.environment
+		environment = legacy_environment.environment.duplicate(true) as Environment
+		# A WorldEnvironment uses one active Environment at a time. Keep the
+		# baseline node and resource so a later non-adventure session can restore
+		# its presentation exactly, but detach it while Sky3D is active.
+		legacy_environment.environment = null
+	# Sky3D owns the sky material; retain the existing fog, GI and colour grade.
+	environment.sky = null
+	var sky := SKY3D_SCRIPT.new() as WorldEnvironment
+	if sky == null:
+		push_warning("Adventure Sky3D could not be created; retaining the static sky")
+		return
+	sky.name = "AdventureSky3D"
+	add_child(sky)
+	# Sky3D's custom Environment setter forwards into its SkyDome, which is
+	# created during enter-tree initialization. Attach first, then transfer the
+	# retained project Environment. Re-run its initializer afterward: our copied
+	# Environment deliberately has no static sky, so the addon must install its
+	# animated shader material onto that new resource.
+	sky.environment = environment
+	sky.call("_initialize")
+	_adventure_sky = sky
+	# Set these after the node enters the tree, once Sky3D has created its
+	# TimeOfDay/SunLight/MoonLight/SkyDome children.
+	sky.set("current_time", 9.5)
+	sky.set("minutes_per_day", 24.0)
+	sky.set("update_interval", 0.20)
+	sky.set("clouds_enabled", true)
+	sky.set("cloud_intensity", 0.42)
+	sky.set("sun_energy", 1.15)
+	sky.set("moon_energy", 0.32)
+	sky.set("sky_contribution", 0.76)
+	sky.set("night_sky_contribution", 0.56)
+	sky.set("tonemap_exposure", 1.0)
+	# Existing Environment fog is already tuned to hide the large-world horizon;
+	# do not stack Sky3D's fullscreen fog shader over it.
+	sky.set("fog_enabled", false)
+	for legacy_light_name in ["DirectionalLight3D", "FillLight"]:
+		var legacy_light := get_node_or_null(legacy_light_name) as DirectionalLight3D
+		if legacy_light != null:
+			_adventure_legacy_light_visibility[legacy_light_name] = legacy_light.visible
+			legacy_light.visible = false
+
+
+## Restore the base scene's Environment and light visibility after an Adventure
+## session. GameplayRuntime is reused by the launcher, so this cannot rely on
+## the scene itself being destroyed between themes.
+func _teardown_adventure_sky() -> void:
+	if _adventure_sky != null and is_instance_valid(_adventure_sky):
+		_adventure_sky.environment = null
+		_adventure_sky.queue_free()
+	_adventure_sky = null
+	if _adventure_legacy_environment != null and is_instance_valid(_adventure_legacy_environment):
+		_adventure_legacy_environment.environment = _adventure_legacy_environment_resource
+	for legacy_light_name in _adventure_legacy_light_visibility:
+		var legacy_light := get_node_or_null(String(legacy_light_name)) as DirectionalLight3D
+		if legacy_light != null:
+			legacy_light.visible = bool(_adventure_legacy_light_visibility[legacy_light_name])
+	_adventure_legacy_light_visibility.clear()
+	_adventure_legacy_environment = null
+	_adventure_legacy_environment_resource = null
 
 
 ## Minecraft-lite voxel placement. Mounts a BuildGrid as a child of
@@ -2255,6 +2340,7 @@ func _on_rules_action(rule_id: String, action_kind: int, params: Dictionary) -> 
 
 func end_session() -> void:
 	_rules_active = false
+	_teardown_adventure_sky()
 	if _rules_runtime != null:
 		_rules_runtime.reset()
 	# Always release the cursor so post-session menus are clickable.
