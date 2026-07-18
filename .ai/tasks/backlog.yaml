@@ -243,7 +243,7 @@ tasks:
       - PASS: Identity and wardrobe override are persisted via hero_identity and use_signature_outfit properties in CharacterCustomization
       - PASS: Face swaps and identity changes properly cache the visual tier, clear stale bone-anchor references, and rebuild tool visuals
       - PARTIALLY ADDRESSED: Test coverage added for held-tool-after-face-swap and P2/Gniewko grounded split-screen contracts; rendered close-up and speech evidence remain open
-      - OPEN: UV/colour heuristics and the generic Kenney source rig cannot achieve the Ziemek patterned-hoodie, detailed-backpack, child-proportioned concept direction. Requires rig-compatible authored garment/child-hero assets for both Ziemek and Gniewko plus close and third-person captures.
+      - OPEN: UV/colour heuristics and the generic Kenney source rig cannot achieve the Ziemek patterned-hoodie, detailed-backpack, child-proportioned concept direction. Requires rig-compatible authored garment/child-hero assets for both Ziemek and Gniewko plus close and third-person captures. Complete specification documented at .ai/specifications/VS-046-hero-asset-specification.md
       - REQUEST_CHANGES: Visual quality gate remains open pending asset creation and live capture evidence
     einstein_cr_findings:
       - HIGH: Identity and wardrobe override were not persisted; load always forced the preset. ADDRESSED: CharacterCustomization now persists hero_identity and use_signature_outfit; legacy saves retain swatches and a child changing a swatch opts out of the first-run preset.
