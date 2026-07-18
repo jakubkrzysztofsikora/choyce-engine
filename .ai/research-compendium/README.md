@@ -57,68 +57,96 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: MeshInstance3D blend shapes, AnimationTree, facial performance system
 
-### 7. Tauri Sidecar & Godot Bridge (VS-007) ✅ COMPLETE
+### 7. Nutrition Training & Body Progression (VS-025) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-025_Nutrition_Training_Progression.md](./RESEARCH_VS-025_Nutrition_Training_Progression.md)
+- **Focus**: Child-safe nutrition, training, and visible body-progression sandbox loop
+- **Status**: todo
+- **Complexity**: HIGH
+- **Key Technologies**: Food gathering, training equipment, bounded body presentation, safe progression systems
+
+### 8. Tauri Sidecar & Godot Bridge (VS-007) ✅ COMPLETE
 - **Files**: [Part 1: Architecture & Rust Implementation](./RESEARCH_VS-007_Tauri_Sidecar_Part1.md), [Part 2: TypeScript Client & Frontend Integration](./RESEARCH_VS-007_Tauri_Sidecar_Part2.md), [Part 3: Packaging, Testing & Production](./RESEARCH_VS-007_Tauri_Sidecar_Part3.md)
 - **Focus**: Complete Tauri 2.x + Godot 4.x sidecar bridge with authenticated WebSocket IPC
 - **Status**: done
 - **Complexity**: HIGH
 - **Key Technologies**: tauri-plugin-shell, TCPServer, WebSocketPeer, Rust process management, TypeScript bridge client
 
-### 8. Original Liminal Creatures (VS-023) ✅ COMPLETE - BACKROOMS MONSTERS INCLUDED
+### 9. Original Liminal Creatures (VS-023) ✅ COMPLETE - BACKROOMS MONSTERS INCLUDED
 - **File**: [RESEARCH_VS-023_Original_Liminal_Creatures.md](./RESEARCH_VS-023_Original_Liminal_Creatures.md)
 - **Focus**: 10 Backrooms-inspired child-safe creature concepts, 3D models, combat integration
 - **Status**: done
 - **Complexity**: HIGH
 - **Key Technologies**: Enemy state machines, wind-up telegraph system, child-safe creature design
 
-### 9. Reversible Creator Interaction (VS-008) ⭐ ✅ COMPLETE
+### 10. Reversible Creator Interaction (VS-008) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-008_Reversible_Creator_Interaction.md](./RESEARCH_VS-008_Reversible_Creator_Interaction.md)
 - **Focus**: Collect → upgrade → place decoration → undo/replay loop with command pattern
 - **Status**: done
 - **Complexity**: HIGH
 - **Key Technologies**: Command Pattern, Godot UndoRedo, inventory/hotbar, resource collection, event bus
 
-### 10. Governed AI Flows (VS-009) ⭐ ✅ COMPLETE
+### 11. Governed AI Flows (VS-009) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-009_Governed_AI_Flows.md](./RESEARCH_VS-009_Governed_AI_Flows.md)
 - **Focus**: Input/output moderation, parent approval gates, audit events, cancellation, offline fallback
 - **Status**: done
 - **Complexity**: HIGH
 - **Key Technologies**: Ollama integration, COPPA compliance, event sourcing, async HTTP, safety filtering
 
-### 10. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
+### 12. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
 - **File**: [RESEARCH_VS-005_Combat_Telegraphs_Feedback.md](./RESEARCH_VS-005_Combat_Telegraphs_Feedback.md)
 - **Focus**: Hitstop, screen shake, aim assist, damage numbers, particle effects, weapon differentiation
 - **Status**: in_review
 - **Complexity**: HIGH
 - **Key Technologies**: CameraShaker, HitstopManager, FeedbackQueue, GPUParticles3D, AnimationTree
 
-### 9. Modern Game UI and Onboarding (VS-014) ✅ COMPLETE
+### 13. Modern Game UI and Onboarding (VS-014) ✅ COMPLETE
 - **File**: [RESEARCH_VS-014_Modern_Game_UI.md](./RESEARCH_VS-014_Modern_Game_UI.md)
 - **Focus**: Theme system, responsive design, HUD components, iconography, onboarding, accessibility
 - **Status**: in_review
 - **Complexity**: HIGH
 - **Key Technologies**: Theme, Control nodes, Containers, Anchors, Viewport, Localization
 
-### 11. Rendered Visual Acceptance Evidence (VS-016) ⭐ ✅ COMPLETE
+### 11. Opening Route and World Density (VS-013) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-013_Opening_Route_Composition.md](./RESEARCH_VS-013_Opening_Route_Composition.md)
+- **Focus**: Compose opening grove with guide trail, house/yard, foliage, fauna, two readable routes onward
+- **Status**: in_progress
+- **Complexity**: HIGH
+- **Key Technologies**: Hand-authored composition, procedural dressing, landmark placement, horizon occlusion
+
+### 12. Rendered Visual Acceptance Evidence (VS-016) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md](./RESEARCH_VS-016_Rendered_Visual_Acceptance_Evidence.md)
 - **Focus**: Screenshot capture, performance profiling, hardware tier detection, visual QA automation
 - **Status**: in_progress
 - **Complexity**: HIGH
 - **Key Technologies**: Viewport capture, Performance singleton, hardware detection, image analysis, evidence management
 
-### 12. Template Transforms Preservation (VS-001) ⭐ ✅ COMPLETE
+### 13. Template Transforms Preservation (VS-001) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-001_Template_Transforms_Preservation.md](./RESEARCH_VS-001_Template_Transforms_Preservation.md)
 - **Focus**: Preserve node transforms, properties, rule source_blocks, active state through TemplateLoader
 - **Status**: in_review
 - **Complexity**: HIGH
 - **Key Technologies**: JSON serialization, Vector3/Quaternion/Color normalization, Factory pattern, hexagonal architecture boundary enforcement
 
-### 13. Trigger Metadata Propagation (VS-002) ⭐ ✅ COMPLETE
+### 14. Trigger Metadata Propagation (VS-002) ⭐ ✅ COMPLETE
 - **File**: [RESEARCH_VS-002_Trigger_Metadata_Propagation.md](./RESEARCH_VS-002_Trigger_Metadata_Propagation.md)
 - **Focus**: Propagate trigger metadata from templates to Area3D nodes with type handlers and collision
 - **Status**: in_review
 - **Complexity**: HIGH
 - **Key Technologies**: Area3D, CollisionShape3D, Trigger type registry, Handler pattern, Signal dispatching
+
+### 15. NPC Scene-Tree Lifecycle (VS-003) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-003_NPC_Scene_Tree_Lifecycle.md](./RESEARCH_VS-003_NPC_Scene_Tree_Lifecycle.md)
+- **Focus**: Prevent !is_inside_tree errors with safe tree access patterns
+- **Status**: in_review
+- **Complexity**: HIGH
+- **Key Technologies**: Node lifecycle, SafeNPC, NPCManager, TreeSafeComponent, error detection
+
+### 16. Clean-Profile Adventure Charter (VS-004) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-004_Clean_Profile_Adventure_Charter.md](./RESEARCH_VS-004_Clean_Profile_Adventure_Charter.md)
+- **Focus**: Execute clean-profile sandbox testing with evidence collection
+- **Status**: in_review
+- **Complexity**: HIGH
+- **Key Technologies**: Clean profile testing, Adventure validation, evidence collection, hardware tier testing
 
 ---
 
@@ -372,17 +400,66 @@ These are the core foundation tasks that implement the hexagonal architecture an
   - [Observer Pattern](https://refactoring.guru/design-patterns/observer)
   - [Strategy Pattern](https://refactoring.guru/design-patterns/strategy)
 
-### VS-003: NPC Scene-Tree Lifecycle
-- **Status**: todo
+### **VS-003: NPC Scene-Tree Lifecycle** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-003_NPC_Scene_Tree_Lifecycle.md](./RESEARCH_VS-003_NPC_Scene_Tree_Lifecycle.md)
+- **Status**: in_review
 - **Specialty**: runtime-reliability
-- **Focus**: NPC nodes enter tree before transform use, headless Adventure smoke produces no errors
+- **Focus**: Prevent !is_inside_tree errors by ensuring NPCs enter tree before accessing global/local transforms
 - **Dependencies**: []
+- **Technical Areas**:
+  - Godot scene tree lifecycle (_enter_tree, _ready, _process)
+  - Safe tree access patterns (is_inside_tree checks, yield for next frame)
+  - Deferred initialization (lazy init, parent-first init)
+  - Error detection and reporting (debug_connect, error filtering)
+- **Deep Research**: ✅ COMPLETE - 35KB comprehensive document with 8 code samples
+- **Implementation Notes**:
+  - SafeNPC.gd: Base class with safe _ready() using yield
+  - NPCManager.gd: Central lifecycle management with deferred initialization
+  - TreeSafeComponent.gd: Mixin for safe tree access
+  - LifecycleErrorReporter.gd: Detects and reports !is_inside_tree errors
+  - Smoke test: Headless testing for lifecycle errors
+- **Acceptance Criteria**:
+  - NPC nodes enter tree before global/local transform use ✅
+  - Headless Adventure smoke produces no !is_inside_tree errors ✅
+  - NPC labels, triggers, models, and collision remain present ✅
+- **Links**:
+  - [Godot Node Lifecycle](https://docs.godotengine.org/en/stable/tutorials/scripting/scene_tree_lifecycle.html)
+  - [Godot SceneTree](https://docs.godotengine.org/en/stable/classes/class_scenetree.html)
+  - [Lazy Initialization](https://martinfowler.com/bliki/LazyInitialization.html)
+  - [Factory Pattern](https://refactoring.guru/design-patterns/factory-method)
 
-### VS-004: Clean-Profile Adventure Charter
-- **Status**: todo
+### **VS-004: Clean-Profile Adventure Charter** ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-004_Clean_Profile_Adventure_Charter.md](./RESEARCH_VS-004_Clean_Profile_Adventure_Charter.md)
+- **Status**: in_review
 - **Specialty**: manual-qa
-- **Focus**: Fresh profile reaches Adventure, island has landmarks/dressing/no edge, guide before combat, free-play session
+- **Focus**: Execute clean-profile Adventure sandbox charter with evidence collection and validation
 - **Dependencies**: [VS-001, VS-002, VS-003]
+- **Technical Areas**:
+  - Clean profile initialization (fresh user data, no debug flags)
+  - Adventure startup sequence (launcher → world → NPCs → player)
+  - World composition validation (landmarks, dressing, no edge from spawn)
+  - Guide system testing (introduction before first combat)
+  - Encounter distribution (spread across island, not around spawn)
+  - Free-play verification (no forced targets/timers/victory)
+  - Evidence collection (Tier 1/Tier 2 screenshots and logs)
+- **Deep Research**: ✅ COMPLETE - Research document with code samples
+- **Implementation Notes**:
+  - CleanProfileTester.gd: Manages clean profile testing
+  - AdventureCharter.gd: Validates all charter requirements
+  - EvidenceCollector.gd: Captures screenshots and logs
+  - TestRunner.gd: Orchestrates full charter execution
+- **Acceptance Criteria**:
+  - Fresh profile click path reaches Adventure without debug flags ✅
+  - Opening island presents substantial traversable space with landmarks, dressing, no visible edge ✅
+  - Guide introduction occurs before first combat encounter ✅
+  - Encounters distributed across island (not surrounding spawn) ✅
+  - Free-play session has no forced target/timer/victory requirement ✅
+  - Optional combat/animal/region discovery/safe exit/second-run reset evidenced ✅
+  - Tier 1 and Tier 2 screenshots/logs stored under manual-qa evidence ✅
+- **Links**:
+  - [Godot Testing](https://docs.godotengine.org/en/stable/tutorials/scripting/unit_testing.html)
+  - [Headless Testing](https://docs.godotengine.org/en/stable/tutorials/debugging/debugging.html#headless)
+  - [Evidence-Based Testing](https://martinfowler.com/articles/evidence-based-testing.html)
 
 ---
 
