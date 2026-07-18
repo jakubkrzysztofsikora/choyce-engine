@@ -1365,7 +1365,7 @@ tasks:
       - An explicit main-menu New Game action clears only the selected local sandbox save after confirmation
       - Corrupt or incomplete local save safely falls back to a new playable sandbox
     cross_review_by: claude
-    status: todo
+    status: in_progress
 
   - id: VS-027
     title: Restore direct third-person creative block placement
