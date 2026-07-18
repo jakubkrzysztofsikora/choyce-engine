@@ -78,6 +78,13 @@ These tasks have full, detailed research documents with code samples, online res
 - **Complexity**: HIGH
 - **Key Technologies**: Command Pattern, Godot UndoRedo, inventory/hotbar, resource collection, event bus
 
+### 10. Governed AI Flows (VS-009) ⭐ ✅ COMPLETE
+- **File**: [RESEARCH_VS-009_Governed_AI_Flows.md](./RESEARCH_VS-009_Governed_AI_Flows.md)
+- **Focus**: Input/output moderation, parent approval gates, audit events, cancellation, offline fallback
+- **Status**: done
+- **Complexity**: HIGH
+- **Key Technologies**: Ollama integration, COPPA compliance, event sourcing, async HTTP, safety filtering
+
 ### 10. Combat Telegraphs and Feedback (VS-005) ✅ COMPLETE
 - **File**: [RESEARCH_VS-005_Combat_Telegraphs_Feedback.md](./RESEARCH_VS-005_Combat_Telegraphs_Feedback.md)
 - **Focus**: Hitstop, screen shake, aim assist, damage numbers, particle effects, weapon differentiation
