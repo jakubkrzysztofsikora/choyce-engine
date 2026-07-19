@@ -56,11 +56,15 @@ func load_library(npc_id: String, static_lines: Dictionary) -> Array[Dictionary]
 
 ## Append a new dynamically generated answer to the NPC's library and save to disk.
 func save_new_answer(npc_id: String, text: String, player_text: String, emotion: String) -> void:
+	var clean_text := text.strip_edges()
+	if clean_text.is_empty():
+		return
+
 	var list := _load_dynamic_answers(npc_id)
 	
 	# Prevent duplicate saves of identical text
 	for item in list:
-		if str(item.get("text", "")).strip_edges() == text.strip_edges():
+		if str(item.get("text", "")).strip_edges() == clean_text:
 			return
 
 	var new_entry := {

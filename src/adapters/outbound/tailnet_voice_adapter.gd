@@ -204,12 +204,19 @@ func _download_audio(audio_url: String, text: String, request_id: int, cache_fil
 		_pump_queue()
 
 
+var _current_text: String = ""
+var _current_request_id: int = 0
+
+
 func _play_bytes(mp3: PackedByteArray, text: String, request_id: int) -> bool:
 	if _player == null:
 		return false
 	var stream := AudioStreamMP3.new()
 	stream.data = mp3
 	_player.stream = stream
+	_is_speaking = true
+	_current_text = text
+	_current_request_id = request_id
 	_player.play()
 	playback_started.emit(text, request_id)
 	return true
@@ -226,11 +233,17 @@ func _play_file(path: String, text: String, request_id: int) -> bool:
 
 func _on_playback_finished() -> void:
 	_is_speaking = false
-	playback_finished.emit("", 0)
+	var finished_text := _current_text
+	var finished_id := _current_request_id
+	_current_text = ""
+	_current_request_id = 0
+	playback_finished.emit(finished_text, finished_id)
 	_pump_queue()
 
 
 func _eager_check_and_clone_voices() -> void:
+	if _host == null or not _host.is_inside_tree():
+		return
 	var http := HTTPRequest.new()
 	_host.add_child(http)
 	http.request_completed.connect(func(result: int, response_code: int, response_headers: PackedStringArray, body: PackedByteArray) -> void:
@@ -262,6 +275,8 @@ func _eager_check_and_clone_voices() -> void:
 
 
 func _clone_voice_on_agent(voice_id: String, ref_path: String) -> void:
+	if _host == null or not _host.is_inside_tree():
+		return
 	if not FileAccess.file_exists(ref_path):
 		push_warning("TailnetVoiceAdapter: reference audio file missing: %s" % ref_path)
 		return

@@ -70,14 +70,14 @@ func _init(
 	name_pl = p_name_pl
 	lines_pl = p_lines_pl.duplicate(true)
 	visual_id = p_visual_id
-	openness = p_openness
-	conscientiousness = p_conscientiousness
-	extraversion = p_extraversion
-	agreeableness = p_agreeableness
-	neuroticism = p_neuroticism
-	machiavellianism = p_machiavellianism
-	narcissism = p_narcissism
-	psychopathy = p_psychopathy
+	openness = clampf(p_openness, 0.0, 1.0)
+	conscientiousness = clampf(p_conscientiousness, 0.0, 1.0)
+	extraversion = clampf(p_extraversion, 0.0, 1.0)
+	agreeableness = clampf(p_agreeableness, 0.0, 1.0)
+	neuroticism = clampf(p_neuroticism, 0.0, 1.0)
+	machiavellianism = clampf(p_machiavellianism, 0.0, 1.0)
+	narcissism = clampf(p_narcissism, 0.0, 1.0)
+	psychopathy = clampf(p_psychopathy, 0.0, 1.0)
 
 
 ## Resolve the Polish line for a trigger ("greeting", "hint",
@@ -124,7 +124,8 @@ func degraded_for_combat_off() -> NPCCharacter:
 
 ## Update emotional states reactively based on player and world context
 func update_emotional_state(player_hp_ratio: float, player_score: int) -> void:
-	if player_hp_ratio < 0.4:
+	var safe_hp_ratio := clampf(player_hp_ratio, 0.0, 1.0)
+	if safe_hp_ratio < 0.4:
 		if psychopathy > 0.4:
 			# Psychopathic/hostile character is amused by player's distress
 			happiness = clampf(happiness + 0.3 * psychopathy, 0.0, 1.0)
