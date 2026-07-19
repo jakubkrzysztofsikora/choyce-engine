@@ -3156,6 +3156,18 @@ func _build_hud() -> void:
 	_undo_button = undo_btn
 	hud.add_child(undo_btn)
 
+	# Inventory / crafting panel toggle — sits next to the undo button so the
+	# kid sees both as primary in-world controls. Opens the same overlay that
+	# the I key binds to; the panel already includes the crafting recipes.
+	var inv_btn := _make_hud_icon_button("InventoryBtn", HUD_ICON_BEDROLL, "Plecak i rzemiosło (I)", Color(0.42, 0.78, 0.72))
+	inv_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	inv_btn.offset_left = 148
+	inv_btn.offset_top = 28
+	inv_btn.offset_right = 200
+	inv_btn.offset_bottom = 80
+	inv_btn.pressed.connect(_toggle_inventory_overlay)
+	hud.add_child(inv_btn)
+
 	# VS-025: Nutrition/Training panel (bottom-right)
 	_nutrition_panel = PanelContainer.new()
 	_nutrition_panel.name = "NutritionPanel"
