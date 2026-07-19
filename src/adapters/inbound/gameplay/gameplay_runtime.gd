@@ -3333,11 +3333,14 @@ func _build_hud() -> void:
 	menu.add_theme_stylebox_override("focus", _hud_panel_style(Color(1.0, 0.86, 0.38), 0.96))
 	var menu_popup := menu.get_popup()
 	menu_popup.add_icon_item(HUD_ICON_STAR, "Wygląd postaci", 1)
+	menu_popup.add_icon_item(HUD_ICON_STAR, "🎮 Układ Sterowania (Pad PS4 / Klawiatura)", 4)
 	menu_popup.add_icon_item(HUD_ICON_CAMP, "Wróć do obozu", 2)
 	menu_popup.add_icon_item(HUD_ICON_RETURN, "Wróć do menu", 3)
 	menu_popup.id_pressed.connect(func(id: int) -> void:
 		if id == 1:
 			_on_customize_pressed()
+		elif id == 4:
+			_show_dynamic_controls_overlay()
 		elif id == 2:
 			_return_player_to_camp()
 		elif id == 3:
@@ -4607,6 +4610,25 @@ func _on_customize_pressed() -> void:
 	# Release mouse capture so the kid can interact with the panel without the
 	# camera fighting their cursor. Recaptured on panel close.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+const DYNAMIC_CONTROLS_OVERLAY := preload("res://src/adapters/inbound/gameplay/dynamic_controls_overlay.gd")
+var _controls_overlay: Control = null
+
+func _show_dynamic_controls_overlay() -> void:
+	var hud := get_node_or_null("HUD")
+	if hud == null:
+		return
+	if _controls_overlay != null and is_instance_valid(_controls_overlay):
+		_controls_overlay.open()
+		return
+	_controls_overlay = DYNAMIC_CONTROLS_OVERLAY.new()
+	_controls_overlay.closed.connect(func() -> void:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	)
+	hud.add_child(_controls_overlay)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_controls_overlay.open()
 
 
 func _on_customization_panel_changed(c: CharacterCustomization) -> void:
