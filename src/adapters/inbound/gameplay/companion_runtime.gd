@@ -56,15 +56,14 @@ func _ready() -> void:
 
 ## Tear down Bella cleanly so a session restart doesn't leak her GLB's
 ## materials, the cached hero reference, or her Skeleton3D pose work.
+## Children (_root, _bella) are freed automatically when this node is freed;
+## we just null the references so _physics_process can't touch freed objects
+## between the queue_free() and the actual deletion at end of frame.
 func _exit_tree() -> void:
 	set_physics_process(false)
 	_hero = null
-	if _bella != null and is_instance_valid(_bella):
-		_bella.queue_free()
-		_bella = null
-	if _root != null and is_instance_valid(_root):
-		_root.queue_free()
-		_root = null
+	_bella = null
+	_root = null
 
 
 ## Spawn Bella's GLB and ground it. The GLB is pre-baked from the Styloo CC0

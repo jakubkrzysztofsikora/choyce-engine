@@ -2634,9 +2634,16 @@ func _on_water_body_exited(body: Node3D) -> void:
 
 ## Cosmetic splash burst at the player's waterline. Procedural GPUParticles3D
 ## so no asset is required. Brief, non-looping, self-queue-free-ing.
+## Rate-limited to 0.3s between bursts so rapid enter/exit flicker at a
+## shoreline doesn't stack dozens of particle systems.
+var _last_splash_time: float = -1.0
 func _spawn_water_splash(body: Node3D) -> void:
 	if not (body is Node3D):
 		return
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _last_splash_time < 0.3:
+		return
+	_last_splash_time = now
 	var splash_pos := body.global_position + Vector3(0.0, 0.10, 0.0)
 	var particles := GPUParticles3D.new()
 	particles.name = "WaterSplash"
@@ -2645,7 +2652,7 @@ func _spawn_water_splash(body: Node3D) -> void:
 	particles.one_shot = true
 	particles.emitting = true
 	particles.explosiveness = 0.85
-	particles.position = splash_pos
+	particles.global_position = splash_pos
 	# Procedural upward-cone splash. Material is opaque white-blue, unshaded so
 	# it pops against the dark water surface.
 	var mat := ParticleProcessMaterial.new()

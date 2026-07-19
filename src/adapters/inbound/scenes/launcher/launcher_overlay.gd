@@ -96,18 +96,6 @@ func _exit_tree() -> void:
 	# long-lived cinematic tween we keep a handle to.
 
 
-## Tear down launcher: stop music, kill cinematic, fade out + free.
-func _shutdown() -> void:
-	set_process(false)
-	if _play_btn != null:
-		_play_btn.disabled = true
-	if _coop_btn != null:
-		_coop_btn.disabled = true
-	var bank := get_node_or_null("/root/AudioBank")
-	if bank != null and bank.has_method("stop_voice"):
-		bank.stop_voice()
-
-
 func _build() -> void:
 	_root = Control.new()
 	_root.name = "LauncherRoot"
