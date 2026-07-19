@@ -104,37 +104,37 @@ static func create_randomized(p_npc_id: String, p_role: JobRole, rng: RandomNumb
 	match p_role:
 		JobRole.POLICE_OFFICER:
 			npc_name = "Posterunkowy " + npc_name
-			weapon_id = "police_baton"
+			weapon_id = "res://data/models/weapons/pistol.glb"
 			vehicle_path = "res://data/models/vehicles/police_car.glb"
 		JobRole.MILITARY_SOLDIER:
 			npc_name = "Szeregowy " + npc_name
-			weapon_id = "military_rifle"
-			vehicle_path = "res://data/models/vehicles/police_car.glb"
+			weapon_id = "res://data/models/weapons/assault_rifle.glb"
+			vehicle_path = "res://data/models/vehicles/military_tank.glb"
 		JobRole.FARMER:
 			npc_name = "Gospodarz " + npc_name
 			weapon_id = "pitchfork"
-			vehicle_path = ""
+			vehicle_path = "res://data/models/vehicles/suv.glb"
 		JobRole.BANDIT:
 			npc_name = "Bandyta " + npc_name
-			weapon_id = "rust_machete"
-			vehicle_path = ""
+			weapon_id = "res://data/models/weapons/assault_rifle.glb"
+			vehicle_path = "res://data/models/vehicles/suv.glb"
 			dark_mach = rng.randf_range(0.6, 0.95)
 			dark_psych = rng.randf_range(0.6, 0.9)
 		JobRole.THIEF:
 			npc_name = "Złodziej " + npc_name
-			weapon_id = "dagger"
-			vehicle_path = ""
+			weapon_id = "res://data/models/weapons/pistol.glb"
+			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
 			dark_mach = rng.randf_range(0.7, 0.95)
 			dark_narc = rng.randf_range(0.5, 0.8)
 		JobRole.MURDERER:
 			npc_name = "Zabójca " + npc_name
 			weapon_id = "heavy_axe"
-			vehicle_path = ""
+			vehicle_path = "res://data/models/vehicles/suv.glb"
 			dark_psych = rng.randf_range(0.8, 1.0)
 			dark_mach = rng.randf_range(0.5, 0.9)
 		_:
 			weapon_id = ""
-			vehicle_path = ""
+			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
 
 	var script := load("res://src/domain/world_authoring/dynamic_npc_traits.gd") as GDScript
 	var traits: DynamicNPCTraits = script.new(

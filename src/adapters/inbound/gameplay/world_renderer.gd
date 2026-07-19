@@ -2610,11 +2610,54 @@ func _river_bank_pair(x: float) -> Array[Vector3]:
 func _on_water_body_entered(body: Node3D) -> void:
 	if body != null and body.has_method("set_in_water"):
 		body.call("set_in_water", true)
+		_spawn_water_splash(body)
 
 
 func _on_water_body_exited(body: Node3D) -> void:
 	if body != null and body.has_method("set_in_water"):
 		body.call("set_in_water", false)
+
+
+## Cosmetic splash burst at the player's waterline. Procedural GPUParticles3D
+## so no asset is required. Brief, non-looping, self-queue-free-ing.
+func _spawn_water_splash(body: Node3D) -> void:
+	if not (body is Node3D):
+		return
+	var splash_pos := body.global_position + Vector3(0.0, 0.10, 0.0)
+	var particles := GPUParticles3D.new()
+	particles.name = "WaterSplash"
+	particles.amount = 24
+	particles.lifetime = 0.6
+	particles.one_shot = true
+	particles.emitting = true
+	particles.explosiveness = 0.85
+	particles.position = splash_pos
+	# Procedural upward-cone splash. Material is opaque white-blue, unshaded so
+	# it pops against the dark water surface.
+	var mat := ParticleProcessMaterial.new()
+	mat.direction = Vector3(0.0, 1.0, 0.0)
+	mat.spread = 35.0
+	mat.initial_velocity_min = 1.6
+	mat.initial_velocity_max = 3.2
+	mat.gravity = Vector3(0.0, -9.8, 0.0)
+	mat.scale_min = 0.05
+	mat.scale_max = 0.12
+	mat.color = Color(0.78, 0.90, 0.96, 1.0)
+	particles.process_material = mat
+	# Tiny sphere mesh for the particles so they read as droplets, not pixels.
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.06
+	mesh.height = 0.12
+	var mesh_mat := StandardMaterial3D.new()
+	mesh_mat.albedo_color = Color(0.85, 0.94, 0.98, 1.0)
+	mesh_mat.emission_enabled = true
+	mesh_mat.emission = Color(0.4, 0.6, 0.7)
+	mesh_mat.emission_energy_multiplier = 0.6
+	mesh.material = mesh_mat
+	particles.draw_pass_1 = mesh
+	add_child(particles)
+	# Auto-free after lifetime + small margin so the burst always cleans up.
+	get_tree().create_timer(1.4).timeout.connect(particles.queue_free)
 
 
 func _add_interaction_anchor(id: String, anchor_position: Vector3, prompt: String, action: String) -> Area3D:

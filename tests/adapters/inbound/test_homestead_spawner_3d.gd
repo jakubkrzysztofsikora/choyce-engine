@@ -46,7 +46,7 @@ func _test_spawner_lifecycle_and_compound_tree() -> void:
 			npc_found = true
 			_expect(child.has_meta("npc_id"), "NPC node should store metadata npc_id")
 			_expect(child.has_meta("display_name"), "NPC node should store metadata display_name")
-			_expect(child.get_meta("weapon_visual_id") == "police_baton", "NPC metadata weapon should be police_baton")
+			_expect(str(child.get_meta("weapon_visual_id")).contains("pistol.glb"), "NPC metadata weapon should contain pistol.glb")
 		elif child.name == "ParkedVehicle":
 			vehicle_found = true
 

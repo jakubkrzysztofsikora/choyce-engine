@@ -36,7 +36,7 @@ func _test_npc_traits_randomization_and_serialization() -> void:
 	var police_traits := DYNAMIC_TRAITS.create_randomized("npc_cop_1", DYNAMIC_TRAITS.JobRole.POLICE_OFFICER, rng)
 	_expect(police_traits.npc_id == "npc_cop_1", "NPC ID should map correctly")
 	_expect(police_traits.job_role == DYNAMIC_TRAITS.JobRole.POLICE_OFFICER, "Role should be POLICE_OFFICER")
-	_expect(police_traits.weapon_visual_id == "police_baton", "Police weapon should be baton")
+	_expect(police_traits.weapon_visual_id.contains("pistol.glb"), "Police weapon should be pistol.glb")
 	_expect(police_traits.vehicle_model_path.contains("police_car.glb"), "Police should get police_car.glb")
 	_expect(police_traits.openness >= 0.0 and police_traits.openness <= 1.0, "Openness should be clamped in [0.0, 1.0]")
 

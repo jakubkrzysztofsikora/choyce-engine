@@ -43,12 +43,12 @@ func _test_outlaw_roles_and_dark_triad_stats() -> void:
 
 	var bandit: Variant = DYNAMIC_TRAITS.create_randomized("npc_b1", DYNAMIC_TRAITS.JobRole.BANDIT, rng)
 	_expect(bandit.job_role == DYNAMIC_TRAITS.JobRole.BANDIT, "Role should be BANDIT")
-	_expect(bandit.weapon_visual_id == "rust_machete", "Bandit weapon should be rust_machete")
+	_expect(str(bandit.weapon_visual_id).contains("assault_rifle.glb"), "Bandit weapon should be assault_rifle.glb")
 	_expect(bandit.psychopathy >= 0.5, "Bandit should have elevated psychopathy stat (>= 0.5)")
 
 	var thief: Variant = DYNAMIC_TRAITS.create_randomized("npc_t1", DYNAMIC_TRAITS.JobRole.THIEF, rng)
 	_expect(thief.job_role == DYNAMIC_TRAITS.JobRole.THIEF, "Role should be THIEF")
-	_expect(thief.weapon_visual_id == "dagger", "Thief weapon should be dagger")
+	_expect(str(thief.weapon_visual_id).contains("pistol.glb"), "Thief weapon should be pistol.glb")
 	_expect(thief.machiavellianism >= 0.5, "Thief should have elevated Machiavellianism stat (>= 0.5)")
 
 	var murderer: Variant = DYNAMIC_TRAITS.create_randomized("npc_m1", DYNAMIC_TRAITS.JobRole.MURDERER, rng)

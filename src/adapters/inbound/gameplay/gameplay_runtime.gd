@@ -1473,6 +1473,33 @@ func _set_npc_locomotion(body: StaticBody3D, walking: bool) -> void:
 ## The player already proves these Kenney character scenes at the correct kid
 ## scale. Reuse them for every NPC instead of depending on a separate rig that
 ## can silently fail and leave the green capsule fallback in the world.
+const _KENNEY_TOON_MALE := "res://data/models/kenney/toon_characters/Models/GLB format/character-male-%s.glb"
+const _KENNEY_TOON_FEMALE := "res://data/models/kenney/toon_characters/Models/GLB format/character-female-%s.glb"
+
+# Unique model per authored visual_id. Each NPC gets a distinct silhouette so
+# the kid can tell Hania from Bartek from Lena at a glance — they were all the
+# same Kenney character-male-b before, which is why "all NPCs look the same".
+const _NPC_MODEL_BY_VISUAL_ID := {
+	"npc_explorer": "res://data/models/kenney/toon_characters/Models/GLB format/character-male-a.glb",
+	"npc_pirate":   "res://data/models/kenney/toon_characters/Models/GLB format/character-male-e.glb",
+	"npc_parrot":   "",  # built procedurally by _build_parrot_visual
+	"npc_hania":    "res://data/models/kenney/toon_characters/Models/GLB format/character-female-a.glb",
+	"npc_bartek":   "res://data/models/kenney/toon_characters/Models/GLB format/character-male-c.glb",
+	"npc_lena":     "res://data/models/kenney/toon_characters/Models/GLB format/character-female-c.glb",
+}
+
+# Per-NPC tint so even two NPCs that share a fallback mesh still read as
+# distinct characters. Color is mixed into the body material after instantiate.
+const _NPC_TINT_BY_VISUAL_ID := {
+	"npc_explorer": Color(0.85, 0.70, 0.45),  # khaki explorer
+	"npc_pirate":   Color(0.30, 0.22, 0.18),  # dark sea-dog
+	"npc_hania":    Color(0.78, 0.42, 0.58),  # warm magenta top
+	"npc_bartek":   Color(0.40, 0.36, 0.30),  # woodsy brown
+	"npc_lena":     Color(0.45, 0.62, 0.78),  # cool blue
+}
+
+# Old role-based fallback (used when visual_id is unknown). Kept for back-compat
+# with any test or saved-state that may resolve by role only.
 const _NPC_MODEL_BY_ROLE := {
 	"guide": "res://data/models/kenney/toon_characters/Models/GLB format/character-male-b.glb",
 	"vendor": "res://data/models/kenney/toon_characters/Models/GLB format/character-male-d.glb",
@@ -1487,21 +1514,26 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 	if npc.visual_id == "npc_parrot":
 		return _build_parrot_visual()
 	var role := npc.role
-	var path: String = _NPC_MODEL_BY_ROLE.get(role, _NPC_MODEL_BY_ROLE["guide"])
+	# Prefer a per-visual-id model so each authored NPC has a distinct
+	# silhouette. Falls back to role-based only if the visual_id is unknown.
+	var path: String = _NPC_MODEL_BY_VISUAL_ID.get(npc.visual_id, "")
+	if path.is_empty():
+		path = _NPC_MODEL_BY_ROLE.get(role, _NPC_MODEL_BY_ROLE["guide"])
 	if ResourceLoader.exists(path):
 		var packed: PackedScene = load(path)
 		if packed != null:
 			var model := packed.instantiate() as Node3D
 			if model != null:
 				model.scale = Vector3.ONE * 0.92
-				# Kenney's visible feet sit 10cm above its imported root.  The player
-				# controller calibrates this same rig; civilians need the matching
-				# resting offset or they visibly hover above their collision capsule.
 				model.position.y = -0.10
-				# Kenney rigs author facing +Z; face -Z toward the approaching kid.
 				model.rotation.y = PI
 				if npc.visual_id == "npc_pirate":
 					_add_pirate_accessories(model)
+				# Apply per-NPC tint so two NPCs that share a fallback mesh
+				# still read as different characters at a glance.
+				var tint: Variant = _NPC_TINT_BY_VISUAL_ID.get(npc.visual_id, null)
+				if tint is Color:
+					_tint_npc_meshes(model, tint)
 				_attach_humanoid_face(model)
 				var anim := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 				if anim != null:
@@ -1534,6 +1566,27 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 
 func _attach_humanoid_face(model: Node3D) -> void:
 	FACIAL_PERFORMANCE_SCRIPT.attach_kenney_humanoid(model)
+
+
+## Walk every MeshInstance3D under `model` and multiply the albedo of its
+## first surface material by `tint`. Clones the material first so the original
+## cached GLB material isn't mutated across NPC instances.
+func _tint_npc_meshes(model: Node3D, tint: Color) -> void:
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = mi.mesh
+		if mesh == null or mesh.get_surface_count() == 0:
+			continue
+		var base_mat: Material = mi.get_active_material(0)
+		if base_mat is StandardMaterial3D:
+			var std := (base_mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+			std.albedo_color = std.albedo_color * tint
+			mi.material_override = std
+		elif base_mat == null:
+			# No material on the surface — give it a tinted default so the NPC
+			# doesn't render as a bare grey default.
+			var fresh := StandardMaterial3D.new()
+			fresh.albedo_color = tint
+			mi.material_override = fresh
 
 
 func _build_parrot_visual() -> Node3D:
@@ -1713,6 +1766,24 @@ func _on_npc_trigger_exited(body: Node, npc_root: Node3D) -> void:
 		_active_npc_id = ""
 
 
+## Map authored NPC IDs to the voice IDs cloned on the tailnet voice agent.
+## The agent has npc_explorer (warm male), npc_pirate (rough male), and
+## npc_parrot (high child-friendly) cloned — anything else falls through to
+## npc_explorer so the line still plays instead of skipping silently.
+const _NPC_VOICE_ID_BY_NPC_ID := {
+	"npc_explorer": "npc_explorer",
+	"npc_pirate":   "npc_pirate",
+	"npc_parrot":   "npc_parrot",
+	# Camp residents — assign distinct cloned voices so Hania doesn't sound
+	# like Bartek. The agent has only three cloned voices today, so we cycle
+	# through them. Even a repeating voice pool is better than every NPC
+	# sharing the same default.
+	"npc_hania":    "npc_parrot",   # higher, fits a young female character
+	"npc_bartek":   "npc_pirate",   # rougher, fits a woodcutter
+	"npc_lena":     "npc_explorer", # warm, fits a friendly guide
+}
+
+
 ## Lazily build a single shared dialogue label at the bottom-center.
 ## Kept on the HUD CanvasLayer so it sits above 3D geometry.
 func _show_npc_dialogue(name_pl: String, line_pl: String, speak_line: bool = true) -> void:
@@ -1764,7 +1835,11 @@ func _setup_local_npc_voice() -> void:
 func _speak_npc_line(line: String, request_id: int) -> bool:
 	if _npc_voice != null:
 		if _npc_voice.has_method("set_active_voice_id"):
-			_npc_voice.set_active_voice_id(_active_npc_id)
+			# Resolve the voice agent's cloned voice ID from the active NPC.
+			# NPCs whose visual_id isn't in the map fall through to the
+			# explorer voice — keeping the line audible instead of silent.
+			var voice_id: String = _NPC_VOICE_ID_BY_NPC_ID.get(_active_npc_id, "npc_explorer")
+			_npc_voice.set_active_voice_id(voice_id)
 		if _npc_voice.is_available():
 			_npc_voice.speak(line, "pl-PL", request_id)
 			return true
