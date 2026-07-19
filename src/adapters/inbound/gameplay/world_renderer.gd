@@ -2423,12 +2423,11 @@ func _add_water_crossing() -> void:
 	var water_material := ShaderMaterial.new()
 	water_material.shader = ADVENTURE_WATER_SHADER
 	# Apply Choyce water color palette: shallow -> medium -> deep
-	# These runtime values deliberately match the shader's natural turquoise
-	# palette. Do not leave the old near-black prototype override here: uniforms
-	# take precedence over shader defaults and were hiding the repaired surface.
-	# Using the official Choyce palette from VS-012 research.
-	water_material.set_shader_parameter("shallow_color", CHOYCE_WATER_SHALLOW)
-	water_material.set_shader_parameter("deep_color", CHOYCE_WATER_DEEP)
+	# Bright, saturated surface colors. The previous dark palette was getting
+	# mixed into near-black at top-down camera angles via the Fresnel term,
+	# making the river look like it disappeared when the player waded in.
+	water_material.set_shader_parameter("shallow_color", Color(0.10, 0.42, 0.55, 1.0))
+	water_material.set_shader_parameter("deep_color", Color(0.04, 0.18, 0.32, 1.0))
 	water_material.set_shader_parameter("dudv_map", SIMPLE_WATER_DUDV)
 	# The generated ribbon's UV spans 3.2km. Shader flow therefore uses local
 	# world metres rather than this normalized UV. Increased tiling and strength
@@ -2439,11 +2438,11 @@ func _add_water_crossing() -> void:
 	# read a complete authored material contract without relying on shader defaults.
 	water_material.set_shader_parameter("wave_height", 0.012)
 	water_material.set_shader_parameter("wave_speed", 0.70)
-	# Port the useful visual principle from the supplied MIT Simple Water asset:
-	# moving distortion plus restrained sky reflection. Keep it fully opaque so
-	# entering the volume cannot make the water disappear through sort artifacts.
-	water_material.set_shader_parameter("foam_color", Color(0.14, 0.34, 0.33, 1.0))
-	water_material.set_shader_parameter("sky_reflection_color", Color(0.08, 0.22, 0.28, 1.0))
+	# Bright foam and sky reflection so the water surface stays visibly water
+	# from every angle — including the top-down view that previously made the
+	# river look like it vanished.
+	water_material.set_shader_parameter("foam_color", Color(0.85, 0.92, 0.95, 1.0))
+	water_material.set_shader_parameter("sky_reflection_color", Color(0.35, 0.55, 0.70, 1.0))
 	visual.material_override = water_material
 	water.add_child(visual)
 	# The surface must be a render-only child. The Area3D below is exclusively

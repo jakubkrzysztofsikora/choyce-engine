@@ -12,10 +12,10 @@ shader_type spatial;
 // keeps the authored blue palette stable across day/night directional grades.
 render_mode cull_disabled, depth_draw_always, unshaded, fog_disabled;
 
-uniform vec4 shallow_color : source_color = vec4(0.012, 0.145, 0.19, 1.0);
-uniform vec4 deep_color : source_color = vec4(0.003, 0.045, 0.085, 1.0);
-uniform vec4 foam_color : source_color = vec4(0.14, 0.34, 0.33, 1.0);
-uniform vec4 sky_reflection_color : source_color = vec4(0.08, 0.22, 0.28, 1.0);
+uniform vec4 shallow_color : source_color = vec4(0.10, 0.42, 0.55, 1.0);
+uniform vec4 deep_color : source_color = vec4(0.04, 0.18, 0.32, 1.0);
+uniform vec4 foam_color : source_color = vec4(0.85, 0.92, 0.95, 1.0);
+uniform vec4 sky_reflection_color : source_color = vec4(0.35, 0.55, 0.70, 1.0);
 // This is cosmetic water, not a dynamic collision surface. Keep its peak-to-
 // trough movement inside the shallow-volume contact tolerance at the bank.
 uniform float wave_height : hint_range(0.0, 0.20) = 0.012;
@@ -92,13 +92,16 @@ void fragment() {
 float bank_foam = smoothstep(0.70, 0.96, river_bank) * 0.08;
 	float foam = crest_foam + bank_foam;
 	NORMAL = normalize(vec3(-wave_gradient.x, 1.0, -wave_gradient.y));
-	// A restrained Fresnel reflection is the inexpensive Godot 4 equivalent of
-	// the supplied Simple Water material's reflection pass. It gives the river
-	// a changing sky-facing surface without transparent sorting or extra cameras.
+	// Restrained Fresnel — at top-down camera angles the dot(NORMAL, VIEW)=-1,
+	// clamped to 0, gave pow(1.0, 3) = 1.0 fresnel which mixed 32% to a near-
+	// black sky_reflection_color. That is why the river 'disappeared' when the
+	// player walked into it: the camera looked straight down, the fresnel
+	// maxed, the dark reflection won, and the water read as a black void
+	// against the riverbed. Cap the fresnel contribution at 0.10 max and keep
+	// a brighter base albedo so the surface stays visibly blue from every angle.
 	float fresnel = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 3.0);
-	// A small base sky response avoids the dead dark strip visible from the
-	// normal gameplay camera; Fresnel still strengthens it toward the horizon.
-albedo = mix(albedo, sky_reflection_color.rgb, 0.08 + fresnel * 0.24);
+	fresnel = mix(0.03, 0.10, fresnel);
+albedo = mix(albedo, sky_reflection_color.rgb, fresnel);
 	ALBEDO = mix(albedo, foam_color.rgb, foam);
 	// A small emissive lift keeps the river readable in shadow without washing
 	// it into the old grey-blue floor at noon.
