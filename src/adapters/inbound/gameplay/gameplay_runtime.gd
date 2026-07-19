@@ -4,6 +4,7 @@ extends Node3D
 const FACIAL_PERFORMANCE_SCRIPT := preload("res://src/adapters/inbound/gameplay/facial_performance.gd")
 const SKY3D_SCRIPT := preload("res://addons/sky_3d/src/Sky3D.gd")
 const PICTORIAL_VITALITY_METER: Script = preload("res://src/adapters/inbound/shared/ui/pictorial_vitality_meter.gd")
+const COMPANION_RUNTIME := preload("res://src/adapters/inbound/gameplay/companion_runtime.gd")
 
 signal session_ended
 ## Emitted at session-end with the WinOutcome so HUD/celebration
@@ -25,6 +26,7 @@ signal session_save_requested(state: SandboxState)
 
 var _world_renderer: WorldRenderer
 var _player_controller: PlayerController
+var _companion_runtime: Node3D = null
 var _session: Session
 
 ## VS-016: Track which evidence capture points have been triggered
@@ -620,6 +622,9 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 	# remains suspended at its spawn coordinate despite the visible ground below.
 	_player_controller.set_physics_process(true)
 	_apply_loaded_customization()
+	# Bella (ragdoll cat follower) spawns behind the hero. Cosmetic only —
+	# no gameplay impact, no interaction. Derived from Styloo CC0 cat.
+	_spawn_companion(spawn_pos)
 	if use_adventure_sky and _world_renderer.has_runtime_terrain_collision():
 		call_deferred("_confirm_runtime_terrain_collision", terrain_probe_generation,
 			_world_renderer.get_runtime_terrain_adapter())
@@ -1257,6 +1262,20 @@ func _tick_npcs(delta: float) -> void:
 					var step: Vector3 = to_player.normalized() * delta * 1.2
 					body.global_position += step
 				body.look_at(_player_controller.global_position, Vector3.UP)
+
+
+## Spawn Bella (ragdoll cat follower) behind the hero. Cosmetic companion —
+## no combat, no dialogue, follows the nearest player at a soft leash.
+func _spawn_companion(spawn_pos: Vector3) -> void:
+	if _companion_runtime != null and is_instance_valid(_companion_runtime):
+		_companion_runtime.queue_free()
+		_companion_runtime = null
+	_companion_runtime = COMPANION_RUNTIME.new()
+	_companion_runtime.name = "CompanionRuntime"
+	add_child(_companion_runtime)
+	# Place Bella just behind+beside the hero so she doesn't clip the capsule.
+	var offset := Vector3(0.6, 0.0, 1.2)
+	_companion_runtime.global_position = spawn_pos + offset
 
 
 ## Wave 3 W3-A3: spawn one visible NPC per roster entry around the opening
@@ -3921,6 +3940,11 @@ func _on_rules_action(rule_id: String, action_kind: int, params: Dictionary) -> 
 func end_session() -> void:
 	_evidence_session_token += 1
 	_cancel_opening_spawn_evidence()
+	# Tear down Bella companion cleanly so a reused runtime doesn't carry her
+	# into the next session or leak her GLB materials.
+	if _companion_runtime != null and is_instance_valid(_companion_runtime):
+		_companion_runtime.queue_free()
+		_companion_runtime = null
 
 	# VS-026: Snapshot sandbox state BEFORE teardown wipes it.
 	# Cache into _sandbox_state so PlayShell / main.gd can persist it.

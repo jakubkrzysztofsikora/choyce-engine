@@ -63,15 +63,24 @@ func _run() -> void:
 		Input.action_release("p2_look_left")
 		_expect(p2.rotation.y > p2_yaw_before, "P2 can rotate its own camera with the keypad look control")
 		var character := p2.get_node_or_null("CharacterMesh") as Node3D
-		var layer := character.get_node_or_null("HeroIdentityLayer") if character != null else null
-		_expect(layer != null and not layer.has_node("ZiemekBackpack"), "P2 selects Gniewko, not a second backpacked Ziemek")
-		var body := _find_mesh(character, "body-mesh")
-		if body != null and body.material_override is ShaderMaterial:
-			var material := body.material_override as ShaderMaterial
-			_expect(material.get_shader_parameter("garment_color").is_equal_approx(PlayerController.GNIEWKO_POLO), "P2 has Gniewko's light polo colour")
-			_expect(material.get_shader_parameter("trouser_color").is_equal_approx(PlayerController.GNIEWKO_NAVY), "P2 has Gniewko's navy trouser colour")
-		else:
-			_expect(false, "P2 body keeps the hero garment shader")
+		# New hero-GLB architecture: P2's CharacterMesh is the gniewko.glb scene
+		# (no HeroIdentityLayer, no Kenney backpack). Verify P2 carries Gniewko's
+		# rig/mesh and never a second Ziemek backpack.
+		var has_backpack := false
+		if character != null:
+			for m in character.find_children("*", "MeshInstance3D", true, false):
+				if String((m as Node3D).name).to_lower().find("backpack") >= 0:
+					has_backpack = true
+					break
+		_expect(not has_backpack, "P2 (Gniewko) carries no backpack — only Ziemek has one")
+		# P2's mesh must contain the Mage-derived geometry baked into gniewko.glb.
+		var has_gniewko_mesh := false
+		if character != null:
+			for m in character.find_children("*", "MeshInstance3D", true, false):
+				if String((m as Node3D).name).find("Mage") >= 0 or String((m as Node3D).name).find("Gniewko") >= 0:
+					has_gniewko_mesh = true
+					break
+		_expect(has_gniewko_mesh, "P2 uses the gniewko.glb mesh (Mage-derived)")
 		var facial := _find_facial_performance(p2)
 		_expect(facial != null, "P2 has a facial performance layer")
 		_expect(_is_bone_anchored(facial), "P2 facial performance is bone-anchored to the shared humanoid rig")

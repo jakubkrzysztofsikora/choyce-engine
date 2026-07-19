@@ -14,7 +14,8 @@ class_name SplitScreenRuntime
 extends Control
 
 const PlayerScript := preload("res://src/adapters/inbound/gameplay/player_controller.gd")
-const CHARACTER_MESH_P2 := "res://data/models/kenney/toon_characters/Models/GLB format/character-male-b.glb"
+const GNIEWSKO_GLB := preload("res://data/models/heroes/gniewko.glb")
+const CHARACTER_MESH_P2 := "res://data/models/heroes/gniewko.glb"
 
 signal session_ended
 
