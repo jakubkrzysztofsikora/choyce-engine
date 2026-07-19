@@ -1627,19 +1627,24 @@ func _build_opening_bridge() -> void:
 	var deck_side := KENNEY_NK + "bridge_side_wood.glb"
 	var deck_cap := KENNEY_NK + "bridge_center_woodRound.glb"
 	var approach_stair := QUATERNIUS_VILLAGE + "Stairs_Exterior_NoFirstStep.gltf"
+	# Kenney's bridge modules are short planks: the deck center is only 0.3m
+	# long in Z and the side rail is 0.4m. Spacing them at 2m intervals (the old
+	# scale=1 placement) left ~1.7m of empty air between planks — the "bridge
+	# without surface" only-skeleton look. Stretch Z to make each tile fill the
+	# 2m slot so the deck reads as a continuous walkway.
 	for z in range(-32, -14, 2):
 		_add_visual_asset("OpeningBridgeDeckCenter_%d" % abs(z),
-			Vector3(0.0, 0.70, float(z)), Vector3(1.92, 1.0, 1.0), 0.0, deck_center, false)
+			Vector3(0.0, 0.70, float(z)), Vector3(1.92, 1.0, 6.67), 0.0, deck_center, false)
 		_add_visual_asset("OpeningBridgeDeckSideL_%d" % abs(z),
-			Vector3(-1.90, 0.70, float(z)), Vector3.ONE, 0.0, deck_side, false)
+			Vector3(-1.90, 0.70, float(z)), Vector3(1.0, 1.0, 5.0), 0.0, deck_side, false)
 		_add_visual_asset("OpeningBridgeDeckSideR_%d" % abs(z),
-			Vector3(1.90, 0.70, float(z)), Vector3(-1.0, 1.0, 1.0), 0.0, deck_side, false)
+			Vector3(1.90, 0.70, float(z)), Vector3(-1.0, 1.0, 5.0), 0.0, deck_side, false)
 	# Rounded end caps soften the silhouette at both banks, so the bridge visibly
 	# meets the ramps instead of ending as a hard square slice above the water.
 	_add_visual_asset("OpeningBridgeDeckCapSouth", Vector3(0.0, 0.70, -14.15),
-		Vector3(1.92, 1.0, 1.0), 0.0, deck_cap, false)
+		Vector3(1.92, 1.0, 6.67), 0.0, deck_cap, false)
 	_add_visual_asset("OpeningBridgeDeckCapNorth", Vector3(0.0, 0.70, -32.85),
-		Vector3(1.92, 1.0, 1.0), PI, deck_cap, false)
+		Vector3(1.92, 1.0, 6.67), PI, deck_cap, false)
 	# A child capsule stopped on the former decorative step mesh before reaching
 	# the deck: its generic proxy had a vertical lip. These shallow visible wood
 	# ramps share the exact convex collision surface, so the bridge can be walked
