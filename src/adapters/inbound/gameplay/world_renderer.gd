@@ -830,6 +830,7 @@ func _build_adventure_dressing(seed_source: String = "adventure") -> void:
 	_build_opening_grove()
 	_build_opening_flank_groundcover(seed_source)
 	_build_opening_basecamp_tableau()
+	_build_gym_compound()
 
 	# The first thirty metres must already feel like a place, not a runway.
 	# Use a visible house, yard, well, crops and a physical sign for the guide.
@@ -907,6 +908,19 @@ func _build_opening_basecamp_tableau() -> void:
 	firelight.omni_range = 7.2
 	firelight.shadow_enabled = false
 	add_child(firelight)
+
+
+const GYM_SPAWNER_3D := preload("res://src/adapters/inbound/gameplay/gym_spawner_3d.gd")
+
+func _build_gym_compound() -> void:
+	var gym_spawner := GYM_SPAWNER_3D.new()
+	gym_spawner.name = "GymSpawner3D"
+	add_child(gym_spawner)
+
+	# Place Gym 24m west of spawn, grounded on terrain
+	var gym_pos := Vector3(-24.0, 0.0, 12.0)
+	gym_pos.y = _get_terrain_height_at(gym_pos.x, gym_pos.z)
+	gym_spawner.spawn_gym(gym_pos)
 
 
 ## A forest starts at ankle height, not with a row of canopy meshes. Build

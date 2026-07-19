@@ -40,4 +40,5 @@ fi
 "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_homestead_spawner_3d.gd
 "${GODOT_BIN}" --headless --path . --script tests/integration/test_visual_settlement_rendering.gd
 "${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_dynamic_controls_overlay.gd
+"${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_gym_spawner_3d.gd
 
