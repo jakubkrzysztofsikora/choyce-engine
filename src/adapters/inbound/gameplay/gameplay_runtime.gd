@@ -87,6 +87,7 @@ var _inventory_labels: Dictionary = {}  ## item_id -> Label
 ## absent. This local mirror is also the hand-off seam for local co-op.
 var _local_inventory: Dictionary = {}
 var _inventory_overlay: PanelContainer = null
+var _inventory_backdrop: ColorRect = null
 var _inventory_grid: GridContainer = null
 var _craft_recipe_list: VBoxContainer = null
 var _inventory_open := false
@@ -2562,49 +2563,130 @@ func _refresh_inventory_panel(inv: Dictionary) -> void:
 
 
 ## Exploration retains a compact pictorial backpack. The complete inventory is
-## an explicit, paused-input panel, so crafting never turns the normal HUD into
-## a text-heavy editor overlay.
+## Minecraft-style inventory + crafting modal. Centered overlay with two
+## columns: the backpack grid on the left and the crafting recipes on the
+## right. Every slot is a framed panel — empty slots show as dark cells so
+## the grid always reads as a 4×N grid the kid can scan, like Minecraft's
+## survival inventory.
 func _build_inventory_overlay(hud: CanvasLayer) -> void:
 	if _inventory_overlay != null:
 		return
+	# Full-screen dim so the world doesn't compete for attention while open.
+	var backdrop := ColorRect.new()
+	backdrop.name = "InventoryBackdrop"
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.color = Color(0.04, 0.05, 0.08, 0.62)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	backdrop.visible = false
+	hud.add_child(backdrop)
+
+	# Centered modal panel — 760×520, plenty of room for two columns.
 	var panel := PanelContainer.new()
 	panel.name = "SandboxInventoryOverlay"
-	panel.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	panel.offset_left = -392
-	panel.offset_top = -226
-	panel.offset_right = -28
-	panel.offset_bottom = 226
-	panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.28, 0.72, 0.55), 0.96))
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left = -380
+	panel.offset_top = -260
+	panel.offset_right = 380
+	panel.offset_bottom = 260
+	panel.add_theme_stylebox_override("panel", _inventory_frame_style())
 	panel.visible = false
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	hud.add_child(panel)
 	_inventory_overlay = panel
+	# Backdrop is a sibling — track it so toggling closes both.
+	_inventory_backdrop = backdrop
+
+	# Outer margin so content doesn't kiss the frame edge.
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 20)
+	margin.add_theme_constant_override("margin_top", 18)
+	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	panel.add_child(margin)
 
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 10)
-	panel.add_child(content)
+	content.add_theme_constant_override("separation", 14)
+	margin.add_child(content)
+
+	# Title bar — big readable Minecraft-style header.
 	var title := Label.new()
-	title.text = "PLECAK"
+	title.text = " PLECAK "
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color(1.0, 0.96, 0.78))
 	content.add_child(title)
+
+	# Two-column body: inventory grid (left) + crafting recipes (right).
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 18)
+	content.add_child(body)
+
+	# LEFT: Backpack (4-col grid of fixed 64×64 slots — empty cells stay
+	# visible as dark framed boxes so the layout reads as a stable grid).
+	var left_col := VBoxContainer.new()
+	left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left_col.add_theme_constant_override("separation", 8)
+	body.add_child(left_col)
+
+	var inv_label := Label.new()
+	inv_label.text = "Przedmioty"
+	inv_label.add_theme_font_size_override("font_size", 18)
+	inv_label.add_theme_color_override("font_color", Color(0.86, 0.92, 0.96))
+	left_col.add_child(inv_label)
+
 	var grid := GridContainer.new()
 	grid.name = "InventoryGrid"
 	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 8)
-	content.add_child(grid)
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	left_col.add_child(grid)
 	_inventory_grid = grid
-	var creative_title := Label.new()
-	creative_title.text = "Kreatywnie"
-	creative_title.add_theme_font_size_override("font_size", 18)
-	content.add_child(creative_title)
+
+	# RIGHT: Crafting recipes — each one a wide button with label + cost.
+	var right_col := VBoxContainer.new()
+	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_col.add_theme_constant_override("separation", 8)
+	body.add_child(right_col)
+
+	var craft_label := Label.new()
+	craft_label.text = "Wytwórz"
+	craft_label.add_theme_font_size_override("font_size", 18)
+	craft_label.add_theme_color_override("font_color", Color(0.86, 0.92, 0.96))
+	right_col.add_child(craft_label)
+
+	var recipes := VBoxContainer.new()
+	recipes.name = "CraftRecipes"
+	recipes.add_theme_constant_override("separation", 6)
+	right_col.add_child(recipes)
+	_craft_recipe_list = recipes
+	for recipe_id in SANDBOX_RECIPES.keys():
+		var recipe: Dictionary = SANDBOX_RECIPES[recipe_id]
+		var button := Button.new()
+		button.name = "Craft_%s" % recipe_id
+		button.text = String(recipe.get("label", recipe_id))
+		button.custom_minimum_size = Vector2(220, 48)
+		button.add_theme_font_size_override("font_size", 18)
+		button.add_theme_stylebox_override("normal", _inventory_button_style(Color(0.16, 0.22, 0.28), 0.96))
+		button.add_theme_stylebox_override("hover", _inventory_button_style(Color(0.26, 0.38, 0.46), 1.0))
+		button.add_theme_stylebox_override("pressed", _inventory_button_style(Color(0.12, 0.18, 0.24), 1.0))
+		button.add_theme_stylebox_override("disabled", _inventory_button_style(Color(0.10, 0.12, 0.14), 0.7))
+		button.focus_mode = Control.FOCUS_CLICK
+		button.pressed.connect(func() -> void: _craft_inventory_recipe(recipe_id))
+		recipes.add_child(button)
+
+	# Creative catalog — collapsed under crafting, smaller 5-col grid.
+	var creative_label := Label.new()
+	creative_label.text = "Kreatywnie"
+	creative_label.add_theme_font_size_override("font_size", 16)
+	creative_label.add_theme_color_override("font_color", Color(0.78, 0.86, 0.92))
+	right_col.add_child(creative_label)
+
 	var creative_grid := GridContainer.new()
 	creative_grid.name = "CreativeCatalog"
 	creative_grid.columns = 5
-	creative_grid.add_theme_constant_override("h_separation", 6)
-	creative_grid.add_theme_constant_override("v_separation", 6)
-	content.add_child(creative_grid)
+	creative_grid.add_theme_constant_override("h_separation", 4)
+	creative_grid.add_theme_constant_override("v_separation", 4)
+	right_col.add_child(creative_grid)
 	for item_id in _creative_catalog_item_ids():
 		var item_button := TextureButton.new()
 		item_button.name = "Creative_%s" % item_id
@@ -2615,25 +2697,10 @@ func _build_inventory_overlay(hud: CanvasLayer) -> void:
 		item_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 		item_button.pressed.connect(func() -> void: _select_creative_catalog_item(item_id))
 		creative_grid.add_child(item_button)
-	var recipes_title := Label.new()
-	recipes_title.text = "Zrób"
-	recipes_title.add_theme_font_size_override("font_size", 18)
-	content.add_child(recipes_title)
-	var recipes := VBoxContainer.new()
-	recipes.name = "CraftRecipes"
-	recipes.add_theme_constant_override("separation", 6)
-	content.add_child(recipes)
-	_craft_recipe_list = recipes
-	for recipe_id in SANDBOX_RECIPES.keys():
-		var recipe: Dictionary = SANDBOX_RECIPES[recipe_id]
-		var button := Button.new()
-		button.name = "Craft_%s" % recipe_id
-		button.text = String(recipe.get("label", recipe_id))
-		button.focus_mode = Control.FOCUS_CLICK
-		button.pressed.connect(func() -> void: _craft_inventory_recipe(recipe_id))
-		recipes.add_child(button)
+
+	# Footer hint — single line, centered.
 	var close_hint := Label.new()
-	close_hint.text = "I — zamknij"
+	close_hint.text = "I — zamknij  •  Kliknij przedmiot, aby wybrać"
 	close_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	close_hint.add_theme_font_size_override("font_size", 14)
 	close_hint.modulate = Color(0.78, 0.86, 0.90)
@@ -2641,38 +2708,81 @@ func _build_inventory_overlay(hud: CanvasLayer) -> void:
 	_refresh_inventory_overlay(_get_inventory())
 
 
+## Stylebox for the inventory modal outer frame — dark wood-tone panel with
+## a subtle inner border so it reads as a contained UI surface like Minecraft's
+## inventory window.
+func _inventory_frame_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.16, 0.20, 0.97)
+	style.set_border_width_all(3)
+	style.border_color = Color(0.30, 0.22, 0.16, 1.0)
+	style.set_content_margin_all(8)
+	style.set_corner_radius_all(6)
+	return style
+
+
+## Stylebox for craft buttons — flat colored, no gradient, no glow. Same
+## restrained palette Minecraft uses for its survival inventory buttons.
+func _inventory_button_style(base_color: Color, alpha: float) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(base_color.r, base_color.g, base_color.b, alpha)
+	style.set_border_width_all(1)
+	style.border_color = Color(0.08, 0.10, 0.12, alpha)
+	style.set_content_margin_all(8)
+	style.set_corner_radius_all(4)
+	return style
+
+
+## Stylebox for one inventory slot — dark recessed cell with a faint top
+## highlight, matching the visual rhythm of a Minecraft inventory grid.
+func _inventory_slot_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.10, 0.13, 0.95)
+	style.set_border_width_all(2)
+	style.border_color = Color(0.18, 0.22, 0.26, 1.0)
+	style.set_corner_radius_all(3)
+	return style
+
+
 func _refresh_inventory_overlay(inventory: Dictionary) -> void:
 	if _inventory_grid == null:
 		return
 	for child in _inventory_grid.get_children():
 		child.queue_free()
-	for item_id in inventory.keys():
-		var count := int(inventory[item_id])
-		if count <= 0:
-			continue
+	# Always render 16 slots (4x4 grid) — empty cells show as dark framed
+	# cells so the layout reads as a stable inventory like Minecraft's.
+	var item_ids := inventory.keys().filter(func(id): return int(inventory[id]) > 0)
+	const SLOT_COUNT := 16
+	for i in range(SLOT_COUNT):
 		var slot := PanelContainer.new()
-		slot.custom_minimum_size = Vector2(72, 72)
-		slot.tooltip_text = "%s ×%d" % [_pretty_item_name(String(item_id)), count]
-		slot.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.35, 0.62, 0.78), 0.78))
-		var icon := TextureRect.new()
-		icon.texture = _inventory_texture_for(String(item_id))
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-		icon.offset_left = 7
-		icon.offset_top = 7
-		icon.offset_right = -7
-		icon.offset_bottom = -7
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(icon)
-		var badge := Label.new()
-		badge.text = "×%d" % count
-		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		badge.set_anchors_preset(Control.PRESET_FULL_RECT)
-		badge.add_theme_font_size_override("font_size", 16)
-		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		slot.add_child(badge)
+		slot.custom_minimum_size = Vector2(64, 64)
+		slot.add_theme_stylebox_override("panel", _inventory_slot_style())
+		slot.tooltip_text = ""
+		if i < item_ids.size():
+			var item_id := String(item_ids[i])
+			var count := int(inventory[item_id])
+			slot.tooltip_text = "%s ×%d" % [_pretty_item_name(item_id), count]
+			var icon := TextureRect.new()
+			icon.texture = _inventory_texture_for(item_id)
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+			icon.offset_left = 8
+			icon.offset_top = 8
+			icon.offset_right = -8
+			icon.offset_bottom = -8
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			slot.add_child(icon)
+			if count > 1:
+				var badge := Label.new()
+				badge.text = "×%d" % count
+				badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+				badge.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+				badge.set_anchors_preset(Control.PRESET_FULL_RECT)
+				badge.add_theme_font_size_override("font_size", 16)
+				badge.add_theme_color_override("font_color", Color.WHITE)
+				badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				slot.add_child(badge)
 		_inventory_grid.add_child(slot)
 	if _craft_recipe_list != null:
 		for child in _craft_recipe_list.get_children():
@@ -2688,8 +2798,13 @@ func _toggle_inventory_overlay() -> void:
 		return
 	_inventory_open = not _inventory_open
 	_inventory_overlay.visible = _inventory_open
+	if _inventory_backdrop != null:
+		_inventory_backdrop.visible = _inventory_open
 	if _player_controller != null and _player_controller.has_method("set_input_disabled"):
 		_player_controller.set_input_disabled(_inventory_open)
+	# Mouse cursor visible whenever the panel is open so the child can click
+	# slots; captured (gameplay mode) when closed.
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE if _inventory_open else Input.MOUSE_MODE_CAPTURED)
 	if _inventory_open:
 		_refresh_inventory_overlay(_get_inventory())
 
