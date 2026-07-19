@@ -3,9 +3,10 @@
 ## project's main scene. Use this when you just want to look at the launcher
 ## without booting through the test harness or the autoplay env var.
 ##
-## Usage:  scripts/launch-game.sh           # open the launcher
-##         scripts/launch-game.sh --solo    # autoplay solo straight in
-##         scripts/launch-game.sh --coop    # autoplay co-op straight in
+## Usage:  scripts/launch-game.sh             # open the launcher
+##         scripts/launch-game.sh --solo      # autoplay solo straight in
+##         scripts/launch-game.sh --coop      # autoplay co-op straight in
+##         scripts/launch-game.sh --rebuild   # wipe import cache, re-import, then launch
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,16 +28,24 @@ case "${1:-}" in
     export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_adventure}"
     export CHOYCE_FORCE_COOP=1
     ;;
+  --rebuild)
+    "$REPO_ROOT/scripts/rebuild-game.sh"
+    ;;
+  --rebuild-solo)
+    "$REPO_ROOT/scripts/rebuild-game.sh"
+    export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_adventure}"
+    ;;
   --help|-h)
-    sed -n '2,9p' "$0"
+    sed -n '2,8p' "$0"
     exit 0
     ;;
   "") ;;
   *)
     echo "Unknown flag: $1" >&2
-    sed -n '2,9p' "$0"
+    sed -n '2,8p' "$0"
     exit 2
     ;;
 esac
 
 exec "$GODOT_BIN" --path "$REPO_ROOT"
+
