@@ -8,7 +8,10 @@ enum JobRole {
 	FARMER,
 	SHOPKEEPER,
 	POLICE_OFFICER,
-	MILITARY_SOLDIER
+	MILITARY_SOLDIER,
+	BANDIT,
+	THIEF,
+	MURDERER
 }
 
 const ALL_ROLES := [
@@ -16,7 +19,10 @@ const ALL_ROLES := [
 	JobRole.FARMER,
 	JobRole.SHOPKEEPER,
 	JobRole.POLICE_OFFICER,
-	JobRole.MILITARY_SOLDIER
+	JobRole.MILITARY_SOLDIER,
+	JobRole.BANDIT,
+	JobRole.THIEF,
+	JobRole.MURDERER
 ]
 
 var npc_id: String
@@ -91,6 +97,10 @@ static func create_randomized(p_npc_id: String, p_role: JobRole, rng: RandomNumb
 	var weapon_id := ""
 	var vehicle_path := "res://data/models/vehicles/police_car.glb"
 
+	var dark_mach := rng.randf_range(0.0, 0.4)
+	var dark_narc := rng.randf_range(0.0, 0.4)
+	var dark_psych := rng.randf_range(0.0, 0.3)
+
 	match p_role:
 		JobRole.POLICE_OFFICER:
 			npc_name = "Posterunkowy " + npc_name
@@ -104,6 +114,24 @@ static func create_randomized(p_npc_id: String, p_role: JobRole, rng: RandomNumb
 			npc_name = "Gospodarz " + npc_name
 			weapon_id = "pitchfork"
 			vehicle_path = ""
+		JobRole.BANDIT:
+			npc_name = "Bandyta " + npc_name
+			weapon_id = "rust_machete"
+			vehicle_path = ""
+			dark_mach = rng.randf_range(0.6, 0.95)
+			dark_psych = rng.randf_range(0.6, 0.9)
+		JobRole.THIEF:
+			npc_name = "Złodziej " + npc_name
+			weapon_id = "dagger"
+			vehicle_path = ""
+			dark_mach = rng.randf_range(0.7, 0.95)
+			dark_narc = rng.randf_range(0.5, 0.8)
+		JobRole.MURDERER:
+			npc_name = "Zabójca " + npc_name
+			weapon_id = "heavy_axe"
+			vehicle_path = ""
+			dark_psych = rng.randf_range(0.8, 1.0)
+			dark_mach = rng.randf_range(0.5, 0.9)
 		_:
 			weapon_id = ""
 			vehicle_path = ""
@@ -120,9 +148,9 @@ static func create_randomized(p_npc_id: String, p_role: JobRole, rng: RandomNumb
 		rng.randf_range(0.1, 0.9),
 		rng.randf_range(0.2, 0.95),
 		rng.randf_range(0.1, 0.7),
-		rng.randf_range(0.0, 0.4),
-		rng.randf_range(0.0, 0.4),
-		rng.randf_range(0.0, 0.3)
+		dark_mach,
+		dark_narc,
+		dark_psych
 	)
 
 	return traits

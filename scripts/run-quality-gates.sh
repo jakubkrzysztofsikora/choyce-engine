@@ -36,4 +36,7 @@ fi
 "${GODOT_BIN}" --headless --path . --script tests/contracts/run_task_047_tests.gd
 "${GODOT_BIN}" --headless --path . --script tests/application/test_npc_answer_library.gd
 "${GODOT_BIN}" --headless --path . --script tests/integration/test_npc_psychology_voice_library.gd
+"${GODOT_BIN}" --headless --path . --script tests/domain/test_settlement_generation.gd
+"${GODOT_BIN}" --headless --path . --script tests/adapters/inbound/test_homestead_spawner_3d.gd
+"${GODOT_BIN}" --headless --path . --script tests/integration/test_visual_settlement_rendering.gd
 

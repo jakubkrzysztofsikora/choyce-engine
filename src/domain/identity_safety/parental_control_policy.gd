@@ -40,7 +40,7 @@ func _init(
 	p_sharing: bool = false,
 	p_language_override: bool = false,
 	p_cloud_sync: bool = false,
-	p_combat_enabled: bool = false,
+	p_combat_enabled: bool = true,
 	p_combat_wave_cap: int = 0,
 	p_combat_difficulty: CombatDifficulty = CombatDifficulty.EASY
 ) -> void:
@@ -151,7 +151,7 @@ static func from_dict(data: Dictionary) -> ParentalControlPolicy:
 		bool(data.get("sharing_allowed", false)),
 		bool(data.get("language_override_allowed", false)),
 		bool(data.get("cloud_sync_consent", false)),
-		bool(data.get("combat_enabled", false)),
+		bool(data.get("combat_enabled", true)),
 		_combat_difficulty_from_string(str(data.get("combat_difficulty", "easy"))),
 		int(data.get("combat_wave_cap", 0)),
 	)
