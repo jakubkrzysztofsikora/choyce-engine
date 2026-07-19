@@ -1627,24 +1627,35 @@ func _build_opening_bridge() -> void:
 	var deck_side := KENNEY_NK + "bridge_side_wood.glb"
 	var deck_cap := KENNEY_NK + "bridge_center_woodRound.glb"
 	var approach_stair := QUATERNIUS_VILLAGE + "Stairs_Exterior_NoFirstStep.gltf"
-	# Kenney's bridge modules are short planks: the deck center is only 0.3m
-	# long in Z and the side rail is 0.4m. Spacing them at 2m intervals (the old
-	# scale=1 placement) left ~1.7m of empty air between planks — the "bridge
-	# without surface" only-skeleton look. Stretch Z to make each tile fill the
-	# 2m slot so the deck reads as a continuous walkway.
+	# Kenney's Nature Kit bridge-center mesh is 1m wide × 0.3m tall × 1m long in
+	# its source frame (X × Y × Z). Every face except the top-bottom pair has
+	# its normal in the source Z direction, so default placement shows only
+	# sides — looking from above is a "skeleton only" bridge. Tilt each tile
+	# 90° around X so the source +Z direction becomes world +Y (deck thickness)
+	# and source +Y (the short 0.3m direction) becomes world +Z (the long axis).
+	# With that tilt: source-Y stretches to 6.67m (the slot spacing) and
+	# source-Z compresses to 0.3m (the deck thickness we want players to walk on).
+	const DECK_TILT_X := deg_to_rad(90.0)
 	for z in range(-32, -14, 2):
-		_add_visual_asset("OpeningBridgeDeckCenter_%d" % abs(z),
-			Vector3(0.0, 0.70, float(z)), Vector3(1.92, 1.0, 6.67), 0.0, deck_center, false)
-		_add_visual_asset("OpeningBridgeDeckSideL_%d" % abs(z),
-			Vector3(-1.90, 0.70, float(z)), Vector3(1.0, 1.0, 5.0), 0.0, deck_side, false)
-		_add_visual_asset("OpeningBridgeDeckSideR_%d" % abs(z),
-			Vector3(1.90, 0.70, float(z)), Vector3(-1.0, 1.0, 5.0), 0.0, deck_side, false)
+		var deck_center_node := _add_visual_asset("OpeningBridgeDeckCenter_%d" % abs(z),
+			Vector3(0.0, 0.70, float(z)), Vector3(1.92, 22.22, 0.3), 0.0, deck_center, false)
+		if deck_center_node != null:
+			var basis := Basis().rotated(Vector3.RIGHT, DECK_TILT_X)
+			deck_center_node.basis = basis * deck_center_node.basis
+		var deck_side_l := _add_visual_asset("OpeningBridgeDeckSideL_%d" % abs(z),
+			Vector3(-1.90, 0.70, float(z)), Vector3(1.0, 1.0, 1.0), 0.0, deck_side, false)
+		var deck_side_r := _add_visual_asset("OpeningBridgeDeckSideR_%d" % abs(z),
+			Vector3(1.90, 0.70, float(z)), Vector3(-1.0, 1.0, 1.0), 0.0, deck_side, false)
 	# Rounded end caps soften the silhouette at both banks, so the bridge visibly
 	# meets the ramps instead of ending as a hard square slice above the water.
-	_add_visual_asset("OpeningBridgeDeckCapSouth", Vector3(0.0, 0.70, -14.15),
-		Vector3(1.92, 1.0, 6.67), 0.0, deck_cap, false)
-	_add_visual_asset("OpeningBridgeDeckCapNorth", Vector3(0.0, 0.70, -32.85),
-		Vector3(1.92, 1.0, 6.67), PI, deck_cap, false)
+	var cap_south := _add_visual_asset("OpeningBridgeDeckCapSouth", Vector3(0.0, 0.70, -14.15),
+		Vector3(1.92, 22.22, 0.3), 0.0, deck_cap, false)
+	if cap_south != null:
+		cap_south.basis = Basis().rotated(Vector3.RIGHT, DECK_TILT_X) * cap_south.basis
+	var cap_north := _add_visual_asset("OpeningBridgeDeckCapNorth", Vector3(0.0, 0.70, -32.85),
+		Vector3(1.92, 22.22, 0.3), PI, deck_cap, false)
+	if cap_north != null:
+		cap_north.basis = Basis().rotated(Vector3.RIGHT, DECK_TILT_X) * Basis().rotated(Vector3.UP, PI) * cap_north.basis
 	# A child capsule stopped on the former decorative step mesh before reaching
 	# the deck: its generic proxy had a vertical lip. These shallow visible wood
 	# ramps share the exact convex collision surface, so the bridge can be walked
