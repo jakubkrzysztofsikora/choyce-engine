@@ -1085,11 +1085,11 @@ func _show_launcher() -> void:
 	add_child(_launcher)
 
 
-func _on_launcher_play() -> void:
+func _on_launcher_play(coop: bool = false) -> void:
 	# VS-016: Capture launcher screenshot before removing launcher
 	if _screenshot_capture != null:
 		_screenshot_capture.capture(ScreenshotCaptureClass.CapturePoint.LAUNCHER, {"trigger": "launcher_play"})
-	
+
 	_launcher = null
 	# The launcher must be a reliable one-press route into the demo, even when
 	# it is tapped during startup before the deferred persistence pass has seeded
@@ -1099,7 +1099,7 @@ func _on_launcher_play() -> void:
 	if adventure_project_id.is_empty():
 		push_error("Launcher could not resolve the Adventure demo project")
 		return
-	_on_world_card_pressed(adventure_project_id, "")
+	_on_world_card_pressed(adventure_project_id, "", coop)
 
 
 func _resolve_launcher_adventure_project_id() -> String:
@@ -1129,7 +1129,7 @@ func _resolve_launcher_adventure_project_id() -> String:
 	return ""
 
 
-func _on_world_card_pressed(project_id: String, world_id: String) -> void:
+func _on_world_card_pressed(project_id: String, world_id: String, coop: bool = false) -> void:
 	# Direct-launch path from LandingScreen. PlayShell.launch_world_by_id loads
 	# the project, picks the right world, plays template-matched music, and
 	# starts a session through RunPlaytestPort — all of which set_world_context
@@ -1138,7 +1138,7 @@ func _on_world_card_pressed(project_id: String, world_id: String) -> void:
 	# had no project context to resolve world_id against.
 	_navigator.show_shell(SHELL_PLAY)
 	if _play_shell.has_method("launch_world_by_id"):
-		_play_shell.launch_world_by_id(project_id, world_id)
+		_play_shell.launch_world_by_id(project_id, world_id, coop)
 	else:
 		push_warning("PlayShell missing launch_world_by_id — falling back to context-only")
 		if not world_id.is_empty():

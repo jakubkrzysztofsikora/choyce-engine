@@ -5,13 +5,13 @@
 ## via the AudioBank autoload; the intro is a realtime 3D cinematic built in a
 ## SubViewport so it feels like a trailer while staying instant/offline.
 ##
-## Emits `play_pressed` — main.gd wires it to the proven direct-launch path
+## Emits `play_pressed(coop: bool)` — main.gd wires it to the proven direct-launch path
 ## (_on_world_card_pressed) so we reuse the whole play→win loop, no new
 ## composition root.
 class_name LauncherOverlay
 extends CanvasLayer
 
-signal play_pressed
+signal play_pressed(coop: bool)
 
 const REF := Vector2(1600.0, 960.0)  ## design reference; stretch scales from here
 const ADVENTURE_TITLE := "Ziemek i Gniewko: Demo"
@@ -43,6 +43,7 @@ const CAPTION_FADEOUT_DELAY := 0.25
 var _root: Control
 var _title: Label
 var _play_btn: Button
+var _coop_btn: Button
 var _subtitle: Label
 var _shapes: Array[Dictionary] = []      ## {node, speed, phase, base}
 var _t: float = 0.0
@@ -151,19 +152,28 @@ func _build() -> void:
 	_play_btn.text = _tr("launcher.play", "GRAJ")
 	_play_btn.custom_minimum_size = Vector2(420, 140)
 	_play_btn.add_theme_font_size_override("font_size", 64)
-	# A launcher should begin in a resting, cinematic state. Click focus still
-	# supports Enter after an intentional click, but avoids a queued ui_accept
-	# event or application activation immediately starting the saved world.
 	_play_btn.focus_mode = Control.FOCUS_CLICK
 	_style_play_button(_play_btn)
-	# Center the button within the column regardless of its min-size.
+
+	# Co-op toggle button (local split-screen)
+	_coop_btn = Button.new()
+	_coop_btn.name = "CoopButton"
+	_coop_btn.text = _tr("launcher.coop", "KOOPERACJA")
+	_coop_btn.custom_minimum_size = Vector2(420, 140)
+	_coop_btn.add_theme_font_size_override("font_size", 64)
+	_coop_btn.focus_mode = Control.FOCUS_CLICK
+	_style_play_button(_coop_btn)
+
+	# Center both buttons within the column.
 	var btn_wrap := HBoxContainer.new()
 	btn_wrap.alignment = BoxContainer.ALIGNMENT_CENTER
 	btn_wrap.set("size_flags_horizontal", Control.SIZE_SHRINK_CENTER)
 	btn_wrap.add_child(_play_btn)
+	btn_wrap.add_child(_coop_btn)
 	col.add_child(btn_wrap)
 
 	_play_btn.pressed.connect(_on_play)
+	_coop_btn.pressed.connect(_on_play_coop)
 
 	# Menu starts hidden; the fight cutscene plays, then the beat drop reveals
 	# it. col holds title/subtitle/button — hide the interactive parts until
@@ -747,6 +757,7 @@ func _reveal_menu() -> void:
 	if btn_wrap != null:
 		mtw.tween_property(btn_wrap, "modulate:a", 1.0, 0.5).set_delay(0.25)
 	_play_btn.disabled = false
+	_coop_btn.disabled = false
 
 	# Keep the frozen cutscene as the static menu key art until the child presses
 	# Play. It is owned by this overlay and is released normally with it.
@@ -856,6 +867,8 @@ func _on_play() -> void:
 	set_process(false)
 	if _play_btn != null:
 		_play_btn.disabled = true
+	if _coop_btn != null:
+		_coop_btn.disabled = true
 	var bank := get_node_or_null("/root/AudioBank")
 	if bank != null and bank.has_method("stop_voice"):
 		bank.stop_voice()
@@ -864,7 +877,26 @@ func _on_play() -> void:
 	tw.tween_property(_root, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE)
 	tw.tween_callback(func() -> void:
 		_stop_music()
-		play_pressed.emit()
+		play_pressed.emit(false)
+		queue_free()
+	)
+
+
+func _on_play_coop() -> void:
+	set_process(false)
+	if _play_btn != null:
+		_play_btn.disabled = true
+	if _coop_btn != null:
+		_coop_btn.disabled = true
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank != null and bank.has_method("stop_voice"):
+		bank.stop_voice()
+	# Quick press feedback, then hand off with co-op flag.
+	var tw := create_tween()
+	tw.tween_property(_root, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE)
+	tw.tween_callback(func() -> void:
+		_stop_music()
+		play_pressed.emit(true)
 		queue_free()
 	)
 

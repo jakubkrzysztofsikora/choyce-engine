@@ -180,7 +180,7 @@ func set_profile(profile: PlayerProfile) -> void:
 	_profile = profile
 
 
-func launch_world_by_id(project_id: String, world_id: String) -> void:
+func launch_world_by_id(project_id: String, world_id: String, local_coop: bool = false) -> void:
 	if _project_store == null:
 		push_warning("PlayShell.launch_world_by_id called before _project_store wired")
 		return
@@ -211,11 +211,15 @@ func launch_world_by_id(project_id: String, world_id: String) -> void:
 	# RunPlaytestPort contract: players is Array[PlayerProfile], not strings.
 	# RunPlaytestService reads players[i].profile_id during session.add_player.
 	var players: Array = [_profile] if _profile != null else []
+	if local_coop:
+		var guest := PlayerProfile.new("%s_local_guest" % _profile.profile_id, PlayerProfile.Role.KID)
+		guest.display_name = _t("play.guest.name")
+		players.append(guest)
 	var session: Session = _run_playtest_port.execute(world.world_id, players)
 	if session == null:
 		push_warning("PlayShell.launch_world_by_id: session creation failed")
 		return
-	_start_gameplay(world, session)
+	_start_gameplay(world, session, local_coop)
 
 
 func set_world_context(world_id: String) -> void:

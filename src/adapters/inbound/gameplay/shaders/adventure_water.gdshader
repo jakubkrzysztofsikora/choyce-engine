@@ -3,15 +3,14 @@
 // but intentionally keeps this runtime self-contained: no reflection
 // viewports, no editor plugin, and no dependency on a Godot 3 asset pipeline.
 shader_type spatial;
-// The player can enter the river. Keep the surface opaque in the depth pass so
-// it never vanishes through transparent-sort ambiguity when camera, avatar and
-// terrain overlap at the shore.
-// River readability must not depend on the active directional-light grade.
-// The lit PBR path can blow the broad PlaneMesh out to near white in the
-// launcher/direct-session path, hiding water altogether. Keep the water
-// opaque and use its authored colour/foam directly; wave displacement still
-// provides motion while water stays visibly blue at all times of day.
-render_mode cull_disabled, depth_draw_opaque, unshaded, fog_disabled;
+// The player can enter the river. Keep the surface double-sided, opaque, and
+// depth-drawn in every pass so contact with the avatar never leaves a hole.
+// render_mode deviates from defaults: cull_disabled shows both sides from any
+// camera angle (TPP camera dips below the wave displacement at shore contact);
+// depth_draw_always ensures the surface wins depth contention against the
+// hero's legs at the waterline instead of being temporarily masked out; unshaded
+// keeps the authored blue palette stable across day/night directional grades.
+render_mode cull_disabled, depth_draw_always, unshaded, fog_disabled;
 
 uniform vec4 shallow_color : source_color = vec4(0.012, 0.145, 0.19, 1.0);
 uniform vec4 deep_color : source_color = vec4(0.003, 0.045, 0.085, 1.0);
