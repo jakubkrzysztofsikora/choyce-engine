@@ -39,10 +39,32 @@ func setup(host: Node, eleven_key: String = "", eleven_voice: String = "") -> Ta
 			_eleven_labs.playback_finished.connect(func(t: String, r: int) -> void: playback_finished.emit(t, r))
 			_eleven_labs.playback_skipped.connect(func(t: String, r: int) -> void: playback_skipped.emit(t, r))
 
+		# RefCounted has no _exit_tree, so hook the host's tree_exiting to
+		# cancel any in-flight HTTP and free the AudioStreamPlayer cleanly.
+		# Without this, "ObjectDB instances leaked at exit" fires whenever a
+		# session ends mid-request.
+		if _host.has_signal("tree_exiting"):
+			_host.tree_exiting.connect(shutdown)
+
 		# Eagerly check and clone voices
 		_eager_check_and_clone_voices()
 
 	return self
+
+
+## Explicit clean shutdown. Cancel any in-flight HTTP and free the audio
+## player. Safe to call multiple times.
+func shutdown() -> void:
+	if _active_http != null and is_instance_valid(_active_http):
+		_active_http.cancel_request()
+		_active_http.queue_free()
+		_active_http = null
+	if _player != null and is_instance_valid(_player):
+		_player.stop()
+		_player.queue_free()
+		_player = null
+	_speak_queue.clear()
+	_is_speaking = false
 
 
 func is_available() -> bool:
@@ -114,6 +136,7 @@ func _pump_queue() -> void:
 	}
 
 	var http := HTTPRequest.new()
+	http.timeout = _REQUEST_TIMEOUT_SECONDS
 	_host.add_child(http)
 	_active_http = http
 	http.request_completed.connect(func(result: int, response_code: int, response_headers: PackedStringArray, body: PackedByteArray) -> void:
@@ -168,6 +191,7 @@ func _pump_queue() -> void:
 
 func _download_audio(audio_url: String, text: String, request_id: int, cache_file: String) -> void:
 	var http := HTTPRequest.new()
+	http.timeout = _REQUEST_TIMEOUT_SECONDS
 	_host.add_child(http)
 	_active_http = http
 
@@ -245,6 +269,7 @@ func _eager_check_and_clone_voices() -> void:
 	if _host == null or not _host.is_inside_tree():
 		return
 	var http := HTTPRequest.new()
+	http.timeout = _REQUEST_TIMEOUT_SECONDS
 	_host.add_child(http)
 	http.request_completed.connect(func(result: int, response_code: int, response_headers: PackedStringArray, body: PackedByteArray) -> void:
 		http.queue_free()
@@ -314,6 +339,7 @@ func _clone_voice_on_agent(voice_id: String, ref_path: String) -> void:
 	]
 
 	var http := HTTPRequest.new()
+	http.timeout = _REQUEST_TIMEOUT_SECONDS
 	_host.add_child(http)
 	http.request_completed.connect(func(result: int, response_code: int, response_headers: PackedStringArray, response_body: PackedByteArray) -> void:
 		http.queue_free()

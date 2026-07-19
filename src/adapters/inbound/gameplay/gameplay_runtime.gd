@@ -749,6 +749,10 @@ func _on_vehicle_exited(vehicle: VehicleBase, player: PlayerController, exit_pos
 	if _active_vehicle == vehicle:
 		_active_vehicle = null
 
+	if player != null and is_instance_valid(player):
+		player.set_physics_process(true)
+		player.visible = true
+
 	# Restore input
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_interaction_feedback("Wysiadłeś z pojazdu.")
@@ -2157,14 +2161,20 @@ func _execute_npc_completions(player_text: String, request_id: int = -1) -> void
 			# Handle <use_ready> tag selection
 			var is_ready_selection := false
 			if clean_text.contains("<use_ready>") and clean_text.contains("</use_ready>"):
-				var start_idx := clean_text.find("<use_ready>") + 11
-				var end_idx := clean_text.find("</use_ready>")
-				var idx_str := clean_text.substr(start_idx, end_idx - start_idx).strip_edges()
-				if idx_str.is_valid_int():
-					var idx := idx_str.to_int()
-					if idx >= 0 and idx < ready_sentences.size():
-						clean_text = ready_sentences[idx]["text"]
-						is_ready_selection = true
+				var tag_open := clean_text.find("<use_ready>")
+				var start_idx := tag_open + 11
+				var end_idx := clean_text.find("</use_ready>", start_idx)
+				if end_idx > start_idx:
+					var idx_str := clean_text.substr(start_idx, end_idx - start_idx).strip_edges()
+					if idx_str.is_valid_int():
+						var idx := idx_str.to_int()
+						if idx >= 0 and idx < ready_sentences.size():
+							clean_text = ready_sentences[idx]["text"]
+							is_ready_selection = true
+				if not is_ready_selection:
+					var tag_close := clean_text.find("</use_ready>", tag_open)
+					if tag_close > tag_open:
+						clean_text = (clean_text.substr(0, tag_open) + clean_text.substr(tag_close + 12)).strip_edges()
 
 			# Persist dynamic generated sentences so the NPC's library grows!
 			if not is_ready_selection and not clean_text.is_empty() and _npc_library_service != null:

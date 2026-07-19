@@ -54,6 +54,19 @@ func _ready() -> void:
 	set_physics_process(true)
 
 
+## Tear down Bella cleanly so a session restart doesn't leak her GLB's
+## materials, the cached hero reference, or her Skeleton3D pose work.
+func _exit_tree() -> void:
+	set_physics_process(false)
+	_hero = null
+	if _bella != null and is_instance_valid(_bella):
+		_bella.queue_free()
+		_bella = null
+	if _root != null and is_instance_valid(_root):
+		_root.queue_free()
+		_root = null
+
+
 ## Spawn Bella's GLB and ground it. The GLB is pre-baked from the Styloo CC0
 ## cat (NOTICES.md) at 0.35× scale so she's a child-sized cat.
 func _spawn_bella() -> void:

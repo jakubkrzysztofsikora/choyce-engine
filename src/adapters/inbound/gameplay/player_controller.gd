@@ -1343,12 +1343,17 @@ func _swap_character_glb(path: String) -> void:
 	if not ResourceLoader.exists(path):
 		push_warning("[player_controller] missing face GLB: %s" % path)
 		return
+	var packed := load(path) as PackedScene
+	if packed == null:
+		push_warning("[player_controller] failed to load face GLB: %s" % path)
+		return
+	var new_mesh := packed.instantiate() as Node3D
+	if new_mesh == null:
+		return
+
 	var restore_visual := _held_visual_tier_id
 	_held_item_anchor = null
 	if _character_mesh != null and is_instance_valid(_character_mesh):
-		# Remove synchronously before mounting the next GLB.  Leaving the old
-		# queued-for-deletion node in place created two CharacterMesh children for
-		# a frame, so path-based callers could pick the retired face rig.
 		remove_child(_character_mesh)
 		_character_mesh.queue_free()
 		_character_mesh = null
@@ -1358,13 +1363,7 @@ func _swap_character_glb(path: String) -> void:
 	if _held_weapon != null and is_instance_valid(_held_weapon):
 		_held_weapon.queue_free()
 		_held_weapon = null
-	var packed := load(path) as PackedScene
-	if packed == null:
-		push_warning("[player_controller] failed to load face GLB: %s" % path)
-		return
-	var new_mesh := packed.instantiate() as Node3D
-	if new_mesh == null:
-		return
+
 	new_mesh.name = "CharacterMesh"
 	add_child(new_mesh)
 	_character_mesh = new_mesh

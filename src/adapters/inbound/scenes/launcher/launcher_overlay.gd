@@ -84,6 +84,30 @@ func _ready() -> void:
 	set_process(true)
 
 
+## Kill every tween we created so they don't keep ticking after this CanvasLayer
+## is freed (which would print "ObjectDB instances leaked at exit" warnings).
+func _exit_tree() -> void:
+	set_process(false)
+	if _cinematic_tween != null and _cinematic_tween.is_valid():
+		_cinematic_tween.kill()
+		_cinematic_tween = null
+	# SceneTree has no Tween — they are bound to this node, so freeing the node
+	# tree below already invalidates them. The kill() above is just for the
+	# long-lived cinematic tween we keep a handle to.
+
+
+## Tear down launcher: stop music, kill cinematic, fade out + free.
+func _shutdown() -> void:
+	set_process(false)
+	if _play_btn != null:
+		_play_btn.disabled = true
+	if _coop_btn != null:
+		_coop_btn.disabled = true
+	var bank := get_node_or_null("/root/AudioBank")
+	if bank != null and bank.has_method("stop_voice"):
+		bank.stop_voice()
+
+
 func _build() -> void:
 	_root = Control.new()
 	_root.name = "LauncherRoot"

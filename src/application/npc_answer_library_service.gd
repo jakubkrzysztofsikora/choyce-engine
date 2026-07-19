@@ -91,7 +91,11 @@ func _load_dynamic_answers(npc_id: String) -> Array:
 
 	var json := JSON.new()
 	if json.parse(text) == OK and json.data is Array:
-		return json.data
+		var result: Array = []
+		for item in json.data:
+			if item is Dictionary:
+				result.append(item)
+		return result
 
 	return []
 

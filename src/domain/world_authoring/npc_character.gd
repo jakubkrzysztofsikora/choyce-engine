@@ -137,6 +137,7 @@ func update_emotional_state(player_hp_ratio: float, player_score: int) -> void:
 	else:
 		# Gradually return anxiety/happiness to baseline
 		anxiety = clampf(anxiety - 0.1, 0.0, 1.0)
+		happiness = move_toward(happiness, 0.5, 0.1)
 
 	if player_score > 50:
 		if narcissism > 0.5:
