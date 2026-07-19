@@ -70,16 +70,42 @@ func _spawn_bella() -> void:
 	_bella.visible = true
 
 
-## Locate the nearest PlayerController in the scene tree. Bella follows the
-## first one found (P1 in single player, P1 in split-screen).
+## Locate the active PlayerController in the scene tree. Bella follows the
+## first one found (P1 in single player, P1 in split-screen). Falls back to
+## scanning the tree by class because PlayerController does not currently
+## register itself in a "players" group.
 func _find_hero() -> void:
 	var tree := get_tree()
 	if tree == null:
 		return
-	for node in tree.get_nodes_in_group("players"):
+	# Prefer the gameplay runtime's authoritative P1 if present.
+	var p1 := tree.get_first_node_in_group("players")
+	if p1 is Node3D:
+		_hero = p1
+		return
+	# Fall back to a class-name scan.
+	for node in tree.get_nodes_in_group("_class_PlayerController"):
 		if node is Node3D:
 			_hero = node
 			return
+	var root_node := tree.current_scene if tree.current_scene != null else tree.root
+	if root_node != null:
+		var found := _find_by_class(root_node, "PlayerController")
+		if found != null:
+			_hero = found
+
+
+func _find_by_class(node: Node, class_name_str: String) -> Node3D:
+	if node == null:
+		return null
+	if node.is_class(class_name_str) or (node.get_script() != null and String(node.get_script().get_global_name()) == class_name_str):
+		if node is Node3D:
+			return node
+	for child in node.get_children():
+		var found := _find_by_class(child, class_name_str)
+		if found != null:
+			return found
+	return null
 
 
 func _physics_process(delta: float) -> void:
@@ -109,7 +135,11 @@ func _physics_process(delta: float) -> void:
 	# Move Bella toward hero at the chosen speed, but never overshoot the stop
 	# distance in one frame (would teleport past the hero).
 	var step := minf(speed * delta, maxf(0.0, dist - FOLLOW_STOP_DISTANCE))
-	_bella.global_position = bella_pos + dir * step
+	var new_pos := bella_pos + dir * step
+	# Vertical follow: cats can't fly. Track the hero's altitude so Bella stays
+	# grounded alongside the player on slopes and stairs.
+	new_pos.y = hero_pos.y
+	_bella.global_position = new_pos
 
 	# Smoothly turn Bella to face the hero's forward direction so the cat's
 	# "front" (head + ears) orients naturally toward the player.
