@@ -1644,11 +1644,10 @@ func _build_opening_bridge() -> void:
 	for side in [-1.0, 1.0]:
 		var rail_body := StaticBody3D.new()
 		rail_body.name = "OpeningBridgeRail_%s" % ("L" if side < 0.0 else "R")
-		var rail_mesh := _box_mesh(rail_half_width * 2.0, rail_height, deck_length)
+		var rail_mesh := _box_mesh(rail_half_width * 2.0, rail_height, deck_length, _bridge_wood_material())
 		var rail_mi := MeshInstance3D.new()
 		rail_mi.name = "Mesh"
 		rail_mi.mesh = rail_mesh
-		rail_mi.material_override = _bridge_wood_material()
 		rail_body.add_child(rail_mi)
 
 		var rail_col := CollisionShape3D.new()
@@ -1664,11 +1663,10 @@ func _build_opening_bridge() -> void:
 		add_child(rail_body)
 
 		# A thinner top cap reads as a hand-rail and breaks up the plain wall.
-		var cap_mesh := _box_mesh(rail_half_width * 2.4, 0.10, deck_length)
+		var cap_mesh := _box_mesh(rail_half_width * 2.4, 0.10, deck_length, _bridge_wood_material())
 		var cap_mi := MeshInstance3D.new()
 		cap_mi.name = "OpeningBridgeRailCap_%s" % ("L" if side < 0.0 else "R")
 		cap_mi.mesh = cap_mesh
-		cap_mi.material_override = _bridge_wood_material().duplicate()
 		cap_mi.position = Vector3(
 			side * (deck_half_width - rail_half_width),
 			deck_top_y + rail_height,
@@ -1896,9 +1894,13 @@ func _create_opening_bridge_ramp_mesh(points: PackedVector3Array) -> ArrayMesh:
 ## Build an axis-aligned box mesh (centered on origin) with per-face flat normals
 ## so the deck + rails actually look like wood planking (sharp shading edges)
 ## and the +Y face has a pure +Y normal for correct sun + camera response.
-func _box_mesh(size_x: float, size_y: float, size_z: float) -> ArrayMesh:
+## If `material` is non-null it is bound to the mesh surface via SurfaceTool
+## so the renderer's material queries see a valid RID (not just override).
+func _box_mesh(size_x: float, size_y: float, size_z: float, material: Material = null) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	if material != null:
+		st.set_material(material)
 	var hx := size_x * 0.5
 	var hy := size_y * 0.5
 	var hz := size_z * 0.5
