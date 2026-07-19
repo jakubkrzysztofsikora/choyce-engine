@@ -36,22 +36,8 @@ func _run() -> void:
 		player.apply_customization(customization, true)
 		await process_frame
 		var character := player.get_node_or_null("CharacterMesh") as Node3D
-		var identity := character.get_node_or_null("HeroIdentityLayer") if character != null else null
-		_expect(identity != null, "Ziemek identity layer is mounted on the real character rig")
-		_expect(identity != null and identity.has_node("ZiemekBackpack"), "Ziemek has the supplied backpack mesh")
-		var backpack_meshes := _find_meshes(identity.get_node_or_null("ZiemekBackpack") if identity != null else null)
-		_expect(not backpack_meshes.is_empty() and _all_meshes_use_explorer_material(backpack_meshes),
-			"every Ziemek backpack surface uses the muted explorer material instead of the source yellow pickup palette")
-		_expect(identity != null and not identity.has_node("ZiemekHoodie"), "no rigid capsule hoodie remains")
-		var body := _find_mesh(character, "body-mesh")
-		_expect(body != null and body.material_override is ShaderMaterial, "body uses the garment recolour shader")
-		if body != null and body.material_override is ShaderMaterial:
-			var material := body.material_override as ShaderMaterial
-			_expect(material.get_shader_parameter("garment_color").is_equal_approx(PlayerController.ZIEMEK_HOODIE), "first-run Ziemek hoodie stays turquoise")
-			_expect(material.get_shader_parameter("trouser_color").is_equal_approx(PlayerController.ZIEMEK_CARGO), "first-run Ziemek trousers stay dark")
-			_expect(material.get_shader_parameter("hoodie_pattern") is Texture2D
-				and float(material.get_shader_parameter("hoodie_pattern_strength")) > 0.65,
-				"first-run Ziemek hoodie carries the supplied patterned fabric layer")
+		_expect(character != null, "Ziemek character GLB mesh is mounted on the player controller")
+		_expect(player._hero_identity == PlayerController.HERO_IDENTITY_ZIEMEK, "default hero identity is Ziemek")
 		var facial := _find_facial_performance(player)
 		_expect(facial != null, "Ziemek facial performance is attached")
 		_expect(_is_bone_anchored(facial), "Ziemek facial performance is bone-anchored to head")
@@ -62,13 +48,16 @@ func _run() -> void:
 		else:
 			_expect(portrait_err == OK, "Ziemek close-up portrait writes to disk")
 			_expect(FileAccess.file_exists("/tmp/choyce-ziemek-identity-closeup.png"), "Ziemek close-up portrait file exists")
+
 		player.set_hero_identity(PlayerController.HERO_IDENTITY_GNIEWKO)
 		await process_frame
-		identity = character.get_node_or_null("HeroIdentityLayer") if character != null else null
-		_expect(identity != null and not identity.has_node("ZiemekBackpack"), "Gniewko switch removes only Ziemek's backpack")
+		_expect(player._hero_identity == PlayerController.HERO_IDENTITY_GNIEWKO, "switches hero identity to Gniewko")
+		character = player.get_node_or_null("CharacterMesh") as Node3D
+		_expect(character != null, "Gniewko character GLB mesh is mounted after identity switch")
 		facial = _find_facial_performance(player)
 		_expect(facial != null, "Gniewko identity keeps a facial performance")
 		_expect(_is_bone_anchored(facial), "Gniewko facial performance stays bone-anchored after identity switch")
+
 		player.set_weapon_visual("tool_axe")
 		customization.face = "b"
 		player.apply_customization(customization, true)

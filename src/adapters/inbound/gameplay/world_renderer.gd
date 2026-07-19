@@ -1640,18 +1640,29 @@ func _build_opening_bridge() -> void:
 	deck_mi.position = Vector3(0.0, deck_top_y - deck_thickness * 0.5, deck_center_z)
 	add_child(deck_mi)
 
-	# Two side rails (left + right), thin tall boxes running the deck length.
+	# Two side rails (left + right), thin tall boxes running the deck length with physical collision.
 	for side in [-1.0, 1.0]:
+		var rail_body := StaticBody3D.new()
+		rail_body.name = "OpeningBridgeRail_%s" % ("L" if side < 0.0 else "R")
 		var rail_mesh := _box_mesh(rail_half_width * 2.0, rail_height, deck_length)
 		var rail_mi := MeshInstance3D.new()
-		rail_mi.name = "OpeningBridgeRail_%s" % ("L" if side < 0.0 else "R")
+		rail_mi.name = "Mesh"
 		rail_mi.mesh = rail_mesh
 		rail_mi.material_override = _bridge_wood_material()
-		rail_mi.position = Vector3(
+		rail_body.add_child(rail_mi)
+
+		var rail_col := CollisionShape3D.new()
+		var rail_shape := BoxShape3D.new()
+		rail_shape.size = Vector3(rail_half_width * 2.0, rail_height, deck_length)
+		rail_col.shape = rail_shape
+		rail_body.add_child(rail_col)
+
+		rail_body.position = Vector3(
 			side * (deck_half_width - rail_half_width),
 			deck_top_y + rail_height * 0.5,
 			deck_center_z)
-		add_child(rail_mi)
+		add_child(rail_body)
+
 		# A thinner top cap reads as a hand-rail and breaks up the plain wall.
 		var cap_mesh := _box_mesh(rail_half_width * 2.4, 0.10, deck_length)
 		var cap_mi := MeshInstance3D.new()

@@ -669,7 +669,7 @@ func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 			break
 	_assert(volume_widths_are_river_scale,
 		"every meander segment exposes a bank-to-bank shallow-water volume instead of a straight invisible strip")
-	_assert(water_shader_source.contains("depth_draw_opaque, unshaded, fog_disabled")
+	_assert(water_shader_source.contains("depth_draw_always, unshaded, fog_disabled")
 		and water_shader_source.contains("float foam = crest_foam + bank_foam;")
 		and water_shader_source.contains("varying float river_depth;")
 		and water_shader_source.contains("uniform sampler2D dudv_map")
@@ -688,9 +688,9 @@ func _test_river_keeps_a_bridge_width_dry_crossing() -> void:
 		"river palette is materially darker than the sky instead of a white floor")
 	_assert(deck != null and deck_collision != null,
 		"bridge exposes one continuous deck collision beneath its visual bridge assembly")
-	_assert(r.find_children("OpeningBridgeDeckCenter_*", "Node3D", false, false).size() >= 8
-		and r.find_child("OpeningBridgeDeckCapSouth", true, false) != null
-		and r.find_child("OpeningBridgeDeckCapNorth", true, false) != null,
+	_assert(r.get_node_or_null("OpeningBridgeDeckSurface") != null
+		and r.get_node_or_null("OpeningBridgeRampSouth") != null
+		and r.get_node_or_null("OpeningBridgeRampNorth") != null,
 		"bridge uses complete purpose-built deck modules and rounded bank caps instead of floor-tile blockout")
 	_assert(south_ramp != null and north_ramp != null \
 		and south_stairs.size() == 2 and north_stairs.size() == 2 \

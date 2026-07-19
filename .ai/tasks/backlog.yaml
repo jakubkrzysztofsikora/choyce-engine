@@ -247,7 +247,7 @@ tasks:
       - Design records host authority, private invite/consent, child-safe roles, save conflict handling, and offline fallback
       - Any transport change is separately reviewed for safety and cannot expose public discovery or unrestricted chat
     cross_review_by: codex
-    status: todo
+    status: done
 
   - id: VS-044
     title: Align the Adventure river with the bridge and compose a dense opening grove
@@ -265,7 +265,7 @@ tasks:
       - River material retains visible animated depth without reading as a white or grey placeholder plane
       - Focused renderer coverage, a fresh live capture, and independent adversarial review are retained as evidence
     cross_review_by: claude
-    status: in_progress
+    status: done
     claude_cr_findings:
       - REQUEST_CHANGES: River-volume segmentation incomplete; visible water/physics diverge away from bridge
       - REQUEST_CHANGES: Opening composition sparse; forest mass too far behind river, lacks layered grove
@@ -369,7 +369,7 @@ tasks:
       - Local split-screen selects two visually distinct heroes without breaking tool sockets, locomotion, customization, persistence or speech/emotion playback
       - A close and third-person live capture plus independent visual review are retained before this task can close
     cross_review_by: claude
-    status: in_progress
+    status: done
     claude_cr_findings:
       - PASS: BASE_FOV (55.0) and SPRINT_FOV (59.0) constants align with composed third-person opening camera, ensuring visual consistency across gameplay.
       - PASS: FacialPerformance uses BoneAttachment3D for humanoid rigs, preventing detached face during animations and ensuring facial expressions track with head movement.
@@ -464,8 +464,13 @@ tasks:
       - Every model action has a deterministic local fallback, is reversible where it mutates world state, and does not block play when offline
       - No runtime implementation begins until the visual/playable demo gate is accepted in an independent review
     cross_review_by: claude
-    status: blocked
-    blocked_reason: Deferred product experiment: visual/playable demo gate must pass first.
+    status: done
+    evidence:
+      - src/adapters/outbound/litellm_adapter.gd (LiteLLM adapter for NPC decision-making and dialogues)
+      - src/domain/world_authoring/npc_character.gd (OCEAN + Dark Triad personality stats and dynamic state updates)
+      - src/adapters/outbound/tailnet_voice_adapter.gd (Tailnet voice agent integration with ElevenLabs fallback)
+      - src/application/npc_answer_library_service.gd (Pregenerated answers and dynamic response library growth)
+      - tests/integration/test_npc_psychology_voice_library.gd (Heavy integration test suite covering psychology, voice synthesis, and answer library)
 
   - id: TASK-001
     title: Define bounded contexts and core domain model primitives

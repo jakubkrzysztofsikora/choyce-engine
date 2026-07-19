@@ -147,6 +147,10 @@ func _pump_queue() -> void:
 			playback_skipped.emit(text, request_id)
 			_pump_queue()
 			return
+		# Server returns relative paths like "/audio/s2pro_*.wav" — resolve
+		# them against the API host so HTTPRequest gets an absolute URL.
+		if audio_url.begins_with("/"):
+			audio_url = _API_HOST + audio_url
 
 		# Download audio bytes
 		_download_audio(audio_url, text, request_id, cache_file)
