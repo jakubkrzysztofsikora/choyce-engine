@@ -3998,18 +3998,11 @@ func end_session() -> void:
 	session_ended.emit()
 
 func _input(event: InputEvent) -> void:
-	# Once the child explicitly focuses the composer, it owns every character.
-	# This runs before generic interaction/vehicle handlers, which otherwise see
-	# E/G despite the LineEdit receiving the same character later in Godot's GUI
-	# event pipeline.
-	if _npc_dialogue_input != null and _npc_dialogue_input.has_focus() \
-			and event is InputEventKey:
-		get_viewport().set_input_as_handled()
-		return
-	# NPC conversation is intentionally unfocused on arrival so movement and
-	# interaction keys stay with the world. Enter is the explicit, discoverable
-	# handoff into typing: the first press focuses the composer, the next Enter
-	# is handled by LineEdit and submits the written message.
+	# Once the child explicitly focuses the composer, the player controller is
+	# already disabled via _on_npc_dialogue_input_focus_entered, so movement and
+	# interaction keys cannot leak into the world. Do NOT call
+	# set_input_as_handled() here — in Godot 4.6 that blocks the LineEdit's
+	# own _gui_input dispatch and the typed letters never appear.
 	if _npc_dialogue_panel != null and _npc_dialogue_panel.visible \
 			and _npc_dialogue_input != null and not _npc_dialogue_input.has_focus() \
 			and event is InputEventKey and event.pressed and not event.echo \
