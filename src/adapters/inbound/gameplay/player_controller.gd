@@ -1708,7 +1708,11 @@ func _try_interact_training() -> bool:
 		var dist := global_position.distance_to(child.global_position)
 		if dist <= search_radius and dist < nearest_dist:
 			nearest_dist = dist
-			nearest_type = action.trim_prefix("train_")
+			# Use the full training type name (e.g. "STRENGTH") from the meta,
+			# NOT the action suffix ("push"). The GymSpawner3D.perform_workout()
+			# expects the uppercase type, and _perform_training calls the
+			# runtime's training service which also expects the full type.
+			nearest_type = String(child.get_meta("training_type_name", action.trim_prefix("train_")))
 	if nearest_type.is_empty():
 		return false
 	_perform_training(nearest_type)
@@ -1720,24 +1724,28 @@ func _perform_training(training_type: String) -> void:
 	var runtime := get_gameplay_runtime()
 	if runtime == null:
 		return
+	# Try the GymSpawner3D first — it owns the real gym equipment and the
+	# TrainingStats entity. perform_workout expects the uppercase type
+	# name ("STRENGTH", "POSTURE", etc.).
+	var gym_spawner: Node = runtime.get_node_or_null("WorldRenderer/GymSpawner3D")
+	if gym_spawner != null and gym_spawner.has_method("perform_workout"):
+		var result: Dictionary = gym_spawner.call("perform_workout", training_type.to_upper())
+		if result.get("success", false):
+			_show_training_feedback(training_type)
+			runtime.call("_refresh_nutrition_hud")
+			return
+	# Fall back to the legacy training service if the gym spawner is absent.
 	var training: Variant = runtime.get("_training")
 	if training == null:
 		return
-	
-	# Perform training
 	var success: bool = bool(training.call("perform_training", training_type))
 	if success:
-		# Update body progression based on training
 		var total_sessions: int = int(training.call("total_sessions"))
 		var body_level := int(total_sessions / 5)
 		var progression: Variant = runtime.get("_body_progression")
 		if progression != null and body_level > int(progression.call("get_body_level")):
 			progression.call("set_body_level", body_level)
-			
-		# Refresh HUD
 		runtime.call("_refresh_nutrition_hud")
-			
-		# Show feedback
 		_show_training_feedback(training_type)
 
 

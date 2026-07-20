@@ -197,8 +197,8 @@ func _make_block_texture(block_id: String, kind: BlockKind) -> ImageTexture:
 	var noise := FastNoiseLite.new()
 	# Seed noise from the block_id so different kinds get different patterns.
 	var seed_val: int = 0
-	for c in block_id.unicode_at(0):
-		seed_val = (seed_val * 31 + c) & 0x7FFFFFFF
+	for i in range(block_id.length()):
+		seed_val = (seed_val * 31 + block_id.unicode_at(i)) & 0x7FFFFFFF
 	noise.seed = seed_val
 	# Per-family noise tuning so wood looks like wood-grain and stone looks
 	# like stone-speckle, not all the same swirly blob.
