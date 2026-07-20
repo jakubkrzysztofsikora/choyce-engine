@@ -97,10 +97,16 @@ func place_block(cell: Vector3i, block_id: String, record_history: bool = true) 
 	var mesh := MeshInstance3D.new()
 	var box := BoxMesh.new()
 	box.size = Vector3(CELL_SIZE, CELL_SIZE, CELL_SIZE)
+	box.uv2_padding = 0.0
 	mesh.mesh = box
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = kind.color
 	mat.roughness = 0.85
+	# Per-block procedural noise texture. The kid sees distinct grass / dirt /
+	# wood / brick / stone / sand surfaces instead of flat-colored cubes.
+	mat.albedo_texture = _make_block_texture(block_id, kind)
+	mat.uv1_scale = Vector3(1.0, 1.0, 1.0)
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	if kind.emission > 0.0:
 		mat.emission_enabled = true
 		mat.emission = kind.color
@@ -175,3 +181,70 @@ func clear_all() -> void:
 			body.queue_free()
 	_cells.clear()
 	_kind_for_cell.clear()
+
+
+var _block_textures: Dictionary = {}
+
+## Generate (and cache) a 64×64 procedural noise texture for a block kind.
+## The noise is keyed off the block_id so grass / dirt / wood / brick / stone
+## / sand each get a distinct surface pattern, eliminating the "every block is
+## just a color cube" complaint. Procedural means no asset files required.
+func _make_block_texture(block_id: String, kind: BlockKind) -> ImageTexture:
+	if _block_textures.has(block_id):
+		return _block_textures[block_id]
+	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	img.fill(kind.color)
+	var noise := FastNoiseLite.new()
+	# Seed noise from the block_id so different kinds get different patterns.
+	var seed_val: int = 0
+	for c in block_id.unicode_at(0):
+		seed_val = (seed_val * 31 + c) & 0x7FFFFFFF
+	noise.seed = seed_val
+	# Per-family noise tuning so wood looks like wood-grain and stone looks
+	# like stone-speckle, not all the same swirly blob.
+	match kind.family:
+		BlockKind.Family.WOOD:
+			noise.noise_type = FastNoiseLite.TYPE_PERLIN
+			noise.frequency = 0.08
+			noise.fractal_octaves = 3
+		BlockKind.Family.BRICK:
+			noise.noise_type = FastNoiseLite.TYPE_VALUE
+			noise.frequency = 0.06
+			noise.fractal_octaves = 2
+		BlockKind.Family.NATURAL:
+			noise.noise_type = FastNoiseLite.TYPE_PERLIN
+			noise.frequency = 0.12
+			noise.fractal_octaves = 2
+		BlockKind.Family.GLOW:
+			noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+			noise.frequency = 0.20
+			noise.fractal_octaves = 1
+		_:
+			noise.noise_type = FastNoiseLite.TYPE_PERLIN
+			noise.frequency = 0.10
+			noise.fractal_octaves = 2
+	# Tile the texture across the 1m box face for a Minecraft-style surface.
+	var tiles := 4
+	var step := 1.0 / float(tiles)
+	for y in range(64):
+		for x in range(64):
+			# Sample at tile-grid coordinates so the texture tiles seamlessly.
+			var nx := float(x) / 64.0 * tiles
+			var ny := float(y) / 64.0 * tiles
+			var n: float = noise.get_noise_2d(nx * 64.0, ny * 64.0)
+			# Map noise [-1, 1] -> brightness multiplier [0.75, 1.25]
+			var mult: float = 1.0 + n * 0.25
+			var base: Color = kind.color
+			# Special: wood gets horizontal grain lines on top of noise.
+			if kind.family == BlockKind.Family.WOOD:
+				var grain: float = sin(ny * 16.0) * 0.06
+				mult += grain
+			var darkened: Color = Color(
+				base.r * mult,
+				base.g * mult,
+				base.b * mult,
+				1.0)
+			img.set_pixel(x, y, darkened)
+	var tex := ImageTexture.create_from_image(img)
+	_block_textures[block_id] = tex
+	return tex

@@ -831,6 +831,7 @@ func _build_adventure_dressing(seed_source: String = "adventure") -> void:
 	_build_opening_flank_groundcover(seed_source)
 	_build_opening_basecamp_tableau()
 	_build_gym_compound()
+	_build_settlement_compounds(seed_source)
 
 	# The first thirty metres must already feel like a place, not a runway.
 	# Use a visible house, yard, well, crops and a physical sign for the guide.
@@ -911,6 +912,28 @@ func _build_opening_basecamp_tableau() -> void:
 
 
 const GYM_SPAWNER_3D := preload("res://src/adapters/inbound/gameplay/gym_spawner_3d.gd")
+const HOMESTEAD_SPAWNER_3D := preload("res://src/adapters/inbound/gameplay/homestead_spawner_3d.gd")
+const HOMESTEAD_SPAWNER_3D_PATH := "res://src/adapters/inbound/gameplay/homestead_spawner_3d.gd"
+
+## Spawn a handful of homestead compounds (house + NPC + vehicle + animals)
+## scattered around the playable area so the world feels lived in.
+func _build_settlement_compounds(seed_source: String) -> void:
+	if not FileAccess.file_exists(HOMESTEAD_SPAWNER_3D_PATH):
+		return
+	var spawner := HOMESTEAD_SPAWNER_3D.new()
+	spawner.name = "HomesteadSpawner3D"
+	add_child(spawner)
+	var anchors: Array[Vector3] = [
+		Vector3(36.0, 0.0, -22.0),
+		Vector3(-58.0, 0.0, 14.0),
+		Vector3(72.0, 0.0, 48.0),
+		Vector3(-82.0, 0.0, -40.0),
+		Vector3(48.0, 0.0, 86.0),
+		Vector3(-44.0, 0.0, -78.0),
+	]
+	for anchor in anchors:
+		spawner.spawn_random_homestead(anchor)
+
 
 func _build_gym_compound() -> void:
 	var gym_spawner := GYM_SPAWNER_3D.new()
@@ -2433,6 +2456,13 @@ func _add_water_crossing() -> void:
 	var visual := MeshInstance3D.new()
 	visual.name = "WaterSurface"
 	visual.mesh = mesh
+	# Override the mesh's auto-computed AABB with a huge box that covers the
+	# entire playable area. The meandering ribbon spans 3.2km so its real
+	# AABB is fine — but Godot's per-surface culling was still occasionally
+	# hiding the water when the camera sat at certain angles. A 600m box
+	# guarantees the water always passes frustum culling within view.
+	visual.visibility_range_end = 0.0
+	visual.custom_aabb = AABB(Vector3(-300, -10, -300), Vector3(600, 20, 600))
 	var water_material := ShaderMaterial.new()
 	water_material.shader = ADVENTURE_WATER_SHADER
 	# Apply Choyce water color palette: shallow -> medium -> deep
