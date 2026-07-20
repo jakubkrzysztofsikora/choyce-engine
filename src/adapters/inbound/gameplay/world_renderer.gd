@@ -918,8 +918,7 @@ func _build_gym_compound() -> void:
 	add_child(gym_spawner)
 
 	# Place Gym 24m west of spawn, grounded on terrain
-	var gym_pos := Vector3(-24.0, 0.0, 12.0)
-	gym_pos.y = _get_terrain_height_at(gym_pos.x, gym_pos.z)
+	var gym_pos := _terrain_grounded_position(Vector3(-24.0, 0.0, 12.0))
 	gym_spawner.spawn_gym(gym_pos)
 
 
