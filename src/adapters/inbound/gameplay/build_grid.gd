@@ -105,6 +105,9 @@ func place_block(cell: Vector3i, block_id: String, record_history: bool = true) 
 	# Per-block procedural noise texture. The kid sees distinct grass / dirt /
 	# wood / brick / stone / sand surfaces instead of flat-colored cubes.
 	mat.albedo_texture = _make_block_texture(block_id, kind)
+	if _block_normal_textures.has(block_id):
+		mat.normal_texture = _block_normal_textures[block_id]
+		mat.normal_enabled = true
 	mat.uv1_scale = Vector3(1.0, 1.0, 1.0)
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	if kind.emission > 0.0:
@@ -192,52 +195,49 @@ var _block_textures: Dictionary = {}
 func _make_block_texture(block_id: String, kind: BlockKind) -> ImageTexture:
 	if _block_textures.has(block_id):
 		return _block_textures[block_id]
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	const TEX_SIZE := 128
+	var img := Image.create(TEX_SIZE, TEX_SIZE, false, Image.FORMAT_RGBA8)
+	# Normal map: derived from the same noise so bumpiness matches the albedo.
+	var nrm := Image.create(TEX_SIZE, TEX_SIZE, false, Image.FORMAT_RGBA8)
 	img.fill(kind.color)
+	# Neutral normal (pointing straight up in tangent space).
+	nrm.fill(Color(0.5, 0.5, 1.0))
 	var noise := FastNoiseLite.new()
-	# Seed noise from the block_id so different kinds get different patterns.
 	var seed_val: int = 0
 	for i in range(block_id.length()):
 		seed_val = (seed_val * 31 + block_id.unicode_at(i)) & 0x7FFFFFFF
 	noise.seed = seed_val
-	# Per-family noise tuning so wood looks like wood-grain and stone looks
-	# like stone-speckle, not all the same swirly blob.
 	match kind.family:
 		BlockKind.Family.WOOD:
 			noise.noise_type = FastNoiseLite.TYPE_PERLIN
-			noise.frequency = 0.08
+			noise.frequency = 0.06
 			noise.fractal_octaves = 3
 		BlockKind.Family.BRICK:
 			noise.noise_type = FastNoiseLite.TYPE_VALUE
-			noise.frequency = 0.06
+			noise.frequency = 0.04
 			noise.fractal_octaves = 2
 		BlockKind.Family.NATURAL:
 			noise.noise_type = FastNoiseLite.TYPE_PERLIN
-			noise.frequency = 0.12
+			noise.frequency = 0.09
 			noise.fractal_octaves = 2
 		BlockKind.Family.GLOW:
 			noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-			noise.frequency = 0.20
+			noise.frequency = 0.15
 			noise.fractal_octaves = 1
 		_:
 			noise.noise_type = FastNoiseLite.TYPE_PERLIN
-			noise.frequency = 0.10
+			noise.frequency = 0.08
 			noise.fractal_octaves = 2
-	# Tile the texture across the 1m box face for a Minecraft-style surface.
 	var tiles := 4
-	var step := 1.0 / float(tiles)
-	for y in range(64):
-		for x in range(64):
-			# Sample at tile-grid coordinates so the texture tiles seamlessly.
-			var nx := float(x) / 64.0 * tiles
-			var ny := float(y) / 64.0 * tiles
-			var n: float = noise.get_noise_2d(nx * 64.0, ny * 64.0)
-			# Map noise [-1, 1] -> brightness multiplier [0.75, 1.25]
+	for y in range(TEX_SIZE):
+		for x in range(TEX_SIZE):
+			var nx := float(x) / float(TEX_SIZE) * tiles
+			var ny := float(y) / float(TEX_SIZE) * tiles
+			var n: float = noise.get_noise_2d(nx * 32.0, ny * 32.0)
 			var mult: float = 1.0 + n * 0.25
 			var base: Color = kind.color
-			# Special: wood gets horizontal grain lines on top of noise.
 			if kind.family == BlockKind.Family.WOOD:
-				var grain: float = sin(ny * 16.0) * 0.06
+				var grain: float = sin(ny * 12.0) * 0.06
 				mult += grain
 			var darkened: Color = Color(
 				base.r * mult,
@@ -245,6 +245,18 @@ func _make_block_texture(block_id: String, kind: BlockKind) -> ImageTexture:
 				base.b * mult,
 				1.0)
 			img.set_pixel(x, y, darkened)
+			# Sample neighbours to compute a cheap normal bump.
+			var n_right: float = noise.get_noise_2d((nx + 0.01) * 32.0, ny * 32.0)
+			var n_down: float = noise.get_noise_2d(nx * 32.0, (ny + 0.01) * 32.0)
+			var dx: float = (n_right - n) * 2.0
+			var dy: float = (n_down - n) * 2.0
+			# Encode as tangent-space normal: R=x+0.5, G=y+0.5, B=1
+			nrm.set_pixel(x, y, Color(clampf(0.5 + dx, 0.0, 1.0), clampf(0.5 + dy, 0.0, 1.0), 1.0))
 	var tex := ImageTexture.create_from_image(img)
+	var nrm_tex := ImageTexture.create_from_image(nrm)
 	_block_textures[block_id] = tex
+	_block_normal_textures[block_id] = nrm_tex
 	return tex
+
+
+var _block_normal_textures: Dictionary = {}

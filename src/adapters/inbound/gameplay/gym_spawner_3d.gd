@@ -60,6 +60,13 @@ func spawn_gym(center_position: Vector3 = Vector3(-24.0, 0.0, 12.0)) -> Node3D:
 	# Add a rubber floor + collision under the gym so the player can walk on it.
 	_build_foundation(_gym_root)
 
+	# Trimesh collision on every equipment piece. The gym GLB is a visual
+	# collection with 57 meshes — none of them have collision by default.
+	# Walking through a boxing ring is the kind of detail that breaks the
+	# world. create_trimesh_collision() walks the mesh geometry and emits a
+	# StaticBody3D + ConcavePolygonShape3D child per mesh.
+	_add_trimesh_collision_to_all(gym_scene)
+
 	# Overhead light so the gym reads well at dusk/night.
 	var light := OmniLight3D.new()
 	light.position = Vector3(0, 4.0, 0)
@@ -109,6 +116,21 @@ func _build_foundation(parent: Node3D) -> void:
 	col.position = Vector3(0, 0.1, 0)
 	body.add_child(col)
 	parent.add_child(body)
+
+
+## Generate trimesh collision on every MeshInstance3D inside `root`. The gym
+## GLB ships 57 visual meshes with no physics shapes; this gives them all
+## proper concave collision so the player can't walk through equipment.
+## Bounds, metadata and existing children are preserved.
+func _add_trimesh_collision_to_all(root: Node) -> void:
+	var mesh_count := 0
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = mi.mesh
+		if mesh == null:
+			continue
+		mi.create_trimesh_collision()
+		mesh_count += 1
+	print("[GymSpawner3D] Generated trimesh collision for %d equipment meshes" % mesh_count)
 
 
 ## Find the first mesh whose name contains `equipment_name_fragment` inside

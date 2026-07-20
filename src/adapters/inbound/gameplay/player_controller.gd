@@ -513,6 +513,34 @@ func _input(event: InputEvent) -> void:
 		return
 	if _input_disabled:
 		return
+	# E (interact) is handled in _unhandled_input so the camera doesn't
+	# also process it. Block it here so it never reaches the camera mover.
+	if event.is_action_pressed("interact") or event.is_action_pressed("ui_accept"):
+		return
+	if event is InputEventMouseMotion:
+		var captured := Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
+		if not captured:
+			return  # cursor visible → kid is on HUD; don't move camera
+		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
+		_vertical_look -= event.relative.y * MOUSE_SENSITIVITY
+		_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
+		if _camera != null:
+			_camera.rotation.x = _vertical_look
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_processing_input():
+		return
+	if _input_disabled:
+		return
+	# E-key: training/food interact. Runs after _input so camera doesn't fire.
+	if event.is_action_pressed("interact"):
+		var trained := _try_interact_training()
+		if not trained:
+			_try_find_food()
+		get_viewport().set_input_as_handled()
+		return
+		return
 	# A single mouse cannot control two third-person cameras.  P2 uses the
 	# prefixed keypad actions processed in _process(), so it must ignore raw
 	# pointer motion/buttons instead of quietly mirroring P1's aim and attacks.
@@ -1544,18 +1572,11 @@ func _tint_mesh(mesh: MeshInstance3D, color: Color) -> void:
 
 ## VS-025: Process nutrition and training input actions
 func _process_nutrition_training_input(_delta: float) -> void:
-	# Find food action - scan for nearby food items
+	# Find food action - scan for nearby food items. (Training is handled
+	# via _unhandled_input for E so it gets a clean set_input_as_handled()
+	# without the camera also rotating.)
 	if Input.is_action_just_pressed("find_food"):
 		_try_find_food()
-
-	# E (interact) near gym equipment → train. This replaces the old
-	# dedicated train_* keys (semicolon, apostrophe, etc.) which conflicted
-	# with build keys (K, L) and were impossible for a kid to discover.
-	if Input.is_action_just_pressed("interact"):
-		var trained := _try_interact_training()
-		if not trained:
-			_try_find_food()
-		return
 
 	# Legacy dedicated training keys still work as fallback for testing.
 	if Input.is_action_just_pressed("train_jump") and _is_near_training_equipment("jump"):
@@ -1774,6 +1795,44 @@ func _show_training_feedback(training_type: String) -> void:
 	var prompt_panel := runtime.get("_interaction_prompt_panel") as Control
 	if prompt_label == null or prompt_panel == null:
 		return
+
+	# Quick exercise feedback: scale player to 1.1× for 0.25s then back.
+	# Cheap and reads as "yes, that registered" even without an anim.
+	if _character_mesh != null and is_instance_valid(_character_mesh):
+		var t := create_tween()
+		t.tween_property(_character_mesh, "scale", Vector3.ONE * 1.10, 0.10)
+		t.tween_property(_character_mesh, "scale", Vector3.ONE, 0.20)
+
+	# Sparkle particles at the player so the action has a visual reward.
+	var sparkles := GPUParticles3D.new()
+	sparkles.amount = 16
+	sparkles.lifetime = 0.6
+	sparkles.one_shot = true
+	sparkles.emitting = true
+	sparkles.explosiveness = 0.8
+	sparkles.position = global_position + Vector3(0, 0.9, 0)
+	var smat := ParticleProcessMaterial.new()
+	smat.direction = Vector3(0, 1, 0)
+	smat.spread = 50.0
+	smat.initial_velocity_min = 2.0
+	smat.initial_velocity_max = 3.5
+	smat.gravity = Vector3(0, -6, 0)
+	smat.scale_min = 0.05
+	smat.scale_max = 0.10
+	smat.color = Color(1.0, 0.9, 0.4, 1.0)
+	sparkles.process_material = smat
+	var smesh := SphereMesh.new()
+	smesh.radius = 0.05
+	smesh.height = 0.10
+	var smm := StandardMaterial3D.new()
+	smm.albedo_color = Color(1.0, 0.9, 0.4, 1.0)
+	smm.emission_enabled = true
+	smm.emission = Color(1.0, 0.7, 0.2)
+	smm.emission_energy_multiplier = 1.5
+	smesh.material = smm
+	sparkles.draw_pass_1 = smesh
+	add_child(sparkles)
+	get_tree().create_timer(1.0).timeout.connect(sparkles.queue_free)
 	
 	# Show feedback message
 	var training_name := ""

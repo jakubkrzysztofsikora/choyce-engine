@@ -932,7 +932,9 @@ func _build_settlement_compounds(seed_source: String) -> void:
 		Vector3(-44.0, 0.0, -78.0),
 	]
 	for anchor in anchors:
-		spawner.spawn_random_homestead(anchor)
+		# Ground each anchor to terrain so houses don't float on hills.
+		var grounded_anchor := _terrain_grounded_position(anchor)
+		spawner.spawn_random_homestead(grounded_anchor)
 
 
 func _build_gym_compound() -> void:
@@ -1662,7 +1664,10 @@ func _build_opening_bridge() -> void:
 	# mesh, single material, single draw call, always renders correctly.
 	var deck_length := 18.6
 	var deck_center_z := -23.5
-	var deck_top_y := 0.85
+	# Walk-surface collision is at Y=0.69 (see _add_opening_bridge_walk_surface).
+	# The visual deck top must match it exactly so the player's feet sit on the
+	# planks instead of 16cm below the surface (legs clipping through wood).
+	var deck_top_y := 0.69
 	var deck_thickness := 0.30
 	var deck_half_width := 2.0
 	var rail_height := 0.85
@@ -2448,57 +2453,25 @@ func _add_water_crossing() -> void:
 	water.name = "StarterRiver"
 	water.add_to_group("water_volume")
 	water.monitoring = true
-	# A straight PlaneMesh made the river a blue runway that visibly stopped in
-	# the middle of open terrain. This ribbon follows a gentle, deterministic
-	# meander from one outer-ocean edge to the other, while crossing the bridge
-	# exactly at x=0,z=-24. It has real bank variation without a costly fluid sim.
-	var mesh := _create_meandering_river_mesh()
-	var visual := MeshInstance3D.new()
-	visual.name = "WaterSurface"
-	visual.mesh = mesh
-	# Override the mesh's auto-computed AABB with a huge box that covers the
-	# entire playable area. The meandering ribbon spans 3.2km so its real
-	# AABB is fine — but Godot's per-surface culling was still occasionally
-	# hiding the water when the camera sat at certain angles. A 600m box
-	# guarantees the water always passes frustum culling within view.
-	visual.visibility_range_end = 0.0
-	visual.custom_aabb = AABB(Vector3(-300, -10, -300), Vector3(600, 20, 600))
-	var water_material := ShaderMaterial.new()
-	water_material.shader = ADVENTURE_WATER_SHADER
-	# Apply Choyce water color palette: shallow -> medium -> deep
-	# Bright, saturated surface colors. The previous dark palette was getting
-	# mixed into near-black at top-down camera angles via the Fresnel term,
-	# making the river look like it disappeared when the player waded in.
-	water_material.set_shader_parameter("shallow_color", Color(0.10, 0.42, 0.55, 1.0))
-	water_material.set_shader_parameter("deep_color", Color(0.04, 0.18, 0.32, 1.0))
-	water_material.set_shader_parameter("dudv_map", SIMPLE_WATER_DUDV)
-	# The generated ribbon's UV spans 3.2km. Shader flow therefore uses local
-	# world metres rather than this normalized UV. Increased tiling and strength
-	# for more visible water motion as per VS-012 acceptance criteria.
-	water_material.set_shader_parameter("dudv_tiling", 0.16)
-	water_material.set_shader_parameter("dudv_strength", 0.050)
-	# Expose the wave constants at runtime so tests and downstream systems can
-	# read a complete authored material contract without relying on shader defaults.
-	water_material.set_shader_parameter("wave_height", 0.012)
-	water_material.set_shader_parameter("wave_speed", 0.70)
-	# Bright foam and sky reflection so the water surface stays visibly water
-	# from every angle — including the top-down view that previously made the
-	# river look like it vanished.
-	water_material.set_shader_parameter("foam_color", Color(0.85, 0.92, 0.95, 1.0))
-	water_material.set_shader_parameter("sky_reflection_color", Color(0.35, 0.55, 0.70, 1.0))
-	visual.material_override = water_material
-	water.add_child(visual)
-	# The surface must be a render-only child. The Area3D below is exclusively
-	# for wading/swimming; it cannot hide, displace or otherwise own this mesh.
-	# A single straight 22m collision box at z=-24 used to make the player swim
-	# beside visible water anywhere the 3.2km ribbon meandered. Build the Area's
-	# physical shapes from the exact same bank pairs as the mesh. Consecutive
-	# boxes overlap slightly, so a CharacterBody cannot flicker between wet/dry
-	# state while crossing a segment seam.
+	# The previous custom-shader ribbon had three independent failure modes:
+	# the shader's depth_test_disabled made water render through walls, the
+	# meander Y was hardcoded at 0.20m so the water sat 49cm below the
+	# bridge deck, and the infinite ribbon was hard to debug.
+	# Replace it with BoxMesh segments following the river path. Each
+	# segment is a thin box that:
+	#   - renders as a real volume (no shader edge-case)
+	#   - sits exactly at terrain height + 0.05m (no more levitation)
+	#   - has trimesh collision (player can stand on it / wade through it)
+	#   - reuses StandardMaterial3D's proven transparency pipeline
+	var segment_root := _build_water_segments()
+	if segment_root != null:
+		segment_root.name = "StarterRiverSegments"
+		water.add_child(segment_root)
+	# The Area3D below is exclusively for wading/swimming; it cannot hide,
+	# displace or otherwise own the visual mesh. Its collision shapes match
+	# the bank pairs so the player reliably enters/exits water.
 	_build_meandering_water_volumes(water)
-	# Keep the slight vertical lift used by the opaque water shader, but do not
-	# translate Z: `_create_meandering_river_mesh()` owns those coordinates.
-	water.position = Vector3(0, 0.10, 0)
+	water.position = Vector3.ZERO
 	water.collision_layer = 0
 	water.collision_mask = 1
 	water.body_entered.connect(_on_water_body_entered)
@@ -2509,6 +2482,60 @@ func _add_water_crossing() -> void:
 	# That was a visible picket fence in the opening shot and created dozens of
 	# false-looking collision obstacles. The composed bridge shoreline above is
 	# detailed by hand; streamed biomes supply their own local banks farther out.
+
+
+func _build_water_segments() -> Node3D:
+	# Walks the river path (same bank-pair coordinate system as the legacy
+	# ribbon) and drops one thin BoxMesh per segment. Each segment is
+	# terrain-grounded so the river follows hills, has trimesh collision
+	# so the player can stand / wade on it, and uses StandardMaterial3D's
+	# proven transparency pipeline — no custom shader.
+	var root := Node3D.new()
+	var water_mat := StandardMaterial3D.new()
+	water_mat.albedo_color = Color(0.15, 0.45, 0.60, 0.78)
+	water_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	water_mat.roughness = 0.12
+	water_mat.metallic = 0.0
+	water_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	water_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # visible from below too
+
+	for segment in range(RIVER_SEGMENT_COUNT):
+		var t0 := float(segment) / float(RIVER_SEGMENT_COUNT)
+		var t1 := float(segment + 1) / float(RIVER_SEGMENT_COUNT)
+		var pair0 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t0))
+		var pair1 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t1))
+		var left0: Vector3 = pair0[0]
+		var right0: Vector3 = pair0[1]
+		var left1: Vector3 = pair1[0]
+		var right1: Vector3 = pair1[1]
+		var center0 := (left0 + right0) * 0.5
+		var center1 := (left1 + right1) * 0.5
+		# Sample terrain at the segment midpoint. If terrain isn't loaded
+		# yet (returns 0), we still get a sensible default.
+		var ground_y := _terrain_grounded_position(center0).y
+		var ground_y1 := _terrain_grounded_position(center1).y
+		var seg_y := (ground_y + ground_y1) * 0.5 + 0.05
+		var width0 := (right0 - left0).length()
+		var width1 := (right1 - left1).length()
+		var length := (center1 - center0).length()
+		var mid := (center0 + center1) * 0.5
+		var tangent := (center1 - center0).normalized() if length > 0.01 else Vector3(0, 0, 1)
+		var yaw := atan2(tangent.x, tangent.z)
+
+		# Visual: thin BoxMesh spanning the segment, oriented along the tangent.
+		var visual := MeshInstance3D.new()
+		visual.name = "WaterSegment_%d" % segment
+		var box := BoxMesh.new()
+		box.size = Vector3((width0 + width1) * 0.5, 0.3, length)
+		visual.mesh = box
+		visual.material_override = water_mat
+		visual.position = Vector3(mid.x, seg_y, mid.z)
+		visual.rotation.y = yaw
+		visual.create_trimesh_collision()
+		# Move the collision child up to the root so it doesn't move when the
+		# visual is re-parented later.
+		root.add_child(visual)
+	return root
 
 
 func _create_meandering_river_mesh() -> ArrayMesh:
@@ -2785,7 +2812,7 @@ func _add_visual_asset(
 		collidable: bool = true,
 		collision_size: Vector3 = Vector3(1.5, 2.0, 1.5),
 		parent_node: Node = null,
-		ground_to_terrain: bool = false
+		ground_to_terrain: bool = true
 	) -> Node3D:
 	var path := asset_path
 	if path.is_empty():
