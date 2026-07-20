@@ -113,7 +113,10 @@ func _run() -> void:
 	var p2_inventory := split.get_node_or_null("P2SharedInventoryOverlay") as PanelContainer
 	_expect(p2_inventory != null and not p2_inventory.visible, "P2 receives its own initially closed shared-inventory panel")
 	if p2_inventory != null and p2 != null:
-		_expect(split.find_child("P2Creative_tree_oak", true, false) != null, "P2 creative panel exposes the complete safe world catalog, not a subset")
+		# tree_oak is a mineable producer (drop_id != block_id) and is now
+		# intentionally filtered OUT of the creative catalog. Verify a
+		# placeable block (stone) IS present instead.
+		_expect(split.find_child("P2Creative_stone", true, false) != null, "P2 creative panel exposes placeable block kinds")
 		split.call("_toggle_p2_inventory_overlay")
 		_expect(p2_inventory.visible and p2.get("_input_disabled"), "P2 can open the shared inventory without moving in the world")
 		split.call("_toggle_p2_inventory_overlay")

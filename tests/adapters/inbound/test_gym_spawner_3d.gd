@@ -48,16 +48,24 @@ func _test_equipment_stations_and_group_wiring() -> void:
 	var compound: Node3D = spawner.spawn_gym(Vector3(-24.0, 0.0, 12.0))
 	var expected_stations := ["STRENGTH", "POSTURE", "STAMINA", "AGILITY", "FLEXIBILITY"]
 
+	# New gym spawner attaches triggers directly to GLB equipment meshes.
+	# Search the compound tree for Area3D nodes in world_interactable with
+	# matching training_type_name meta.
 	for station_variant in expected_stations:
 		var station: String = String(station_variant)
-		var node_name: String = "Station_" + station
-		_expect(compound.has_node(node_name), "Gym should contain station " + node_name)
-
-		var station_node: Node3D = compound.get_node(node_name) as Node3D
-		var area: Area3D = station_node.get_node("TrainArea_" + station) as Area3D
-		_expect(area != null, "Station should have Area3D trigger")
-		_expect(area.is_in_group("world_interactable"), "Area3D trigger should belong to world_interactable group")
-		_expect(area.has_meta("resource_action"), "Area3D should store resource_action metadata for PlayerController")
+		var found := false
+		for area_variant in compound.find_children("*", "Area3D", true, false):
+			var area := area_variant as Area3D
+			if area == null:
+				continue
+			if not area.is_in_group("world_interactable"):
+				continue
+			var type_name := String(area.get_meta("training_type_name", ""))
+			if type_name == station:
+				found = true
+				_expect(area.has_meta("resource_action"), "Area3D should store resource_action metadata for PlayerController")
+				break
+		_expect(found, "Gym should contain training station " + station + " (Area3D in world_interactable)")
 
 	spawner.queue_free()
 
