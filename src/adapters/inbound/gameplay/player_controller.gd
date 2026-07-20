@@ -1547,9 +1547,17 @@ func _process_nutrition_training_input(_delta: float) -> void:
 	# Find food action - scan for nearby food items
 	if Input.is_action_just_pressed("find_food"):
 		_try_find_food()
-	
-	# Training actions - perform training when player presses training keys
-	# and is near training equipment
+
+	# E (interact) near gym equipment → train. This replaces the old
+	# dedicated train_* keys (semicolon, apostrophe, etc.) which conflicted
+	# with build keys (K, L) and were impossible for a kid to discover.
+	if Input.is_action_just_pressed("interact"):
+		var trained := _try_interact_training()
+		if not trained:
+			_try_find_food()
+		return
+
+	# Legacy dedicated training keys still work as fallback for testing.
 	if Input.is_action_just_pressed("train_jump") and _is_near_training_equipment("jump"):
 		_perform_training("jump")
 	if Input.is_action_just_pressed("train_run") and _is_near_training_equipment("run"):
@@ -1681,6 +1689,30 @@ func _is_near_training_equipment(training_type: String) -> bool:
 						return true
 	
 	return false
+
+
+## E-key interact: find the nearest training station within 5m and train.
+## Returns true if a training action was performed so the caller knows not
+## to fall through to food search.
+func _try_interact_training() -> bool:
+	var search_radius := 5.0
+	var nearest_type := ""
+	var nearest_dist := search_radius + 1.0
+	for child_variant in get_tree().get_nodes_in_group("world_interactable"):
+		var child := child_variant as Area3D
+		if child == null:
+			continue
+		var action: String = String(child.get_meta("resource_action", ""))
+		if not action.begins_with("train_"):
+			continue
+		var dist := global_position.distance_to(child.global_position)
+		if dist <= search_radius and dist < nearest_dist:
+			nearest_dist = dist
+			nearest_type = action.trim_prefix("train_")
+	if nearest_type.is_empty():
+		return false
+	_perform_training(nearest_type)
+	return true
 
 
 ## VS-025: Perform training

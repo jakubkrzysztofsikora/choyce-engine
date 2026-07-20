@@ -2681,7 +2681,7 @@ func _spawn_water_splash(body: Node3D) -> void:
 	particles.one_shot = true
 	particles.emitting = true
 	particles.explosiveness = 0.85
-	particles.global_position = splash_pos
+	particles.position = splash_pos
 	# Procedural upward-cone splash. Material is opaque white-blue, unshaded so
 	# it pops against the dark water surface.
 	var mat := ParticleProcessMaterial.new()
