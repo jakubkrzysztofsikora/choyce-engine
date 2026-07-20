@@ -10,8 +10,8 @@ func _ready() -> void:
 	_ensure_action("sprint", [KEY_SHIFT], _joy_button(JOY_BUTTON_LEFT_STICK))                       # PS4 L3
 	_ensure_action("interact", [KEY_E], _joy_button(JOY_BUTTON_X))                                 # PS4 Square (☐)
 	_ensure_action("attack", [KEY_J, KEY_F], _joy_button(JOY_BUTTON_RIGHT_SHOULDER), _joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)) # PS4 R1 / R2
-	_ensure_action("place_block", [KEY_K], _joy_button(JOY_BUTTON_X))                             # PS4 Square (☐)
-	_ensure_action("break_block", [KEY_L], _joy_button(JOY_BUTTON_B))                             # PS4 Circle (◯)
+	_ensure_action("place_block", [KEY_K], _joy_button(JOY_BUTTON_X), _mouse_button(MOUSE_BUTTON_LEFT))  # PS4 Square (☐) or Left Click
+	_ensure_action("break_block", [KEY_L], _joy_button(JOY_BUTTON_B), _mouse_button(MOUSE_BUTTON_RIGHT)) # PS4 Circle (◯) or Right Click
 	_ensure_action("undo", [KEY_U], _joy_button(JOY_BUTTON_BACK))                                 # PS4 Share / Select
 	_ensure_action("inventory", [KEY_I], _joy_button(JOY_BUTTON_Y))                               # PS4 Triangle (△)
 	_ensure_action("silly_fart", [KEY_G], _joy_button(JOY_BUTTON_LEFT_SHOULDER))                  # PS4 L1
@@ -100,4 +100,11 @@ func _joy_axis(axis_idx: JoyAxis, value: float, device: int = 0) -> InputEventJo
 	ev.axis = axis_idx
 	ev.axis_value = value
 	ev.device = device
+	return ev
+
+
+func _mouse_button(button_idx: MouseButton) -> InputEventMouseButton:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = button_idx
+	ev.pressed = true
 	return ev

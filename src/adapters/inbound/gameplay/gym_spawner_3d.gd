@@ -4,6 +4,7 @@ extends Node3D
 signal training_performed(training_type_name: String, new_progress: float, new_level: int)
 
 const TRAINING_STATS := preload("res://src/domain/gameplay/training_stats.gd")
+const GYM_GLB_PATH := "res://data/models/gym/gym_environment.glb"
 
 var _gym_root: Node3D = null
 var _gym_position := Vector3(-24.0, 0.0, 12.0)
@@ -21,7 +22,11 @@ func setup(stats: TrainingStats = null) -> GymSpawner3D:
 	return self
 
 
-## Spawn the 3D Gym Compound near the player basecamp.
+## Spawn the 3D Gym Compound using the real game-ready gym environment GLB.
+## The GLB contains 57 meshes (boxing rings, dumbbells, kettlebells, bikes,
+## bars, punching bags, etc.) — we instantiate the whole pack, then attach
+## invisible Area3D interaction triggers to the equipment that maps to each
+## training type.
 func spawn_gym(center_position: Vector3 = Vector3(-24.0, 0.0, 12.0)) -> Node3D:
 	_gym_position = center_position
 
@@ -33,144 +38,107 @@ func spawn_gym(center_position: Vector3 = Vector3(-24.0, 0.0, 12.0)) -> Node3D:
 	_gym_root.position = _gym_position
 	add_child(_gym_root)
 
-	# 1. Foundation Rubber Floor & Collision
+	# Instantiate the full gym environment GLB. It ships as a single PackedScene
+	# with all equipment pre-positioned. Scale to fit the world.
+	if not ResourceLoader.exists(GYM_GLB_PATH):
+		push_error("[GymSpawner3D] gym_environment.glb not found at %s" % GYM_GLB_PATH)
+		return _gym_root
+	var gym_packed := load(GYM_GLB_PATH) as PackedScene
+	if gym_packed == null:
+		push_error("[GymSpawner3D] Failed to load gym_environment.glb as PackedScene")
+		return _gym_root
+	var gym_scene := gym_packed.instantiate() as Node3D
+	if gym_scene == null:
+		push_error("[GymSpawner3D] Failed to instantiate gym_environment.glb")
+		return _gym_root
+	gym_scene.name = "GymEnvironmentPack"
+	# The GLB's bbox is ~31m × 15m × 4m. Scale down to fit a ~14m × 8m footprint.
+	gym_scene.scale = Vector3(0.45, 0.45, 0.45)
+	gym_scene.position = Vector3.ZERO
+	_gym_root.add_child(gym_scene)
+
+	# Add a rubber floor + collision under the gym so the player can walk on it.
 	_build_foundation(_gym_root)
 
-	# 2. Wooden Frame Pergola & Overhead Lights
-	_build_building_structure(_gym_root)
+	# Overhead light so the gym reads well at dusk/night.
+	var light := OmniLight3D.new()
+	light.position = Vector3(0, 4.0, 0)
+	light.light_color = Color(0.95, 0.92, 0.85)
+	light.light_energy = 2.5
+	light.omni_range = 14.0
+	_gym_root.add_child(light)
 
-	# 3. Equipment Stations (Strength, Posture, Stamina, Agility, Flexibility)
-	_build_equipment_stations(_gym_root)
+	# Attach interaction triggers to specific equipment meshes by name.
+	# Each trigger is an invisible Area3D + Label3D that lets the player
+	# walk up and press E to train.
+	_attach_station_trigger(gym_scene, "punching_bag", "STRENGTH",
+		"Worek Bokserski (Siła)", "train_push", "E  Uderzaj w worek")
+	_attach_station_trigger(gym_scene, "pull_up_rack", "POSTURE",
+		"Drążek do Podciągania (Postawa)", "train_pull", "E  Podciągaj się")
+	_attach_station_trigger(gym_scene, "treadmill", "STAMINA",
+		"Bieżnia (Kondycja)", "train_run", "E  Biegnij na bieżni")
+	_attach_station_trigger(gym_scene, "step_platform", "AGILITY",
+		"Skocznia (Zwrotność)", "train_jump", "E  Skacz na platformę")
+	_attach_station_trigger(gym_scene, "yoga_mat", "FLEXIBILITY",
+		"Mata do Jogi (Rozciągliwość)", "train_balance", "E  Rozciągaj się")
 
-	print("[GymSpawner3D] Gym compound spawned near player camp at ", _gym_position)
+	print("[GymSpawner3D] Gym compound spawned at ", _gym_position)
 	return _gym_root
 
 
+## Rubber floor + collision slab under the gym.
 func _build_foundation(parent: Node3D) -> void:
 	var floor_mesh := MeshInstance3D.new()
 	floor_mesh.name = "GymRubberFloor"
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = Vector3(14.0, 0.2, 10.0)
-	floor_mesh.mesh = box_mesh
+	var box := BoxMesh.new()
+	box.size = Vector3(16.0, 0.2, 10.0)
+	floor_mesh.mesh = box
 	floor_mesh.position = Vector3(0, 0.1, 0)
-
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.15, 0.20, 0.26) # Dark sports rubber
-	mat.roughness = 0.8
+	mat.albedo_color = Color(0.15, 0.20, 0.26)
+	mat.roughness = 0.85
 	floor_mesh.material_override = mat
 	parent.add_child(floor_mesh)
 
-	# Physical Collision Floor
 	var body := StaticBody3D.new()
 	body.name = "GymFloorBody"
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(14.0, 0.2, 10.0)
+	shape.size = Vector3(16.0, 0.2, 10.0)
 	col.shape = shape
 	col.position = Vector3(0, 0.1, 0)
 	body.add_child(col)
 	parent.add_child(body)
 
 
-func _build_building_structure(parent: Node3D) -> void:
-	# Wooden corner posts
-	var post_offsets := [
-		Vector3(-6.5, 1.5, -4.5),
-		Vector3(6.5, 1.5, -4.5),
-		Vector3(-6.5, 1.5, 4.5),
-		Vector3(6.5, 1.5, 4.5)
-	]
-	var wood_mat := StandardMaterial3D.new()
-	wood_mat.albedo_color = Color(0.42, 0.26, 0.16)
+## Find the first mesh whose name contains `equipment_name_fragment` inside
+## the gym scene, then attach an invisible interaction trigger + label to it.
+func _attach_station_trigger(gym_scene: Node3D, equipment_name: String,
+		type_name: String, display_name: String, action_id: String,
+		prompt_text: String) -> void:
+	# Search for a mesh whose name contains the equipment fragment.
+	var target: Node3D = null
+	for child in gym_scene.find_children("*", "MeshInstance3D", true, false):
+		var mesh_name := String(child.name).to_lower()
+		if mesh_name.contains(equipment_name.to_lower()):
+			target = child as Node3D
+			break
+	if target == null:
+		push_warning("[GymSpawner3D] Equipment '%s' not found in gym GLB" % equipment_name)
+		return
 
-	for offset in post_offsets:
-		var post := MeshInstance3D.new()
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(0.3, 3.0, 0.3)
-		post.mesh = mesh
-		post.position = offset
-		post.material_override = wood_mat
-		parent.add_child(post)
+	# Label above the equipment.
+	var label := Label3D.new()
+	label.text = display_name
+	label.position = Vector3(0, 1.8, 0)
+	label.font_size = 20
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.modulate = Color(1.0, 1.0, 1.0)
+	label.outline_modulate = Color(0, 0, 0, 0.85)
+	label.outline_size = 4
+	target.add_child(label)
 
-	# Overhead Roof Beams
-	var beam := MeshInstance3D.new()
-	var beam_mesh := BoxMesh.new()
-	beam_mesh.size = Vector3(13.4, 0.2, 0.3)
-	beam.mesh = beam_mesh
-	beam.position = Vector3(0, 3.0, -4.5)
-	beam.material_override = wood_mat
-	parent.add_child(beam)
-
-	# Neon Sign Board
-	var sign_mesh := MeshInstance3D.new()
-	var sign_box := BoxMesh.new()
-	sign_box.size = Vector3(5.0, 0.8, 0.15)
-	sign_mesh.mesh = sign_box
-	sign_mesh.position = Vector3(0, 3.3, -4.5)
-
-	var sign_mat := StandardMaterial3D.new()
-	sign_mat.albedo_color = Color(0.10, 0.65, 0.95)
-	sign_mat.emission_enabled = true
-	sign_mat.emission = Color(0.20, 0.75, 1.0)
-	sign_mat.emission_energy_multiplier = 2.0
-	sign_mesh.material_override = sign_mat
-	parent.add_child(sign_mesh)
-
-	# Overhead Lighting
-	var light := OmniLight3D.new()
-	light.position = Vector3(0, 2.8, 0)
-	light.light_color = Color(0.95, 0.92, 0.85)
-	light.light_energy = 2.5
-	light.omni_range = 12.0
-	parent.add_child(light)
-
-
-func _build_equipment_stations(parent: Node3D) -> void:
-	# 1. STRENGTH: Bench Press & Punching Bag
-	_create_equipment_station(parent, Vector3(-4.5, 0.2, -2.5), "STRENGTH", "Worek Bokserski & Sztanga (Siła)", Color(0.85, 0.25, 0.25), "train_push", "E  Wyciskaj sztangę / Uderzaj w worek")
-
-	# 2. POSTURE: Pull-Up Bar Rig
-	_create_equipment_station(parent, Vector3(-1.5, 0.2, -2.5), "POSTURE", "Drążek do Podciągania (Postawa)", Color(0.25, 0.75, 0.45), "train_pull", "E  Podciągaj się na drążku")
-
-	# 3. STAMINA: Treadmill Platform
-	_create_equipment_station(parent, Vector3(1.5, 0.2, -2.5), "STAMINA", "Bieżnia Treningowa (Kondycja)", Color(0.95, 0.65, 0.15), "train_run", "E  Biegnij na bieżni")
-
-	# 4. AGILITY: Plyometric Jump Box
-	_create_equipment_station(parent, Vector3(4.5, 0.2, -2.5), "AGILITY", "Skrzynia Plyometryczna (Zwrotność)", Color(0.65, 0.35, 0.95), "train_jump", "E  Skacz na skrzynię")
-
-	# 5. FLEXIBILITY: Stretching Mat Area
-	_create_equipment_station(parent, Vector3(0.0, 0.2, 2.5), "FLEXIBILITY", "Mata do Rozciągania (Rozciągliwość)", Color(0.25, 0.85, 0.85), "train_balance", "E  Rozciągaj się na macie")
-
-
-func _create_equipment_station(parent: Node3D, pos: Vector3, type_name: String, display_name: String, color: Color, action_id: String, prompt_text: String) -> void:
-	var station_root := Node3D.new()
-	station_root.name = "Station_" + type_name
-	station_root.position = pos
-	parent.add_child(station_root)
-
-	# Equipment Visual Mesh
-	var mesh_inst := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(1.6, 1.2, 1.6)
-	mesh_inst.mesh = box
-	mesh_inst.position = Vector3(0, 0.6, 0)
-
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mat.roughness = 0.4
-	mesh_inst.material_override = mat
-	station_root.add_child(mesh_inst)
-
-	# Equipment Label Indicator
-	var label_3d := Label3D.new()
-	label_3d.text = display_name
-	label_3d.position = Vector3(0, 1.6, 0)
-	label_3d.font_size = 20
-	label_3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label_3d.modulate = Color(1.0, 1.0, 1.0)
-	station_root.add_child(label_3d)
-
-	# Interactive Area3D Trigger Zone
+	# Invisible interaction zone around the equipment.
 	var area := Area3D.new()
 	area.name = "TrainArea_" + type_name
 	area.add_to_group("world_interactable")
@@ -178,13 +146,12 @@ func _create_equipment_station(parent: Node3D, pos: Vector3, type_name: String, 
 	area.set_meta("action_id", action_id)
 	area.set_meta("resource_action", action_id)
 	area.set_meta("prompt_text", prompt_text)
-
 	var col := CollisionShape3D.new()
 	var shape := SphereShape3D.new()
-	shape.radius = 2.2
+	shape.radius = 2.0
 	col.shape = shape
 	area.add_child(col)
-	station_root.add_child(area)
+	target.add_child(area)
 
 
 ## Trigger workout execution on the active TrainingStats entity.

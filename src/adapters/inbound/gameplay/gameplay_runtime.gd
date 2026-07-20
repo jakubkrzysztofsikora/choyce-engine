@@ -1515,8 +1515,10 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 		return _build_parrot_visual()
 	var role := npc.role
 	# Prefer a per-visual-id model so each authored NPC has a distinct
-	# silhouette. Falls back to role-based only if the visual_id is unknown.
-	var path: String = _NPC_MODEL_BY_VISUAL_ID.get(npc.visual_id, "")
+	# silhouette. Camp residents (Hania, Bartek, Lena) are created without
+	# an explicit visual_id, so fall back to npc_id for the lookup.
+	var lookup_key := npc.visual_id if not npc.visual_id.is_empty() else npc.npc_id
+	var path: String = _NPC_MODEL_BY_VISUAL_ID.get(lookup_key, "")
 	if path.is_empty():
 		path = _NPC_MODEL_BY_ROLE.get(role, _NPC_MODEL_BY_ROLE["guide"])
 	if ResourceLoader.exists(path):
@@ -1531,7 +1533,7 @@ func _build_npc_visual(npc: NPCCharacter) -> Node3D:
 					_add_pirate_accessories(model)
 				# Apply per-NPC tint so two NPCs that share a fallback mesh
 				# still read as different characters at a glance.
-				var tint: Variant = _NPC_TINT_BY_VISUAL_ID.get(npc.visual_id, null)
+				var tint: Variant = _NPC_TINT_BY_VISUAL_ID.get(lookup_key, null)
 				if tint is Color:
 					_tint_npc_meshes(model, tint)
 				_attach_humanoid_face(model)
@@ -2895,11 +2897,25 @@ func _toggle_inventory_overlay() -> void:
 
 
 func _creative_catalog_item_ids() -> Array[String]:
+	# Tools first, then placeable block kinds. Skip mineable producers
+	# (tree_oak, ore_node) — they're world-seeded, not kid-placeable, and
+	# showing them in the creative catalog was the "duplicated items" bug.
 	var item_ids: Array[String] = ["tool_axe", "tool_pickaxe"]
+	var seen: Dictionary = {}
+	for id in item_ids:
+		seen[id] = true
 	for kind_variant in BlockKind.default_catalog():
 		var kind := kind_variant as BlockKind
-		if kind != null:
-			item_ids.append(kind.block_id)
+		if kind == null:
+			continue
+		if seen.has(kind.block_id):
+			continue
+		# Skip producers — they drop a different item when mined and aren't
+		# meant to be placed directly by the kid.
+		if kind.drop_id != "" and kind.drop_id != kind.block_id:
+			continue
+		item_ids.append(kind.block_id)
+		seen[kind.block_id] = true
 	return item_ids
 
 

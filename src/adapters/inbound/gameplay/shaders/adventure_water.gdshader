@@ -3,14 +3,14 @@
 // but intentionally keeps this runtime self-contained: no reflection
 // viewports, no editor plugin, and no dependency on a Godot 3 asset pipeline.
 shader_type spatial;
-// The player can enter the river. Keep the surface double-sided, opaque, and
-// depth-drawn in every pass so contact with the avatar never leaves a hole.
-// render_mode deviates from defaults: cull_disabled shows both sides from any
-// camera angle (TPP camera dips below the wave displacement at shore contact);
-// depth_draw_always ensures the surface wins depth contention against the
-// hero's legs at the waterline instead of being temporarily masked out; unshaded
-// keeps the authored blue palette stable across day/night directional grades.
-render_mode cull_disabled, depth_draw_always, unshaded, fog_disabled;
+// The player can enter the river. The surface must NEVER disappear when the
+// player wades in. depth_test_disabled is the nuclear option: the water
+// fragment always renders regardless of what's in the depth buffer, so no
+// amount of player-mesh / terrain / z-fighting can hide it. The water still
+// WRITES depth (depth_draw_always), so objects behind the water (player's
+// legs, riverbed) are correctly occluded. The only artifact is water
+// rendering through walls — acceptable for a flat ground-level river.
+render_mode cull_disabled, depth_draw_always, depth_test_disabled, unshaded, fog_disabled;
 
 uniform vec4 shallow_color : source_color = vec4(0.10, 0.42, 0.55, 1.0);
 uniform vec4 deep_color : source_color = vec4(0.04, 0.18, 0.32, 1.0);
