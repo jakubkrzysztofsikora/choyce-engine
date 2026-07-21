@@ -597,6 +597,12 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 	if not use_adventure_sky:
 		_teardown_adventure_sky()
 	_world_renderer.render_world(world)
+	# One progression store for all training: hand the gym spawner the
+	# TrainingManager's TrainingStats so even fallback workout paths feed the
+	# same entity the HUD/body systems read (previously it kept a private copy).
+	var gym_spawner := _world_renderer.get_node_or_null("GymSpawner3D")
+	if gym_spawner != null and _training_manager != null and gym_spawner.has_method("setup"):
+		gym_spawner.setup(_training_manager.get_training_stats_entity())
 	if use_adventure_sky:
 		_setup_adventure_sky()
 	_set_legacy_ground_visual_visible(not _world_renderer.has_runtime_terrain_surface())
@@ -1380,6 +1386,10 @@ func _show_intro_npc() -> void:
 ## the greeting trigger. Color encodes role so the kid can tell a
 ## guide (green) from a vendor (gold) from a (degraded) hostile (red).
 func _spawn_one_npc(npc: NPCCharacter, pos: Vector3, wander_radius: float = 1.25) -> void:
+	# Ground every NPC on the terrain at its final XZ. Callers pass y=0; far-out
+	# characters (e.g. the pirate at -120,90 in hilly forest) floated or buried.
+	if _world_renderer != null and _world_renderer.has_method("_terrain_grounded_position"):
+		pos = _world_renderer._terrain_grounded_position(pos)
 	var root := StaticBody3D.new()
 	var is_small_companion := npc.visual_id == "npc_parrot"
 	root.name = "npc_%s" % npc.npc_id
@@ -3694,9 +3704,9 @@ func _tick_world_interactions() -> void:
 	_interaction_prompt_panel.visible = true
 
 
-func _activate_world_interaction() -> void:
+func _activate_world_interaction() -> bool:
 	if _nearby_world_interactable == null or not is_instance_valid(_nearby_world_interactable):
-		return
+		return false
 	var action := String(_nearby_world_interactable.get_meta("interaction_action", ""))
 	match action:
 		"door":
@@ -3715,12 +3725,15 @@ func _activate_world_interaction() -> void:
 			if _player_controller == null or not _player_controller.has_method("has_equipped_tool") \
 				or not _player_controller.has_equipped_tool(required_tool):
 				_interaction_feedback("Wybierz %s i uderz w zasób." % ("siekierę" if action == "gather_wood" else "kilof"))
-				return
+				return true
 			_gather_world_resource(_nearby_world_interactable)
 		"find_food":
 			_collect_food_item(_nearby_world_interactable)
 		"train_jump", "train_run", "train_climb", "train_push", "train_pull", "train_balance":
 			_start_training_session(_nearby_world_interactable)
+		_:
+			return false
+	return true
 
 
 func _interaction_feedback(message: String, action: String = "") -> void:
@@ -3799,18 +3812,29 @@ func _start_training_session(anchor: Node3D) -> void:
 	if anchor == null or not is_instance_valid(anchor) or _training_manager == null:
 		return
 
-	var action := String(anchor.get_meta("interaction_action", ""))
-
-	## Map action to TrainingType
+	# The station's own type declaration is the single source of truth
+	# (gym stations set it in GymSpawner3D._attach_station_trigger).
+	var type_name := String(anchor.get_meta("training_type_name", "")).to_upper()
 	var training_type: TrainingStats.TrainingType
-	match action:
-		"train_jump": training_type = TrainingStats.TrainingType.STAMINA
-		"train_run": training_type = TrainingStats.TrainingType.STAMINA
-		"train_climb": training_type = TrainingStats.TrainingType.STRENGTH
-		"train_push": training_type = TrainingStats.TrainingType.STRENGTH
-		"train_pull": training_type = TrainingStats.TrainingType.POSTURE
-		"train_balance": training_type = TrainingStats.TrainingType.AGILITY
-		_: training_type = TrainingStats.TrainingType.STRENGTH
+	match type_name:
+		"STRENGTH": training_type = TrainingStats.TrainingType.STRENGTH
+		"POSTURE": training_type = TrainingStats.TrainingType.POSTURE
+		"STAMINA": training_type = TrainingStats.TrainingType.STAMINA
+		"AGILITY": training_type = TrainingStats.TrainingType.AGILITY
+		"FLEXIBILITY": training_type = TrainingStats.TrainingType.FLEXIBILITY
+		_:
+			# Legacy anchors carry no type meta — map from the action id.
+			# Kept in sync with GymSpawner3D station assignments:
+			# push→STRENGTH, pull→POSTURE, run→STAMINA, jump→AGILITY, balance→FLEXIBILITY.
+			var action := String(anchor.get_meta("interaction_action", ""))
+			match action:
+				"train_jump": training_type = TrainingStats.TrainingType.AGILITY
+				"train_run": training_type = TrainingStats.TrainingType.STAMINA
+				"train_climb": training_type = TrainingStats.TrainingType.STRENGTH
+				"train_push": training_type = TrainingStats.TrainingType.STRENGTH
+				"train_pull": training_type = TrainingStats.TrainingType.POSTURE
+				"train_balance": training_type = TrainingStats.TrainingType.FLEXIBILITY
+				_: training_type = TrainingStats.TrainingType.STRENGTH
 
 	## Start training via TrainingManager
 	_training_manager.start_training(training_type, anchor)
@@ -3969,7 +3993,7 @@ func _build_goal_context() -> Dictionary:
 	return {
 		"score": _score,
 		"time": int(_session_elapsed_sec),
-		"blocks_placed": _build_grid.placed_count() if _build_grid != null and _build_grid.has_method("placed_count") else 0,
+		"blocks_placed": _build_grid.block_count() if _build_grid != null and _build_grid.has_method("block_count") else 0,
 		"inventory": inventory,
 		"in_zone": zones,
 		"quest": {},
@@ -4257,9 +4281,12 @@ func _input(event: InputEvent) -> void:
 		if viewport != null:
 			viewport.set_input_as_handled()
 		return
-	if Input.is_action_pressed("interact"):
-		_activate_world_interaction()
-		get_viewport().set_input_as_handled()
+	if event.is_action_pressed("interact"):
+		# Consume E only when a world interaction actually fired — otherwise the
+		# event falls through to PlayerController._unhandled_input (training /
+		# food fallback paths) instead of being swallowed here.
+		if _activate_world_interaction():
+			get_viewport().set_input_as_handled()
 		return
 	if Input.is_action_pressed("ui_cancel"):
 		# ESC only ever TOGGLES the mouse cursor — it never ends the

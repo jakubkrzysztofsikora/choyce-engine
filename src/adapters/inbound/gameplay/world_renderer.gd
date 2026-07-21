@@ -77,6 +77,17 @@ const RIVER_RENDER_SEGMENT_COUNT := 192
 const RIVER_RENDER_WIDTH_SUBDIVISIONS := 12
 const RIVER_HALF_LENGTH_M := 1600.0
 const RIVER_SHORE_WIDTH_M := 2.35
+# The StarterRiver Area3D carries this small vertical lift (its collision
+# children and the WaterSurface ribbon compensate for it locally). Kept for
+# the river's raised-surface contract; detection volumes are positioned in
+# renderer space minus this lift.
+const RIVER_AREA_LIFT_M := 0.10
+# The rendered water surface sits this far above the sampled terrain height so
+# the terrain-conformed ribbon never z-fights the riverbed below it.
+const RIVER_WATER_SURFACE_OFFSET_M := 0.05
+# Ground overlays (dirt trails, courtyard disc) conform every vertex to the
+# sampled terrain and lift it just enough to avoid z-fighting.
+const OVERLAY_TERRAIN_LIFT_M := 0.04
 
 # Choyce unified color palette (Visual Art Direction - VS-012)
 # Warm Beige: Ground, stone
@@ -110,6 +121,11 @@ var _has_runtime_terrain_collision := false
 # Incremented each time a new Terrain3D surface is successfully imported.
 # Lets callers (and collision-probe guards) reject results from a stale session.
 var _terrain_import_session_token := 0
+
+# GDScript has no function-local statics; this class-level static guards the
+# "terrain sampling unavailable" fallback warning so it is emitted once per
+# process instead of once per placed prop.
+static var _terrain_unavailable_warned := false
 
 # VS-025: Food database for foraging
 @export var food_database: FoodDatabase = null
@@ -934,7 +950,15 @@ func _build_settlement_compounds(seed_source: String) -> void:
 	for anchor in anchors:
 		# Ground each anchor to terrain so houses don't float on hills.
 		var grounded_anchor := _terrain_grounded_position(anchor)
-		spawner.spawn_random_homestead(grounded_anchor)
+		var compound := spawner.spawn_random_homestead(grounded_anchor)
+		if compound != null:
+			# SettlementPlacementService returns XZ-only placements (its y is the
+			# UNGROUNDED_Y sentinel): ground EVERY compound individually at its
+			# final scattered position, not just the cluster anchor. Copying any
+			# earlier compound's y made compounds 2..N float/sink on slopes.
+			var flat := compound.position
+			flat.y = 0.0
+			compound.position = _terrain_grounded_position(flat)
 
 
 func _build_gym_compound() -> void:
@@ -1151,14 +1175,13 @@ func _build_opening_undergrowth() -> void:
 func _add_opening_dirt_trail(node_name: String, trail_position: Vector3, width: float, length: float, rotation_y: float = 0.0) -> void:
 	var trail := MeshInstance3D.new()
 	trail.name = node_name
-	var mesh := PlaneMesh.new()
-	mesh.size = Vector2(width, length)
-	mesh.subdivide_width = 2
-	mesh.subdivide_depth = maxi(2, roundi(length * 0.35))
-	trail.mesh = mesh
-	# Ground the trail to the terrain to avoid floating plane overlay appearance
-	trail.position = _terrain_grounded_position(trail_position)
+	# Ground the trail origin to the terrain, then conform EVERY vertex of a
+	# subdivided grid to the sampled height. The old single-origin PlaneMesh
+	# hovered or clipped on any slope ("floating textures").
+	var origin := _terrain_grounded_position(trail_position)
+	trail.position = origin
 	trail.rotation.y = rotation_y
+	trail.mesh = _build_terrain_conformed_trail_mesh(width, length, origin, rotation_y)
 	# A feathered PBR edge prevents this curated route from reading as a hard
 	# brown rectangle stamped over the Terrain3D grass.
 	var material := ShaderMaterial.new()
@@ -1174,6 +1197,97 @@ func _add_opening_dirt_trail(node_name: String, trail_position: Vector3, width: 
 	add_child(trail)
 
 
+## Subdivided width×length grid (about one vertex per 2m) whose vertices are
+## displaced to the sampled terrain height. Built in the trail's local space:
+## the MeshInstance sits at `origin` rotated by `rotation_y`, and a yaw-only
+## rotation leaves local y untouched, so the conform offset is exact.
+func _build_terrain_conformed_trail_mesh(width: float, length: float, origin: Vector3, rotation_y: float) -> ArrayMesh:
+	var width_subs := maxi(2, int(ceil(width / 2.0)))
+	var length_subs := maxi(2, int(ceil(length / 2.0)))
+	var basis := Basis(Vector3.UP, rotation_y)
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for segment in range(length_subs):
+		var z0 := -length * 0.5 + length * float(segment) / float(length_subs)
+		var z1 := -length * 0.5 + length * float(segment + 1) / float(length_subs)
+		var v0 := float(segment) / float(length_subs)
+		var v1 := float(segment + 1) / float(length_subs)
+		for strip in range(width_subs):
+			var x0 := -width * 0.5 + width * float(strip) / float(width_subs)
+			var x1 := -width * 0.5 + width * float(strip + 1) / float(width_subs)
+			var u0 := float(strip) / float(width_subs)
+			var u1 := float(strip + 1) / float(width_subs)
+			var p00 := _conform_overlay_vertex(basis, origin, Vector3(x0, 0.0, z0))
+			var p01 := _conform_overlay_vertex(basis, origin, Vector3(x0, 0.0, z1))
+			var p10 := _conform_overlay_vertex(basis, origin, Vector3(x1, 0.0, z0))
+			var p11 := _conform_overlay_vertex(basis, origin, Vector3(x1, 0.0, z1))
+			# Counter-clockwise from above so generated normals follow the
+			# terrain upward for the lit path shader.
+			surface.set_uv(Vector2(u0, v0)); surface.add_vertex(p00)
+			surface.set_uv(Vector2(u0, v1)); surface.add_vertex(p01)
+			surface.set_uv(Vector2(u1, v0)); surface.add_vertex(p10)
+			surface.set_uv(Vector2(u1, v0)); surface.add_vertex(p10)
+			surface.set_uv(Vector2(u0, v1)); surface.add_vertex(p01)
+			surface.set_uv(Vector2(u1, v1)); surface.add_vertex(p11)
+	surface.generate_normals()
+	return surface.commit()
+
+
+## Returns `local_xz` with its y displaced so the vertex rests on the sampled
+## terrain (+OVERLAY_TERRAIN_LIFT_M) once the overlay MeshInstance is placed at
+## `origin` with yaw-only `basis` rotation.
+func _conform_overlay_vertex(basis: Basis, origin: Vector3, local_xz: Vector3) -> Vector3:
+	var world := origin + basis * local_xz
+	var conformed := local_xz
+	conformed.y = _terrain_grounded_position(Vector3(world.x, 0.0, world.z)).y \
+		+ OVERLAY_TERRAIN_LIFT_M - origin.y
+	return conformed
+
+
+## Terrain-conformed radial disc (centre fan + ring quads, ~2m spacing) used
+## for the courtyard overlay. UVs map the rim as a circle inscribed in the unit
+## square — the same convention as a CylinderMesh cap — so the adventure path
+## shader feathers the edge exactly like the replaced mesh did.
+func _build_terrain_conformed_disc_mesh(radius: float, origin: Vector3) -> ArrayMesh:
+	var rings := maxi(2, int(ceil(radius / 2.0)))
+	var sectors := maxi(12, int(ceil(TAU * radius / 2.0)))
+	var identity := Basis.IDENTITY
+	var surface := SurfaceTool.new()
+	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var centre := _conform_overlay_vertex(identity, origin, Vector3.ZERO)
+	for sector in range(sectors):
+		var a0 := TAU * float(sector) / float(sectors)
+		var a1 := TAU * float(sector + 1) / float(sectors)
+		var dir0 := Vector3(cos(a0), 0.0, sin(a0))
+		var dir1 := Vector3(cos(a1), 0.0, sin(a1))
+		# Centre fan (counter-clockwise from above for upward normals).
+		var first0 := _conform_overlay_vertex(identity, origin, dir0 * (radius / float(rings)))
+		var first1 := _conform_overlay_vertex(identity, origin, dir1 * (radius / float(rings)))
+		surface.set_uv(Vector2(0.5, 0.5)); surface.add_vertex(centre)
+		surface.set_uv(_disc_uv(dir1, radius, rings, 1)); surface.add_vertex(first1)
+		surface.set_uv(_disc_uv(dir0, radius, rings, 1)); surface.add_vertex(first0)
+		# Ring quads outward from the fan.
+		for ring in range(1, rings):
+			var r0 := radius * float(ring) / float(rings)
+			var q00 := _conform_overlay_vertex(identity, origin, dir0 * r0)
+			var q01 := _conform_overlay_vertex(identity, origin, dir1 * r0)
+			var q10 := _conform_overlay_vertex(identity, origin, dir0 * (r0 + radius / float(rings)))
+			var q11 := _conform_overlay_vertex(identity, origin, dir1 * (r0 + radius / float(rings)))
+			surface.set_uv(_disc_uv(dir0, radius, rings, ring)); surface.add_vertex(q00)
+			surface.set_uv(_disc_uv(dir1, radius, rings, ring)); surface.add_vertex(q01)
+			surface.set_uv(_disc_uv(dir0, radius, rings, ring + 1)); surface.add_vertex(q10)
+			surface.set_uv(_disc_uv(dir1, radius, rings, ring)); surface.add_vertex(q01)
+			surface.set_uv(_disc_uv(dir1, radius, rings, ring + 1)); surface.add_vertex(q11)
+			surface.set_uv(_disc_uv(dir0, radius, rings, ring + 1)); surface.add_vertex(q10)
+	surface.generate_normals()
+	return surface.commit()
+
+
+func _disc_uv(direction: Vector3, radius: float, rings: int, ring: int) -> Vector2:
+	var point: Vector3 = direction * (radius * float(ring) / float(rings))
+	return Vector2(point.x / (2.0 * radius) + 0.5, point.z / (2.0 * radius) + 0.5)
+
+
 ## A compact north-bank courtyard turns the bridge exit into a legible place:
 ## it has a ground surface, a front-facing home, utility silhouettes and an
 ## alternate forest route. It is intentionally one authored 30–50m beat, not
@@ -1181,13 +1295,13 @@ func _add_opening_dirt_trail(node_name: String, trail_position: Vector3, width: 
 func _build_opening_courtyard() -> void:
 	var courtyard := MeshInstance3D.new()
 	courtyard.name = "OpeningBridgeCourtyard"
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = 8.2
-	mesh.bottom_radius = 8.0
-	mesh.height = 0.035
-	mesh.radial_segments = 20
-	courtyard.mesh = mesh
-	courtyard.position = _terrain_grounded_position(Vector3(9.0, 0.035, -39.5))
+	# The old rigid CylinderMesh disc was grounded only at its centre and
+	# hovered/clipped on any slope. Conform a radial grid to the terrain
+	# instead; UVs keep the CylinderMesh cap convention (inscribed circle in a
+	# unit square) so the path shader's edge feather is unchanged.
+	var origin := _terrain_grounded_position(Vector3(9.0, 0.035, -39.5))
+	courtyard.position = origin
+	courtyard.mesh = _build_terrain_conformed_disc_mesh(8.2, origin)
 	var material := ShaderMaterial.new()
 	material.shader = ADVENTURE_PATH_SHADER
 	material.set_shader_parameter("detail_albedo", PBR_DETAIL_ALBEDO)
@@ -2453,25 +2567,20 @@ func _add_water_crossing() -> void:
 	water.name = "StarterRiver"
 	water.add_to_group("water_volume")
 	water.monitoring = true
-	# The previous custom-shader ribbon had three independent failure modes:
-	# the shader's depth_test_disabled made water render through walls, the
-	# meander Y was hardcoded at 0.20m so the water sat 49cm below the
-	# bridge deck, and the infinite ribbon was hard to debug.
-	# Replace it with BoxMesh segments following the river path. Each
-	# segment is a thin box that:
-	#   - renders as a real volume (no shader edge-case)
-	#   - sits exactly at terrain height + 0.05m (no more levitation)
-	#   - has trimesh collision (player can stand on it / wade through it)
-	#   - reuses StandardMaterial3D's proven transparency pipeline
-	var segment_root := _build_water_segments()
-	if segment_root != null:
-		segment_root.name = "StarterRiverSegments"
-		water.add_child(segment_root)
-	# The Area3D below is exclusively for wading/swimming; it cannot hide,
-	# displace or otherwise own the visual mesh. Its collision shapes match
-	# the bank pairs so the player reliably enters/exits water.
+	# The river visual is ONE tessellated, terrain-conformed ribbon driven by
+	# the animated adventure water shader. It replaced the 96 solid BoxMesh
+	# slabs: their per-slab trimesh collision made the river a walkable solid,
+	# so the player strolled across the surface and the swim volumes below
+	# never overlapped a single body. Water is never solid now; this Area3D
+	# owns wading/swimming detection exclusively.
+	var surface := _build_water_segments()
+	if surface != null:
+		# The ribbon is authored in renderer space (terrain + 0.05); compensate
+		# for the Area3D lift below so its global height stays exact.
+		surface.position.y = -RIVER_AREA_LIFT_M
+		water.add_child(surface)
 	_build_meandering_water_volumes(water)
-	water.position = Vector3.ZERO
+	water.position = Vector3(0.0, RIVER_AREA_LIFT_M, 0.0)
 	water.collision_layer = 0
 	water.collision_mask = 1
 	water.body_entered.connect(_on_water_body_entered)
@@ -2485,57 +2594,30 @@ func _add_water_crossing() -> void:
 
 
 func _build_water_segments() -> Node3D:
-	# Walks the river path (same bank-pair coordinate system as the legacy
-	# ribbon) and drops one thin BoxMesh per segment. Each segment is
-	# terrain-grounded so the river follows hills, has trimesh collision
-	# so the player can stand / wade on it, and uses StandardMaterial3D's
-	# proven transparency pipeline — no custom shader.
-	var root := Node3D.new()
-	var water_mat := StandardMaterial3D.new()
-	water_mat.albedo_color = Color(0.15, 0.45, 0.60, 0.78)
-	water_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	water_mat.roughness = 0.12
-	water_mat.metallic = 0.0
-	water_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	water_mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # visible from below too
-
-	for segment in range(RIVER_SEGMENT_COUNT):
-		var t0 := float(segment) / float(RIVER_SEGMENT_COUNT)
-		var t1 := float(segment + 1) / float(RIVER_SEGMENT_COUNT)
-		var pair0 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t0))
-		var pair1 := _river_bank_pair(lerpf(-RIVER_HALF_LENGTH_M, RIVER_HALF_LENGTH_M, t1))
-		var left0: Vector3 = pair0[0]
-		var right0: Vector3 = pair0[1]
-		var left1: Vector3 = pair1[0]
-		var right1: Vector3 = pair1[1]
-		var center0 := (left0 + right0) * 0.5
-		var center1 := (left1 + right1) * 0.5
-		# Sample terrain at the segment midpoint. If terrain isn't loaded
-		# yet (returns 0), we still get a sensible default.
-		var ground_y := _terrain_grounded_position(center0).y
-		var ground_y1 := _terrain_grounded_position(center1).y
-		var seg_y := (ground_y + ground_y1) * 0.5 + 0.05
-		var width0 := (right0 - left0).length()
-		var width1 := (right1 - left1).length()
-		var length := (center1 - center0).length()
-		var mid := (center0 + center1) * 0.5
-		var tangent := (center1 - center0).normalized() if length > 0.01 else Vector3(0, 0, 1)
-		var yaw := atan2(tangent.x, tangent.z)
-
-		# Visual: thin BoxMesh spanning the segment, oriented along the tangent.
-		var visual := MeshInstance3D.new()
-		visual.name = "WaterSegment_%d" % segment
-		var box := BoxMesh.new()
-		box.size = Vector3((width0 + width1) * 0.5, 0.3, length)
-		visual.mesh = box
-		visual.material_override = water_mat
-		visual.position = Vector3(mid.x, seg_y, mid.z)
-		visual.rotation.y = yaw
-		visual.create_trimesh_collision()
-		# Move the collision child up to the root so it doesn't move when the
-		# visual is re-parented later.
-		root.add_child(visual)
-	return root
+	# Single "WaterSurface" ribbon for the whole river, kept as the entry point
+	# formerly used for the 96-slab blockout. NO collision is created here:
+	# solid water blocked the StarterRiver Area3D from detecting the player.
+	var surface := MeshInstance3D.new()
+	surface.name = "WaterSurface"
+	surface.mesh = _create_meandering_river_mesh()
+	var material := ShaderMaterial.new()
+	material.shader = ADVENTURE_WATER_SHADER
+	# Bind every animated/graded parameter explicitly so the runtime material
+	# carries the authored values (and remains introspectable), not just the
+	# shader's defaults. dudv_strength is nudged above the 0.028 shader default
+	# to keep the moving distortion contract (>= 0.03).
+	material.set_shader_parameter("shallow_color", Color(0.10, 0.42, 0.55, 1.0))
+	material.set_shader_parameter("deep_color", Color(0.04, 0.18, 0.32, 1.0))
+	material.set_shader_parameter("foam_color", Color(0.85, 0.92, 0.95, 1.0))
+	material.set_shader_parameter("sky_reflection_color", Color(0.35, 0.55, 0.70, 1.0))
+	material.set_shader_parameter("wave_height", 0.012)
+	material.set_shader_parameter("wave_scale", 0.16)
+	material.set_shader_parameter("wave_speed", 0.70)
+	material.set_shader_parameter("dudv_map", SIMPLE_WATER_DUDV)
+	material.set_shader_parameter("dudv_tiling", 0.12)
+	material.set_shader_parameter("dudv_strength", 0.032)
+	surface.material_override = material
+	return surface
 
 
 func _create_meandering_river_mesh() -> ArrayMesh:
@@ -2544,6 +2626,9 @@ func _create_meandering_river_mesh() -> ArrayMesh:
 	# Unlike the physics volume, this mesh is tessellated both along and across
 	# the current. It gives the local SimpleWater-inspired waves a real surface
 	# to travel over instead of relying on a broad per-fragment colour trick.
+	# Every vertex is conformed to the sampled terrain (+RIVER_WATER_SURFACE_OFFSET_M)
+	# in renderer space, so the river follows hills like the old grounded slabs
+	# did instead of hovering at the flat y=0.10 bank height.
 	for segment in range(RIVER_RENDER_SEGMENT_COUNT):
 		var t0 := float(segment) / float(RIVER_RENDER_SEGMENT_COUNT)
 		var t1 := float(segment + 1) / float(RIVER_RENDER_SEGMENT_COUNT)
@@ -2556,10 +2641,10 @@ func _create_meandering_river_mesh() -> ArrayMesh:
 		for strip in range(RIVER_RENDER_WIDTH_SUBDIVISIONS):
 			var v0 := float(strip) / float(RIVER_RENDER_WIDTH_SUBDIVISIONS)
 			var v1 := float(strip + 1) / float(RIVER_RENDER_WIDTH_SUBDIVISIONS)
-			var near0 := left0.lerp(right0, v0)
-			var far0 := left0.lerp(right0, v1)
-			var near1 := left1.lerp(right1, v0)
-			var far1 := left1.lerp(right1, v1)
+			var near0 := _river_surface_point(left0.lerp(right0, v0))
+			var far0 := _river_surface_point(left0.lerp(right0, v1))
+			var near1 := _river_surface_point(left1.lerp(right1, v0))
+			var far1 := _river_surface_point(left1.lerp(right1, v1))
 			# Counter-clockwise from above: real upward normals matter for the
 			# reflection tint, editor previews and any later lit material upgrade.
 			surface.set_uv(Vector2(t0, v0)); surface.add_vertex(near0)
@@ -2572,10 +2657,22 @@ func _create_meandering_river_mesh() -> ArrayMesh:
 	return surface.commit()
 
 
+## Projects a bank-pair point onto the terrain-conformed water surface in
+## renderer space: sampled terrain height plus the small anti-z-fight offset.
+func _river_surface_point(bank_point: Vector3) -> Vector3:
+	var ground_y := _terrain_grounded_position(Vector3(bank_point.x, 0.0, bank_point.z)).y
+	return Vector3(bank_point.x, ground_y + RIVER_WATER_SURFACE_OFFSET_M, bank_point.z)
+
+
 ## Add overlapping shallow-water volumes along the rendered river. Each box is
 ## tangent-aligned to a mesh strip and spans its sampled bank pair, making the
 ## gameplay water state authoritative at the bridge and throughout the wider
 ## sandbox instead of only at the initial crossing.
+## Every volume follows the SAME terrain height as the rendered surface at its
+## XZ: its top rises just above the water surface (wave crests stay inside) and
+## its bottom reaches below the riverbed, so a wading capsule always overlaps
+## and body_entered actually fires. The old fixed local y=-0.47 boxes drifted
+## away from the terrain-grounded surface on every hill.
 func _build_meandering_water_volumes(water: Area3D) -> void:
 	if water == null:
 		return
@@ -2593,14 +2690,17 @@ func _build_meandering_water_volumes(water: Area3D) -> void:
 		var tangent := (center1 - center0).normalized()
 		var midpoint := (center0 + center1) * 0.5
 		var width := maxf((left0.distance_to(right0) + left1.distance_to(right1)) * 0.5, 1.0)
+		var surface_y := _terrain_grounded_position(Vector3(midpoint.x, 0.0, midpoint.z)).y + RIVER_WATER_SURFACE_OFFSET_M
+		var top_y := surface_y + 0.30
+		var bottom_y := surface_y - 1.20
 		var shape := BoxShape3D.new()
-		shape.size = Vector3(center0.distance_to(center1) + 0.80, 1.15, width + 0.35)
+		shape.size = Vector3(center0.distance_to(center1) + 0.80, top_y - bottom_y, width + 0.35)
 		var volume := CollisionShape3D.new()
 		volume.name = "WaterVolumeSegment_%02d" % segment
 		volume.shape = shape
-		# Water's parent has a +0.10m visual lift; retain the old -0.47m local
-		# offset so each volume's top lies just below the rendered surface.
-		volume.position = Vector3(midpoint.x, -0.47, midpoint.z)
+		# Positions are renderer-space; the StarterRiver Area3D itself carries
+		# RIVER_AREA_LIFT_M, so children sit that far below their global target.
+		volume.position = Vector3(midpoint.x, (top_y + bottom_y) * 0.5 - RIVER_AREA_LIFT_M, midpoint.z)
 		volume.rotation.y = atan2(tangent.z, tangent.x)
 		water.add_child(volume)
 
@@ -2894,14 +2994,21 @@ func _is_harvestable_tree_asset(asset_path: String) -> bool:
 ## together on a hill instead of at the old y=0 safety floor.
 func _terrain_grounded_position(asset_position: Vector3) -> Vector3:
 	var grounded := asset_position
+	var data: Object = null
 	var terrain_adapter := get_node_or_null("Terrain3DWorldAdapter")
-	if terrain_adapter == null:
-		return grounded
-	var terrain: Object = terrain_adapter.get("terrain") as Object
-	if terrain == null:
-		return grounded
-	var data: Object = terrain.get("data") as Object
-	if data == null or not data.has_method("get_height"):
+	if terrain_adapter != null:
+		var terrain: Object = terrain_adapter.get("terrain") as Object
+		if terrain != null:
+			var candidate: Object = terrain.get("data") as Object
+			if candidate != null and candidate.has_method("get_height"):
+				data = candidate
+	if data == null:
+		# Fallback keeps the authored position (historically y=0). It used to be
+		# silent, which hid dropped terrain grounding on hills; surface it once
+		# per process instead of spamming one warning per placed prop.
+		if not _terrain_unavailable_warned:
+			_terrain_unavailable_warned = true
+			push_warning("WorldRenderer: terrain height sampling unavailable; keeping authored y positions until Terrain3D data is ready.")
 		return grounded
 	var sampled := float(data.call("get_height", Vector3(asset_position.x, 0.0, asset_position.z)))
 	if not is_nan(sampled):

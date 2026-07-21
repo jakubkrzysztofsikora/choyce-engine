@@ -11,6 +11,10 @@
 ## Hostility is parent-tunable via ParentalControlPolicy.combat_enabled;
 ## a ROLE_HOSTILE NPC instantiated under a combat-off policy degrades
 ## to ROLE_GUIDE so a 5yo doesn't get jump-scared.
+##
+## Kid-safe emotion model: NPCs never enjoy the player's distress. Low
+## player HP only makes caring characters worried; player success makes
+## friendly characters happy.
 class_name NPCCharacter
 extends RefCounted
 
@@ -38,11 +42,11 @@ var extraversion: float = 0.5
 var agreeableness: float = 0.5
 var neuroticism: float = 0.5
 
-## Dark Triad traits
+## Friendly prosocial dimensions
 ## Normalized from 0.0 (low) to 1.0 (high)
-var machiavellianism: float = 0.0
-var narcissism: float = 0.0
-var psychopathy: float = 0.0
+var kindness: float = 0.5
+var playfulness: float = 0.5
+var helpfulness: float = 0.5
 
 ## Dynamic emotional states driven by gameplay and interaction
 var happiness: float = 0.5
@@ -61,9 +65,9 @@ func _init(
 	p_extraversion: float = 0.5,
 	p_agreeableness: float = 0.5,
 	p_neuroticism: float = 0.5,
-	p_machiavellianism: float = 0.0,
-	p_narcissism: float = 0.0,
-	p_psychopathy: float = 0.0
+	p_kindness: float = 0.5,
+	p_playfulness: float = 0.5,
+	p_helpfulness: float = 0.5
 ) -> void:
 	npc_id = p_npc_id
 	role = p_role if is_valid_role(p_role) else ROLE_GUIDE
@@ -75,9 +79,9 @@ func _init(
 	extraversion = clampf(p_extraversion, 0.0, 1.0)
 	agreeableness = clampf(p_agreeableness, 0.0, 1.0)
 	neuroticism = clampf(p_neuroticism, 0.0, 1.0)
-	machiavellianism = clampf(p_machiavellianism, 0.0, 1.0)
-	narcissism = clampf(p_narcissism, 0.0, 1.0)
-	psychopathy = clampf(p_psychopathy, 0.0, 1.0)
+	kindness = clampf(p_kindness, 0.0, 1.0)
+	playfulness = clampf(p_playfulness, 0.0, 1.0)
+	helpfulness = clampf(p_helpfulness, 0.0, 1.0)
 
 
 ## Resolve the Polish line for a trigger ("greeting", "hint",
@@ -114,7 +118,7 @@ func degraded_for_combat_off() -> NPCCharacter:
 	var copy := NPCCharacter.new(
 		npc_id, ROLE_GUIDE, name_pl, lines_pl, visual_id,
 		openness, conscientiousness, extraversion, agreeableness, neuroticism,
-		machiavellianism, narcissism, psychopathy
+		kindness, playfulness, helpfulness
 	)
 	copy.happiness = happiness
 	copy.irritability = irritability
@@ -122,16 +126,14 @@ func degraded_for_combat_off() -> NPCCharacter:
 	return copy
 
 
-## Update emotional states reactively based on player and world context
+## Update emotional states reactively based on player and world context.
+## Kid-safe: nobody is amused by the player's distress — caring
+## characters (empathetic or kind) become worried instead.
 func update_emotional_state(player_hp_ratio: float, player_score: int) -> void:
 	var safe_hp_ratio := clampf(player_hp_ratio, 0.0, 1.0)
 	if safe_hp_ratio < 0.4:
-		if psychopathy > 0.4:
-			# Psychopathic/hostile character is amused by player's distress
-			happiness = clampf(happiness + 0.3 * psychopathy, 0.0, 1.0)
-			anxiety = clampf(anxiety - 0.2 * psychopathy, 0.0, 1.0)
-		elif agreeableness > 0.6:
-			# Empathetic character becomes worried/anxious
+		if agreeableness > 0.6 or kindness > 0.6:
+			# Caring character becomes worried about the player
 			anxiety = clampf(anxiety + 0.3, 0.0, 1.0)
 			happiness = clampf(happiness - 0.2, 0.0, 1.0)
 	else:
@@ -140,12 +142,11 @@ func update_emotional_state(player_hp_ratio: float, player_score: int) -> void:
 		happiness = move_toward(happiness, 0.5, 0.1)
 
 	if player_score > 50:
-		if narcissism > 0.5:
-			# Narcissistic character becomes highly irritated/jealous of player's achievements
-			irritability = clampf(irritability + 0.3 * narcissism, 0.0, 1.0)
-		elif role == ROLE_HOSTILE:
+		if role == ROLE_HOSTILE:
 			# Hostile character gets moderately irritated by player success
 			irritability = clampf(irritability + 0.2, 0.0, 1.0)
 		else:
-			# Friendly gets happy for the player
+			# Friendly gets happy for the player; playful ones even more
 			happiness = clampf(happiness + 0.1, 0.0, 1.0)
+			if playfulness > 0.6:
+				happiness = clampf(happiness + 0.1, 0.0, 1.0)

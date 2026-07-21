@@ -16,9 +16,9 @@ func _init() -> void:
 
 	# 2. Fullwidth lookalike should map to ASCII
 	checks += 1
-	var fullwidth := moderation.check_text("ｐistolet", age)
+	var fullwidth := moderation.check_text("ｋarabin", age)
 	if not fullwidth.is_blocked():
-		failures.append("Fullwidth lookalike 'ｐistolet' should match 'pistolet' and be blocked")
+		failures.append("Fullwidth lookalike 'ｋarabin' should match 'karabin' and be blocked")
 
 	# 3. Polish diacritic "ć" should normalize to "c" and match "zabic"
 	checks += 1

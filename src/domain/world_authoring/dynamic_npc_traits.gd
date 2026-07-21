@@ -1,34 +1,42 @@
 ## Domain value object representing a dynamically generated NPC's personality,
 ## role, drives, and equipment.
+##
+## Kid-safe by design (AGENTS.md mission): only friendly village roles, harmless
+## handheld tools instead of weapons, civilian vehicles only, and prosocial
+## personality dimensions instead of hostile/antagonist psychology.
 class_name DynamicNPCTraits
 extends RefCounted
 
 enum JobRole {
-	CIVILIAN,
 	FARMER,
-	SHOPKEEPER,
-	POLICE_OFFICER,
-	MILITARY_SOLDIER,
-	BANDIT,
-	THIEF,
-	MURDERER
+	BAKER,
+	GARDENER,
+	FISHER,
+	CARPENTER,
+	TEACHER,
+	ARTIST,
+	SHEPHERD
 }
 
 const ALL_ROLES := [
-	JobRole.CIVILIAN,
 	JobRole.FARMER,
-	JobRole.SHOPKEEPER,
-	JobRole.POLICE_OFFICER,
-	JobRole.MILITARY_SOLDIER,
-	JobRole.BANDIT,
-	JobRole.THIEF,
-	JobRole.MURDERER
+	JobRole.BAKER,
+	JobRole.GARDENER,
+	JobRole.FISHER,
+	JobRole.CARPENTER,
+	JobRole.TEACHER,
+	JobRole.ARTIST,
+	JobRole.SHEPHERD
 ]
 
 var npc_id: String
 var display_name: String
 var job_role: JobRole
+## Harmless handheld tool id ("fishing_rod", "watering_can", ...).
+## Never a GLB path and never a weapon — the visual adapter maps these ids
+## to kid-safe props. Field name kept for save/meta compatibility.
 var weapon_visual_id: String
+## Civilian vehicles only — the family-friendly world has no other kind.
 var vehicle_model_path: String
 
 # Big Five / OCEAN (0.0 to 1.0)
@@ -38,10 +46,10 @@ var extraversion: float = 0.5
 var agreeableness: float = 0.5
 var neuroticism: float = 0.5
 
-# Dark Triad (0.0 to 1.0)
-var machiavellianism: float = 0.0
-var narcissism: float = 0.0
-var psychopathy: float = 0.0
+# Friendly prosocial dimensions (0.0 to 1.0)
+var kindness: float = 0.5
+var playfulness: float = 0.5
+var helpfulness: float = 0.5
 
 # Dynamic Needs / Drives (0.0 to 1.0)
 var hunger: float = 0.0
@@ -57,7 +65,7 @@ var energy_decay_rate: float = 0.005
 func _init(
 	p_npc_id: String = "",
 	p_display_name: String = "",
-	p_job_role: JobRole = JobRole.CIVILIAN,
+	p_job_role: JobRole = JobRole.FARMER,
 	p_weapon_id: String = "",
 	p_vehicle_path: String = "",
 	p_openness: float = 0.5,
@@ -65,9 +73,9 @@ func _init(
 	p_extraversion: float = 0.5,
 	p_agreeableness: float = 0.5,
 	p_neuroticism: float = 0.5,
-	p_machiavellianism: float = 0.0,
-	p_narcissism: float = 0.0,
-	p_psychopathy: float = 0.0
+	p_kindness: float = 0.5,
+	p_playfulness: float = 0.5,
+	p_helpfulness: float = 0.5
 ) -> void:
 	npc_id = p_npc_id
 	display_name = p_display_name
@@ -81,9 +89,9 @@ func _init(
 	agreeableness = clampf(p_agreeableness, 0.0, 1.0)
 	neuroticism = clampf(p_neuroticism, 0.0, 1.0)
 
-	machiavellianism = clampf(p_machiavellianism, 0.0, 1.0)
-	narcissism = clampf(p_narcissism, 0.0, 1.0)
-	psychopathy = clampf(p_psychopathy, 0.0, 1.0)
+	kindness = clampf(p_kindness, 0.0, 1.0)
+	playfulness = clampf(p_playfulness, 0.0, 1.0)
+	helpfulness = clampf(p_helpfulness, 0.0, 1.0)
 
 
 static func create_randomized(p_npc_id: String, p_role: JobRole, rng: RandomNumberGenerator = null) -> DynamicNPCTraits:
@@ -94,46 +102,51 @@ static func create_randomized(p_npc_id: String, p_role: JobRole, rng: RandomNumb
 	var first_names := ["Jan", "Piotr", "Marek", "Ewa", "Anna", "Zofia", "Kamil", "Michał", "Tomasz", "Agata"]
 	var npc_name: String = first_names[rng.randi_range(0, first_names.size() - 1)]
 
-	var weapon_id := ""
-	var vehicle_path := "res://data/models/vehicles/police_car.glb"
+	var tool_id := ""
+	var vehicle_path := "res://data/models/vehicles/civilian_car.glb"
 
-	var dark_mach := rng.randf_range(0.0, 0.4)
-	var dark_narc := rng.randf_range(0.0, 0.4)
-	var dark_psych := rng.randf_range(0.0, 0.3)
+	var kindness := rng.randf_range(0.4, 0.95)
+	var playfulness := rng.randf_range(0.3, 0.9)
+	var helpfulness := rng.randf_range(0.4, 0.95)
 
 	match p_role:
-		JobRole.POLICE_OFFICER:
-			npc_name = "Posterunkowy " + npc_name
-			weapon_id = "res://data/models/weapons/pistol.glb"
-			vehicle_path = "res://data/models/vehicles/police_car.glb"
-		JobRole.MILITARY_SOLDIER:
-			npc_name = "Szeregowy " + npc_name
-			weapon_id = "res://data/models/weapons/assault_rifle.glb"
-			vehicle_path = "res://data/models/vehicles/military_tank.glb"
 		JobRole.FARMER:
-			npc_name = "Gospodarz " + npc_name
-			weapon_id = "pitchfork"
+			npc_name = "Rolnik " + npc_name
+			tool_id = "pitchfork"
 			vehicle_path = "res://data/models/vehicles/suv.glb"
-		JobRole.BANDIT:
-			npc_name = "Bandyta " + npc_name
-			weapon_id = "res://data/models/weapons/assault_rifle.glb"
-			vehicle_path = "res://data/models/vehicles/suv.glb"
-			dark_mach = rng.randf_range(0.6, 0.95)
-			dark_psych = rng.randf_range(0.6, 0.9)
-		JobRole.THIEF:
-			npc_name = "Złodziej " + npc_name
-			weapon_id = "res://data/models/weapons/pistol.glb"
+		JobRole.BAKER:
+			npc_name = "Piekarz " + npc_name
+			tool_id = "rolling_pin"
 			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
-			dark_mach = rng.randf_range(0.7, 0.95)
-			dark_narc = rng.randf_range(0.5, 0.8)
-		JobRole.MURDERER:
-			npc_name = "Zabójca " + npc_name
-			weapon_id = "heavy_axe"
+		JobRole.GARDENER:
+			npc_name = "Ogrodnik " + npc_name
+			tool_id = "watering_can"
+			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
+		JobRole.FISHER:
+			npc_name = "Rybak " + npc_name
+			tool_id = "fishing_rod"
+			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
+		JobRole.CARPENTER:
+			npc_name = "Stolarz " + npc_name
+			tool_id = "hammer"
 			vehicle_path = "res://data/models/vehicles/suv.glb"
-			dark_psych = rng.randf_range(0.8, 1.0)
-			dark_mach = rng.randf_range(0.5, 0.9)
+		JobRole.TEACHER:
+			npc_name = "Nauczyciel " + npc_name
+			tool_id = "book"
+			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
+			helpfulness = rng.randf_range(0.7, 0.95)
+		JobRole.ARTIST:
+			npc_name = "Artysta " + npc_name
+			tool_id = "paintbrush"
+			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
+			playfulness = rng.randf_range(0.6, 0.95)
+		JobRole.SHEPHERD:
+			npc_name = "Pasterz " + npc_name
+			tool_id = "shepherd_crook"
+			vehicle_path = "res://data/models/vehicles/suv.glb"
+			kindness = rng.randf_range(0.6, 0.95)
 		_:
-			weapon_id = ""
+			tool_id = ""
 			vehicle_path = "res://data/models/vehicles/civilian_car.glb"
 
 	var script := load("res://src/domain/world_authoring/dynamic_npc_traits.gd") as GDScript
@@ -141,16 +154,16 @@ static func create_randomized(p_npc_id: String, p_role: JobRole, rng: RandomNumb
 		p_npc_id,
 		npc_name,
 		p_role,
-		weapon_id,
+		tool_id,
 		vehicle_path,
 		rng.randf_range(0.2, 0.9),
 		rng.randf_range(0.3, 0.95),
 		rng.randf_range(0.1, 0.9),
 		rng.randf_range(0.2, 0.95),
 		rng.randf_range(0.1, 0.7),
-		dark_mach,
-		dark_narc,
-		dark_psych
+		kindness,
+		playfulness,
+		helpfulness
 	)
 
 	return traits
@@ -168,9 +181,9 @@ func to_dict() -> Dictionary:
 		"extraversion": extraversion,
 		"agreeableness": agreeableness,
 		"neuroticism": neuroticism,
-		"machiavellianism": machiavellianism,
-		"narcissism": narcissism,
-		"psychopathy": psychopathy,
+		"kindness": kindness,
+		"playfulness": playfulness,
+		"helpfulness": helpfulness,
 		"hunger": hunger,
 		"energy": energy,
 		"morale": morale,
@@ -185,7 +198,7 @@ static func from_dict(d: Dictionary) -> DynamicNPCTraits:
 	var t: DynamicNPCTraits = (load("res://src/domain/world_authoring/dynamic_npc_traits.gd") as GDScript).new(
 		str(d.get("npc_id", "")),
 		str(d.get("display_name", "")),
-		d.get("job_role", JobRole.CIVILIAN) as JobRole,
+		d.get("job_role", JobRole.FARMER) as JobRole,
 		str(d.get("weapon_visual_id", "")),
 		str(d.get("vehicle_model_path", "")),
 		float(d.get("openness", 0.5)),
@@ -193,9 +206,9 @@ static func from_dict(d: Dictionary) -> DynamicNPCTraits:
 		float(d.get("extraversion", 0.5)),
 		float(d.get("agreeableness", 0.5)),
 		float(d.get("neuroticism", 0.5)),
-		float(d.get("machiavellianism", 0.0)),
-		float(d.get("narcissism", 0.0)),
-		float(d.get("psychopathy", 0.0))
+		float(d.get("kindness", 0.5)),
+		float(d.get("playfulness", 0.5)),
+		float(d.get("helpfulness", 0.5))
 	)
 	t.hunger = float(d.get("hunger", 0.0))
 	t.energy = float(d.get("energy", 1.0))

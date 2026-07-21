@@ -31,10 +31,15 @@ func _ready() -> void:
 	_ensure_action("blade_toggle", [KEY_Q], _joy_button(JOY_BUTTON_X))
 
 	# Training actions (P1)
+	# NOTE: train_jump/train_run/train_climb deliberately have NO key bindings.
+	# They used to sit on J/K/L, shadowing attack/place_block/break_block — every
+	# sword swing also fired a training action. Training happens via E at a
+	# station/anchor (interaction_action path); the actions stay registered so
+	# legacy code referencing them keeps working, just with no bound keys.
 	_ensure_action("find_food", [KEY_H])
-	_ensure_action("train_jump", [KEY_J])
-	_ensure_action("train_run", [KEY_K])
-	_ensure_action("train_climb", [KEY_L])
+	_ensure_action("train_jump", [])
+	_ensure_action("train_run", [])
+	_ensure_action("train_climb", [])
 	_ensure_action("train_push", [KEY_SEMICOLON])
 	_ensure_action("train_pull", [KEY_APOSTROPHE])
 	_ensure_action("train_balance", [KEY_O])

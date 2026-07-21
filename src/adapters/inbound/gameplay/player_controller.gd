@@ -540,7 +540,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			_try_find_food()
 		get_viewport().set_input_as_handled()
 		return
-		return
 	# A single mouse cannot control two third-person cameras.  P2 uses the
 	# prefixed keypad actions processed in _process(), so it must ignore raw
 	# pointer motion/buttons instead of quietly mirroring P1's aim and attacks.
@@ -591,18 +590,12 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	if not is_processing():
 		return
-	# Camera rotation: P1 retains Q/E as a simple fallback; P2 must not read
-	# those global keys or both cameras rotate at once. The keypad's 7/9 pair is
-	# intentionally local to P2 and stays usable on one keyboard.
-	# Right-mouse drag is intentionally P1-only; a single mouse cannot aim two
-	# third-person cameras independently.
+	# Camera rotation: P1 uses mouse (captured) or controller right-stick; the old
+	# raw Q/E key poll is gone — E is the interact action, and polling it here spun
+	# the camera every time the kid tried to train/talk/exit. P2 keeps the local
+	# keypad 7/9 pair so both cameras stay independent on one keyboard.
 	var rot := 0.0
-	if _act_prefix.is_empty():
-		if Input.is_key_pressed(KEY_Q):
-			rot += 1.0
-		if Input.is_key_pressed(KEY_E):
-			rot -= 1.0
-	else:
+	if not _act_prefix.is_empty():
 		if Input.is_action_pressed(_act("look_left")):
 			rot += 1.0
 		if Input.is_action_pressed(_act("look_right")):
@@ -1578,19 +1571,10 @@ func _process_nutrition_training_input(_delta: float) -> void:
 	if Input.is_action_just_pressed("find_food"):
 		_try_find_food()
 
-	# Legacy dedicated training keys still work as fallback for testing.
-	if Input.is_action_just_pressed("train_jump") and _is_near_training_equipment("jump"):
-		_perform_training("jump")
-	if Input.is_action_just_pressed("train_run") and _is_near_training_equipment("run"):
-		_perform_training("run")
-	if Input.is_action_just_pressed("train_climb") and _is_near_training_equipment("climb"):
-		_perform_training("climb")
-	if Input.is_action_just_pressed("train_push") and _is_near_training_equipment("push"):
-		_perform_training("push")
-	if Input.is_action_just_pressed("train_pull") and _is_near_training_equipment("pull"):
-		_perform_training("pull")
-	if Input.is_action_just_pressed("train_balance") and _is_near_training_equipment("balance"):
-		_perform_training("balance")
+	# Training runs through E → GameplayRuntime._activate_world_interaction →
+	# TrainingManager (single progression store). The old dedicated train_*
+	# keys were unbound: they shadowed attack/place/break on J/K/L and fed a
+	# private TrainingStats nothing else could see.
 
 
 ## VS-025: Try to find and collect nearby food

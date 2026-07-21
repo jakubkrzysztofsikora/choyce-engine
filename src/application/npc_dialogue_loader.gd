@@ -45,7 +45,7 @@ const _NAME_MAP := {
 	"npc_mayor": "Burmistrz",
 }
 
-## NPC Personality Profiles (Big Five: openness, conscientiousness, extraversion, agreeableness, neuroticism, followed by Dark Triad: machiavellianism, narcissism, psychopathy)
+## NPC Personality Profiles (Big Five: openness, conscientiousness, extraversion, agreeableness, neuroticism, followed by friendly dims: kindness, playfulness, helpfulness)
 const _PERSONALITY_MAP := {
 	"npc_explorer": [0.9, 0.6, 0.8, 0.7, 0.2, 0.0, 0.0, 0.0],
 	"npc_pirate": [0.3, 0.4, 0.7, 0.2, 0.6, 0.7, 0.6, 0.4],
@@ -88,11 +88,11 @@ func load_npcs_for_template(template_id: String) -> Array:
 		var lines: Dictionary = lines_variant
 		var role: String = _ROLE_MAP.get(npc_id, NPCCharacter.ROLE_GUIDE)
 		var name_pl: String = _NAME_MAP.get(npc_id, String(npc_id))
-		var traits: Array = _PERSONALITY_MAP.get(npc_id, [0.5, 0.5, 0.5, 0.5, 0.5, 0.0, 0.0, 0.0])
+		var traits: Array = _PERSONALITY_MAP.get(npc_id, [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
 		if traits.size() < 8:
 			traits = traits.duplicate()
 			while traits.size() < 8:
-				traits.append(0.0)
+				traits.append(0.5)
 		npcs.append(NPCCharacter.new(
 			String(npc_id),
 			role,

@@ -168,6 +168,10 @@ func _attach_station_trigger(gym_scene: Node3D, equipment_name: String,
 	area.set_meta("action_id", action_id)
 	area.set_meta("resource_action", action_id)
 	area.set_meta("prompt_text", prompt_text)
+	# GameplayRuntime._activate_world_interaction dispatches on these two keys —
+	# without them pressing E at a station silently did nothing.
+	area.set_meta("interaction_action", action_id)
+	area.set_meta("interaction_prompt", prompt_text)
 	var col := CollisionShape3D.new()
 	var shape := SphereShape3D.new()
 	shape.radius = 2.0

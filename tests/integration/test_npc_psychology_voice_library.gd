@@ -47,11 +47,11 @@ func _test_npc_psychology_baseline_and_dynamics() -> void:
 	var custom_npc := NPC_CHARACTER.new(
 		"npc_custom", "hostile", "Custom Character", {}, "visual_123",
 		0.8, 0.2, 0.9, 0.1, 0.7,  # OCEAN
-		0.9, 0.8, 0.9             # Dark Triad
+		0.9, 0.8, 0.9             # Friendly prosocial dims
 	)
 	_expect(custom_npc.npc_id == "npc_custom", "Constructor maps npc_id")
 	_expect(custom_npc.openness == 0.8, "Constructor maps openness")
-	_expect(custom_npc.machiavellianism == 0.9, "Constructor maps Machiavellianism")
+	_expect(custom_npc.kindness == 0.9, "Constructor maps kindness")
 
 	# Clamped dynamic updates (HP drop)
 	var empathetic := NPC_CHARACTER.new("npc_friendly", "guide", "Empata", {}, "", 0.5, 0.5, 0.5, 0.9, 0.2)
@@ -60,11 +60,11 @@ func _test_npc_psychology_baseline_and_dynamics() -> void:
 	_expect(empathetic.anxiety == 0.4, "Empathetic NPC anxiety increases by 0.3 (0.1 -> 0.4)")
 	_expect(empathetic.happiness == 0.0, "Empathetic NPC happiness clamps at exactly 0.0")
 
-	# Clamped dynamic updates (High Score)
-	var narcissist := NPC_CHARACTER.new("npc_narcissist", "guide", "Narcyz", {}, "", 0.5, 0.5, 0.5, 0.5, 0.5, 0.0, 0.9, 0.0)
-	narcissist.irritability = 0.9
-	narcissist.update_emotional_state(1.0, 150) # Score > 50
-	_expect(narcissist.irritability == 1.0, "Narcissist irritability clamps at exactly 1.0")
+	# Prosocial dynamic updates (High Score)
+	var playful := NPC_CHARACTER.new("npc_playful", "guide", "Figlarz", {}, "", 0.5, 0.5, 0.5, 0.5, 0.5, 0.0, 0.9, 0.0)
+	playful.update_emotional_state(1.0, 150) # Score > 50
+	_expect(playful.happiness > 0.6, "Playful NPC happiness gains a bonus on player success (0.5 -> ~0.7)")
+	_expect(playful.irritability == 0.2, "No jealousy-driven hostility spike on player success")
 
 
 ## Test Case 2: Library service read/write, deduplication, and corruption recovery

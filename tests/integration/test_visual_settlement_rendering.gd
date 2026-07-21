@@ -10,7 +10,7 @@ var _failures: Array[String] = []
 func _init() -> void:
 	print("--- STARTING VISUAL & AUTOMATED SETTLEMENT INTEGRATION TEST SUITE ---")
 	_test_combat_policy_default_enabled()
-	_test_outlaw_roles_and_dark_triad_stats()
+	_test_friendly_roles_and_prosocial_stats()
 	_test_visual_rendering_viewport()
 
 	if _failures.is_empty():
@@ -37,24 +37,24 @@ func _test_combat_policy_default_enabled() -> void:
 	_expect(dict_policy.combat_enabled == true, "ParentalControlPolicy.from_dict({}) should default combat_enabled to true")
 
 
-func _test_outlaw_roles_and_dark_triad_stats() -> void:
+func _test_friendly_roles_and_prosocial_stats() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 777
 
-	var bandit: Variant = DYNAMIC_TRAITS.create_randomized("npc_b1", DYNAMIC_TRAITS.JobRole.BANDIT, rng)
-	_expect(bandit.job_role == DYNAMIC_TRAITS.JobRole.BANDIT, "Role should be BANDIT")
-	_expect(str(bandit.weapon_visual_id).contains("assault_rifle.glb"), "Bandit weapon should be assault_rifle.glb")
-	_expect(bandit.psychopathy >= 0.5, "Bandit should have elevated psychopathy stat (>= 0.5)")
+	var shepherd: Variant = DYNAMIC_TRAITS.create_randomized("npc_s1", DYNAMIC_TRAITS.JobRole.SHEPHERD, rng)
+	_expect(shepherd.job_role == DYNAMIC_TRAITS.JobRole.SHEPHERD, "Role should be SHEPHERD")
+	_expect(shepherd.weapon_visual_id == "shepherd_crook", "Shepherd tool should be shepherd_crook")
+	_expect(shepherd.kindness >= 0.6, "Shepherd should have elevated kindness stat (>= 0.6)")
 
-	var thief: Variant = DYNAMIC_TRAITS.create_randomized("npc_t1", DYNAMIC_TRAITS.JobRole.THIEF, rng)
-	_expect(thief.job_role == DYNAMIC_TRAITS.JobRole.THIEF, "Role should be THIEF")
-	_expect(str(thief.weapon_visual_id).contains("pistol.glb"), "Thief weapon should be pistol.glb")
-	_expect(thief.machiavellianism >= 0.5, "Thief should have elevated Machiavellianism stat (>= 0.5)")
+	var teacher: Variant = DYNAMIC_TRAITS.create_randomized("npc_t1", DYNAMIC_TRAITS.JobRole.TEACHER, rng)
+	_expect(teacher.job_role == DYNAMIC_TRAITS.JobRole.TEACHER, "Role should be TEACHER")
+	_expect(teacher.weapon_visual_id == "book", "Teacher tool should be book")
+	_expect(teacher.helpfulness >= 0.7, "Teacher should have elevated helpfulness stat (>= 0.7)")
 
-	var murderer: Variant = DYNAMIC_TRAITS.create_randomized("npc_m1", DYNAMIC_TRAITS.JobRole.MURDERER, rng)
-	_expect(murderer.job_role == DYNAMIC_TRAITS.JobRole.MURDERER, "Role should be MURDERER")
-	_expect(murderer.weapon_visual_id == "heavy_axe", "Murderer weapon should be heavy_axe")
-	_expect(murderer.psychopathy >= 0.7, "Murderer should have high psychopathy stat (>= 0.7)")
+	var artist: Variant = DYNAMIC_TRAITS.create_randomized("npc_a1", DYNAMIC_TRAITS.JobRole.ARTIST, rng)
+	_expect(artist.job_role == DYNAMIC_TRAITS.JobRole.ARTIST, "Role should be ARTIST")
+	_expect(artist.weapon_visual_id == "paintbrush", "Artist tool should be paintbrush")
+	_expect(artist.playfulness >= 0.6, "Artist should have elevated playfulness stat (>= 0.6)")
 
 
 func _test_visual_rendering_viewport() -> void:
@@ -83,13 +83,14 @@ func _test_visual_rendering_viewport() -> void:
 
 	# Spawn all roles into 3D world scene
 	var roles := [
-		DYNAMIC_TRAITS.JobRole.CIVILIAN,
 		DYNAMIC_TRAITS.JobRole.FARMER,
-		DYNAMIC_TRAITS.JobRole.POLICE_OFFICER,
-		DYNAMIC_TRAITS.JobRole.MILITARY_SOLDIER,
-		DYNAMIC_TRAITS.JobRole.BANDIT,
-		DYNAMIC_TRAITS.JobRole.THIEF,
-		DYNAMIC_TRAITS.JobRole.MURDERER
+		DYNAMIC_TRAITS.JobRole.BAKER,
+		DYNAMIC_TRAITS.JobRole.GARDENER,
+		DYNAMIC_TRAITS.JobRole.FISHER,
+		DYNAMIC_TRAITS.JobRole.CARPENTER,
+		DYNAMIC_TRAITS.JobRole.TEACHER,
+		DYNAMIC_TRAITS.JobRole.ARTIST,
+		DYNAMIC_TRAITS.JobRole.SHEPHERD
 	]
 
 	var spawned_nodes: Array[Node3D] = []
@@ -98,12 +99,12 @@ func _test_visual_rendering_viewport() -> void:
 		if compound != null:
 			spawned_nodes.append(compound)
 
-	_expect(spawned_nodes.size() == roles.size(), "Should instantiate visual homestead compounds for all 7 roles")
+	_expect(spawned_nodes.size() == roles.size(), "Should instantiate visual homestead compounds for all 8 roles")
 
 	# Render frames in SubViewport to confirm visual pipeline stability
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 
-	_expect(spawner.get_spawned_specs().size() == roles.size(), "Spawner should track all 7 homestead specs")
+	_expect(spawner.get_spawned_specs().size() == roles.size(), "Spawner should track all 8 homestead specs")
 
 	world_root.queue_free()
 	viewport.queue_free()
