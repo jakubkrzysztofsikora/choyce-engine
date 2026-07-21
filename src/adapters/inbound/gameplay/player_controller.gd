@@ -517,15 +517,8 @@ func _input(event: InputEvent) -> void:
 	# also process it. Block it here so it never reaches the camera mover.
 	if event.is_action_pressed("interact") or event.is_action_pressed("ui_accept"):
 		return
-	if event is InputEventMouseMotion:
-		var captured := Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED
-		if not captured:
-			return  # cursor visible → kid is on HUD; don't move camera
-		rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
-		_vertical_look -= event.relative.y * MOUSE_SENSITIVITY
-		_vertical_look = clamp(_vertical_look, -VERTICAL_LOOK_LIMIT, VERTICAL_LOOK_LIMIT)
-		if _camera != null:
-			_camera.rotation.x = _vertical_look
+	# Mouselook lives only in _unhandled_input (runs after HUD, honors the
+	# co-op _act_prefix gate). Duplicating it here double-rotates the camera.
 
 
 func _unhandled_input(event: InputEvent) -> void:

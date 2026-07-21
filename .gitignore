@@ -68,3 +68,6 @@ data/.assets_cache/
 !data/textures/voxel/.gitkeep
 !data/vfx/voxel/.gitkeep
 !data/audio/music/voxel/.gitkeep
+
+# pokayokay plugin token-usage artifact
+.pokayokay/
