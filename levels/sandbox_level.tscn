@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://decjih2ooqeb0"]
+
+[ext_resource type="Script" uid="uid://kc344136k72h" path="res://levels/sandbox_level.gd" id="1_moje3"]
+
+[node name="SandboxLevel" type="Node3D" unique_id=1377445583]
+script = ExtResource("1_moje3")

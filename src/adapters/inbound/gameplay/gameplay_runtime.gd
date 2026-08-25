@@ -6,6 +6,13 @@ const SKY3D_SCRIPT := preload("res://addons/sky_3d/src/Sky3D.gd")
 const PICTORIAL_VITALITY_METER: Script = preload("res://src/adapters/inbound/shared/ui/pictorial_vitality_meter.gd")
 const COMPANION_RUNTIME := preload("res://src/adapters/inbound/gameplay/companion_runtime.gd")
 
+# --- Sandbox kit (couch co-op, migrated from rpg-asserts) -------------------
+const SANDBOX_KIT_THEME := "sandbox_kit"
+const SANDBOX_KIT_STAGE_SCRIPT := preload("res://core/systems/split_screen_manager.gd")
+const SANDBOX_KIT_LEVEL_SCENE := preload("res://levels/sandbox_level.tscn")
+const SANDBOX_KIT_PLAYER_SCENE := preload("res://gameplay/player/sandbox_player.tscn")
+const SANDBOX_KIT_GRAPHICS_PROFILE := preload("res://core/resources/default_graphics_profile.tres")
+
 signal session_ended
 ## Emitted at session-end with the WinOutcome so HUD/celebration
 ## can branch on win vs. lose vs. reason. Always fires before
@@ -28,6 +35,18 @@ var _world_renderer: WorldRenderer
 var _player_controller: PlayerController
 var _companion_runtime: Node3D = null
 var _session: Session
+
+# --- Sandbox kit session state ----------------------------------------------
+var _sandbox_kit_active := false
+var _sandbox_kit_stage: Node = null
+var _sandbox_kit_bridge: SandboxKitBridge = null
+var _sandbox_kit_event_bus: DomainEventBus = null
+var _sandbox_kit_persistence: SandboxPersistenceService = null
+# Kid-safe presets; main.gd raises them for parent sessions. Single source of
+# truth lives on BuildSystem.DEFAULT_KID_BLOCK_BUDGET (also referenced by
+# SandboxKitBridge for the policy guard) so the two callers cannot drift.
+var _sandbox_kit_max_players := PlayerRegistrySystem.MAX_PLAYERS
+var _sandbox_kit_max_blocks := BuildSystem.DEFAULT_KID_BLOCK_BUDGET
 
 ## VS-016: Track which evidence capture points have been triggered
 ## to ensure we only capture once per point
@@ -494,6 +513,8 @@ func setup_combat_data(
 ## Returns a fresh SandboxState populated from live fields — never mutates
 ## the cached _sandbox_state so callers get a consistent read.
 func get_sandbox_state() -> SandboxState:
+	if _sandbox_kit_active and _sandbox_kit_bridge != null:
+		return _sandbox_kit_bridge.snapshot_state()
 	var state := SandboxState.new()
 
 	# --- identity ---
@@ -593,6 +614,9 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 	# its world picker / show an in-session badge. No-op when shell bridge
 	# is off (default).
 	_notify_shell("notify_session_started", [world.world_id, _profile_id])
+	if String(world.theme) == SANDBOX_KIT_THEME:
+		_start_sandbox_kit_session(world, session, sandbox_state)
+		return
 	var use_adventure_sky := world.theme in ["adventure", "tropical_fantasy"]
 	if not use_adventure_sky:
 		_teardown_adventure_sky()
@@ -4193,6 +4217,9 @@ func _on_rules_action(rule_id: String, action_kind: int, params: Dictionary) -> 
 
 
 func end_session() -> void:
+	if _sandbox_kit_active:
+		_end_sandbox_kit_session()
+		return
 	_evidence_session_token += 1
 	_cancel_opening_spawn_evidence()
 	# Tear down Bella companion cleanly so a reused runtime doesn't carry her
@@ -4252,6 +4279,174 @@ func end_session() -> void:
 	_set_main_layout_visible(true)
 	session_ended.emit()
 
+
+## --- Sandbox kit session (couch co-op stage from rpg-asserts kit) ----------
+
+## Composition-root injection (main.gd, runtime-created handler). The bridge
+## is created per session; these refs are handed over in _start_sandbox_kit_session.
+func setup_sandbox_kit(event_bus: DomainEventBus, persistence: SandboxPersistenceService) -> void:
+	_sandbox_kit_event_bus = event_bus
+	_sandbox_kit_persistence = persistence
+
+
+func apply_sandbox_kit_safety_policy(max_players: int, max_blocks_per_player: int, allow_joins: bool) -> void:
+	_sandbox_kit_max_players = clampi(max_players, 1, PlayerRegistrySystem.MAX_PLAYERS)
+	_sandbox_kit_max_blocks = max_blocks_per_player
+	if _sandbox_kit_bridge != null:
+		_sandbox_kit_bridge.apply_safety_policy(_sandbox_kit_max_players, max_blocks_per_player, allow_joins)
+
+
+## Kit worlds replace the standard adventure renderer/player with the kit's
+## procedural split-screen stage. Everything else (shell wiring, save signals,
+## evidence capture) keeps working unchanged.
+func _start_sandbox_kit_session(world: World, session: Session, sandbox_state: SandboxState = null) -> void:
+	var t0 := Time.get_ticks_msec()
+	if _sandbox_kit_active:
+		push_warning("GameplayRuntime: re-entering sandbox kit session without teardown")
+		_end_sandbox_kit_session()
+	_session = session
+	_score = 0
+	_session_elapsed_sec = 0.0
+	_outcome_emitted = false
+	_set_standard_stage_enabled(false)
+	_set_main_layout_visible(false)
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+	var stage: Node = SANDBOX_KIT_STAGE_SCRIPT.new()
+	stage.name = "SandboxKitStage"
+	stage.level_scene = SANDBOX_KIT_LEVEL_SCENE
+	stage.player_scene = SANDBOX_KIT_PLAYER_SCENE
+	stage.graphics_profile = SANDBOX_KIT_GRAPHICS_PROFILE as GraphicsProfile
+	add_child(stage)
+	_sandbox_kit_stage = stage
+	_sandbox_kit_active = true
+
+	_sandbox_kit_bridge = SandboxKitBridge.new()
+	_sandbox_kit_bridge.name = "SandboxKitBridge"
+	add_child(_sandbox_kit_bridge)
+	_sandbox_kit_bridge.setup_services(_sandbox_kit_event_bus, _sandbox_kit_persistence)
+	_sandbox_kit_bridge.set_world_id(world.world_id)
+	_sandbox_kit_bridge.set_session(session)
+	apply_sandbox_kit_safety_policy(_sandbox_kit_max_players, _sandbox_kit_max_blocks, true)
+
+	_join_kit_players(session)
+	_build_sandbox_kit_overlay()
+
+	# sandbox_level._ready registers the palette synchronously during add_child,
+	# so a deferred restore is safe immediately after the stage mount.
+	if sandbox_state != null and not sandbox_state.is_empty():
+		_sandbox_state = sandbox_state
+		call_deferred("_deferred_restore_sandbox_kit_state")
+
+	print("[gameplay] sandbox kit session live in %d ms" % (Time.get_ticks_msec() - t0))
+
+
+## Auto-join P1 (keyboard, device -1) plus one pad per extra session player.
+## Additional pads can still press "join" mid-session (registry-driven).
+func _join_kit_players(session: Session) -> void:
+	var reg := PlayerRegistrySystem.instance
+	if reg == null:
+		return
+	var wanted := 1
+	if session != null and not session.player_ids.is_empty():
+		wanted = clampi(session.player_ids.size(), 1, _sandbox_kit_max_players)
+	reg.join(-1)
+	var pads := Input.get_connected_joypads()
+	for i in range(1, wanted):
+		if i - 1 >= pads.size():
+			break
+		reg.join(pads[i - 1])
+
+
+## Minimal overlay: only the exit affordance — the kit stage renders its own
+## per-pane HUDs (names, colours, build hints).
+func _build_sandbox_kit_overlay() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "SandboxKitOverlay"
+	layer.layer = 60
+	add_child(layer)
+	var bar := Control.new()
+	bar.name = "ExitBar"
+	bar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(bar)
+	var btn := Button.new()
+	btn.name = "ExitButton"
+	btn.text = "Wróć"
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	btn.offset_left = -140.0
+	btn.offset_top = -64.0
+	btn.offset_right = -20.0
+	btn.offset_bottom = -20.0
+	btn.pressed.connect(end_session)
+	bar.add_child(btn)
+
+
+func _deferred_restore_sandbox_kit_state() -> void:
+	if not _sandbox_kit_active or _sandbox_kit_bridge == null:
+		return
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		var restored := _sandbox_kit_bridge.restore_snapshot(_sandbox_state)
+		print("[gameplay] sandbox kit state restored (%d blocks)" % restored)
+
+
+## VS-026 parity: snapshot BEFORE teardown wipes the chunk grid.
+func _end_sandbox_kit_session() -> void:
+	_evidence_session_token += 1
+	_sandbox_state = null
+	if _sandbox_kit_bridge != null:
+		_sandbox_state = _sandbox_kit_bridge.snapshot_state()
+	if _sandbox_state != null and not _sandbox_state.is_empty():
+		session_save_requested.emit(_sandbox_state)
+	_notify_shell("notify_session_ended", [{
+		"score": 0,
+		"xp_level": _xp_level,
+		"xp_current": _xp_current,
+		"wave_number": 0,
+		"weapon_index": 0,
+	}])
+	_teardown_sandbox_kit_stage()
+	_rules_active = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_set_standard_stage_enabled(true)
+	_set_main_layout_visible(true)
+	session_ended.emit()
+
+
+func _teardown_sandbox_kit_stage() -> void:
+	if _sandbox_kit_bridge != null:
+		_sandbox_kit_bridge.dispose()
+		_sandbox_kit_bridge.queue_free()
+		_sandbox_kit_bridge = null
+	var reg := PlayerRegistrySystem.instance
+	if reg != null:
+		for profile in reg.profiles():
+			reg.leave(profile.player_id)
+	var build := BuildSystem.instance
+	if build != null:
+		build.clear_all()
+		build.world_root = null
+	if FXPool.instance != null:
+		FXPool.instance.set_host(null)
+	if _sandbox_kit_stage != null:
+		_sandbox_kit_stage.queue_free()
+		_sandbox_kit_stage = null
+	for child in get_children():
+		if child is CanvasLayer and child.name == "SandboxKitOverlay":
+			child.queue_free()
+	_sandbox_kit_active = false
+
+
+## Park/unpark the adventure renderer + player without freeing them, so a
+## standard Adventure session after a kit session finds everything intact.
+func _set_standard_stage_enabled(enabled: bool) -> void:
+	for node in [_world_renderer, _player_controller]:
+		if node == null or not is_instance_valid(node):
+			continue
+		node.visible = enabled
+		node.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
+
 func _input(event: InputEvent) -> void:
 	# Once the child explicitly focuses the composer, the player controller is
 	# already disabled via _on_npc_dialogue_input_focus_entered, so movement and
@@ -4289,6 +4484,16 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return
 	if Input.is_action_pressed("ui_cancel"):
+		if _sandbox_kit_active:
+			# Kit overrides: ESC first releases the captured cursor so the
+			# Wróć button is reachable; ESC again ends the session. Without
+			# this the kid has no exit path while the camera keeps the mouse.
+			if Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
+				end_session()
+			else:
+				Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+			get_viewport().set_input_as_handled()
+			return
 		# ESC only ever TOGGLES the mouse cursor — it never ends the
 		# session. The old two-press "second ESC quits" fired on the
 		# first press whenever the cursor was already visible (kid on

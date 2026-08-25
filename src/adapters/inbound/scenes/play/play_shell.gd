@@ -582,7 +582,10 @@ func _start_gameplay(world: World, session: Session, local_coop: bool = false) -
 		_gameplay_runtime.session_save_requested.connect(_on_session_save_requested)
 	# VS-026: Pass sandbox state to restore player position, inventory, etc.
 	_gameplay_runtime.start_session(world, session, sandbox_state)
-	if local_coop:
+	# Sandbox-kit worlds manage their own split-screen stage inside the runtime
+	# (kit SplitScreenManager + PlayerRegistry); the choyce SplitScreenRuntime
+	# would double-render the same World3D.
+	if local_coop and String(world.theme) != GameplayRuntime.SANDBOX_KIT_THEME:
 		_spawn_split_screen()
 
 

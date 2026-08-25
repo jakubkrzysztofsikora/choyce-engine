@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://dkvq8gw66e260"]
+
+[ext_resource type="Script" uid="uid://4801gf81yr8" path="res://gameplay/player/sandbox_player.gd" id="1_kf0gx"]
+
+[node name="SandboxPlayer" type="CharacterBody3D" unique_id=152131265]
+script = ExtResource("1_kf0gx")

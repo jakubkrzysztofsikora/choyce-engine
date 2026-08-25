@@ -1,0 +1,46 @@
+{
+  "template_id": "sandbox_kit",
+  "name": "Sandbox Coop Kit",
+  "name_pl": "Piaskownica",
+  "description_pl": "Wspólne budowanie w piaskownicy dla dwojga dzieci na jednym ekranie. Kładź i usuwaj klocki, twórz wieże i domy.",
+  "theme": "sandbox_kit",
+  "default_palette_id": "sandbox_default",
+  "palette_options": ["sandbox_default"],
+  "default_world": {
+    "name_pl": "Piaskownica",
+    "nodes": [
+      {
+        "type": "TERRAIN",
+        "display_name_pl": "Łąka",
+        "position": [0, 0, 0],
+        "properties": {
+          "color": "#7E986B",
+          "mesh_type": "box",
+          "size": [2400, 0.5, 2400]
+        }
+      },
+      {
+        "type": "SPAWN_POINT",
+        "display_name_pl": "Start",
+        "position": [0, 0.5, 0],
+        "properties": {
+          "color": "#00FF00",
+          "mesh_type": "cylinder",
+          "size": [1, 0.2, 1]
+        }
+      }
+    ],
+    "rules": []
+  },
+  "onboarding_hints_pl": [
+    "Witaj w piaskownicy. Budujcie razem — każde dziecko ma własną część ekranu.",
+    "B przełącza tryb budowania, lewy przycisk myszy kładzie klocek.",
+    "Przycisk Wróć kończy sesję i zapisuje waszą budowlę."
+  ],
+  "quest_text_pl": [],
+  "quests": [],
+  "difficulty": "easy",
+  "estimated_playtime_min": 30,
+  "tags_pl": ["budowanie", "współpraca", "piaskownica"],
+  "suggested_age": "5-8"
+}

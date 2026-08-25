@@ -1,0 +1,38 @@
+=== RENDER AUDIT ===
+Saving screenshots to: res://tests/play/screenshots
+
+--- audit 1: sandbox_level (sky + sun + props) ---
+  level+camera ready; entering warmup
+  warmup returned; taking image
+  saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_01_sandbox_level.png
+  capture returned: ():<Image#-9223371952884807051>
+  PASS  sandbox sky-top has colour ((0.6902, 0.7608, 0.8118, 1.0))
+  PASS  sandbox mid has colour ((0.749, 0.5098, 0.4706, 1.0))
+  PASS  sandbox ground-bottom has colour ((0.6235, 0.7412, 0.5843, 1.0))
+  PASS  sandbox sky-top blue-dominant ((0.6902, 0.7608, 0.8118, 1.0))
+  PASS  sandbox mid warm-toned ((0.749, 0.5098, 0.4706, 1.0))
+  PASS  sandbox ground green-dominant ((0.6235, 0.7412, 0.5843, 1.0))
+
+--- audit 2: water shader (adventure_water.gdshader) ---
+  saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_02_water_shader.png
+  saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_02b_water_shader_later.png
+  water shader: 13 unique colour buckets
+  water shader animation: 165 / 300 sample pixels changed between captures
+
+--- audit 3: toon-cel shader wiring ---
+  PASS  hero_clothing.gdshader compiles (load returned non-null)
+  PASS  adventure_water.gdshader loads (water pipeline not broken)
+  PASS  forest_foliage.gdshader loads (foliage pipeline not broken)
+  PASS  normal/DuDv texture loads: res://data/textures/water/simplewater_dudv.png
+
+--- audit 4: environment post-processing ---
+  saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_04_env_postfx.png
+  env post-fx: 6 unique colour buckets
+
+=== FINDINGS (0) ===
+
+=== SCREENSHOTS ===
+  /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_01_sandbox_level.png
+  /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_02_water_shader.png
+  /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_02b_water_shader_later.png
+  /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_04_env_postfx.png

@@ -246,9 +246,29 @@ func _connect_gameplay_evidence_after_play_launch(
 
 
 func _on_play_shell_gameplay_runtime_created(gameplay_runtime: GameplayRuntime) -> void:
+	_setup_sandbox_kit_for_runtime(gameplay_runtime)
 	if gameplay_runtime == null or _screenshot_capture == null:
 		return
 	_connect_gameplay_evidence_runtime(gameplay_runtime, _screenshot_capture)
+
+
+## Composition-root wiring for the sandbox kit (couch co-op stage). Injects the
+## live domain event bus + sandbox persistence and applies role-based safety
+## limits. Re-runs on every session start so a later phase-2 persistence swap
+## is picked up via the bridge's rebind semantics.
+func _setup_sandbox_kit_for_runtime(gameplay_runtime: GameplayRuntime) -> void:
+	if gameplay_runtime == null or not gameplay_runtime.has_method("setup_sandbox_kit"):
+		return
+	gameplay_runtime.setup_sandbox_kit(_phase1_event_bus, _phase1_sandbox_persistence)
+	var parent_mode: bool = _profile != null and _profile.role == PlayerProfile.Role.PARENT
+	# Single source of truth for kid budget lives on BuildSystem so runtime +
+	# bridge cannot drift apart. Parent sessions double the cap explicitly.
+	var kid_budget: int = BuildSystem.DEFAULT_KID_BLOCK_BUDGET
+	gameplay_runtime.apply_sandbox_kit_safety_policy(
+		PlayerRegistrySystem.MAX_PLAYERS,
+		kid_budget * 2 if parent_mode else kid_budget,
+		true
+	)
 
 
 func _connect_gameplay_evidence_runtime(gameplay_runtime: Node, screenshot_capture: ScreenshotCapture) -> void:
@@ -699,6 +719,7 @@ func _seed_starter_content_from_templates(store: ProjectStorePort, clock: ClockP
 		{"id": "starter_adventure", "template": "adventure", "title": "Wyspa skarbów"},
 		{"id": "starter_farm", "template": "farm", "title": "Mała farma"},
 		{"id": "starter_city", "template": "city", "title": "Miasto neonów"},
+		{"id": "starter_sandbox_kit", "template": "sandbox_kit", "title": "Piaskownica"},
 	]
 	var seeded_count := 0
 	for seed in starters:

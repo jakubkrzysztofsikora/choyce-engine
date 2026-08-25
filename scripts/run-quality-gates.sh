@@ -9,6 +9,7 @@ set -euo pipefail
 ./scripts/ci/run-inbound-shell-regression.sh
 ./scripts/ci/run-persistence-resilience.sh
 ./scripts/ci/run-mvp-acceptance-suite.sh
+./scripts/ci/run-sandbox-kit-suite.sh
 ./scripts/ci/run-kid-parent-ai-regression-matrix.sh
 ./scripts/ci/run-usability-kpi-pipeline.sh
 ./scripts/ci/run-performance-gates.sh

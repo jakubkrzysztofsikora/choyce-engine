@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cvya0p2opns22"]
+
+[ext_resource type="Script" path="res://gameplay/player/spike_player.gd" id="1_js0yb"]
+
+[node name="SpikePlayer" type="CharacterBody3D" unique_id=342005422]
+script = ExtResource("1_js0yb")

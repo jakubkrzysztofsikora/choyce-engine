@@ -14,13 +14,25 @@ config/name="Ziemek i Gniewko: Demo"
 run/main_scene="res://src/adapters/inbound/main.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="choyce_engine"
-config/features=PackedStringArray("4.6")
+config/features=PackedStringArray("4.6", "Forward Plus")
 
 [autoload]
 
 InputMapInitializer="*res://src/adapters/inbound/shared/input_map_initializer.gd"
 ButtonFeel="*res://src/adapters/inbound/shared/ui/button_feel.gd"
 AudioBank="*res://src/adapters/inbound/shared/audio/audio_bank.gd"
+MultiplayerInput="*res://core/systems/multiplayer_input.gd"
+PlayerRegistry="*res://core/systems/player_registry.gd"
+Interaction="*res://core/systems/interaction_system.gd"
+AudioRouterNode="*res://core/systems/audio_router.gd"
+Debris="*res://core/systems/debris_budget.gd"
+FXPoolNode="*res://core/systems/fx_pool.gd"
+Build="*res://gameplay/building/build_system.gd"
+Saves="*res://core/systems/save_system.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
 
 [display]
 
@@ -54,9 +66,28 @@ scene={
 "skins/use_named_skins": true
 }
 
+[layer_names]
+
+3d_physics/layer_1="world_static"
+3d_physics/layer_2="terrain"
+3d_physics/layer_3="build_placed"
+3d_physics/layer_4="build_ghost"
+3d_physics/layer_5="player_body"
+3d_physics/layer_6="player_hurtbox"
+3d_physics/layer_7="npc_body"
+3d_physics/layer_8="npc_hurtbox"
+3d_physics/layer_9="prop_dynamic"
+3d_physics/layer_10="debris"
+3d_physics/layer_11="vehicle"
+3d_physics/layer_12="projectile"
+3d_physics/layer_13="interact_trigger"
+3d_physics/layer_14="grab_target"
+3d_physics/layer_15="camera_occluder"
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
+common/physics_interpolation=true
 
 [rendering]
 

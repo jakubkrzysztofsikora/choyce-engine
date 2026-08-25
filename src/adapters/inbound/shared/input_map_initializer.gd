@@ -64,6 +64,28 @@ func _ready() -> void:
 	_ensure_action("p2_look_left", [KEY_KP_7], _joy_axis(JOY_AXIS_RIGHT_X, -1.0, 1))
 	_ensure_action("p2_look_right", [KEY_KP_9], _joy_axis(JOY_AXIS_RIGHT_X, 1.0, 1))
 
+	# --- SANDBOX KIT ACTIONS (couch co-op kit, routed through MultiplayerInput) ---
+	# Kit player controller reads move_left/move_right/move_back (already above) plus
+	# its own "move_fwd" name; jump/interact reuse the P1 actions. Look actions are
+	# joystick-only so arrow keys stay owned by choyce movement.
+	_ensure_action("move_fwd", [KEY_W], _joy_axis(JOY_AXIS_LEFT_Y, -1.0))
+	_ensure_action("look_left", [], _joy_axis(JOY_AXIS_RIGHT_X, -1.0))
+	_ensure_action("look_right", [], _joy_axis(JOY_AXIS_RIGHT_X, 1.0))
+	_ensure_action("look_up", [], _joy_axis(JOY_AXIS_RIGHT_Y, -1.0))
+	_ensure_action("look_down", [], _joy_axis(JOY_AXIS_RIGHT_Y, 1.0))
+	_ensure_action("join", [KEY_ENTER], _joy_button(JOY_BUTTON_A))
+	_ensure_action("build_toggle", [KEY_B], _joy_button(JOY_BUTTON_Y))
+	_ensure_action("build_place", [KEY_K], _mouse_button(MOUSE_BUTTON_LEFT), _joy_button(JOY_BUTTON_RIGHT_SHOULDER))
+	_ensure_action("build_next", [KEY_TAB], _joy_button(JOY_BUTTON_DPAD_DOWN))
+	_ensure_action("build_rotate", [KEY_R], _joy_button(JOY_BUTTON_DPAD_RIGHT))
+	_ensure_action("build_mode", [KEY_M], _joy_button(JOY_BUTTON_DPAD_LEFT))
+	_ensure_action("build_remove", [KEY_L], _mouse_button(MOUSE_BUTTON_RIGHT), _joy_button(JOY_BUTTON_LEFT_SHOULDER))
+	_ensure_action("grab", [KEY_T], _joy_button(JOY_BUTTON_B))
+	# Intentionally NOT extending "attack": adding Q + D-pad-up to the shared
+	# "attack" action leaks the binding into choyce adventure sessions (where
+	# the kid may not want Q to swing a sword). Kit players rely on shared
+	# "attack" with choyce's existing J/F + R-shoulder bindings.
+
 	print("InputMap initialized with Keyboard + Mouse & PS4 Gamepad support")
 
 
