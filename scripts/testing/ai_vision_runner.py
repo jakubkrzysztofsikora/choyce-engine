@@ -4,7 +4,7 @@ AI Vision Scenario Runner — Choyce Engine (TASK-063)
 
 Drives Godot 4 application scenarios using:
   - TestBridgeAdapter HTTP API for state/screenshot/input
-  - Claude vision API for screenshot-based assertions (soft gate)
+  - Anthropic or LiteLLM Responses vision API for screenshot-based assertions (soft gate)
   - JSON field assertions on gdGSI state (hard gate)
 
 TITAN-pattern execution: Perception Abstraction → Action Optimisation →
@@ -20,7 +20,7 @@ Usage:
 
 Requirements:
     pip install anthropic pyyaml requests
-    ANTHROPIC_API_KEY must be set in environment.
+    ANTHROPIC_API_KEY or LITELLM_API_KEY must be set for the selected provider.
 """
 
 from __future__ import annotations
@@ -122,8 +122,19 @@ class BridgeClient:
 # ── Claude vision assertion ───────────────────────────────────────────────────
 
 class VisionAsserter:
-    def __init__(self, client: anthropic.Anthropic) -> None:
+    def __init__(
+        self,
+        client: Any | None,
+        provider: str = "anthropic",
+        model: str | None = None,
+        litellm_base_url: str | None = None,
+        litellm_api_key: str | None = None,
+    ) -> None:
         self._client = client
+        self._provider = provider
+        self._model = model or VISION_MODEL
+        self._litellm_base_url = (litellm_base_url or "").rstrip("/")
+        self._litellm_api_key = litellm_api_key
 
     def assert_screenshot(
         self,
@@ -150,8 +161,11 @@ class VisionAsserter:
             "Answer ONLY with the JSON object, no other text."
         )
         try:
+            if self._provider == "litellm":
+                return self._assert_with_litellm(png_b64, user_text)
+
             response = self._client.messages.create(
-                model=VISION_MODEL,
+                model=self._model,
                 max_tokens=MAX_TOKENS,
                 system=system,
                 messages=[
@@ -172,13 +186,47 @@ class VisionAsserter:
                 ],
             )
             raw = response.content[0].text.strip()
-            parsed = json.loads(raw)
-            passed = bool(parsed.get("pass", False))
-            confidence = float(parsed.get("confidence", 0.0))
-            reasoning = str(parsed.get("reasoning", ""))
-            return passed, confidence, reasoning
+            return self._parse_verdict(raw)
         except Exception as exc:
             return False, 0.0, f"Vision API error: {exc}"
+
+    def _assert_with_litellm(self, png_b64: str, user_text: str) -> tuple[bool, float, str]:
+        response = requests.post(
+            f"{self._litellm_base_url}/v1/responses",
+            headers={"Authorization": f"Bearer {self._litellm_api_key}"},
+            json={
+                "model": self._model,
+                "input": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": user_text},
+                        {"type": "input_image", "image_url": f"data:image/png;base64,{png_b64}"},
+                    ],
+                }],
+            },
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        raw = self._extract_output_text(response.json())
+        return self._parse_verdict(raw)
+
+    @staticmethod
+    def _extract_output_text(response: dict[str, Any]) -> str:
+        if isinstance(response.get("output_text"), str):
+            return response["output_text"].strip()
+        for output in response.get("output", []):
+            for content in output.get("content", []):
+                if content.get("type") == "output_text" and isinstance(content.get("text"), str):
+                    return content["text"].strip()
+        raise ValueError("Responses API result did not contain output_text")
+
+    @staticmethod
+    def _parse_verdict(raw: str) -> tuple[bool, float, str]:
+        parsed = json.loads(raw)
+        passed = bool(parsed.get("pass", False))
+        confidence = float(parsed.get("confidence", 0.0))
+        reasoning = str(parsed.get("reasoning", ""))
+        return passed, confidence, reasoning
 
 
 # ── State assertion ───────────────────────────────────────────────────────────
@@ -369,12 +417,35 @@ def main() -> int:
     parser.add_argument("--tier", type=int, default=1, choices=[1, 2])
     parser.add_argument("--output", default=".ai/manual-qa", help="Evidence output root")
     parser.add_argument("--timeout", type=int, default=30, help="Bridge connection timeout (s)")
+    parser.add_argument("--vision-provider", choices=["anthropic", "litellm"], default="anthropic")
+    parser.add_argument("--vision-model", help="Model for the selected vision provider")
+    parser.add_argument("--litellm-base-url", default=os.environ.get("LITELLM_BASE_URL"))
     args = parser.parse_args()
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
-        return 1
+    if args.vision_provider == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            print("ERROR: ANTHROPIC_API_KEY not set", file=sys.stderr)
+            return 1
+        vision = VisionAsserter(
+            anthropic.Anthropic(api_key=api_key),
+            model=args.vision_model,
+        )
+    else:
+        api_key = os.environ.get("LITELLM_API_KEY")
+        if not api_key:
+            print("ERROR: LITELLM_API_KEY not set", file=sys.stderr)
+            return 1
+        if not args.litellm_base_url:
+            print("ERROR: LITELLM_BASE_URL not set", file=sys.stderr)
+            return 1
+        vision = VisionAsserter(
+            None,
+            provider="litellm",
+            model=args.vision_model or "opencode/gpt-5.6",
+            litellm_base_url=args.litellm_base_url,
+            litellm_api_key=api_key,
+        )
 
     bridge = BridgeClient(args.bridge_url)
     print(f"Checking bridge at {args.bridge_url}…")
@@ -385,9 +456,6 @@ def main() -> int:
             return 1
         time.sleep(2)
     print("Bridge connected.")
-
-    claude = anthropic.Anthropic(api_key=api_key)
-    vision = VisionAsserter(claude)
 
     scenarios_path = Path(args.scenarios)
     yaml_files: list[Path] = []

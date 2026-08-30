@@ -14,7 +14,11 @@
 #   --dry-run            Check prerequisites only, do not run scenarios
 #
 # Environment:
-#   ANTHROPIC_API_KEY    Required for vision assertions
+#   ANTHROPIC_API_KEY    Required when VISION_PROVIDER=anthropic (default)
+#   LITELLM_BASE_URL     Required when VISION_PROVIDER=litellm
+#   LITELLM_API_KEY      Required when VISION_PROVIDER=litellm
+#   VISION_PROVIDER      anthropic or litellm (default: anthropic)
+#   VISION_MODEL         Optional model override for the selected provider
 #   GODOT_BIN            Godot binary (auto-detected if not set)
 
 set -euo pipefail
@@ -27,6 +31,9 @@ BRIDGE_URL="http://127.0.0.1:${BRIDGE_PORT}"
 HEADLESS=false
 DRY_RUN=false
 GODOT_PID=""
+VISION_PROVIDER="${VISION_PROVIDER:-anthropic}"
+VISION_MODEL="${VISION_MODEL:-}"
+LITELLM_BASE_URL="${LITELLM_BASE_URL:-}"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -42,8 +49,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
-if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
-  echo "ERROR: ANTHROPIC_API_KEY not set" >&2
+if [[ "$VISION_PROVIDER" == "anthropic" ]]; then
+  if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    echo "ERROR: ANTHROPIC_API_KEY not set" >&2
+    exit 1
+  fi
+elif [[ "$VISION_PROVIDER" == "litellm" ]]; then
+  if [[ -z "${LITELLM_API_KEY:-}" || -z "$LITELLM_BASE_URL" ]]; then
+    echo "ERROR: LITELLM_API_KEY and LITELLM_BASE_URL must be set" >&2
+    exit 1
+  fi
+else
+  echo "ERROR: VISION_PROVIDER must be anthropic or litellm" >&2
   exit 1
 fi
 
@@ -128,12 +145,22 @@ echo "  Scenarios: ${SCENARIOS_DIR}"
 echo "  Evidence:  ${EVIDENCE_ROOT}"
 echo ""
 
-python3 scripts/testing/ai_vision_runner.py \
+RUNNER_ARGS=(
   --bridge-url "${BRIDGE_URL}" \
   --scenarios "${SCENARIOS_DIR}" \
   --task "${TASK_ID}" \
   --tier "${TIER}" \
-  --output ".ai/manual-qa"
+  --output ".ai/manual-qa" \
+  --vision-provider "${VISION_PROVIDER}"
+)
+if [[ -n "$VISION_MODEL" ]]; then
+  RUNNER_ARGS+=(--vision-model "$VISION_MODEL")
+fi
+if [[ "$VISION_PROVIDER" == "litellm" ]]; then
+  RUNNER_ARGS+=(--litellm-base-url "$LITELLM_BASE_URL")
+fi
+
+python3 scripts/testing/ai_vision_runner.py "${RUNNER_ARGS[@]}"
 
 STATUS=$?
 
