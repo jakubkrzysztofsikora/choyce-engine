@@ -8,6 +8,7 @@ const ShellTransition = preload("res://src/adapters/inbound/shared/ui/shell_tran
 const FilesystemSessionProgressStoreAdapter = preload("res://src/adapters/outbound/filesystem_session_progress_store.gd")
 const FilesystemSandboxStoreClass = preload("res://src/adapters/outbound/filesystem_sandbox_store.gd")
 const SandboxPersistenceServiceClass = preload("res://src/application/sandbox_persistence_service.gd")
+const TestBridgeAdapterClass = preload("res://src/adapters/outbound/test_bridge_adapter.gd")
 
 # VS-016: Preload evidence capture classes
 const ScreenshotCaptureClass = preload("res://src/adapters/outbound/evidence/screenshot_capture.gd")
@@ -47,6 +48,7 @@ const ENV_PROFILE_ID := "CHOYCE_PROFILE_ID"
 const ENV_PROFILE_NAME := "CHOYCE_PROFILE_NAME"
 const ENV_FAMILY_ID := "CHOYCE_FAMILY_ID"
 const ENV_CLASSROOM_ID := "CHOYCE_CLASSROOM_ID"
+const ENV_DEBUG_TEST_BRIDGE := "CHOYCE_DEBUG_TEST_BRIDGE"
 
 ## Phase 8d: emitted when deferred (heavy I/O) adapters have finished initialising.
 ## Inbound shells gate voice/AI input until this signal fires.
@@ -56,6 +58,7 @@ var _navigator := ShellNavigator.new()
 var _ports: Dictionary = {}
 var _llm_port: LLMPort = null
 var _feature_flags: FeatureFlagService
+var _test_bridge: TestBridgeAdapter = null
 var _localization_policy: LocalizationPolicyPort
 var _accessibility_policy: AccessibilityPolicyPort
 var _profile: PlayerProfile
@@ -121,6 +124,9 @@ var _evidence_runtime_listener: Node = null
 
 
 func _process(delta: float) -> void:
+	if _test_bridge != null:
+		_test_bridge.poll()
+
 	# Drive debounced filesystem stores. Adapters that don't implement
 	# flush_if_due are skipped — this avoids per-adapter knowledge here
 	# and lets new debounced stores plug in without touching main.gd.
@@ -135,6 +141,7 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	# Synchronous flush on shutdown so the last write isn't lost.
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_EXIT_TREE:
+		_teardown_debug_test_bridge()
 		for port in _ports.values():
 			if port != null:
 				if port.has_method("flush"):
@@ -301,6 +308,7 @@ func _ready() -> void:
 		var _env_adapter := OSEnvironmentAdapter.new()
 		var config = DeploymentConfig.from_environment(_env_adapter)
 		_feature_flags = FeatureFlagService.new(config).setup(_env_adapter)
+	_setup_debug_test_bridge()
 
 	_ensure_runtime_composition()
 	_setup_a11y_ui()
@@ -322,6 +330,26 @@ func _ready() -> void:
 	# until _build_default_ports_phase_2 fires ports_ready.
 	if not _ports_phase_2_done:
 		call_deferred("_build_default_ports_phase_2")
+
+
+func _setup_debug_test_bridge() -> void:
+	if OS.get_environment(ENV_DEBUG_TEST_BRIDGE) != "1":
+		return
+	if _feature_flags == null or not _feature_flags.is_enabled("debug_test_bridge"):
+		return
+	var bridge := TestBridgeAdapterClass.new()
+	bridge.setup(_feature_flags)
+	if bridge.start():
+		add_child(bridge)
+		_test_bridge = bridge
+
+
+func _teardown_debug_test_bridge() -> void:
+	if _test_bridge == null:
+		return
+	_test_bridge.stop()
+	_test_bridge.queue_free()
+	_test_bridge = null
 
 
 func setup(profile: PlayerProfile, ports: Dictionary, localization_policy: LocalizationPolicyPort, accessibility_policy: AccessibilityPolicyPort) -> InboundMain:

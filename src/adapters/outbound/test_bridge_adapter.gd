@@ -1,5 +1,5 @@
 class_name TestBridgeAdapter
-extends TestBridgePort
+extends Node
 
 ## Debug-only adapter that exposes game state, screenshots, and input injection
 ## to an external AI test agent via a localhost HTTP server.
@@ -75,7 +75,7 @@ func get_game_state() -> Dictionary:
 func capture_screenshot() -> PackedByteArray:
 	if not _active:
 		return PackedByteArray()
-	if not DisplayServer.can_create_windows():
+	if OS.has_feature("headless"):
 		return PackedByteArray()
 	var img: Image = DisplayServer.screen_get_image(0)
 	if img == null:
@@ -88,6 +88,12 @@ func inject_input(p_event: Dictionary) -> bool:
 		return false
 	var type: String = p_event.get("type", "")
 	match type:
+		"action":
+			var ev := InputEventAction.new()
+			ev.action = p_event.get("action_name", "")
+			ev.pressed = p_event.get("pressed", true)
+			Input.parse_input_event(ev)
+			return true
 		"mouse_button":
 			var ev := InputEventMouseButton.new()
 			ev.button_index = p_event.get("button_index", MOUSE_BUTTON_LEFT)
