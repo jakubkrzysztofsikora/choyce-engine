@@ -1,5 +1,5 @@
 class_name TestBridgeAdapter
-extends Node
+extends TestBridgePort
 
 ## Debug-only adapter that exposes game state, screenshots, and input injection
 ## to an external AI test agent via a localhost HTTP server.

@@ -1,5 +1,5 @@
 class_name TestBridgePort
-extends RefCounted
+extends Node
 
 ## Outbound port for AI test agent state inspection and control.
 ##
