@@ -5,6 +5,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 
 RUNNER_PATH = Path(__file__).parents[2] / "scripts/testing/ai_vision_runner.py"
@@ -61,14 +62,17 @@ class LiteLLMResponsesVisionTest(unittest.TestCase):
             model="opencode/gpt-5.6",
             litellm_base_url=f"http://127.0.0.1:{self.server.server_port}",
             litellm_api_key="test-key",
+            vision_request_timeout=75,
         )
 
-        actual = vision.assert_screenshot(
-            base64.standard_b64encode(b"png-bytes").decode("ascii"),
-            "Is the scene visible?",
-        )
+        with mock.patch.object(ai_vision_runner.requests, "post", wraps=ai_vision_runner.requests.post) as post:
+            actual = vision.assert_screenshot(
+                base64.standard_b64encode(b"png-bytes").decode("ascii"),
+                "Is the scene visible?",
+            )
 
         self.assertEqual((True, 0.96, "Scene is visible."), actual)
+        self.assertEqual(75, post.call_args.kwargs["timeout"])
         self.assertEqual("/v1/responses", ResponsesFixture.request_path)
         self.assertEqual("opencode/gpt-5.6", ResponsesFixture.request_body["model"])
         self.assertIn("kid-safe game engine application", ResponsesFixture.request_body["instructions"])

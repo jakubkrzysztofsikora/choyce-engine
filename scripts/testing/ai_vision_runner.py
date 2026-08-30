@@ -46,6 +46,7 @@ VISION_MODEL = "claude-opus-4-6"
 MAX_TOKENS = 512
 STALL_THRESHOLD = 3          # reflective retry after N steps with no state change
 REQUEST_TIMEOUT = 30         # seconds for bridge HTTP calls
+VISION_REQUEST_TIMEOUT = 90  # seconds for vision provider HTTP calls
 SCREENSHOT_RETRY = 3         # retries for screenshot capture
 CONFIDENCE_AUTO_PASS = 0.90  # vision confidence threshold for auto-pass
 
@@ -129,12 +130,14 @@ class VisionAsserter:
         model: str | None = None,
         litellm_base_url: str | None = None,
         litellm_api_key: str | None = None,
+        vision_request_timeout: int = VISION_REQUEST_TIMEOUT,
     ) -> None:
         self._client = client
         self._provider = provider
         self._model = model or VISION_MODEL
         self._litellm_base_url = (litellm_base_url or "").rstrip("/")
         self._litellm_api_key = litellm_api_key
+        self._vision_request_timeout = vision_request_timeout
 
     def assert_screenshot(
         self,
@@ -210,7 +213,7 @@ class VisionAsserter:
                     ],
                 }],
             },
-            timeout=REQUEST_TIMEOUT,
+            timeout=self._vision_request_timeout,
         )
         response.raise_for_status()
         raw = self._extract_output_text(response.json())
@@ -423,6 +426,12 @@ def main() -> int:
     parser.add_argument("--tier", type=int, default=1, choices=[1, 2])
     parser.add_argument("--output", default=".ai/manual-qa", help="Evidence output root")
     parser.add_argument("--timeout", type=int, default=30, help="Bridge connection timeout (s)")
+    parser.add_argument(
+        "--vision-request-timeout",
+        type=int,
+        default=VISION_REQUEST_TIMEOUT,
+        help="Vision provider request timeout in seconds (default: 90)",
+    )
     parser.add_argument("--vision-provider", choices=["anthropic", "litellm"], default="anthropic")
     parser.add_argument("--vision-model", help="Model for the selected vision provider")
     parser.add_argument("--litellm-base-url", default=os.environ.get("LITELLM_BASE_URL"))
@@ -451,6 +460,7 @@ def main() -> int:
             model=args.vision_model or "opencode/gpt-5.6",
             litellm_base_url=args.litellm_base_url,
             litellm_api_key=api_key,
+            vision_request_timeout=args.vision_request_timeout,
         )
 
     bridge = BridgeClient(args.bridge_url)
