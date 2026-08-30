@@ -71,6 +71,8 @@ class LiteLLMResponsesVisionTest(unittest.TestCase):
         self.assertEqual((True, 0.96, "Scene is visible."), actual)
         self.assertEqual("/v1/responses", ResponsesFixture.request_path)
         self.assertEqual("opencode/gpt-5.6", ResponsesFixture.request_body["model"])
+        self.assertIn("kid-safe game engine application", ResponsesFixture.request_body["instructions"])
+        self.assertIn('"pass": true|false', ResponsesFixture.request_body["instructions"])
         content = ResponsesFixture.request_body["input"][0]["content"]
         self.assertEqual("input_text", content[0]["type"])
         self.assertEqual("input_image", content[1]["type"])

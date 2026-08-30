@@ -162,7 +162,7 @@ class VisionAsserter:
         )
         try:
             if self._provider == "litellm":
-                return self._assert_with_litellm(png_b64, user_text)
+                return self._assert_with_litellm(png_b64, system, user_text)
 
             response = self._client.messages.create(
                 model=self._model,
@@ -190,12 +190,18 @@ class VisionAsserter:
         except Exception as exc:
             return False, 0.0, f"Vision API error: {exc}"
 
-    def _assert_with_litellm(self, png_b64: str, user_text: str) -> tuple[bool, float, str]:
+    def _assert_with_litellm(
+        self,
+        png_b64: str,
+        instructions: str,
+        user_text: str,
+    ) -> tuple[bool, float, str]:
         response = requests.post(
             f"{self._litellm_base_url}/v1/responses",
             headers={"Authorization": f"Bearer {self._litellm_api_key}"},
             json={
                 "model": self._model,
+                "instructions": instructions,
                 "input": [{
                     "role": "user",
                     "content": [
