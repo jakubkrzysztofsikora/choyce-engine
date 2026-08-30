@@ -58,6 +58,11 @@ func poll() -> void:
 			_clients.append(conn)
 	var done: Array = []
 	for conn in _clients:
+		conn.poll()
+		if conn.get_status() == StreamPeerTCP.STATUS_NONE or \
+		   conn.get_status() == StreamPeerTCP.STATUS_ERROR:
+			done.append(conn)
+			continue
 		_service_connection(conn)
 		if conn.get_status() == StreamPeerTCP.STATUS_NONE or \
 		   conn.get_status() == StreamPeerTCP.STATUS_ERROR:

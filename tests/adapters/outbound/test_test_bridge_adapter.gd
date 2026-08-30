@@ -5,10 +5,20 @@ class TestEnvironment:
 	extends EnvironmentPort
 
 
+class InspectableBridgeAdapter:
+	extends TestBridgeAdapter
+
+	var service_calls := 0
+
+	func _service_connection(_connection: StreamPeerTCP) -> void:
+		service_calls += 1
+
+
 func _init() -> void:
 	var failures: Array[String] = []
 	_test_action_input(failures)
 	_test_main_debug_bridge_gates_and_lifecycle(failures)
+	_test_closed_connection_is_removed_before_read(failures)
 
 	if failures.is_empty():
 		print("[PASS] TestBridgeAdapter bridge wiring and input")
@@ -81,3 +91,19 @@ func _test_main_debug_bridge_gates_and_lifecycle(failures: Array[String]) -> voi
 
 	OS.set_environment("CHOYCE_DEBUG_TEST_BRIDGE", previous_debug_gate)
 	main.free()
+
+
+func _test_closed_connection_is_removed_before_read(failures: Array[String]) -> void:
+	var adapter := InspectableBridgeAdapter.new()
+	var closed_connection := StreamPeerTCP.new()
+	adapter._http_server = TCPServer.new()
+	adapter._active = true
+	adapter._clients.append(closed_connection)
+
+	adapter.poll()
+
+	if adapter.service_calls != 0:
+		failures.append("closed connections must not be serviced after polling")
+	if not adapter._clients.is_empty():
+		failures.append("closed connections must be removed during polling")
+	adapter.free()
