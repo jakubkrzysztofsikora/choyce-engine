@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
 import os
 import subprocess
@@ -37,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import anthropic
+from PIL import Image
 import requests
 import yaml
 
@@ -47,6 +49,7 @@ MAX_TOKENS = 512
 STALL_THRESHOLD = 3          # reflective retry after N steps with no state change
 REQUEST_TIMEOUT = 30         # seconds for bridge HTTP calls
 VISION_REQUEST_TIMEOUT = 90  # seconds for vision provider HTTP calls
+LITELLM_MAX_IMAGE_EDGE = 1280
 SCREENSHOT_RETRY = 3         # retries for screenshot capture
 CONFIDENCE_AUTO_PASS = 0.90  # vision confidence threshold for auto-pass
 
@@ -199,6 +202,7 @@ class VisionAsserter:
         instructions: str,
         user_text: str,
     ) -> tuple[bool, float, str]:
+        inference_png_b64 = self._prepare_litellm_image(png_b64)
         response = requests.post(
             f"{self._litellm_base_url}/v1/responses",
             headers={"Authorization": f"Bearer {self._litellm_api_key}"},
@@ -209,7 +213,7 @@ class VisionAsserter:
                     "role": "user",
                     "content": [
                         {"type": "input_text", "text": user_text},
-                        {"type": "input_image", "image_url": f"data:image/png;base64,{png_b64}"},
+                        {"type": "input_image", "image_url": f"data:image/png;base64,{inference_png_b64}"},
                     ],
                 }],
             },
@@ -218,6 +222,17 @@ class VisionAsserter:
         response.raise_for_status()
         raw = self._extract_output_text(response.json())
         return self._parse_verdict(raw)
+
+    @staticmethod
+    def _prepare_litellm_image(png_b64: str) -> str:
+        image_bytes = base64.standard_b64decode(png_b64)
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            if max(image.size) <= LITELLM_MAX_IMAGE_EDGE:
+                return png_b64
+            image.thumbnail((LITELLM_MAX_IMAGE_EDGE, LITELLM_MAX_IMAGE_EDGE), Image.Resampling.LANCZOS)
+            resized_bytes = io.BytesIO()
+            image.save(resized_bytes, format="PNG")
+        return base64.standard_b64encode(resized_bytes.getvalue()).decode("ascii")
 
     @staticmethod
     def _extract_output_text(response: dict[str, Any]) -> str:

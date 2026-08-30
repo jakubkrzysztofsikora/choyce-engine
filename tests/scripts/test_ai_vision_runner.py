@@ -1,11 +1,14 @@
 import base64
 import importlib.util
+import io
 import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
+
+from PIL import Image
 
 
 RUNNER_PATH = Path(__file__).parents[2] / "scripts/testing/ai_vision_runner.py"
@@ -64,10 +67,13 @@ class LiteLLMResponsesVisionTest(unittest.TestCase):
             litellm_api_key="test-key",
             vision_request_timeout=75,
         )
+        image_buffer = io.BytesIO()
+        Image.new("RGB", (1, 1), "white").save(image_buffer, format="PNG")
+        png_b64 = base64.standard_b64encode(image_buffer.getvalue()).decode("ascii")
 
         with mock.patch.object(ai_vision_runner.requests, "post", wraps=ai_vision_runner.requests.post) as post:
             actual = vision.assert_screenshot(
-                base64.standard_b64encode(b"png-bytes").decode("ascii"),
+                png_b64,
                 "Is the scene visible?",
             )
 
@@ -80,7 +86,21 @@ class LiteLLMResponsesVisionTest(unittest.TestCase):
         content = ResponsesFixture.request_body["input"][0]["content"]
         self.assertEqual("input_text", content[0]["type"])
         self.assertEqual("input_image", content[1]["type"])
-        self.assertEqual("data:image/png;base64,cG5nLWJ5dGVz", content[1]["image_url"])
+        self.assertEqual(f"data:image/png;base64,{png_b64}", content[1]["image_url"])
+
+    def test_litellm_inference_image_caps_large_images_and_keeps_smaller_payloads(self):
+        large_buffer = io.BytesIO()
+        Image.new("RGB", (1600, 800), "red").save(large_buffer, format="PNG")
+        large_b64 = base64.standard_b64encode(large_buffer.getvalue()).decode("ascii")
+
+        resized_b64 = ai_vision_runner.VisionAsserter._prepare_litellm_image(large_b64)
+        with Image.open(io.BytesIO(base64.standard_b64decode(resized_b64))) as resized:
+            self.assertEqual((1280, 640), resized.size)
+
+        small_buffer = io.BytesIO()
+        Image.new("RGB", (320, 240), "blue").save(small_buffer, format="PNG")
+        small_b64 = base64.standard_b64encode(small_buffer.getvalue()).decode("ascii")
+        self.assertEqual(small_b64, ai_vision_runner.VisionAsserter._prepare_litellm_image(small_b64))
 
 
 if __name__ == "__main__":
