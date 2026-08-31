@@ -45,6 +45,29 @@ func _run() -> void:
 	_assert(is_equal_approx(camera.fov, 50.0),
 		"third-person controller preserves the composed 50-degree opening lens")
 
+	# ESC releases capture for HUD use. Clicking empty 3D space must reliably
+	# recapture it before mouselook can resume. The headless display backend
+	# intentionally cannot capture a system cursor, so this OS integration
+	# assertion runs only when Godot owns a real window.
+	if DisplayServer.get_name() != "headless":
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		var recapture_event := InputEventMouseButton.new()
+		recapture_event.button_index = MOUSE_BUTTON_LEFT
+		recapture_event.pressed = true
+		player._unhandled_input(recapture_event)
+		_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED,
+			"left click in the 3D view recaptures the cursor after it is released")
+		_assert(not Input.is_action_pressed("attack"),
+			"the recapture click does not also trigger an attack")
+		var yaw_before_mouse_look := player.rotation.y
+		var mouse_motion := InputEventMouseMotion.new()
+		mouse_motion.relative = Vector2(40.0, 0.0)
+		player._unhandled_input(mouse_motion)
+		_assert(not is_equal_approx(player.rotation.y, yaw_before_mouse_look),
+			"captured mouse motion changes third-person camera yaw")
+	else:
+		print("SKIP: cursor capture requires a windowed display backend")
+
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	var place_event := InputEventMouseButton.new()
 	place_event.button_index = MOUSE_BUTTON_RIGHT

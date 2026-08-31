@@ -545,17 +545,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	# Mouse motion alone rotates the camera. The cursor is captured for the
 	# 3D session so motion deltas are raw. ESC releases capture so the kid can
-	# click HUD (back button, hotbar). LMB swings only when captured;
-	# LMB while cursor is visible falls through to HUD click handlers
-	# (Adv C B2 fix — was capturing cursor on every LMB regardless of
-	# mode, breaking back-button + hotbar clicks).
+	# click HUD (back button, hotbar). HUD controls consume their clicks before
+	# this unhandled route; a click that reaches here is empty 3D space and
+	# should return the player to looking around, without swinging their tool.
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			# Only treat LMB as a sword/break swing when the cursor
-			# is captured (kid is "in" the 3D view). When the cursor
-			# is visible, LMB belongs to whatever HUD control it
-			# lands on.
 			if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+				if event.pressed:
+					Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 				return
 			if event.pressed:
 				Input.action_press("attack")
