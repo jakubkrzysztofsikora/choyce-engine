@@ -53,6 +53,9 @@ func _run() -> void:
 		_expect(camera != null and camera.position.is_equal_approx(Vector3(0.0, 1.7, 4.2)), "P2 camera matches the third-person P1 framing")
 		_expect(InputMap.has_action("p2_look_left") and _action_has_key("p2_look_left", KEY_KP_7) and _action_has_key("p2_look_right", KEY_KP_9), "P2 has an independent keypad camera-look pair")
 		_expect(not p2.get("_act_prefix").is_empty(), "P2 camera and build input are action-prefixed away from P1")
+		_expect(int(p2.call("_controller_device_id")) == 1,
+			"P2 reads controller axes from device 1 rather than P1's device 0")
+		_assert_right_stick_device_isolation(p1, p2, camera)
 		var p2_yaw_before := p2.rotation.y
 		var shared_mouse := InputEventMouseMotion.new()
 		shared_mouse.relative = Vector2(45, 0)
@@ -131,6 +134,35 @@ func _run() -> void:
 	else:
 		printerr("[test_split_screen_hero_pairing] FAIL count=", _failures.size())
 		quit(1)
+
+
+func _assert_right_stick_device_isolation(p1: PlayerController, p2: PlayerController,
+		p2_camera: Camera3D) -> void:
+	if p1 == null or p2 == null or p2_camera == null:
+		_expect(false, "P1 and P2 cameras exist for right-stick isolation")
+		return
+	var p1_yaw_before := p1.rotation.y
+	var p2_yaw_before := p2.rotation.y
+	p1.call("_apply_controller_look", 1.0, 0.0, 0.1)
+	_expect(p1.rotation.y < p1_yaw_before and is_equal_approx(p2.rotation.y, p2_yaw_before),
+		"P1 right stick turns P1 without moving P2")
+
+	p1_yaw_before = p1.rotation.y
+	p2_yaw_before = p2.rotation.y
+	p2.call("_apply_controller_look", 1.0, 0.0, 0.1)
+	_expect(is_equal_approx(p1.rotation.y, p1_yaw_before) and is_equal_approx(p2.rotation.y, p2_yaw_before - 0.3),
+		"P2 right stick turns P2 once without moving P1")
+
+	var p2_pitch_before := p2_camera.rotation.x
+	p2_yaw_before = p2.rotation.y
+	p2.call("_apply_controller_look", 0.0, 1.0, 0.1)
+	_expect(p2_camera.rotation.x < p2_pitch_before,
+		"P2 right-stick vertical axis controls P2 camera pitch")
+	Input.action_press("p2_look_left")
+	p2.call("_process", 0.1)
+	Input.action_release("p2_look_left")
+	_expect(p2.rotation.y > p2_yaw_before,
+		"P2 keypad yaw remains available while its right stick adjusts pitch")
 
 
 func _find_mesh(root_node: Node, wanted_name: String) -> MeshInstance3D:

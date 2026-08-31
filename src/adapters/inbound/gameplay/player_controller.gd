@@ -84,6 +84,10 @@ func _act(name: String) -> String:
 	return _act_prefix + name
 
 
+func _controller_device_id() -> int:
+	return 1 if _act_prefix == "p2_" else 0
+
+
 var _input_disabled: bool = false
 
 func set_input_disabled(disabled: bool) -> void:
@@ -587,8 +591,11 @@ func _process(delta: float) -> void:
 	# raw Q/E key poll is gone — E is the interact action, and polling it here spun
 	# the camera every time the kid tried to train/talk/exit. P2 keeps the local
 	# keypad 7/9 pair so both cameras stay independent on one keyboard.
+	var controller_device := _controller_device_id()
+	var stick_x := Input.get_joy_axis(controller_device, JOY_AXIS_RIGHT_X)
+	var stick_y := Input.get_joy_axis(controller_device, JOY_AXIS_RIGHT_Y)
 	var rot := 0.0
-	if not _act_prefix.is_empty():
+	if not _act_prefix.is_empty() and absf(stick_x) <= STICK_DEADZONE:
 		if Input.is_action_pressed(_act("look_left")):
 			rot += 1.0
 		if Input.is_action_pressed(_act("look_right")):
@@ -596,8 +603,10 @@ func _process(delta: float) -> void:
 	if rot != 0.0:
 		rotate_y(rot * KEY_ROTATE_SPEED * delta)
 	# Controller right-stick: axis 2 = X (yaw), axis 3 = Y (pitch).
-	var stick_x := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
-	var stick_y := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	_apply_controller_look(stick_x, stick_y, delta)
+
+
+func _apply_controller_look(stick_x: float, stick_y: float, delta: float) -> void:
 	if absf(stick_x) > STICK_DEADZONE:
 		rotate_y(-stick_x * STICK_ROTATE_SPEED * delta)
 	if absf(stick_y) > STICK_DEADZONE and _camera != null:

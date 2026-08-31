@@ -42,21 +42,21 @@ func _run() -> void:
 	player.setup_build_grid(grid)
 	player._select_hotbar_slot(2) # grass follows axe + pickaxe in the creative hotbar
 	await physics_frame
-	_assert(is_equal_approx(camera.fov, 55.0),
-		"third-person controller preserves the composed 55-degree opening lens")
+	_assert(is_equal_approx(camera.fov, 50.0),
+		"third-person controller preserves the composed 50-degree opening lens")
 
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	var place_event := InputEventMouseButton.new()
 	place_event.button_index = MOUSE_BUTTON_RIGHT
 	place_event.pressed = true
-	player._input(place_event)
+	player._unhandled_input(place_event)
 	var ray_hit := player._build_raycast()
 	_assert(not ray_hit.is_empty(), "third-person build ray finds ground")
 	await physics_frame
 	var release_event := InputEventMouseButton.new()
 	release_event.button_index = MOUSE_BUTTON_RIGHT
 	release_event.pressed = false
-	player._input(release_event)
+	player._unhandled_input(release_event)
 	_assert(grid.block_count() == 1, "captured right-click places selected build block")
 
 	# Furniture interaction must not create a collisionless fall-through state.
