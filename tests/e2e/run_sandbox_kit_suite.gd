@@ -224,6 +224,15 @@ func _check_runtime_kit_session_flow() -> void:
 	_check(runtime._sandbox_kit_active, "S4 runtime entered kit mode")
 	_check(runtime._sandbox_kit_stage != null
 		and runtime._sandbox_kit_stage.name == "SandboxKitStage", "S4 kit stage mounted")
+	var overlay := runtime.get_node_or_null("SandboxKitOverlay")
+	_check(overlay != null, "S4 Kit overlay mounted")
+	_check(overlay != null and overlay.get_node_or_null("ModeRibbon") != null,
+		"S4 Kit overlay explains build, grab, and throw")
+	_check(overlay != null and overlay.get_node_or_null("QualityLabel") != null,
+		"S4 Kit overlay identifies active player/graphics state")
+	var stage := runtime._sandbox_kit_stage as SplitScreenManager
+	_check(stage != null and not stage.last_graphics.is_empty(),
+		"S4 graphics profile applied to Kit stage")
 	_check(runtime._world_renderer.visible == false, "S4 adventure renderer hidden")
 	_check(runtime._player_controller.process_mode == Node.PROCESS_MODE_DISABLED,
 		"S4 adventure player disabled")

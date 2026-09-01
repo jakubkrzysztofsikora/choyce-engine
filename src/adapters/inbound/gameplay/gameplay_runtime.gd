@@ -4358,8 +4358,8 @@ func _join_kit_players(session: Session) -> void:
 		reg.join(pads[i - 1])
 
 
-## Minimal overlay: only the exit affordance — the kit stage renders its own
-## per-pane HUDs (names, colours, build hints).
+## The kit stage renders per-pane HUDs; this shared overlay makes its active
+## mechanics and applied presentation visible before a child starts playing.
 func _build_sandbox_kit_overlay() -> void:
 	var layer := CanvasLayer.new()
 	layer.name = "SandboxKitOverlay"
@@ -4381,6 +4381,29 @@ func _build_sandbox_kit_overlay() -> void:
 	btn.offset_bottom = -20.0
 	btn.pressed.connect(end_session)
 	bar.add_child(btn)
+
+	var ribbon := Label.new()
+	ribbon.name = "ModeRibbon"
+	ribbon.text = "PIASKOWNICA  |  Buduj  |  Chwyć  |  Rzuć"
+	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ribbon.position = Vector2(20, 20)
+	layer.add_child(ribbon)
+
+	var quality := Label.new()
+	quality.name = "QualityLabel"
+	quality.text = _sandbox_kit_quality_text()
+	quality.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	quality.position = Vector2(20, 48)
+	layer.add_child(quality)
+
+
+func _sandbox_kit_quality_text() -> String:
+	var players := PlayerRegistrySystem.instance.count()
+	var stage := _sandbox_kit_stage as SplitScreenManager
+	var graphics := stage.last_graphics if stage != null else {}
+	var player_copy := "%d gracz" % players if players == 1 else "%d graczy" % players
+	var lighting_copy := "pełne światło" if graphics.get("sdfgi", false) else "wspólna przygoda"
+	return "%s · %s" % [player_copy, lighting_copy]
 
 
 func _deferred_restore_sandbox_kit_state() -> void:
