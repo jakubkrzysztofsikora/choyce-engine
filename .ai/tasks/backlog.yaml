@@ -5,6 +5,23 @@ strategy:
   objective: Fully implement the child-safe 3D family game engine scope using Godot + Ollama + hexagonal architecture.
 
 tasks:
+  - id: SANDBOX-KIT-LIVE-2026-09-01
+    title: Make the enhanced Sandbox Kit the default live play route
+    owner: codex
+    specialty: Godot sandbox-runtime integration
+    inputs:
+      - docs/superpowers/specs/2026-09-01-sandbox-kit-live-integration-design.md
+      - docs/superpowers/plans/2026-09-01-sandbox-kit-live-integration.md
+    dependencies: []
+    acceptance_criteria:
+      - Piaskownica is the safe default only when no world was explicitly selected
+      - Keyboard P1 can inertly recapture Kit mouse look; device players ignore raw mouse
+      - The mounted Kit visibly identifies its mechanics and active quality/player state
+      - SandboxKitBridge remains the sole Choyce save and event boundary
+      - Explicit Adventure, Farm, and City selection remains available
+    cross_review_by: codex
+    status: done
+
   - id: VS-041
     title: Repair vehicle egress and reliable authored Adventure dialogue
     owner: codex
