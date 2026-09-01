@@ -150,6 +150,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Mouse look belongs to the keyboard player only.
 	if device != MultiplayerInputSystem.KEYBOARD_DEVICE:
 		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and event.pressed:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var mm := event as InputEventMouseMotion
 		_yaw -= mm.relative.x * tuning.look_speed_mouse
