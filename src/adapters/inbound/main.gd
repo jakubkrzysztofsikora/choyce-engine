@@ -1123,7 +1123,7 @@ func _on_shell_changed(shell_id: String) -> void:
 
 
 ## Thin launcher: the first screen. A big PLAY that drops straight into the
-## Adventure world, reusing the direct-launch path. Skipped under autoplay so
+## preferred starter world, reusing the direct-launch path. Skipped under autoplay so
 ## the headless smoke probe isn't blocked waiting for a human tap.
 func _show_launcher() -> void:
 	var env := OSEnvironmentAdapter.new()
@@ -1142,31 +1142,38 @@ func _on_launcher_play(coop: bool = false) -> void:
 	_launcher = null
 	# The launcher must be a reliable one-press route into the demo, even when
 	# it is tapped during startup before the deferred persistence pass has seeded
-	# its starter projects. Resolve (and if required seed) the Adventure project
+	# its starter projects. Resolve (and if required seed) the preferred project
 	# immediately instead of assuming a stale hard-coded id already exists.
-	var adventure_project_id := _resolve_launcher_adventure_project_id()
-	if adventure_project_id.is_empty():
-		push_error("Launcher could not resolve the Adventure demo project")
+	var project_id := _resolve_launcher_adventure_project_id()
+	if project_id.is_empty():
+		push_error("Launcher could not resolve a playable starter project")
 		return
-	_on_world_card_pressed(adventure_project_id, "", coop)
+	_on_world_card_pressed(project_id, "", coop)
 
 
 func _resolve_launcher_adventure_project_id() -> String:
 	if _phase1_project_store == null:
 		return ""
 	var kid_id := _profile.profile_id if _profile != null else "local_kid_1"
-	var expected_id := "%s_starter_adventure" % kid_id
-	var expected: Project = _phase1_project_store.load_project(expected_id)
-	if expected != null and not expected.worlds.is_empty():
-		return expected.project_id
+	var kit_id := "%s_starter_sandbox_kit" % kid_id
+	var adventure_id := "%s_starter_adventure" % kid_id
+	var kit: Project = _phase1_project_store.load_project(kit_id)
+	if _is_playable_starter_project(kit, kid_id, "sandbox_kit"):
+		return kit.project_id
+	var adventure: Project = _phase1_project_store.load_project(adventure_id)
+	if adventure != null and not adventure.worlds.is_empty():
+		return adventure.project_id
 	# Safe and idempotent: this creates only missing starter ids and never
 	# overwrites a child-authored project. It closes the race with Phase 2 and
 	# repairs a missing demo folder without clearing saved sandbox progress.
 	if _phase1_clock != null:
 		_seed_starter_content_from_templates(_phase1_project_store, _phase1_clock)
-		expected = _phase1_project_store.load_project(expected_id)
-		if expected != null and not expected.worlds.is_empty():
-			return expected.project_id
+		kit = _phase1_project_store.load_project(kit_id)
+		if _is_playable_starter_project(kit, kid_id, "sandbox_kit"):
+			return kit.project_id
+		adventure = _phase1_project_store.load_project(adventure_id)
+		if adventure != null and not adventure.worlds.is_empty():
+			return adventure.project_id
 	# A parent or test profile may already own a valid Adventure project under a
 	# non-standard id. Prefer that playable world over an empty generic Play tab.
 	for project_variant in _phase1_project_store.list_projects():
@@ -1176,6 +1183,15 @@ func _resolve_launcher_adventure_project_id() -> String:
 		if project.owner_profile_id == kid_id and project.template_id == "adventure" and not project.worlds.is_empty():
 			return project.project_id
 	return ""
+
+
+func _is_playable_starter_project(project: Project, owner_id: String, template_id: String) -> bool:
+	if project == null or project.owner_profile_id != owner_id or project.template_id != template_id:
+		return false
+	for world_variant in project.worlds:
+		if world_variant is World and (world_variant as World).is_playable:
+			return true
+	return false
 
 
 func _on_world_card_pressed(project_id: String, world_id: String, coop: bool = false) -> void:

@@ -247,6 +247,7 @@ func get_no_world_cta_button() -> Button:
 ## still see their seeded worlds. Returns Array[Button].
 func _build_world_picker_cards() -> Array:
 	var out: Array = []
+	var kit_cards: Array = []
 	if _project_store == null or _profile == null:
 		return out
 	for project in _project_store.list_projects():
@@ -257,13 +258,20 @@ func _build_world_picker_cards() -> Array:
 		var card := Button.new()
 		card.custom_minimum_size = Vector2(280, 180)
 		card.add_theme_font_size_override("font_size", 22)
-		var icon := _icon_for_template(project.template_id)
-		card.text = "%s\n%s" % [icon, String(project.title)]
+		if project.template_id == "sandbox_kit":
+			card.text = "🧱\nPiaskownica: Buduj i Baw Się\nBuduj · Chwyć · Rzuć"
+		else:
+			var icon := _icon_for_template(project.template_id)
+			card.text = "%s\n%s" % [icon, String(project.title)]
 		card.pressed.connect(func() -> void:
 			launch_world_by_id(project.project_id, "")
 		)
-		out.append(card)
-	return out
+		if project.template_id == "sandbox_kit":
+			kit_cards.append(card)
+		else:
+			out.append(card)
+	kit_cards.append_array(out)
+	return kit_cards
 
 
 func _icon_for_template(tid: String) -> String:

@@ -43,7 +43,7 @@ func _initialize() -> void:
 	OS.set_environment("CHOYCE_PROFILE_ROLE", PROFILE_KID.role)
 	OS.set_environment("CHOYCE_PROFILE_ID", PROFILE_KID.id)
 	OS.set_environment("CHOYCE_PROFILE_NAME", PROFILE_KID.name)
-	OS.set_environment("CHOYCE_AUTOPLAY", "%s_starter_sandbox_kit" % PROFILE_KID.id)
+	OS.set_environment("CHOYCE_AUTOPLAY", "")
 	print("=== PLAY OBSERVATION: profile=%s ===" % PROFILE_KID.id)
 	# --script bypasses project.godot's run/main_scene; load it manually so the
 	# composition root (main.gd) actually boots and the autoloads wire up.
@@ -84,27 +84,47 @@ func _on_boot_settled() -> void:
 	if inbound.has_signal("ports_ready") and not bool(inbound.get("_ports_phase_2_done")):
 		await inbound.ports_ready
 	_log("01_boot_as_kid", "ports_ready fired in %d ms" % [Time.get_ticks_msec() - _start_ticks])
-	# Now play shell auto-launched by autoplay env; give it time to settle.
+	# Exercise the real LauncherOverlay button -> callback -> play_pressed handoff.
+	var launcher := inbound.get("_launcher") as LauncherOverlay
+	if launcher == null or not is_instance_valid(launcher) or not launcher.is_inside_tree():
+		_findings.append("BUG: LauncherOverlay missing before Play handoff")
+		_finish()
+		return
+	var launcher_signal := {"count": 0, "coop": true}
+	launcher.play_pressed.connect(func(coop: bool) -> void:
+		launcher_signal.count += 1
+		launcher_signal.coop = coop
+	)
+	var play_button := launcher.get("_play_btn") as Button
+	if play_button == null:
+		_findings.append("BUG: LauncherOverlay Play button missing")
+		_finish()
+		return
+	play_button.pressed.emit()
+	await _wait_ms(500)
+	if launcher_signal.count != 1 or launcher_signal.coop:
+		_findings.append("BUG: launcher Play emitted count=%d coop=%s" % [launcher_signal.count, launcher_signal.coop])
+	if is_instance_valid(launcher) or inbound.get("_launcher") != null:
+		_findings.append("BUG: launcher was not cleaned after Play handoff")
 	await _wait_ms(1500)
-	_log_phase("after autoplay")
+	_log_phase("after normal launcher play")
 	await _check_kit_mounted()
 
 
 func _check_kit_mounted() -> void:
 	var runtime := root.get_node_or_null("GameplayRuntime")
 	if runtime == null:
-		_findings.append("BUG: GameplayRuntime never mounted under autoplay")
+		_findings.append("BUG: GameplayRuntime never mounted after normal launcher play")
 		_finish()
 		return
 	_log("02_launch_piaskownica", "runtime present, theme=%s active=%s" % [
 		runtime.get("_sandbox_kit_active"), runtime.get("_session")])
 	if not bool(runtime.get("_sandbox_kit_active")):
-		# Could be the autoplay fired for a non-kit project. Confirm world.
-		var world: World = runtime.get("_session").world if runtime.get("_session") else null
-		_findings.append("BUG: autoplay did not enter sandbox_kit (world=%s)" % world)
+		var session: Session = runtime.get("_session")
+		var world_id := session.world_id if session != null else "<no session>"
+		_findings.append("BUG: normal launcher play did not enter sandbox_kit (world_id=%s)" % world_id)
 		_finish()
 		return
-	# Autoplay uses adventure by default — we overrode to sandbox_kit starter.
 	_log("03_kit_stage_mounts", "stage=%s bridge=%s overlay=%s" % [
 		runtime.get("_sandbox_kit_stage"),
 		runtime.get("_sandbox_kit_bridge"),
@@ -320,4 +340,4 @@ func _finish() -> void:
 	print("\nFindings (%d):" % _findings.size())
 	for f in _findings:
 		print("  - %s" % f)
-	quit(0)
+	quit(1 if not _findings.is_empty() else 0)
