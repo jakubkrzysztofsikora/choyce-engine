@@ -5,7 +5,10 @@ extends RefCounted
 ## This is the file that proves the thesis of the whole architecture: a bare
 ## mesh + a handful of component nodes = a first-class sandbox object that all
 ## four players can grab, throw, hit, destroy and interact with. When real art
-## arrives, only the mesh line changes.
+## arrives, only the visual mount changes.
+
+const CRATE_VISUAL := preload("res://data/models/quaternius/medieval_village/Prop_Crate.gltf")
+const BARREL_VISUAL := preload("res://data/models/kenney/survival_kit/Models/GLB format/barrel.glb")
 
 static func make_crate(size: float = 0.8, colour: Color = Color("#d8a05a"),
 		health: float = 30.0, mass: float = 6.0) -> RigidBody3D:
@@ -22,16 +25,7 @@ static func make_crate(size: float = 0.8, colour: Color = Color("#d8a05a"),
 	cs.shape = bs
 	body.add_child(cs)
 
-	var mi := MeshInstance3D.new()
-	mi.name = "Mesh"
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE * size
-	mi.mesh = bm
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = colour
-	mat.roughness = 0.7
-	mi.material_override = mat
-	body.add_child(mi)
+	_mount_visual(body, CRATE_VISUAL, Vector3.ONE * size)
 
 	# --- components: this block is the entire "make it a sandbox object" step
 	var hp := HealthComponent.new()
@@ -80,11 +74,18 @@ static func make_crate(size: float = 0.8, colour: Color = Color("#d8a05a"),
 static func make_barrel(colour: Color = Color("#c1524a")) -> RigidBody3D:
 	var body := make_crate(1.0, colour, 22.0, 9.0)
 	body.name = "Barrel"
-	var mi := body.get_node_or_null("Mesh") as MeshInstance3D
-	if mi:
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.45
-		cm.bottom_radius = 0.45
-		cm.height = 1.1
-		mi.mesh = cm
+	var crate_visual := body.get_node_or_null("PropVisual")
+	if crate_visual != null:
+		crate_visual.free()
+		_mount_visual(body, BARREL_VISUAL, Vector3.ONE * 0.9)
 	return body
+
+
+static func _mount_visual(body: RigidBody3D, scene: PackedScene, visual_scale: Vector3) -> void:
+	var visual_root := Node3D.new()
+	visual_root.name = "PropVisual"
+	visual_root.scale = visual_scale
+	body.add_child(visual_root)
+	var visual := scene.instantiate() as Node3D
+	if visual != null:
+		visual_root.add_child(visual)

@@ -83,8 +83,8 @@ func _audit_sandbox_level() -> void:
 	var sv := _make_viewport("audit_sandbox")
 	sv.add_child(level)
 	var cam := Camera3D.new()
-	cam.position = Vector3(0, 8, 14)
-	cam.look_at_from_position(cam.position, Vector3(0, 0.5, 0), Vector3.UP)
+	cam.position = Vector3(0, 2.8, 10.5)
+	cam.look_at_from_position(cam.position, Vector3(0, 0.4, -3.3), Vector3.UP)
 	cam.current = true
 	cam.fov = 70.0
 	sv.add_child(cam)
@@ -98,21 +98,38 @@ func _audit_sandbox_level() -> void:
 		return
 	var sky := img.get_pixel(RENDER_SIZE.x / 2, 8)
 	var mid := img.get_pixel(RENDER_SIZE.x / 2, int(RENDER_SIZE.y * 0.5))
-	var bot := img.get_pixel(RENDER_SIZE.x / 2, int(RENDER_SIZE.y * 0.85))
+	var meadow := img.get_pixel(int(RENDER_SIZE.x * 0.18), int(RENDER_SIZE.y * 0.85))
 	_assert_color_not_black(sky, "sandbox sky-top has colour")
 	_assert_color_not_black(mid, "sandbox mid has colour")
-	_assert_color_not_black(bot, "sandbox ground-bottom has colour")
+	_assert_color_not_black(meadow, "sandbox side meadow has colour")
 	_assert_blue_dominant(sky, "sandbox sky-top blue-dominant")
-	if mid.r > mid.b:
-		_emit("  PASS  sandbox mid warm-toned (%s)" % mid)
+	if mid.r > mid.g * 1.1 and mid.r > mid.b and mid.r > 0.35:
+		_emit("  PASS  sandbox opening focal area is warm and readable (%s)" % mid)
 	else:
-		_emit("  FAIL  sandbox mid should be warm (R>B), got %s" % mid)
-		_finding("sandbox mid not warm-toned")
-	if bot.g > bot.b and bot.g > bot.r * 0.9:
-		_emit("  PASS  sandbox ground green-dominant (%s)" % bot)
+		_emit("  FAIL  sandbox opening focal area should be warm and readable, got %s" % mid)
+		_finding("sandbox opening focal area is not warm and readable")
+	if meadow.g > meadow.b and meadow.g > meadow.r * 0.9:
+		_emit("  PASS  sandbox side meadow green-dominant (%s)" % meadow)
 	else:
-		_emit("  FAIL  sandbox ground should be green-dominant, got %s" % bot)
+		_emit("  FAIL  sandbox side meadow should be green-dominant, got %s" % meadow)
 		_finding("sandbox ground not green-dominant")
+
+	# A close companion frame verifies that the camp remains a readable place,
+	# rather than relying only on a distant opening composition.
+	cam.position = Vector3(0, 2.1, 3.8)
+	cam.look_at_from_position(cam.position, Vector3(0, 0.8, -3.7), Vector3.UP)
+	cam.fov = 58.0
+	await _warmup()
+	var camp := _capture(sv, "audit_01b_sandbox_camp.png")
+	if camp == null:
+		_skipped_pixel_checks = true
+		return
+	var camp_focal := camp.get_pixel(RENDER_SIZE.x / 2, int(RENDER_SIZE.y * 0.52))
+	if camp_focal.r > camp_focal.g * 1.1 and camp_focal.r > camp_focal.b:
+		_emit("  PASS  sandbox camp focal is warm at play scale (%s)" % camp_focal)
+	else:
+		_emit("  FAIL  sandbox camp focal should be warm at play scale, got %s" % camp_focal)
+		_finding("sandbox camp focal is not warm at play scale")
 
 
 # ---------------------------------------------------------------------------

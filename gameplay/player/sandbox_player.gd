@@ -34,6 +34,9 @@ var _dead: bool = false
 var _mesh: MeshInstance3D
 var _suppress_build_place_once: bool = false
 
+const ZIEMEK_GLB := preload("res://data/models/heroes/ziemek.glb")
+const GNIEWSKO_GLB := preload("res://data/models/heroes/gniewko.glb")
+
 
 func setup(p: SandboxPlayerProfile) -> void:
 	profile = p
@@ -57,26 +60,29 @@ func _ready() -> void:
 
 	var col: Color = profile.colour if profile else Color.WHITE
 
-	_mesh = MeshInstance3D.new()
-	_mesh.name = "Body"
-	var cm := CapsuleMesh.new()
-	cm.radius = 0.4
-	cm.height = 1.8
-	_mesh.mesh = cm
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = col
-	mat.roughness = 0.6
-	_mesh.material_override = mat
-	add_child(_mesh)
-
-	var nose := MeshInstance3D.new()
-	nose.name = "Nose"
-	var nm := BoxMesh.new()
-	nm.size = Vector3(0.25, 0.25, 0.5)
-	nose.mesh = nm
-	nose.position = Vector3(0, 0.4, -0.55)
-	nose.material_override = mat
-	add_child(nose)
+	# Keep the capsule collision authoritative, but make the playable character
+	# an authored Choyce hero rather than exposing the physics proxy.
+	var hero_scene: PackedScene = ZIEMEK_GLB if profile == null or profile.player_id % 2 == 0 else GNIEWSKO_GLB
+	var hero := hero_scene.instantiate() as Node3D
+	if hero != null:
+		hero.name = "HeroVisual"
+		hero.position.y = -0.88
+		hero.rotation.y = PI
+		add_child(hero)
+		_add_profile_accent(hero, col)
+	else:
+		# A visible fallback preserves playability if a platform import is missing.
+		_mesh = MeshInstance3D.new()
+		_mesh.name = "HeroVisual"
+		var cm := CapsuleMesh.new()
+		cm.radius = 0.4
+		cm.height = 1.8
+		_mesh.mesh = cm
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = col
+		mat.roughness = 0.6
+		_mesh.material_override = mat
+		add_child(_mesh)
 
 	# Aim pivot. top_level so its rotation is independent of the body's facing.
 	_aim = Node3D.new()
@@ -124,6 +130,24 @@ func _ready() -> void:
 
 	if profile:
 		profile.aim = _aim
+
+
+func _add_profile_accent(hero: Node3D, colour: Color) -> void:
+	# Keep each imported hero recognizable in split-screen without replacing its authored materials.
+	var accent := MeshInstance3D.new()
+	accent.name = "ProfileAccent"
+	accent.position = Vector3(0.0, 0.92, 0.0)
+	var band := CylinderMesh.new()
+	band.top_radius = 0.34
+	band.bottom_radius = 0.34
+	band.height = 0.09
+	band.radial_segments = 12
+	accent.mesh = band
+	var material := StandardMaterial3D.new()
+	material.albedo_color = colour
+	material.roughness = 0.55
+	accent.material_override = material
+	hero.add_child(accent)
 
 
 func attach_camera(cam: Camera3D) -> void:

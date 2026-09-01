@@ -5,6 +5,25 @@ strategy:
   objective: Fully implement the child-safe 3D family game engine scope using Godot + Ollama + hexagonal architecture.
 
 tasks:
+  - id: SANDBOX-VILLAGE-PRESENTATION-2026-09-01
+    title: Present the live Piaskownica as an authored Choyce village clearing
+    owner: codex
+    specialty: Godot sandbox presentation
+    inputs:
+      - docs/superpowers/specs/2026-09-01-sandbox-village-presentation-design.md
+      - docs/superpowers/plans/2026-09-01-sandbox-village-presentation.md
+      - gameplay/props/prop_factory.gd
+      - levels/sandbox_level.gd
+    dependencies: [SANDBOX-KIT-LIVE-2026-09-01]
+    acceptance_criteria:
+      - Textured local asset packs provide a readable meadow, village, woodland, and friendly residents
+      - The opening has a bounded camp, path, props, and focal flame without changing sandbox mechanics
+      - SandboxKitBridge remains the sole Choyce save and event boundary
+      - Focused art coverage, Kit E2E, and the GPU render audit pass
+      - An independent review records the visual and boundary verdict
+    cross_review_by: claude
+    status: done
+
   - id: SANDBOX-KIT-LIVE-2026-09-01
     title: Make the enhanced Sandbox Kit the default live play route
     owner: codex

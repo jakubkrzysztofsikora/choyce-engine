@@ -1,0 +1,13 @@
+{
+  "task_id": "SANDBOX-VILLAGE-PRESENTATION-2026-09-01",
+  "reviewer": "codex",
+  "decision": "approve",
+  "findings": [],
+  "evidence": {
+    "art_assets": "PASS: 17 focused checks, including imported hero identity and mixed-surface texture preservation.",
+    "sandbox_kit_e2e": "PASS: 74 checks, 0 failures.",
+    "gpu_opening_capture": "PASS: wide meadow/village opening and close play-scale camp captures, 0 audit findings.",
+    "sandbox_kit_bridge": "UNCHANGED: no save or event boundary file changed."
+  },
+  "residual_risk": "The GPU SubViewport captures are targeted render evidence; a future manual split-screen capture would strengthen pane-level visual QA."
+}
