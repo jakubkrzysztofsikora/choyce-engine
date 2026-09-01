@@ -240,6 +240,16 @@ func _check_runtime_kit_session_flow() -> void:
 	var p1 := PlayerRegistrySystem.instance.get_profile(0)
 	_check(p1 != null and p1.device_id == -1, "S4 P1 bound to keyboard device -1")
 	_check(p1 != null and is_instance_valid(p1.body), "S4 split-screen body spawned for P1")
+	var quality_label := overlay.get_node_or_null("QualityLabel") as Label
+	var quality_before_join := quality_label.text if quality_label != null else ""
+	PlayerRegistrySystem.instance.join(0)
+	await process_frame
+	await process_frame
+	_check(stage.last_graphics.get("players") == PlayerRegistrySystem.instance.count(),
+		"S4 rebuilt panes apply graphics for the current roster")
+	_check(quality_label != null and quality_label.text == runtime._sandbox_kit_quality_text()
+		and quality_label.text != quality_before_join,
+		"S4 quality label refreshes after roster graphics rebuild")
 
 	var overlay_btn := runtime.get_node_or_null("SandboxKitOverlay/ExitBar/ExitButton")
 	_check(overlay_btn != null and overlay_btn.text == "Wróć", "S4 Wróć exit button present")

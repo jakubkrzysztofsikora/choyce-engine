@@ -4395,6 +4395,9 @@ func _build_sandbox_kit_overlay() -> void:
 	quality.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	quality.position = Vector2(20, 48)
 	layer.add_child(quality)
+	var reg := PlayerRegistrySystem.instance
+	if reg != null and not reg.roster_changed.is_connected(_refresh_sandbox_kit_quality_label):
+		reg.roster_changed.connect(_refresh_sandbox_kit_quality_label)
 
 
 func _sandbox_kit_quality_text() -> String:
@@ -4404,6 +4407,12 @@ func _sandbox_kit_quality_text() -> String:
 	var player_copy := "%d gracz" % players if players == 1 else "%d graczy" % players
 	var lighting_copy := "pełne światło" if graphics.get("sdfgi", false) else "wspólna przygoda"
 	return "%s · %s" % [player_copy, lighting_copy]
+
+
+func _refresh_sandbox_kit_quality_label() -> void:
+	var quality := get_node_or_null("SandboxKitOverlay/QualityLabel") as Label
+	if quality != null:
+		quality.text = _sandbox_kit_quality_text()
 
 
 func _deferred_restore_sandbox_kit_state() -> void:
@@ -4438,11 +4447,13 @@ func _end_sandbox_kit_session() -> void:
 
 
 func _teardown_sandbox_kit_stage() -> void:
+	var reg := PlayerRegistrySystem.instance
+	if reg != null and reg.roster_changed.is_connected(_refresh_sandbox_kit_quality_label):
+		reg.roster_changed.disconnect(_refresh_sandbox_kit_quality_label)
 	if _sandbox_kit_bridge != null:
 		_sandbox_kit_bridge.dispose()
 		_sandbox_kit_bridge.queue_free()
 		_sandbox_kit_bridge = null
-	var reg := PlayerRegistrySystem.instance
 	if reg != null:
 		for profile in reg.profiles():
 			reg.leave(profile.player_id)

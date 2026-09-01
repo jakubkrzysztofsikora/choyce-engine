@@ -32,6 +32,7 @@ var _health: HealthComponent
 var _spawn_point: Vector3
 var _dead: bool = false
 var _mesh: MeshInstance3D
+var _suppress_build_place_once: bool = false
 
 
 func setup(p: SandboxPlayerProfile) -> void:
@@ -152,6 +153,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and event.pressed:
+			_suppress_build_place_once = true
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -165,6 +167,8 @@ func _physics_process(delta: float) -> void:
 	var mp := MultiplayerInputSystem.instance
 	if profile == null or mp == null:
 		return
+	var suppress_build_place := _suppress_build_place_once
+	_suppress_build_place_once = false
 
 	if _dead:
 		_update_aim_and_camera(delta)
@@ -192,7 +196,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_update_aim_and_camera(delta)
-	_handle_build(mp)
+	_handle_build(mp, suppress_build_place)
 	_handle_grab(mp, delta)
 	_handle_melee(mp)
 	_check_kill_plane()
@@ -252,14 +256,14 @@ func aim_direction() -> Vector3:
 	return -_aim.global_transform.basis.z if is_instance_valid(_aim) else -global_transform.basis.z
 
 
-func _handle_build(mp) -> void:
+func _handle_build(mp, suppress_build_place: bool = false) -> void:
 	if _build == null:
 		return
 	if mp.is_action_just_pressed(device, &"build_toggle"):
 		_build.set_active(not _build.active)
 	if not _build.active:
 		return
-	if mp.is_action_just_pressed(device, &"build_place"):
+	if not suppress_build_place and mp.is_action_just_pressed(device, &"build_place"):
 		_build.try_place()
 	if mp.is_action_just_pressed(device, &"build_remove"):
 		_build.try_remove()
