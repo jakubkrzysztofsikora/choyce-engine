@@ -56,6 +56,13 @@ func spawn_gym(center_position: Vector3 = Vector3(-24.0, 0.0, 12.0)) -> Node3D:
 	gym_scene.scale = Vector3(0.45, 0.45, 0.45)
 	gym_scene.position = Vector3.ZERO
 	_gym_root.add_child(gym_scene)
+	# The pack's pivot leaves equipment bottoms ~1m below its origin — at 0.45
+	# scale that buries everything up to 0.45m under the rubber floor (the gym
+	# read as flat scraps from any distance). Measure the merged mesh AABB and
+	# lift the pack so its lowest point sits on the floor surface.
+	var pack_aabb := _merged_mesh_aabb_local(gym_scene)
+	if pack_aabb.size.y > 0.001:
+		gym_scene.position.y = 0.2 - pack_aabb.position.y * gym_scene.scale.y
 
 	# Add a rubber floor + collision under the gym so the player can walk on it.
 	_build_foundation(_gym_root)
@@ -116,6 +123,28 @@ func _build_foundation(parent: Node3D) -> void:
 	col.position = Vector3(0, 0.1, 0)
 	body.add_child(col)
 	parent.add_child(body)
+
+
+## Merged AABB of all MeshInstance3D descendants, measured in `root`'s local
+## space via tree-independent local-transform walks (works right after
+## instantiate(), before any frame settles global transforms).
+func _merged_mesh_aabb_local(root: Node3D) -> AABB:
+	var merged := AABB()
+	var has_bounds := false
+	for mesh_variant in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := mesh_variant as MeshInstance3D
+		var xform := Transform3D.IDENTITY
+		var cur: Node3D = mesh_instance
+		while cur != null and cur != root:
+			xform = cur.transform * xform
+			cur = cur.get_parent() as Node3D
+		var local := xform * mesh_instance.get_aabb()
+		if not has_bounds:
+			merged = local
+			has_bounds = true
+		else:
+			merged = merged.merge(local)
+	return merged
 
 
 ## Generate trimesh collision on every MeshInstance3D inside `root`. The gym

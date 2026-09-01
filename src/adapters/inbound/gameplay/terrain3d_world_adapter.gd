@@ -64,10 +64,35 @@ func build(seed_source: String) -> bool:
 	# old 0.72 value capped the entire 5.76km² island below one metre and made
 	# every distant biome read as a flat test board. Keep the first ~190m gentle
 	# via the heightmap falloff, then let real 20–90m hills close the horizon.
+	_heights_image = heights
 	data.call("import_images", [heights, controls, null],
-		Vector3(-WORLD_SIZE_M * 0.5, 0.0, -WORLD_SIZE_M * 0.5), 0.0, 90.0)
+		Vector3(-WORLD_SIZE_M * 0.5, 0.0, -WORLD_SIZE_M * 0.5), 0.0, TERRAIN_HEIGHT_SCALE_M)
 	_configure_dynamic_collision()
 	return true
+
+
+## Vertical metres Terrain3D maps the normalized 0..1 heightmap onto.
+const TERRAIN_HEIGHT_SCALE_M := 90.0
+
+## Source heightmap kept from build() for synchronous sampling.
+var _heights_image: Image = null
+
+
+## Synchronous, race-free terrain height for placement code. Terrain3D imports
+## its data asynchronously, so data.get_height() can return stale/NaN values
+## while the world is being built — anything grounded through that path got
+## buried under (or floated above) the real surface once the import landed.
+## This samples the exact source image the terrain renders from, so grounded
+## props agree with the visible surface from frame one.
+func sample_height(world_x: float, world_z: float) -> float:
+	if _heights_image == null:
+		return 0.0
+	var fx := (world_x + WORLD_SIZE_M * 0.5) / WORLD_SIZE_M * float(HEIGHTMAP_RESOLUTION)
+	var fz := (world_z + WORLD_SIZE_M * 0.5) / WORLD_SIZE_M * float(HEIGHTMAP_RESOLUTION)
+	var px := clampi(int(floor(fx)), 0, HEIGHTMAP_RESOLUTION - 1)
+	var pz := clampi(int(floor(fz)), 0, HEIGHTMAP_RESOLUTION - 1)
+	# +0.012 matches the terrain node's own y offset set in build().
+	return _heights_image.get_pixel(px, pz).r * TERRAIN_HEIGHT_SCALE_M + 0.012
 
 
 func has_dynamic_collision() -> bool:

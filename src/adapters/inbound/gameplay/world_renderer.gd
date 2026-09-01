@@ -84,7 +84,12 @@ const RIVER_SHORE_WIDTH_M := 2.35
 const RIVER_AREA_LIFT_M := 0.10
 # The rendered water surface sits this far above the sampled terrain height so
 # the terrain-conformed ribbon never z-fights the riverbed below it.
-const RIVER_WATER_SURFACE_OFFSET_M := 0.05
+# MUST stay above the wet-bank inner lip (0.203m, see _add_river_shore_quad):
+# the Terrain3D surface renders ~10-20cm above its sampled data height, so the
+# old 0.05 offset buried the ribbon under both terrain and banks — the river
+# was invisible. 0.24 puts the surface ~2cm above the bank lip, flush like the
+# original 0.203 design.
+const RIVER_WATER_SURFACE_OFFSET_M := 0.24
 # Ground overlays (dirt trails, courtyard disc) conform every vertex to the
 # sampled terrain and lift it just enough to avoid z-fighting.
 const OVERLAY_TERRAIN_LIFT_M := 0.04
@@ -2994,8 +2999,14 @@ func _is_harvestable_tree_asset(asset_path: String) -> bool:
 ## together on a hill instead of at the old y=0 safety floor.
 func _terrain_grounded_position(asset_position: Vector3) -> Vector3:
 	var grounded := asset_position
-	var data: Object = null
 	var terrain_adapter := get_node_or_null("Terrain3DWorldAdapter")
+	# Primary path: the adapter's synchronous source-image sampler. It is
+	# race-free against Terrain3D's async data import, which previously decided
+	# whether grounded props landed on the real surface or the flat y=0 fallback.
+	if terrain_adapter != null and terrain_adapter.has_method("sample_height"):
+		grounded.y += terrain_adapter.sample_height(asset_position.x, asset_position.z)
+		return grounded
+	var data: Object = null
 	if terrain_adapter != null:
 		var terrain: Object = terrain_adapter.get("terrain") as Object
 		if terrain != null:
