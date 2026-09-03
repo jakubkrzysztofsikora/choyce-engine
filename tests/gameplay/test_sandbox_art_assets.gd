@@ -121,6 +121,37 @@ func _run() -> void:
 		and barrel.get_node_or_null("InteractableComponent") != null,
 		"Ready asset-pack props retain the proven sandbox interaction components")
 
+	var gym := level.get_node_or_null("VillageLand/VillageGym")
+	_check(gym != null, "Sandbox level mounts the village gym")
+	var stations := gym.find_children("TrainArea_*", "Area3D", true, false) if gym != null else []
+	_check(stations.size() == 5, "Village gym exposes five training stations")
+	var wired := 0
+	for station in stations:
+		var comp := Components.get_comp(station, Components.INTERACTABLE) as InteractableComponent
+		if comp != null and (station as Area3D).collision_layer == Layers.INTERACT_TRIGGER:
+			wired += 1
+	_check(wired == 5, "All gym stations are sandbox-interactable on the trigger layer")
+	if not stations.is_empty():
+		var station := stations[0] as Area3D
+		var comp := Components.get_comp(station, Components.INTERACTABLE) as InteractableComponent
+		comp.do_interact(0)
+		_check(station.get_node_or_null("ProgressLabel") != null,
+			"Interacting with a gym station trains and shows progress")
+	var homestead := level.get_node_or_null("VillageLand/HomesteadEdge")
+	_check(homestead != null and not homestead.get_children().is_empty(),
+		"Sandbox level mounts a homestead edge with at least one compound")
+	var npc_visuals := get_nodes_in_group("npc_visual") if homestead != null else []
+	_check(not npc_visuals.is_empty(), "Homestead NPCs mount visible character meshes")
+	var pond := level.get_node_or_null("VillageLand/VillagePond")
+	var pond_water := pond.get_node_or_null("PondWater") as MeshInstance3D if pond != null else null
+	_check(pond_water != null and pond_water.get_active_material(0) is ShaderMaterial,
+		"Village pond uses the adventure water shader")
+	var pond_volume := pond.get_node_or_null("PondWaterVolume") as Area3D if pond != null else null
+	_check(pond_volume != null and pond_volume.is_in_group("water_volume")
+		and pond_volume.collision_layer == 0
+		and pond.find_children("*", "StaticBody3D", true, false).is_empty(),
+		"Pond water is detection-only and never solid")
+
 	player.queue_free()
 	level.queue_free()
 	crate.queue_free()

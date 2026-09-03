@@ -4330,6 +4330,12 @@ func _start_sandbox_kit_session(world: World, session: Session, sandbox_state: S
 	apply_sandbox_kit_safety_policy(_sandbox_kit_max_players, _sandbox_kit_max_blocks, true)
 
 	_join_kit_players(session)
+	# One progression store in the sandbox too: the village gym built by
+	# sandbox_level gets the shared TrainingStats, so its InteractableComponent
+	# workouts feed the same entity the HUD/body systems read.
+	var village_gym := stage.find_child("VillageGym", true, false)
+	if village_gym != null and _training_manager != null and village_gym.has_method("setup"):
+		village_gym.setup(_training_manager.get_training_stats_entity())
 	_build_sandbox_kit_overlay()
 
 	# sandbox_level._ready registers the palette synchronously during add_child,

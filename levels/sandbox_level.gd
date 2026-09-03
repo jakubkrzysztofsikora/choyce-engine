@@ -17,6 +17,10 @@ const VILLAGE := "res://data/models/quaternius/medieval_village/"
 const NATURE := "res://data/models/quaternius/nature/"
 const NATURE_KIT := "res://data/models/kenney/nature_kit/GLB/"
 const SURVIVAL_KIT := "res://data/models/kenney/survival_kit/Models/GLB format/"
+const GYM_SPAWNER_3D := preload("res://src/adapters/inbound/gameplay/gym_spawner_3d.gd")
+const HOMESTEAD_SPAWNER_3D := preload("res://src/adapters/inbound/gameplay/homestead_spawner_3d.gd")
+const ADVENTURE_WATER_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/adventure_water.gdshader")
+const WATER_DUDV: Texture2D = preload("res://data/textures/water/simplewater_dudv.png")
 const NPC_MODELS := [
 	"res://data/models/kenney/toon_characters/Models/GLB format/character-female-a.glb",
 	"res://data/models/kenney/toon_characters/Models/GLB format/character-male-c.glb",
@@ -36,6 +40,9 @@ func _ready() -> void:
 	_build_ground()
 	var village_land := _build_village_land()
 	_build_starter_clearing(village_land)
+	_build_village_gym(village_land)
+	_build_homestead_edge(village_land)
+	_build_pond(village_land)
 	_register_palette()
 	_wire_systems()
 
@@ -317,6 +324,156 @@ func _build_friendly_npc(parent: Node3D, npc_name: String, npc_position: Vector3
 	label.pixel_size = 0.004
 	label.outline_size = 4
 	npc.add_child(label)
+
+
+## --- Village gym: real GLB equipment, trained through sandbox components ----
+##
+## GymSpawner3D builds the compound (rubber floor, 5 stations, collision). Its
+## native trigger contract (Area3D + metadata) targets the Adventure runtime's
+## E-key loop, which does not exist in the sandbox — so each station here gets
+## an InteractableComponent on the INTERACT_TRIGGER layer instead, and the
+## InteractionSystem raycast drives GymSpawner3D.perform_workout directly.
+## Progression lands in the shared TrainingStats handed over by
+## GameplayRuntime._start_sandbox_kit_session (setup() DI).
+
+var _gym_spawner: Node3D = null
+
+func _build_village_gym(land: Node3D) -> void:
+	var gym: Node3D = GYM_SPAWNER_3D.new()
+	gym.name = "VillageGym"
+	land.add_child(gym)
+	# North edge of the meadow: clear of the houses, path and clearing.
+	gym.spawn_gym(Vector3(0.0, 0.0, -38.0))
+	_gym_spawner = gym
+	for area in gym.find_children("TrainArea_*", "Area3D", true, false):
+		_wire_gym_station(area as Area3D)
+
+
+func _wire_gym_station(area: Area3D) -> void:
+	# InteractionSystem raycasts include INTERACT_TRIGGER areas; the station's
+	# default layer-1 area would be invisible to it. Trigger-only, no mask.
+	area.collision_layer = Layers.INTERACT_TRIGGER
+	area.collision_mask = 0
+	# The sphere inherits the gym pack's 0.45 scale (2.0 -> 0.9m world): widen it
+	# so a child's aim ray lands reliably while standing at the machine.
+	for shape_node in area.find_children("*", "CollisionShape3D", true, false):
+		var sphere := (shape_node as CollisionShape3D).shape as SphereShape3D
+		if sphere != null:
+			sphere.radius = 3.2
+	var interaction := InteractableComponent.new()
+	interaction.name = "InteractableComponent"
+	interaction.prompt_text = String(area.get_meta("prompt_text", "Trenuj"))
+	interaction.interaction_range = 3.5
+	area.add_child(interaction)
+	interaction.interacted.connect(_on_gym_station_interacted.bind(area))
+
+
+func _on_gym_station_interacted(_player_id: int, area: Area3D) -> void:
+	if _gym_spawner == null or not is_instance_valid(area):
+		return
+	var type_name := String(area.get_meta("training_type_name", "STRENGTH"))
+	var result: Dictionary = _gym_spawner.perform_workout(type_name)
+	if not bool(result.get("success", false)):
+		return
+	# Per-station progress label above the machine. Lives inside the scaled gym
+	# pack like the spawner's own name labels.
+	var label := area.get_node_or_null("ProgressLabel") as Label3D
+	if label == null:
+		label = Label3D.new()
+		label.name = "ProgressLabel"
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.position = Vector3(0, 2.6, 0)
+		label.font_size = 24
+		label.outline_size = 4
+		label.outline_modulate = Color(0, 0, 0, 0.85)
+		area.add_child(label)
+	var percent := int(roundf(float(result.get("progress", 0.0)) * 100.0))
+	label.text = "%d%% · Poziom %d" % [percent, int(result.get("level", 0))]
+	if bool(result.get("leveled_up", false)):
+		label.modulate = Color("#ffd94d")
+	else:
+		label.modulate = Color.WHITE
+
+
+## --- Homestead edge: one authored compound, kid-safe villager + animals -----
+
+func _build_homestead_edge(land: Node3D) -> void:
+	var spawner: Node3D = HOMESTEAD_SPAWNER_3D.new()
+	spawner.name = "HomesteadEdge"
+	land.add_child(spawner)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20260901
+	# South-east corner, clear of the village houses and the clearing.
+	spawner.spawn_random_homestead(Vector3(36.0, 0.0, 34.0), 0, rng)
+	# The placement service scatters follow-up compounds 12-40m out — on a
+	# 116m meadow that can land outside the walls, so keep a second compound
+	# only when it stays inside the playable square and off existing content.
+	var second: Node3D = spawner.spawn_random_homestead(Vector3(36.0, 0.0, 34.0), 6, rng)
+	if second != null and not _compound_fits_meadow(second):
+		second.queue_free()
+		var specs: Array = spawner.get_spawned_specs()
+		if not specs.is_empty():
+			specs.pop_back()
+
+
+func _compound_fits_meadow(compound: Node3D) -> bool:
+	var p := compound.global_position
+	if absf(p.x) > 48.0 or absf(p.z) > 48.0:
+		return false
+	# Keep compounds off the clearing (origin), gym (north) and pond (west).
+	for reserved in [Vector2(0, -4), Vector2(0, -38), Vector2(-32, 20)]:
+		if Vector2(p.x, p.z).distance_to(reserved) < 14.0:
+			return false
+	return true
+
+
+## --- Village pond: shader water, visual only (no swim physics in the kit) ---
+##
+## Reuses the Adventure water shader on a flat subdivided plane — the meadow
+## has no Terrain3D, so the river's terrain-conforming ribbon would be wasted
+## here. The Area3D volume is detection-only (layer 0): solid water collision
+## is what turned the Adventure river into a walkable floor once before.
+
+func _build_pond(land: Node3D) -> void:
+	var pond := Node3D.new()
+	pond.name = "VillagePond"
+	pond.position = Vector3(-32.0, 0.0, 20.0)
+	land.add_child(pond)
+
+	var water := MeshInstance3D.new()
+	water.name = "PondWater"
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(14.0, 9.0)
+	plane.subdivide_width = 28
+	plane.subdivide_depth = 18
+	water.mesh = plane
+	water.position.y = 0.06
+	var material := ShaderMaterial.new()
+	material.shader = ADVENTURE_WATER_SHADER
+	material.set_shader_parameter("dudv_map", WATER_DUDV)
+	water.material_override = material
+	pond.add_child(water)
+
+	var volume := Area3D.new()
+	volume.name = "PondWaterVolume"
+	volume.add_to_group("water_volume")
+	volume.collision_layer = 0
+	volume.collision_mask = Layers.PLAYER_BODY
+	volume.monitoring = true
+	var volume_shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(13.0, 1.2, 8.0)
+	volume_shape.shape = box
+	volume_shape.position = Vector3(0, -0.3, 0)
+	volume.add_child(volume_shape)
+	pond.add_child(volume)
+
+	_add_imported_visual(pond, "PondRockA", NATURE_KIT + "rock_largeA.glb",
+		Vector3(-7.6, 0.0, 1.5), Vector3.ONE * 0.9, 0.7)
+	_add_imported_visual(pond, "PondRockB", NATURE_KIT + "rock_smallB.glb",
+		Vector3(6.8, 0.0, -4.2), Vector3.ONE * 1.1, -0.4)
+	_add_imported_visual(pond, "PondBush", NATURE_KIT + "plant_bush.glb",
+		Vector3(7.3, 0.0, 3.6), Vector3.ONE * 1.3, 0.0)
 
 
 func _add_imported_visual(parent: Node3D, node_name: String, path: String, visual_position: Vector3,
