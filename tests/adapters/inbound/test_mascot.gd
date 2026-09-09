@@ -159,7 +159,7 @@ class MockableMascot extends Mascot:
 class MockVoicePrompt extends RefCounted:
 	var speak_calls: Array[String] = []
 
-	func speak(text: String, _locale: String = "pl-PL") -> void:
+	func speak(text: String, _locale: String = "pl-PL", _request_id: int = 0) -> void:
 		speak_calls.append(text)
 
 

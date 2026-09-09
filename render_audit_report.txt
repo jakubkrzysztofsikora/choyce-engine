@@ -5,21 +5,21 @@ Saving screenshots to: res://tests/play/screenshots
   level+camera ready; entering warmup
   warmup returned; taking image
   saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_01_sandbox_level.png
-  capture returned: ():<Image#-9223371931141535351>
-  PASS  sandbox sky-top has colour ((0.5059, 0.698, 0.8275, 1.0))
-  PASS  sandbox mid has colour ((0.9725, 0.7804, 0.6314, 1.0))
-  PASS  sandbox side meadow has colour ((0.3176, 0.4824, 0.251, 1.0))
-  PASS  sandbox sky-top blue-dominant ((0.5059, 0.698, 0.8275, 1.0))
-  PASS  sandbox opening focal area is warm and readable ((0.9725, 0.7804, 0.6314, 1.0))
-  PASS  sandbox side meadow green-dominant ((0.3176, 0.4824, 0.251, 1.0))
+  capture returned: ():<Image#-9223371855761502037>
+  PASS  sandbox sky-top has colour ((0.4941, 0.6196, 0.6941, 1.0))
+  PASS  sandbox mid has colour ((0.6745, 0.6235, 0.5137, 1.0))
+  PASS  sandbox side meadow has colour ((0.3451, 0.4627, 0.3059, 1.0))
+  PASS  sandbox sky-top blue-dominant ((0.4941, 0.6196, 0.6941, 1.0))
+  PASS  sandbox opening focal area is warm and readable ((0.6745, 0.6235, 0.5137, 1.0))
+  PASS  sandbox side meadow green-dominant ((0.3451, 0.4627, 0.3059, 1.0))
   saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_01b_sandbox_camp.png
-  PASS  sandbox camp focal is warm at play scale ((0.9804, 0.8, 0.6471, 1.0))
+  PASS  sandbox camp focal is warm at play scale ((0.6902, 0.6431, 0.5294, 1.0))
 
 --- audit 2: water shader (adventure_water.gdshader) ---
   saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_02_water_shader.png
   saved /Users/jakubsikora/Repos/choyce-engine/tests/play/screenshots/audit_02b_water_shader_later.png
-  water shader: 12 unique colour buckets
-  water shader animation: 163 / 300 sample pixels changed between captures
+  water shader: 11 unique colour buckets
+  water shader animation: 156 / 300 sample pixels changed between captures
 
 --- audit 3: toon-cel shader wiring ---
   PASS  hero_clothing.gdshader compiles (load returned non-null)

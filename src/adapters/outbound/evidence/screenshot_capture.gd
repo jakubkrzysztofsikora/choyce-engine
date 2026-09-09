@@ -59,8 +59,20 @@ func _perform_capture(metadata: Dictionary, capture_timer: Timer = null) -> void
 		if capture_timer != null:
 			capture_timer.queue_free()
 		return
-	
-	var image = viewport.get_texture().get_image()
+	if DisplayServer.get_name() == "headless":
+		if capture_timer != null:
+			capture_timer.queue_free()
+		return
+
+	var viewport_texture: Texture2D = viewport.get_texture()
+	# Headless observation intentionally has no GPU texture. Treat that as an
+	# unavailable optional evidence surface instead of calling get_image() on a
+	# null texture and turning the gameplay probe into an engine error.
+	if viewport_texture == null:
+		if capture_timer != null:
+			capture_timer.queue_free()
+		return
+	var image = viewport_texture.get_image()
 	if image == null:
 		push_error("ScreenshotCapture: Failed to capture image")
 		if capture_timer != null:

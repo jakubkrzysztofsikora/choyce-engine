@@ -6,6 +6,8 @@
 class_name Terrain3DWorldAdapter
 extends Node3D
 
+signal readiness_changed(ready: bool)
+
 const WORLD_SIZE_M := 2400.0
 const HEIGHTMAP_RESOLUTION := 512
 const OPENING_RIVERBANK_RELIEF_NORMALIZED := 0.028
@@ -17,12 +19,14 @@ const PBR_NORMAL: Texture2D = preload("res://data/textures/pbr/ground003/Ground0
 
 var terrain: Node3D
 var _dynamic_collision_ready := false
+var _collision_request_submitted := false
 var _prepared_albedo: Dictionary = {}
 var _prepared_normal: Texture2D
 
 
 func build(seed_source: String) -> bool:
 	_dynamic_collision_ready = false
+	_collision_request_submitted = false
 	if not ClassDB.class_exists(&"Terrain3D"):
 		push_warning("Terrain3D extension is unavailable; keeping the safe legacy floor")
 		return false
@@ -68,6 +72,8 @@ func build(seed_source: String) -> bool:
 	data.call("import_images", [heights, controls, null],
 		Vector3(-WORLD_SIZE_M * 0.5, 0.0, -WORLD_SIZE_M * 0.5), 0.0, TERRAIN_HEIGHT_SCALE_M)
 	_configure_dynamic_collision()
+	if _collision_request_submitted:
+		call_deferred("_await_collision_readiness")
 	return true
 
 
@@ -98,6 +104,23 @@ func sample_height(world_x: float, world_z: float) -> float:
 func has_dynamic_collision() -> bool:
 	return _dynamic_collision_ready
 
+func has_height_source() -> bool:
+	return _heights_image != null
+
+func _await_collision_readiness() -> void:
+	# Terrain3D accepts the collision build before its physics server exposes the
+	# generated shape. Keep this state explicit so placement and gameplay can
+	# wait for a real surface instead of treating request acceptance as ready.
+	for _frame in 3:
+		await get_tree().physics_frame
+	if terrain == null or not is_instance_valid(terrain):
+		return
+	var collision: Object = terrain.get("collision") as Object
+	if collision == null:
+		return
+	_dynamic_collision_ready = true
+	readiness_changed.emit(true)
+
 
 ## Terrain3D's default dynamic-game mode is appropriate for a 5.76km² world,
 ## but runtime-imported height data needs an explicit collision rebuild. Without
@@ -115,7 +138,7 @@ func _configure_dynamic_collision() -> void:
 	collision.set("radius", 96)
 	collision.call("build")
 	collision.call("update", true)
-	_dynamic_collision_ready = true
+	_collision_request_submitted = true
 
 
 ## Terrain3D stores texture choices in a separate uint32 control image. The

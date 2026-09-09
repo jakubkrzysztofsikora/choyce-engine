@@ -12,9 +12,9 @@ extends Resource
 @export var jump_velocity: float = 6.5
 
 @export_group("Camera")
-@export var cam_distance: float = 7.0
-@export var cam_height: float = 3.0
-@export var cam_look_at_height: float = 1.2
+@export var cam_distance: float = 3.2
+@export var cam_height: float = 0.35
+@export var cam_look_at_height: float = 1.25
 ## Smoothing half-life in seconds. Framerate-INDEPENDENT: a raw
 ## lerp(a, b, k * delta) makes camera feel differ between the 118 fps
 ## single-player case and the 63 fps four-player case, which players notice and

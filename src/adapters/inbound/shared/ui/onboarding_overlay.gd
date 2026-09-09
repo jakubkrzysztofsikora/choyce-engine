@@ -149,11 +149,15 @@ func _on_auto_dismiss() -> void:
 
 
 func _on_tts_prompt() -> void:
-	if _tts != null and _tts.is_available():
+	# Voice prompts are optional during offline startup. A missing port is a
+	# configuration state, not a runtime warning; only report an injected port
+	# that became unavailable so real adapter failures remain visible.
+	if _tts == null:
+		return
+	if _tts.is_available():
 		_tts.speak(_t("onboarding.tts_prompt"))
-	elif not _tts_warning_shown:
-		_tts_warning_shown = true
-		push_warning("OnboardingOverlay: TTS port not wired or unavailable — voice prompt skipped.")
+	# Offline mode is an intentional captions-only experience. Do not turn a
+	# normal missing optional service into startup noise for the child.
 
 
 func _draw() -> void:

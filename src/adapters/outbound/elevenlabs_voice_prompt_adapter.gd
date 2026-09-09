@@ -216,6 +216,17 @@ func cancel() -> void:
 	_queue.cancel()
 
 
+## Release the host-owned transport nodes when the owning gameplay runtime ends.
+## VoicePromptPort is RefCounted, so relying on reference dropping alone leaves
+## its AudioStreamPlayer and cached playback resources alive until process exit.
+func shutdown() -> void:
+	cancel()
+	if _player != null and is_instance_valid(_player):
+		_player.queue_free()
+	_player = null
+	_host = null
+
+
 func _on_request_completed(
 		result: int,
 		code: int,

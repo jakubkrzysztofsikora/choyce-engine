@@ -23,6 +23,7 @@ var _split_screen: SplitScreenRuntime = null
 var _provenance_badge: ProvenanceBadge
 var _no_world_cta_button: Button = null
 var _voice_prompt_port: VoicePromptPort = null
+var _voice_status_icon: Label = null
 var _cta_voice_timer: Timer = null
 var _session_start_time: float = 0.0
 var _project_store: ProjectStorePort = null  # injected for direct-launch path
@@ -79,6 +80,12 @@ var _moderation: ModerationPort = null
 
 func _ready() -> void:
 	ResponsiveLayout.apply_max_width($Layout)
+	_voice_status_icon = Label.new()
+	_voice_status_icon.name = "VoiceStatusIcon"
+	_voice_status_icon.add_theme_font_size_override("font_size", 26)
+	_voice_status_icon.tooltip_text = "Głos / napisy"
+	$Layout/Header.add_child(_voice_status_icon)
+	_refresh_voice_status()
 	_setup_provenance_badge()
 	_wire_actions()
 	_refresh_labels()
@@ -97,7 +104,8 @@ func setup(
 	kid_status_read_model: KidStatusReadModel = null,
 	get_world_callback: Callable = Callable(),
 	llm: LLMPort = null,
-	moderation: ModerationPort = null
+	moderation: ModerationPort = null,
+	voice_prompt: VoicePromptPort = null
 ) -> PlayShell:
 	_navigator = navigator
 	_profile = profile
@@ -107,6 +115,8 @@ func setup(
 	_get_world_callback = get_world_callback
 	_llm = llm
 	_moderation = moderation
+	_voice_prompt_port = voice_prompt
+	_refresh_voice_status()
 	if _provenance_badge != null and _provenance_badge.has_method("setup"):
 		_provenance_badge.call("setup", _localization_policy)
 
@@ -119,6 +129,15 @@ func setup(
 
 func setup_voice_prompt(port: VoicePromptPort) -> void:
 	_voice_prompt_port = port
+	_refresh_voice_status()
+
+
+func _refresh_voice_status() -> void:
+	if _voice_status_icon == null:
+		return
+	var available: bool = _voice_prompt_port != null and _voice_prompt_port.is_available()
+	_voice_status_icon.text = "🔊" if available else "🔇"
+	_voice_status_icon.tooltip_text = "Głos włączony" if available else "Tryb napisy"
 
 
 ## Wave 3 W3-A/B: inject the goal pipeline. Optional — without this,

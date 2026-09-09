@@ -33,6 +33,7 @@ var _request_ai_help_port: RequestAICreationHelpPort
 var _speech_to_text_port: SpeechToTextPort
 ## Phase 9: VoicePromptPort for non-reader CTA TTS prompt (optional).
 var _voice_prompt = null
+var _voice_status_icon: Label = null
 var _event_bus: DomainEventBus = null
 var _active_tool: CanvasTool = CanvasTool.PLACE
 ## Phase 9: timer for non-reader CTA 3s idle TTS prompt.
@@ -92,6 +93,12 @@ func _ready() -> void:
 	# 1280 default) because create needs the horizontal workspace +
 	# preview split.
 	ResponsiveLayout.apply_max_width($Layout, 1600.0)
+	_voice_status_icon = Label.new()
+	_voice_status_icon.name = "VoiceStatusIcon"
+	_voice_status_icon.text = "🔇"
+	_voice_status_icon.add_theme_font_size_override("font_size", 26)
+	_voice_status_icon.tooltip_text = "Tryb napisy"
+	$Layout/Header.add_child(_voice_status_icon)
 
 	# Kid-UX: big visible voice CTA + first-step hint. Replaces the
 	# cryptic "Status tworzenia" panel as the kid's primary entry
@@ -145,6 +152,19 @@ func _ready() -> void:
 		visibility_changed.connect(_on_visibility_changed_greet)
 	if visible:
 		_greet_via_mascot()
+
+	# Phase 8d: connect the shell-local readiness signal during construction so
+	# tests and the composition root can unlock wired mutations reliably.
+	if not ports_ready.is_connected(on_ports_ready):
+		ports_ready.connect(on_ports_ready)
+
+	# Also subscribe to InboundMain's readiness signal when the shell is nested
+	# under it. This keeps the live composition-root path fail-closed until all
+	# ports are available.
+	var parent := get_parent()
+	if parent != null and parent.has_signal("ports_ready"):
+		if not parent.ports_ready.is_connected(on_ports_ready):
+			parent.ports_ready.connect(on_ports_ready)
 
 
 func _on_visibility_changed_greet() -> void:
@@ -404,20 +424,6 @@ func _on_back_to_landing_pressed() -> void:
 	# Phase 9: start non-reader CTA idle TTS prompt after 3s of no interaction.
 	_start_cta_idle_timer()
 
-	# Phase 8d: connect own ports_ready signal to the handler so that both:
-	#   a) tests can call shell.emit_signal("ports_ready") directly, and
-	#   b) InboundMain can call shell.on_ports_ready() (or emit its own signal
-	#      which _wire_shell_dependencies connects below).
-	if not ports_ready.is_connected(on_ports_ready):
-		ports_ready.connect(on_ports_ready)
-
-	# Also subscribe to InboundMain's ports_ready if we are already in the tree
-	# under a parent that has the signal.  This covers the live runtime path.
-	var parent := get_parent()
-	if parent != null and parent.has_signal("ports_ready"):
-		if not parent.ports_ready.is_connected(on_ports_ready):
-			parent.ports_ready.connect(on_ports_ready)
-
 
 func setup(
 	navigator: ShellNavigator,
@@ -442,8 +448,12 @@ func setup(
 	_request_ai_help_port = request_ai_help_port
 	_speech_to_text_port = speech_to_text_port
 	_voice_prompt = voice_prompt
+	_refresh_voice_status()
 	_feature_flags = feature_flags
 	_event_bus = event_bus
+	if _onboarding_overlay != null and voice_prompt != null \
+			and _onboarding_overlay.has_method("setup_tts"):
+		_onboarding_overlay.setup_tts(voice_prompt as VoicePromptPort)
 
 	if _provenance_badge != null and _provenance_badge.has_method("setup"):
 		_provenance_badge.call("setup", _localization_policy)
@@ -489,6 +499,14 @@ func setup(
 		_refresh_workspace_ui()
 
 	return self
+
+
+func _refresh_voice_status() -> void:
+	if _voice_status_icon == null:
+		return
+	var available: bool = _voice_prompt != null and _voice_prompt.is_available()
+	_voice_status_icon.text = "🔊" if available else "🔇"
+	_voice_status_icon.tooltip_text = "Głos włączony" if available else "Tryb napisy"
 
 
 func set_world_context(world_id: String) -> void:
@@ -1295,7 +1313,7 @@ func on_ports_ready() -> void:
 		_assistant_overlay.call("notify_ports_ready")
 	# Wave C: re-evaluate tool gate now that ports_ready is true; buttons enabled
 	# only when BOTH _apply_world_edit_port != null AND _ports_ready == true.
-	if is_node_ready():
+	if _place_button != null:
 		_refresh_tool_port_gate()
 
 

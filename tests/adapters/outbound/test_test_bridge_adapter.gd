@@ -17,6 +17,7 @@ class InspectableBridgeAdapter:
 func _init() -> void:
 	var failures: Array[String] = []
 	_test_action_input(failures)
+	_test_mouse_motion_payload(failures)
 	_test_main_debug_bridge_gates_and_lifecycle(failures)
 	_test_closed_connection_is_removed_before_read(failures)
 
@@ -51,6 +52,26 @@ func _test_action_input(failures: Array[String]) -> void:
 
 	if not accepted:
 		failures.append("TestBridgeAdapter must accept action input when enabled")
+
+
+func _test_mouse_motion_payload(failures: Array[String]) -> void:
+	var config := DeploymentConfig.new(DeploymentConfig.Mode.LOCAL_ONLY)
+	var feature_flags := FeatureFlagService.new(config).setup(TestEnvironment.new())
+	feature_flags.set_override("debug_test_bridge", true)
+	var adapter := TestBridgeAdapter.new()
+	adapter.setup(feature_flags, 0)
+	var accepted := false
+	if adapter.start():
+		accepted = adapter.inject_input({
+			"type": "mouse_motion",
+			"position": {"x": 0.5, "y": 0.5},
+			"relative": {"x": 180.0, "y": -12.0},
+			"velocity": {"x": 180.0, "y": -12.0},
+		})
+	adapter.stop()
+	adapter.free()
+	if not accepted:
+		failures.append("TestBridgeAdapter must accept relative mouse motion payloads")
 
 
 func _test_main_debug_bridge_gates_and_lifecycle(failures: Array[String]) -> void:

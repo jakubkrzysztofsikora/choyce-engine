@@ -22,7 +22,7 @@ const OBJECTIVES := [
 	"06_build_remove_block",
 	"07_save_roundtrip",
 	"08_esc_releases_capture",
-	"09_esc_second_press_ends_session",
+	"09_back_button_ends_session",
 	"10_return_to_library_clean",
 	"11_relaunch_state_restores",
 ]
@@ -203,25 +203,28 @@ func _join_pads_and_build(runtime: Node) -> void:
 	_log("07_save_roundtrip", "persistence.has_saved_sandbox=%s world_id=%s" % [saved, world_id])
 	if not saved:
 		_findings.append("BUG: debounced save never fired after a place+remove cycle")
-	# ESC twice: release capture, then end session. GameplayRuntime._input reacts
-	# to a real InputEvent, so parse_input_event (not action_press, which only
-	# sets polled state) is required to reach the handler.
+	# ESC releases capture only. Session exit is an explicit click on the visible
+	# Wróć button so recovering the cursor cannot accidentally abandon the world.
 	await _press_esc()
 	await _wait_ms(150)
 	var mode_after_esc := Input.get_mouse_mode()
 	_log("08_esc_releases_capture", "mouse_mode after first ESC = %d" % mode_after_esc)
 	if mode_after_esc != Input.MOUSE_MODE_VISIBLE:
 		_findings.append("UX: first ESC did not release mouse capture in kit mode (got %d)" % mode_after_esc)
-	await _press_esc()
+	var exit_button := runtime.get_node_or_null("SandboxKitOverlay/ExitBar/ExitButton") as Button
+	if exit_button == null:
+		_findings.append("BUG: sandbox Wróć button missing")
+	else:
+		exit_button.pressed.emit()
 	await _wait_ms(500)
 	# Ending the kit session emits session_ended, which PlayShell handles by
 	# queue_free()-ing the GameplayRuntime — so `runtime` may already be freed.
 	var runtime_freed := not is_instance_valid(runtime)
-	_log("09_esc_second_press_ends_session", "runtime freed? %s active? %s" % [
+	_log("09_back_button_ends_session", "runtime freed? %s active? %s" % [
 		runtime_freed,
 		runtime.get("_sandbox_kit_active") if not runtime_freed else "n/a"])
 	if not runtime_freed and bool(runtime.get("_sandbox_kit_active")):
-		_findings.append("UX: second ESC did not end kit session")
+		_findings.append("BUG: Wróć button did not end kit session")
 	# Should now be back in play shell with the runtime torn down.
 	await _wait_ms(400)
 	_log("10_return_to_library_clean",
@@ -340,4 +343,15 @@ func _finish() -> void:
 	print("\nFindings (%d):" % _findings.size())
 	for f in _findings:
 		print("  - %s" % f)
-	quit(1 if not _findings.is_empty() else 0)
+	var active_runtime := root.get_node_or_null("GameplayRuntime")
+	if active_runtime != null and active_runtime.has_method("_cancel_active_npc_voice"):
+		active_runtime.call("_cancel_active_npc_voice")
+	var audio_bank := root.get_node_or_null("/root/AudioBank")
+	if audio_bank != null and audio_bank.has_method("shutdown"):
+		audio_bank.call("shutdown")
+	call_deferred("_quit_after_cleanup", 1 if not _findings.is_empty() else 0)
+
+
+func _quit_after_cleanup(exit_code: int) -> void:
+	await process_frame
+	quit(exit_code)

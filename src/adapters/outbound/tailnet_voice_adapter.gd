@@ -63,6 +63,9 @@ func shutdown() -> void:
 		_player.stop()
 		_player.queue_free()
 		_player = null
+	if _eleven_labs != null:
+		_eleven_labs.shutdown()
+		_eleven_labs = null
 	_speak_queue.clear()
 	_is_speaking = false
 

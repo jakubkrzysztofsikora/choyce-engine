@@ -21,7 +21,9 @@ extends Resource
 @export var shadow_max_distance: Array[float] = [120.0, 90.0, 60.0, 45.0]
 @export var shadow_atlas_size: Array[int] = [4096, 4096, 2048, 2048]
 @export var sdfgi: Array[bool] = [true, true, false, false]
-@export var volumetric_fog: Array[bool] = [true, true, false, false]
+# The Sandbox Kit is a close-range child-facing clearing. Volumetric fog makes
+# its ground and imported materials disappear at ordinary camera distance.
+@export var volumetric_fog: Array[bool] = [false, false, false, false]
 @export var ssao: Array[bool] = [true, true, true, false]
 @export var ssil: Array[bool] = [true, false, false, false]
 ## Resolution scale is listed LAST deliberately — it is the weakest lever here.

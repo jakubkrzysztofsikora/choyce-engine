@@ -174,7 +174,7 @@ func _test_tts_speak_invoked_when_port_available() -> void:
 class MockTTSPort extends VoicePromptPort:
 	var speak_calls: Array[String] = []
 
-	func speak(text: String, _locale: String = "pl-PL") -> void:
+	func speak(text: String, _locale: String = "pl-PL", _request_id: int = 0) -> void:
 		speak_calls.append(text)
 
 	func is_available() -> bool:

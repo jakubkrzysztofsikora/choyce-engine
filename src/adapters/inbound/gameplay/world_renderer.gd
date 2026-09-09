@@ -123,6 +123,10 @@ var _procedural_disposal_queue: Array[Node3D] = []
 var _last_streamed_chunk := Vector2i(999999, 999999)
 var _has_runtime_terrain_surface := false
 var _has_runtime_terrain_collision := false
+## Adventure requires Terrain3D for relief placement. The sandbox kit uses an
+## intentionally flat authored meadow and must not report a missing terrain
+## adapter as a grounding failure.
+var _terrain_sampling_required := false
 # Incremented each time a new Terrain3D surface is successfully imported.
 # Lets callers (and collision-probe guards) reject results from a stale session.
 var _terrain_import_session_token := 0
@@ -180,6 +184,121 @@ func clear_world() -> void:
 	_last_streamed_chunk = Vector2i(999999, 999999)
 	_has_runtime_terrain_surface = false
 	_has_runtime_terrain_collision = false
+	_terrain_sampling_required = false
+
+
+func set_terrain_sampling_required(required: bool) -> void:
+	_terrain_sampling_required = required
+
+## Public authored-presentation seam used by the sandbox. Keep the detailed
+## composition private so callers cannot assemble raw renderer fragments.
+func build_sandbox_opening() -> void:
+	_build_opening_grove()
+	_build_opening_basecamp_tableau()
+	_build_starter_homestead()
+	_build_opening_courtyard()
+	_build_opening_sightline_layer()
+	_build_sandbox_arrival_dressing()
+	_build_sandbox_foliage_clusters()
+
+func add_sandbox_visual_asset(
+	node_name: String,
+	asset_position: Vector3,
+	asset_scale: Vector3 = Vector3.ONE,
+	rotation_y: float = 0.0,
+	asset_path: String = "",
+	collidable: bool = true,
+	collision_size: Vector3 = Vector3(1.5, 2.0, 1.5)
+) -> Node3D:
+	return _add_visual_asset(node_name, asset_position, asset_scale, rotation_y,
+		asset_path, collidable, collision_size)
+
+func add_sandbox_interaction_anchor(
+	id: String, anchor_position: Vector3, prompt: String, action: String
+) -> Area3D:
+	return _add_interaction_anchor(id, anchor_position, prompt, action)
+
+## Shared opening profile. Sandbox and Adventure use the same restrained sky,
+## tone map, contact shading, and shadow language; only the authored content
+## mounted below it differs.
+static func apply_sandbox_environment(parent: Node3D) -> void:
+	if parent == null:
+		return
+	var world_environment := WorldEnvironment.new()
+	world_environment.name = "AuthoredWorldEnvironment"
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_SKY
+	var sky := Sky.new()
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color("#5f95be")
+	sky_material.sky_horizon_color = Color("#e1e7dd")
+	sky_material.ground_bottom_color = Color("#557a4f")
+	sky_material.ground_horizon_color = Color("#b7c8ad")
+	sky.sky_material = sky_material
+	environment.sky = sky
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	environment.ambient_light_sky_contribution = 0.92
+	environment.ambient_light_energy = 1.0
+	environment.background_energy_multiplier = 1.0
+	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	environment.tonemap_exposure = 1.0
+	environment.glow_enabled = true
+	environment.glow_intensity = 0.25
+	environment.glow_bloom = 0.02
+	environment.glow_hdr_threshold = 1.1
+	environment.ssao_enabled = true
+	environment.ssao_intensity = 1.2
+	environment.ssao_radius = 1.5
+	environment.fog_enabled = false
+	world_environment.environment = environment
+	parent.add_child(world_environment)
+
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.rotation_degrees = Vector3(-48, -35, 0)
+	sun.light_energy = 1.55
+	sun.light_color = Color("#fff3d6")
+	sun.shadow_enabled = true
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = 120.0
+	parent.add_child(sun)
+
+## Repeated low foliage is visual dressing, not gameplay geometry. Use one
+## MultiMesh per cluster so the opening keeps the authored silhouettes while
+## avoiding dozens of independent scene instances and colliders.
+func _build_sandbox_foliage_clusters() -> void:
+	var packed: Resource = ResourceLoader.load(KENNEY_NK + "grass_leafsLarge.glb")
+	if not packed is PackedScene:
+		return
+	var source := (packed as PackedScene).instantiate()
+	var meshes := source.find_children("*", "MeshInstance3D", true, false)
+	if meshes.is_empty():
+		source.free()
+		return
+	var source_mesh := (meshes[0] as MeshInstance3D).mesh
+	if source_mesh == null:
+		source.free()
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("sandbox_foliage_clusters_v1")
+	for cluster_index in range(4):
+		var cluster := MultiMeshInstance3D.new()
+		cluster.name = "SandboxFoliageCluster_%02d" % cluster_index
+		cluster.add_to_group("authored_foliage_cluster")
+		var multi := MultiMesh.new()
+		multi.transform_format = MultiMesh.TRANSFORM_3D
+		multi.mesh = source_mesh
+		multi.instance_count = 14
+		for instance_index in multi.instance_count:
+			var center := Vector3(-16.0 + float(cluster_index) * 10.5, 0.02,
+				-17.0 - float(cluster_index % 2) * 5.0)
+			var offset := Vector3(rng.randf_range(-4.0, 4.0), 0.0, rng.randf_range(-3.0, 3.0))
+			var scale := rng.randf_range(0.72, 1.28)
+			var basis := Basis(Vector3.UP, rng.randf_range(0.0, TAU)).scaled(Vector3.ONE * scale)
+			multi.set_instance_transform(instance_index, Transform3D(basis, center + offset))
+		cluster.multimesh = multi
+		add_child(cluster)
+	source.free()
 
 
 ## GameplayRuntime keeps the legacy flat collider as a safety floor. Its
@@ -190,6 +309,9 @@ func has_runtime_terrain_surface() -> bool:
 
 
 func has_runtime_terrain_collision() -> bool:
+	var adapter := get_runtime_terrain_adapter()
+	if adapter != null and adapter.has_method("has_dynamic_collision"):
+		_has_runtime_terrain_collision = bool(adapter.call("has_dynamic_collision"))
 	return _has_runtime_terrain_collision
 
 
@@ -846,6 +968,7 @@ func _build_adventure_dressing(seed_source: String = "adventure") -> void:
 	# The island is deliberately assembled from authored CC0 kit pieces. The
 	# ground stays continuous; authored structures and nature props provide
 	# composition without exposing a repeating square editor grid.
+	_terrain_sampling_required = true
 	_build_terrain3d_surface(seed_source)
 	_build_adventure_route()
 	_build_opening_grove()
@@ -1390,13 +1513,14 @@ func _build_opening_sightline_layer() -> void:
 			# horizon. Their true 12–20m silhouette supplies travel scale without
 			# colliding with the bridge route.
 			var scale := backdrop_rng.randf_range(1.20, 1.90)
-			var backdrop_tree := _add_visual_asset(
+			_add_visual_asset(
 				"opening_backdrop_tree_%d_%d" % [cluster_index, tree_index], position,
 				Vector3.ONE * scale, backdrop_rng.randf_range(0.0, TAU),
 				String(backdrop_tree_paths[backdrop_rng.randi_range(0, backdrop_tree_paths.size() - 1)]), false)
-			if backdrop_tree != null:
-				var green := CHOYCE_SOFT_GREEN.darkened(0.4) if position.z < -100.0 else CHOYCE_SOFT_GREEN.darkened(0.2)
-				_apply_toon_tint(backdrop_tree, green)
+			# Preserve the imported tree family materials here. Applying a second
+			# recursive tint to these shared FBX surfaces creates invalid render-server
+			# material bindings on Metal; _add_visual_asset already applies the
+			# validated authored/toon material policy per instance.
 
 	# The physical Terrain3D mountains now provide the distant silhouette. Keep
 	# one human-scale windmill destination instead of a giant floating kit prop.
@@ -1405,6 +1529,21 @@ func _build_opening_sightline_layer() -> void:
 	_add_route_lantern("BridgeSouthLantern", Vector3(-3.25, 0.0, -14.5))
 	_add_route_lantern("BridgeNorthLantern", Vector3(3.25, 0.0, -33.5))
 	_add_route_lantern("HomeLantern", Vector3(9.0, 0.0, -52.0))
+
+
+## Sandbox-only arrival beat: connect the player start to the authored courtyard
+## so the first frame communicates a route instead of an empty lawn gap.
+func _build_sandbox_arrival_dressing() -> void:
+	_add_opening_dirt_trail("SandboxArrivalTrail", Vector3(7.0, 0.035, -29.5),
+		3.4, 13.0, 0.12)
+	_add_visual_asset("SandboxArrivalRockLeft", Vector3(2.2, 0.0, -27.0), Vector3.ONE * 0.82,
+		0.35, KENNEY_NK + "rock_smallFlatC.glb", false)
+	_add_visual_asset("SandboxArrivalRockRight", Vector3(12.1, 0.0, -28.0), Vector3.ONE * 0.72,
+		-0.42, KENNEY_NK + "rock_smallFlatC.glb", false)
+	_add_visual_asset("SandboxArrivalBushLeft", Vector3(-3.2, 0.0, -29.0), Vector3.ONE * 1.18,
+		0.22, KENNEY_NK + "plant_bushDetailed.glb", false)
+	_add_visual_asset("SandboxArrivalBushRight", Vector3(16.4, 0.0, -30.5), Vector3.ONE * 1.10,
+		-0.58, KENNEY_NK + "plant_bushDetailed.glb", false)
 
 
 ## Terrain3D gives the island genuine rolling relief, but a child-height camera
@@ -3017,7 +3156,7 @@ func _terrain_grounded_position(asset_position: Vector3) -> Vector3:
 		# Fallback keeps the authored position (historically y=0). It used to be
 		# silent, which hid dropped terrain grounding on hills; surface it once
 		# per process instead of spamming one warning per placed prop.
-		if not _terrain_unavailable_warned:
+		if _terrain_sampling_required and not _terrain_unavailable_warned:
 			_terrain_unavailable_warned = true
 			push_warning("WorldRenderer: terrain height sampling unavailable; keeping authored y positions until Terrain3D data is ready.")
 		return grounded
@@ -3289,6 +3428,13 @@ func _create_spawn_point_node(node: SceneNode) -> Node3D:
 	var p_mesh := SphereMesh.new()
 	p_mesh.radius = 0.04
 	p_mesh.height = 0.08
+	var spawn_particle_material := StandardMaterial3D.new()
+	spawn_particle_material.albedo_color = Color(0.55, 0.86, 1.0, 0.82)
+	spawn_particle_material.emission_enabled = true
+	spawn_particle_material.emission = Color(0.18, 0.46, 0.72, 1.0)
+	spawn_particle_material.emission_energy_multiplier = 0.8
+	spawn_particle_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	p_mesh.material = spawn_particle_material
 	particles.draw_pass_1 = p_mesh
 	marker.add_child(particles)
 	
@@ -3329,6 +3475,13 @@ func _create_trigger_node(node: SceneNode) -> Node3D:
 	var p_mesh := SphereMesh.new()
 	p_mesh.radius = 0.03
 	p_mesh.height = 0.06
+	var trigger_particle_material := StandardMaterial3D.new()
+	trigger_particle_material.albedo_color = Color(1.0, 0.88, 0.28, 0.72)
+	trigger_particle_material.emission_enabled = true
+	trigger_particle_material.emission = Color(0.82, 0.48, 0.08, 1.0)
+	trigger_particle_material.emission_energy_multiplier = 0.7
+	trigger_particle_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	p_mesh.material = trigger_particle_material
 	particles.draw_pass_1 = p_mesh
 	area.add_child(particles)
 	

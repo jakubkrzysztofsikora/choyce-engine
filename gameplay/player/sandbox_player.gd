@@ -20,6 +20,7 @@ var profile: SandboxPlayerProfile
 var device: int = -1
 
 var _aim: Node3D
+var _spring_arm: SpringArm3D
 var _cam: Camera3D
 var _cam_snap_pending: bool = false
 var _yaw: float = 0.0
@@ -32,10 +33,15 @@ var _health: HealthComponent
 var _spawn_point: Vector3
 var _dead: bool = false
 var _mesh: MeshInstance3D
+var _hero_visual: Node3D
+var _anim_player: AnimationPlayer
+var _anim_tree: AnimationTree
+var _hero_talking := false
+var _current_animation := ""
 var _suppress_build_place_once: bool = false
 
-const ZIEMEK_GLB := preload("res://data/models/heroes/ziemek.glb")
-const GNIEWSKO_GLB := preload("res://data/models/heroes/gniewko.glb")
+const ZIEMEK_GLB := preload("res://data/models/kenney/toon_characters/Models/GLB format/character-male-a.glb")
+const GNIEWSKO_GLB := preload("res://data/models/kenney/toon_characters/Models/GLB format/character-female-a.glb")
 
 
 func setup(p: SandboxPlayerProfile) -> void:
@@ -69,6 +75,8 @@ func _ready() -> void:
 		hero.position.y = -0.88
 		hero.rotation.y = PI
 		add_child(hero)
+		_hero_visual = hero
+		_setup_hero_animation(hero)
 		_add_profile_accent(hero, col)
 	else:
 		# A visible fallback preserves playability if a platform import is missing.
@@ -89,6 +97,15 @@ func _ready() -> void:
 	_aim.name = "Aim"
 	_aim.top_level = true
 	add_child(_aim)
+	_spring_arm = SpringArm3D.new()
+	_spring_arm.name = "CameraSpringArm"
+	_spring_arm.spring_length = tuning.cam_distance
+	_spring_arm.margin = tuning.cam_collision_margin
+	_spring_arm.collision_mask = Layers.SOLID_WORLD | Layers.CAMERA_OCCLUDER
+	var arm_shape := SphereShape3D.new()
+	arm_shape.radius = 0.18
+	_spring_arm.shape = arm_shape
+	_aim.add_child(_spring_arm)
 
 	_hold_point = Node3D.new()
 	_hold_point.name = "HoldPoint"
@@ -132,6 +149,93 @@ func _ready() -> void:
 		profile.aim = _aim
 
 
+func _setup_hero_animation(hero: Node3D) -> void:
+	_anim_player = hero.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if _anim_player == null:
+		_anim_player = AnimationPlayer.new()
+		_anim_player.name = "AnimationPlayer"
+		hero.add_child(_anim_player)
+	_create_procedural_hero_clips()
+	_anim_tree = AnimationTree.new()
+	_anim_tree.name = "AnimationTree"
+	_anim_tree.anim_player = NodePath("../AnimationPlayer")
+	var state_machine := AnimationNodeStateMachine.new()
+	for state_name in ["Idle", "Walk", "Jump", "Talk"]:
+		var state := AnimationNodeAnimation.new()
+		state.animation = state_name
+		state_machine.add_node(state_name, state)
+	for pair in [["Idle", "Walk"], ["Walk", "Idle"], ["Idle", "Jump"], ["Walk", "Jump"],
+		["Jump", "Idle"], ["Jump", "Walk"], ["Idle", "Talk"], ["Talk", "Idle"],
+		["Walk", "Talk"], ["Talk", "Walk"]]:
+		state_machine.add_transition(pair[0], pair[1], AnimationNodeStateMachineTransition.new())
+	_anim_tree.tree_root = state_machine
+	hero.add_child(_anim_tree)
+	_anim_tree.active = true
+	_play_hero_animation("Idle")
+
+
+func _create_procedural_hero_clips() -> void:
+	var library := _anim_player.get_animation_library("") if _anim_player.has_animation_library("") else AnimationLibrary.new()
+	for clip_name in ["Idle", "Walk", "Jump", "Talk"]:
+		if _anim_player.has_animation(clip_name):
+			continue
+		var clip := Animation.new()
+		clip.length = 0.8 if clip_name == "Walk" else 1.0
+		clip.loop_mode = Animation.LOOP_LINEAR
+		var position_track := clip.add_track(Animation.TYPE_VALUE)
+		clip.track_set_path(position_track, NodePath(".:position"))
+		var base := Vector3(0.0, 0.0, 0.0)
+		if clip_name == "Idle":
+			clip.track_insert_key(position_track, 0.0, base)
+			clip.track_insert_key(position_track, 0.5, base + Vector3(0.0, 0.025, 0.0))
+			clip.track_insert_key(position_track, 1.0, base)
+		elif clip_name == "Walk":
+			clip.track_insert_key(position_track, 0.0, base)
+			clip.track_insert_key(position_track, 0.2, base + Vector3(0.0, 0.07, 0.0))
+			clip.track_insert_key(position_track, 0.4, base)
+			clip.track_insert_key(position_track, 0.6, base + Vector3(0.07, 0.035, 0.0))
+			clip.track_insert_key(position_track, 0.8, base)
+		elif clip_name == "Jump":
+			clip.loop_mode = Animation.LOOP_NONE
+			clip.track_insert_key(position_track, 0.0, base)
+			clip.track_insert_key(position_track, 0.25, base + Vector3(0.0, 0.12, 0.0))
+			clip.track_insert_key(position_track, 0.7, base)
+		else:
+			clip.track_insert_key(position_track, 0.0, base)
+			clip.track_insert_key(position_track, 0.35, base + Vector3(0.0, 0.04, 0.0))
+			clip.track_insert_key(position_track, 0.7, base)
+		library.add_animation(clip_name, clip)
+	if not _anim_player.has_animation_library(""):
+		_anim_player.add_animation_library("", library)
+
+
+func _play_hero_animation(animation_name: String) -> void:
+	if _anim_tree != null and _anim_tree.active:
+		var playback := _anim_tree.get("parameters/playback") as AnimationNodeStateMachinePlayback
+		if playback != null and playback.get_current_node() != animation_name:
+			playback.travel(animation_name)
+		_current_animation = animation_name
+		return
+	if _anim_player == null or not _anim_player.has_animation(animation_name):
+		return
+	if _current_animation == animation_name and _anim_player.is_playing():
+		return
+	_anim_player.play(animation_name)
+	_current_animation = animation_name
+
+
+func set_talking(talking: bool) -> void:
+	_hero_talking = talking
+	if talking:
+		_play_hero_animation("Talk")
+
+
+func _hero_animation_state(walking: bool) -> String:
+	if _hero_talking:
+		return "Talk"
+	return "Walk" if walking else "Idle"
+
+
 func _add_profile_accent(hero: Node3D, colour: Color) -> void:
 	# Keep each imported hero recognizable in split-screen without replacing its authored materials.
 	var accent := MeshInstance3D.new()
@@ -172,15 +276,27 @@ func attach_camera(cam: Camera3D) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Mouse look belongs to the keyboard player only.
+	handle_mouse_input(event)
+
+
+func _input(event: InputEvent) -> void:
+	# GameplayRuntime routes sandbox mouse events from the root viewport. Keep
+	# this hook for direct scene use and editor/test dispatches.
+	handle_mouse_input(event)
+
+
+func handle_mouse_input(event: InputEvent) -> void:
 	if device != MultiplayerInputSystem.KEYBOARD_DEVICE:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED and event.pressed:
 			_suppress_build_place_once = true
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 		return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	# Accept relative motion even when macOS leaves the cursor visible. The
+	# captured path remains preferred, but a visible cursor must not make the
+	# playable camera appear frozen.
+	if event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
 		_yaw -= mm.relative.x * tuning.look_speed_mouse
 		_pitch = clampf(_pitch - mm.relative.y * tuning.look_speed_mouse,
@@ -204,6 +320,7 @@ func _physics_process(delta: float) -> void:
 		velocity += get_gravity() * delta
 	if mp.is_action_just_pressed(device, &"jump") and is_on_floor():
 		velocity.y = tuning.jump_velocity
+		_play_hero_animation("Jump")
 
 	var stick := mp.get_vector(device, &"move_left", &"move_right", &"move_fwd", &"move_back")
 	# Movement is relative to the LOOK yaw, which is now a real value rather
@@ -219,6 +336,7 @@ func _physics_process(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, atan2(-wish.x, -wish.z), 12.0 * delta)
 
 	move_and_slide()
+	_play_hero_animation(_hero_animation_state(wish.length_squared() > 0.01))
 	_update_aim_and_camera(delta)
 	_handle_build(mp, suppress_build_place)
 	_handle_grab(mp, delta)
@@ -246,20 +364,12 @@ func _update_aim_and_camera(delta: float) -> void:
 	if not is_instance_valid(_cam) or not _cam.is_inside_tree():
 		return
 
-	var back := _aim.global_transform.basis.z
-	var wanted := _aim.global_position + back * tuning.cam_distance \
-		+ Vector3.UP * tuning.cam_height
-
-	# Spring arm: keep the camera out of geometry. Backing into a corner used to
-	# put the camera inside the wall and show the world's backfaces.
-	var space := get_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(_aim.global_position, wanted)
-	q.collision_mask = Layers.SOLID_WORLD | Layers.CAMERA_OCCLUDER
-	q.exclude = [get_rid()]
-	var hit := space.intersect_ray(q)
-	if not hit.is_empty():
-		var n: Vector3 = hit.get("normal", Vector3.UP)
-		wanted = (hit["position"] as Vector3) + n * tuning.cam_collision_margin
+	# Native SpringArm3D performs a swept collision test, which handles corners
+	# and props more reliably than the old single ray. The camera remains in its
+	# pane viewport; the arm is the authoritative collision probe in the world.
+	_spring_arm.global_position = _aim.global_position + Vector3.UP * tuning.cam_height
+	_spring_arm.global_rotation = _aim.global_rotation
+	var wanted := _spring_arm.global_position + _spring_arm.global_transform.basis.z * _spring_arm.get_hit_length()
 
 	# Framerate-independent smoothing via half-life. A freshly attached camera
 	# snaps to the target instead of lerping from the origin.
@@ -269,7 +379,9 @@ func _update_aim_and_camera(delta: float) -> void:
 	else:
 		var t := 1.0 - pow(0.5, delta / maxf(0.0001, tuning.cam_smoothing_halflife))
 		_cam.global_position = _cam.global_position.lerp(wanted, t)
-	_cam.look_at(_aim.global_position, Vector3.UP)
+	var look_vector := _aim.global_position - _cam.global_position
+	if look_vector.length_squared() > 0.0001 and absf(look_vector.normalized().dot(Vector3.UP)) < 0.999:
+		_cam.look_at(_aim.global_position, Vector3.UP)
 
 
 func aim_origin() -> Vector3:

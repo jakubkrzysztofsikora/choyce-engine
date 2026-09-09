@@ -100,7 +100,8 @@ func register_block(scene: PackedScene) -> bool:
 
 	var id := placeable.block_id
 	if _scenes.has(id):
-		push_warning("BuildSystem: duplicate block_id '%s' ignored" % id)
+		# Palette registration is intentionally idempotent because a sandbox can be
+		# relaunched in the same process while the autoload remains alive.
 		probe.queue_free()
 		return false
 

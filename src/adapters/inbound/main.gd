@@ -9,6 +9,7 @@ const FilesystemSessionProgressStoreAdapter = preload("res://src/adapters/outbou
 const FilesystemSandboxStoreClass = preload("res://src/adapters/outbound/filesystem_sandbox_store.gd")
 const SandboxPersistenceServiceClass = preload("res://src/application/sandbox_persistence_service.gd")
 const TestBridgeAdapterClass = preload("res://src/adapters/outbound/test_bridge_adapter.gd")
+const ElevenLabsVoicePromptAdapterClass = preload("res://src/adapters/outbound/elevenlabs_voice_prompt_adapter.gd")
 
 # VS-016: Preload evidence capture classes
 const ScreenshotCaptureClass = preload("res://src/adapters/outbound/evidence/screenshot_capture.gd")
@@ -43,12 +44,16 @@ const KEY_PROGRESSION := "manage_progression"
 const KEY_CLONE := "clone_world"
 const KEY_REMIX := "remix_world"
 const KEY_SESSION_PROGRESS_STORE := "session_progress_store"
+const KEY_VOICE_PROMPT := "voice_prompt"
 const ENV_PROFILE_ROLE := "CHOYCE_PROFILE_ROLE"
 const ENV_PROFILE_ID := "CHOYCE_PROFILE_ID"
 const ENV_PROFILE_NAME := "CHOYCE_PROFILE_NAME"
 const ENV_FAMILY_ID := "CHOYCE_FAMILY_ID"
 const ENV_CLASSROOM_ID := "CHOYCE_CLASSROOM_ID"
 const ENV_DEBUG_TEST_BRIDGE := "CHOYCE_DEBUG_TEST_BRIDGE"
+const ENV_DEBUG_BRIDGE_PORT := "CHOYCE_DEBUG_BRIDGE_PORT"
+const ENV_ELEVENLABS_API_KEY := "ELEVENLABS_API_KEY"
+const ENV_ELEVENLABS_VOICE_ID := "ELEVENLABS_VOICE_ID"
 
 ## Phase 8d: emitted when deferred (heavy I/O) adapters have finished initialising.
 ## Inbound shells gate voice/AI input until this signal fires.
@@ -338,7 +343,11 @@ func _setup_debug_test_bridge() -> void:
 	if _feature_flags == null or not _feature_flags.is_enabled("debug_test_bridge"):
 		return
 	var bridge := TestBridgeAdapterClass.new()
-	bridge.setup(_feature_flags)
+	var port := TestBridgeAdapter.DEFAULT_PORT
+	var port_text := OS.get_environment(ENV_DEBUG_BRIDGE_PORT).strip_edges()
+	if not port_text.is_empty() and port_text.is_valid_int():
+		port = maxi(1, int(port_text))
+	bridge.setup(_feature_flags, port)
 	if bridge.start():
 		add_child(bridge)
 		_test_bridge = bridge
@@ -373,6 +382,14 @@ func _ensure_runtime_composition() -> void:
 		_localization_policy = PolishLocalizationPolicy.new()
 	if _ports == null:
 		_ports = {}
+	if not _ports.has(KEY_VOICE_PROMPT) or _ports[KEY_VOICE_PROMPT] == null:
+		# One optional adapter is shared by Create and Play. With no key it is a
+		# deliberate captions-only port, so offline startup never depends on TTS.
+		_ports[KEY_VOICE_PROMPT] = ElevenLabsVoicePromptAdapterClass.new().setup(
+			self,
+			OS.get_environment(ENV_ELEVENLABS_API_KEY),
+			OS.get_environment(ENV_ELEVENLABS_VOICE_ID)
+		)
 
 	var defaults := _build_default_ports()
 	for key in defaults.keys():
@@ -1224,7 +1241,8 @@ func _wire_shell_dependencies() -> void:
 		_ports.get(KEY_REQUEST_AI_HELP_PORT, null),
 		_ports.get(KEY_SPEECH_TO_TEXT_PORT, null),
 		_feature_flags,
-		_phase1_event_bus
+		_phase1_event_bus,
+		_ports.get(KEY_VOICE_PROMPT, null)
 	)
 	_play_shell.setup(
 		_navigator,
@@ -1237,7 +1255,8 @@ func _wire_shell_dependencies() -> void:
 				return _create_shell.get_active_world()
 			return null,
 		_llm_port,
-		_phase1_moderation
+		_phase1_moderation,
+		_ports.get(KEY_VOICE_PROMPT, null)
 	)
 	if not _play_shell.gameplay_runtime_created.is_connected(_on_play_shell_gameplay_runtime_created):
 		_play_shell.gameplay_runtime_created.connect(_on_play_shell_gameplay_runtime_created)

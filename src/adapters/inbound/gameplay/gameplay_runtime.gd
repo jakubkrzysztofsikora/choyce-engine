@@ -42,6 +42,9 @@ var _sandbox_kit_stage: Node = null
 var _sandbox_kit_bridge: SandboxKitBridge = null
 var _sandbox_kit_event_bus: DomainEventBus = null
 var _sandbox_kit_persistence: SandboxPersistenceService = null
+var _sandbox_objective_step := 0
+var _sandbox_objective_ribbon: HBoxContainer = null
+var _sandbox_objective_icons: Array[TextureRect] = []
 # Kid-safe presets; main.gd raises them for parent sessions. Single source of
 # truth lives on BuildSystem.DEFAULT_KID_BLOCK_BUDGET (also referenced by
 # SandboxKitBridge for the policy guard) so the two callers cannot drift.
@@ -154,6 +157,8 @@ var _vehicle_spawner: VehicleSpawner = null
 var _destruction_tracker: DestructionTracker = null
 var _active_vehicle: VehicleBase = null
 var _adventure_music_state := ""
+var _sandbox_slice_repaired := false
+var _sandbox_slice_reward_claimed := false
 var _next_adventure_music_rotation_sec := 0.0
 const ADVENTURE_MUSIC_ROTATION_SECONDS := {
 	"explore": 75.0,
@@ -232,6 +237,9 @@ var _interaction_prompt_icon: TextureRect = null
 var _sandbox_hint_panel: PanelContainer = null
 var _nearby_world_interactable: Node3D = null
 var _interaction_feedback_until: float = 0.0
+var _last_interaction_action := ""
+var _action_feedback_layer: CanvasLayer = null
+var _action_feedback_icon: TextureRect = null
 const SILLY_FART_REACTION_RANGE := 10.0
 ## A reaction is a tiny social beat, not a crowd of voices competing at once.
 ## Every nearby NPC gets an immediate world-space response. Spoken turns then
@@ -599,6 +607,8 @@ func start_session(world: World, session: Session, sandbox_state: SandboxState =
 	var terrain_probe_generation := _terrain_collision_probe_generation
 	_session = session
 	_score = 0
+	_sandbox_slice_repaired = false
+	_sandbox_slice_reward_claimed = false
 	_session_elapsed_sec = 0.0
 	_outcome_emitted = false
 	_last_goal_check_ratio = 0.0
@@ -1823,6 +1833,9 @@ const _NPC_VOICE_ID_BY_NPC_ID := {
 ## Lazily build a single shared dialogue label at the bottom-center.
 ## Kept on the HUD CanvasLayer so it sits above 3D geometry.
 func _show_npc_dialogue(name_pl: String, line_pl: String, speak_line: bool = true) -> void:
+	if _player_controller != null and _player_controller.has_method("set_talking"):
+		_player_controller.set_talking(true)
+	_set_sandbox_players_talking(true)
 	if _npc_dialogue_label == null:
 		_npc_dialogue_label = _build_npc_dialogue_label()
 	if _npc_dialogue_label == null:
@@ -1912,6 +1925,7 @@ func _cancel_active_npc_voice() -> void:
 		_npc_voice.cancel()
 	if _local_npc_voice != null:
 		_local_npc_voice.stop()
+		_local_npc_voice.stream = null
 	_local_npc_voice_line = ""
 	_local_npc_voice_request_id = -1
 
@@ -1941,6 +1955,9 @@ func _animate_npc_speech(
 
 
 func _hide_npc_dialogue() -> void:
+	if _player_controller != null and _player_controller.has_method("set_talking"):
+		_player_controller.set_talking(false)
+	_set_sandbox_players_talking(false)
 	if _npc_dialogue_label != null:
 		_npc_dialogue_label.visible = false
 	if _npc_dialogue_panel != null:
@@ -1949,9 +1966,22 @@ func _hide_npc_dialogue() -> void:
 		_player_controller.set_input_disabled(false)
 
 
+func _set_sandbox_players_talking(talking: bool) -> void:
+	if not _sandbox_kit_active:
+		return
+	var registry := PlayerRegistrySystem.instance
+	if registry == null or not registry.has_method("profiles"):
+		return
+	for profile in registry.profiles():
+		var body := profile.body if profile != null else null
+		if body != null and is_instance_valid(body) and body.has_method("set_talking"):
+			body.set_talking(talking)
+
+
 func _build_npc_dialogue_label() -> Label:
 	var hud := get_node_or_null("HUD")
-	if hud == null:
+	var dialogue_parent: Node = hud if hud != null else get_node_or_null("SandboxKitOverlay")
+	if dialogue_parent == null:
 		return null
 	var panel := PanelContainer.new()
 	panel.name = "NPCDialogue"
@@ -1963,7 +1993,7 @@ func _build_npc_dialogue_label() -> Label:
 		panel.offset_top = -160
 	panel.offset_right = -280
 	panel.offset_bottom = -90
-	hud.add_child(panel)
+	dialogue_parent.add_child(panel)
 	_npc_dialogue_panel = panel
 	# The conversation composer is an interaction surface, not a permanent HUD
 	# element.  A visible empty panel at boot read as a developer chat overlay
@@ -2108,6 +2138,22 @@ func _commit_inventory(inventory: Dictionary, changed_item_id: String = "") -> v
 		if not changed_item_id.is_empty():
 			_rules_runtime.on_event("inventory_changed", {"item": changed_item_id})
 	_refresh_inventory_panel(inventory)
+
+
+func reset_sandbox_slice_state() -> void:
+	# Reset is intentionally explicit and reversible: it clears only the local
+	# opening-slice progression while leaving the authored world composition intact.
+	_commit_inventory({}, "reset")
+	_score = 0
+	_current_weapon_index = 0
+	_sandbox_slice_repaired = false
+	_sandbox_slice_reward_claimed = false
+	_sandbox_state = null
+	if _rules_runtime != null:
+		_rules_runtime.reset()
+	if _player_controller != null and _sandbox_kit_stage != null:
+		_player_controller.global_position = _sandbox_kit_stage.spawn_origin
+	_spawn_sandbox_slice_enemy()
 
 
 func _add_inventory_item(item_id: String, amount: int = 1) -> void:
@@ -3654,6 +3700,28 @@ func _build_hud() -> void:
 	prompt_content.add_child(_interaction_prompt_label)
 	hud.add_child(_interaction_prompt_panel)
 	_build_sandbox_fart_hint(hud)
+	_build_action_feedback(hud)
+
+
+func _build_action_feedback(hud: CanvasLayer) -> void:
+	_action_feedback_layer = hud
+	var panel := PanelContainer.new()
+	panel.name = "ActionFeedback"
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.position = Vector2(-48, -48)
+	panel.size = Vector2(96, 96)
+	panel.pivot_offset = Vector2(48, 48)
+	panel.visible = false
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.98, 0.72, 0.24), 0.92))
+	_action_feedback_icon = TextureRect.new()
+	_action_feedback_icon.name = "ActionIcon"
+	_action_feedback_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_action_feedback_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_action_feedback_icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 12.0)
+	_action_feedback_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(_action_feedback_icon)
+	hud.add_child(panel)
 
 
 ## A single playful discovery hint makes the optional G-key gag findable.
@@ -3732,6 +3800,7 @@ func _activate_world_interaction() -> bool:
 	if _nearby_world_interactable == null or not is_instance_valid(_nearby_world_interactable):
 		return false
 	var action := String(_nearby_world_interactable.get_meta("interaction_action", ""))
+	_last_interaction_action = action
 	match action:
 		"door":
 			_world_renderer.toggle_door(_nearby_world_interactable)
@@ -3753,7 +3822,25 @@ func _activate_world_interaction() -> bool:
 			_gather_world_resource(_nearby_world_interactable)
 		"find_food":
 			_collect_food_item(_nearby_world_interactable)
+		"repair_house":
+			_sandbox_slice_repaired = true
+			_sandbox_objective_step = maxi(_sandbox_objective_step, 3)
+			_refresh_sandbox_objective_ribbon()
+			_score += 25
+			_interaction_feedback("Dom naprawiony! Ozdób go po swojemu.")
+		"claim_reward":
+			if _sandbox_slice_repaired and not _sandbox_slice_reward_claimed:
+				_sandbox_slice_reward_claimed = true
+				_sandbox_objective_step = 4
+				_refresh_sandbox_objective_ribbon()
+				_score += 50
+				_add_inventory_item("meal", 1)
+				_interaction_feedback("Nagroda odebrana!")
+			else:
+				_interaction_feedback("Najpierw napraw dom.")
 		"train_jump", "train_run", "train_climb", "train_push", "train_pull", "train_balance":
+			_sandbox_objective_step = maxi(_sandbox_objective_step, 2)
+			_refresh_sandbox_objective_ribbon()
 			_start_training_session(_nearby_world_interactable)
 		_:
 			return false
@@ -3766,7 +3853,34 @@ func _interaction_feedback(message: String, action: String = "") -> void:
 	_interaction_prompt_label.text = message
 	if not action.is_empty() and _interaction_prompt_icon != null:
 		_interaction_prompt_icon.texture = _interaction_texture_for(action)
-	_interaction_feedback_until = 1.8
+		_interaction_feedback_until = 1.8
+	var feedback_action := action if not action.is_empty() else _last_interaction_action
+	_show_action_feedback(feedback_action)
+	if _sfx_player != null:
+		_sfx_player.play("collect")
+	if _screen_feedback != null:
+		_screen_feedback.flash(Color(1.0, 0.82, 0.28, 1.0), 0.10)
+		_screen_feedback.shake(2.0, 0.08)
+
+
+func _show_action_feedback(action: String) -> void:
+	if _action_feedback_layer == null or _action_feedback_icon == null:
+		return
+	_action_feedback_icon.texture = _interaction_texture_for(action)
+	var panel := _action_feedback_icon.get_parent() as PanelContainer
+	if panel == null:
+		return
+	panel.visible = true
+	panel.modulate = Color.WHITE
+	panel.scale = Vector2(0.55, 0.55)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(panel, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(panel, "modulate:a", 0.0, 0.55).set_delay(0.32)
+	tween.chain().tween_callback(func() -> void:
+		panel.visible = false
+		panel.modulate = Color.WHITE
+	)
 
 
 func _interaction_texture_for(action: String) -> Texture2D:
@@ -3862,6 +3976,7 @@ func _start_training_session(anchor: Node3D) -> void:
 
 	## Start training via TrainingManager
 	_training_manager.start_training(training_type, anchor)
+	_interaction_feedback("Ćwiczenie rozpoczęte!", String(anchor.get_meta("interaction_action", "train_jump")))
 	_interaction_prompt_panel.visible = false
 	_interaction_feedback_until = 0.0
 	_nearby_world_interactable = null
@@ -3873,6 +3988,7 @@ func _gather_world_resource(anchor: Node3D, actor: PlayerController = _player_co
 	var item_id := String(anchor.get_meta("resource_item_id", ""))
 	if item_id.is_empty():
 		return
+	var resource_action := String(anchor.get_meta("resource_action", ""))
 	var inventory := _get_inventory()
 	inventory[item_id] = int(inventory.get(item_id, 0)) + 1
 	_commit_inventory(inventory, item_id)
@@ -3880,8 +3996,7 @@ func _gather_world_resource(anchor: Node3D, actor: PlayerController = _player_co
 		_rules_runtime.on_event("collect_%s" % item_id, {})
 	_try_auto_upgrade_weapon(inventory, actor)
 	if _audio_bus != null:
-		var action := String(anchor.get_meta("resource_action", ""))
-		var tool_sfx := "tool_axe_wood" if action == "gather_wood" else "tool_pickaxe_stone"
+		var tool_sfx := "tool_axe_wood" if resource_action == "gather_wood" else "tool_pickaxe_stone"
 		_audio_bus.emit_sfx(tool_sfx, anchor.global_position)
 		_audio_bus.emit_sfx("collect", anchor.global_position)
 	if _effect_spawner != null:
@@ -3892,8 +4007,10 @@ func _gather_world_resource(anchor: Node3D, actor: PlayerController = _player_co
 	anchor.remove_from_group("world_interactable")
 	if _nearby_world_interactable == anchor:
 		_nearby_world_interactable = null
-	anchor.queue_free()
-	_interaction_feedback("Zebrano!")
+		anchor.queue_free()
+	_interaction_feedback("Zebrano!", resource_action)
+	_sandbox_objective_step = maxi(_sandbox_objective_step, 1)
+	_refresh_sandbox_objective_ribbon()
 
 
 func _craft_home_meal() -> void:
@@ -3914,6 +4031,8 @@ func _craft_home_meal() -> void:
 		health.is_alive = true
 		_player_controller.hp_changed.emit(health.current_hp, health.max_hp)
 	_interaction_feedback("Ugotowano posiłek! +20 zdrowia")
+	_sandbox_objective_step = maxi(_sandbox_objective_step, 2)
+	_refresh_sandbox_objective_ribbon()
 
 
 func _hud_panel_style(accent: Color, alpha: float) -> StyleBoxFlat:
@@ -4317,9 +4436,11 @@ func _start_sandbox_kit_session(world: World, session: Session, sandbox_state: S
 	stage.level_scene = SANDBOX_KIT_LEVEL_SCENE
 	stage.player_scene = SANDBOX_KIT_PLAYER_SCENE
 	stage.graphics_profile = SANDBOX_KIT_GRAPHICS_PROFILE as GraphicsProfile
+	stage.spawn_origin = Vector3(0.0, 0.0, -23.0)
 	add_child(stage)
 	_sandbox_kit_stage = stage
 	_sandbox_kit_active = true
+	_sandbox_objective_step = 0
 
 	_sandbox_kit_bridge = SandboxKitBridge.new()
 	_sandbox_kit_bridge.name = "SandboxKitBridge"
@@ -4330,6 +4451,7 @@ func _start_sandbox_kit_session(world: World, session: Session, sandbox_state: S
 	apply_sandbox_kit_safety_policy(_sandbox_kit_max_players, _sandbox_kit_max_blocks, true)
 
 	_join_kit_players(session)
+	_spawn_sandbox_slice_enemy()
 	# One progression store in the sandbox too: the village gym built by
 	# sandbox_level gets the shared TrainingStats, so its InteractableComponent
 	# workouts feed the same entity the HUD/body systems read.
@@ -4337,6 +4459,7 @@ func _start_sandbox_kit_session(world: World, session: Session, sandbox_state: S
 	if village_gym != null and _training_manager != null and village_gym.has_method("setup"):
 		village_gym.setup(_training_manager.get_training_stats_entity())
 	_build_sandbox_kit_overlay()
+	_build_sandbox_kit_feedback_hud()
 
 	# sandbox_level._ready registers the palette synchronously during add_child,
 	# so a deferred restore is safe immediately after the stage mount.
@@ -4364,9 +4487,30 @@ func _join_kit_players(session: Session) -> void:
 		reg.join(pads[i - 1])
 
 
+func _spawn_sandbox_slice_enemy() -> void:
+	if _player_controller == null or not _is_combat_allowed():
+		return
+	if _enemy_root != null and is_instance_valid(_enemy_root):
+		_enemy_root.queue_free()
+	_enemy_root = Node3D.new()
+	_enemy_root.name = "SandboxSliceTrainingTarget"
+	add_child(_enemy_root)
+	var target := EnemyController.new()
+	target.name = "TrainingTarget"
+	target.add_to_group("enemies")
+	target.setup(EnemyDefinition.slime_green(), _player_controller)
+	target.defeated.connect(_on_enemy_defeated)
+	target.damaged_with_amount.connect(_on_enemy_damaged)
+	_enemy_root.add_child(target)
+	target.global_position = _player_controller.global_position + Vector3(0.0, 0.4, -7.0)
+
+
 ## The kit stage renders per-pane HUDs; this shared overlay makes its active
 ## mechanics and applied presentation visible before a child starts playing.
 func _build_sandbox_kit_overlay() -> void:
+	# Re-entry rebuilds the overlay; never retain TextureRect references from a
+	# previous, already-freed session.
+	_sandbox_objective_icons.clear()
 	var layer := CanvasLayer.new()
 	layer.name = "SandboxKitOverlay"
 	layer.layer = 60
@@ -4388,12 +4532,34 @@ func _build_sandbox_kit_overlay() -> void:
 	btn.pressed.connect(end_session)
 	bar.add_child(btn)
 
-	var ribbon := Label.new()
+	var ribbon := HBoxContainer.new()
 	ribbon.name = "ModeRibbon"
-	ribbon.text = "PIASKOWNICA  |  Buduj  |  Chwyć  |  Rzuć"
+	_sandbox_objective_ribbon = ribbon
+	ribbon.add_theme_constant_override("separation", 6)
 	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ribbon.position = Vector2(20, 20)
 	layer.add_child(ribbon)
+	var objective_icons: Array[Texture2D] = [HUD_ICON_AXE, HUD_ICON_WORKBENCH, HUD_ICON_STAR, HUD_ICON_HAMMER, HUD_ICON_CAMP]
+	var objective_names := ["Zbierz", "Zrob", "Pocwicz", "Napraw", "Odbierz"]
+	for index in objective_icons.size():
+		var icon := TextureRect.new()
+		icon.name = "ObjectiveIcon%d" % index
+		icon.texture = objective_icons[index]
+		icon.custom_minimum_size = Vector2(46, 46)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.tooltip_text = objective_names[index]
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ribbon.add_child(icon)
+		_sandbox_objective_icons.append(icon)
+		if index < objective_icons.size() - 1:
+			var arrow := Label.new()
+			arrow.text = ">"
+			arrow.add_theme_font_size_override("font_size", 24)
+			arrow.add_theme_color_override("font_color", Color(1.0, 0.88, 0.46, 0.8))
+			arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			ribbon.add_child(arrow)
+	_refresh_sandbox_objective_ribbon()
 
 	var quality := Label.new()
 	quality.name = "QualityLabel"
@@ -4404,6 +4570,54 @@ func _build_sandbox_kit_overlay() -> void:
 	var reg := PlayerRegistrySystem.instance
 	if reg != null and not reg.roster_changed.is_connected(_refresh_sandbox_kit_quality_label):
 		reg.roster_changed.connect(_refresh_sandbox_kit_quality_label)
+
+
+## The Kit uses split-screen panes and therefore skips the full Adventure HUD.
+## Keep the interaction affordance global and image-led so collect/craft/training
+## actions still produce an immediate visual response in the real play route.
+func _build_sandbox_kit_feedback_hud() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "SandboxKitFeedbackHUD"
+	layer.layer = 65
+	add_child(layer)
+	_build_action_feedback(layer)
+
+	_interaction_prompt_panel = PanelContainer.new()
+	_interaction_prompt_panel.name = "InteractionPrompt"
+	_interaction_prompt_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_interaction_prompt_panel.offset_left = -58
+	_interaction_prompt_panel.offset_top = -178
+	_interaction_prompt_panel.offset_right = 58
+	_interaction_prompt_panel.offset_bottom = -70
+	_interaction_prompt_panel.visible = false
+	_interaction_prompt_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_interaction_prompt_panel.add_theme_stylebox_override("panel", _hud_panel_style(Color(0.22, 0.64, 0.42), 0.78))
+	var content := Control.new()
+	content.custom_minimum_size = Vector2(116, 108)
+	_interaction_prompt_panel.add_child(content)
+	var backdrop := TextureRect.new()
+	backdrop.name = "InteractionActionBackdrop"
+	backdrop.texture = HUD_ACTION_GREEN
+	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	backdrop.position = Vector2(19, 12)
+	backdrop.size = Vector2(78, 78)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(backdrop)
+	_interaction_prompt_icon = TextureRect.new()
+	_interaction_prompt_icon.name = "InteractionIcon"
+	_interaction_prompt_icon.texture = HUD_ICON_AXE
+	_interaction_prompt_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_interaction_prompt_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_interaction_prompt_icon.position = Vector2(33, 26)
+	_interaction_prompt_icon.size = Vector2(50, 50)
+	_interaction_prompt_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(_interaction_prompt_icon)
+	_interaction_prompt_label = Label.new()
+	_interaction_prompt_label.name = "InteractionPromptLabel"
+	_interaction_prompt_label.visible = false
+	content.add_child(_interaction_prompt_label)
+	layer.add_child(_interaction_prompt_panel)
 
 
 func _sandbox_kit_quality_text() -> String:
@@ -4420,6 +4634,15 @@ func _refresh_sandbox_kit_quality_label() -> void:
 	if quality != null:
 		quality.text = _sandbox_kit_quality_text()
 
+func _refresh_sandbox_objective_ribbon() -> void:
+	if _sandbox_objective_ribbon == null:
+		return
+	var steps := ["ZBIERZ", "ZROB", "POCWICZ", "NAPRAW", "ODBIERZ"]
+	for index in _sandbox_objective_icons.size():
+		var icon := _sandbox_objective_icons[index]
+		icon.modulate = Color.WHITE if index == _sandbox_objective_step else Color(0.52, 0.58, 0.62, 0.72)
+		icon.tooltip_text = ("> " if index == _sandbox_objective_step else "") + steps[index]
+
 
 func _deferred_restore_sandbox_kit_state() -> void:
 	if not _sandbox_kit_active or _sandbox_kit_bridge == null:
@@ -4432,6 +4655,10 @@ func _deferred_restore_sandbox_kit_state() -> void:
 ## VS-026 parity: snapshot BEFORE teardown wipes the chunk grid.
 func _end_sandbox_kit_session() -> void:
 	_evidence_session_token += 1
+	_cancel_active_npc_voice()
+	var audio_bank := get_node_or_null("/root/AudioBank")
+	if audio_bank != null and audio_bank.has_method("stop_music"):
+		audio_bank.call("stop_music", false)
 	_sandbox_state = null
 	if _sandbox_kit_bridge != null:
 		_sandbox_state = _sandbox_kit_bridge.snapshot_state()
@@ -4473,8 +4700,15 @@ func _teardown_sandbox_kit_stage() -> void:
 		_sandbox_kit_stage.queue_free()
 		_sandbox_kit_stage = null
 	for child in get_children():
-		if child is CanvasLayer and child.name == "SandboxKitOverlay":
+		if child is CanvasLayer and child.name in ["SandboxKitOverlay", "SandboxKitFeedbackHUD"]:
 			child.queue_free()
+	_interaction_prompt_panel = null
+	_interaction_prompt_label = null
+	_interaction_prompt_icon = null
+	_action_feedback_layer = null
+	_action_feedback_icon = null
+	_sandbox_objective_icons.clear()
+	_sandbox_objective_ribbon = null
 	_sandbox_kit_active = false
 
 
@@ -4488,6 +4722,11 @@ func _set_standard_stage_enabled(enabled: bool) -> void:
 		node.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
 
 func _input(event: InputEvent) -> void:
+	if _sandbox_kit_active and (event is InputEventMouseMotion or event is InputEventMouseButton):
+		var sandbox_stage := _sandbox_kit_stage as SplitScreenManager
+		if sandbox_stage != null:
+			sandbox_stage.route_mouse_input(event)
+		return
 	# Once the child explicitly focuses the composer, the player controller is
 	# already disabled via _on_npc_dialogue_input_focus_entered, so movement and
 	# interaction keys cannot leak into the world. Do NOT call
@@ -4525,13 +4764,13 @@ func _input(event: InputEvent) -> void:
 		return
 	if Input.is_action_pressed("ui_cancel"):
 		if _sandbox_kit_active:
-			# Kit overrides: ESC first releases the captured cursor so the
-			# Wróć button is reachable; ESC again ends the session. Without
-			# this the kid has no exit path while the camera keeps the mouse.
-			if Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE:
-				end_session()
-			else:
+			# ESC only toggles cursor capture. Session exit stays explicit through
+			# the visible Wróć button, so a child cannot accidentally leave the
+			# playable world while recovering mouse control.
+			if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 				Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+			else:
+				Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 			get_viewport().set_input_as_handled()
 			return
 		# ESC only ever TOGGLES the mouse cursor — it never ends the

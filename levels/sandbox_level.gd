@@ -10,15 +10,18 @@ extends Node3D
 @export var style: StyleGuide
 
 const _SEED := 20260810
-const MEADOW_ALBEDO: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Color.jpg")
+const MEADOW_ALBEDO: Texture2D = preload("res://data/textures/generated/forest-meadow-ground-v1.png")
 const MEADOW_NORMAL: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_NormalGL.jpg")
 const MEADOW_ROUGHNESS: Texture2D = preload("res://data/textures/pbr/ground003/Ground003_1K-JPG_Roughness.jpg")
+const FOREST_CANOPY_ALBEDO: Texture2D = preload("res://data/textures/generated/forest-canopy-stylized-v2.png")
 const VILLAGE := "res://data/models/quaternius/medieval_village/"
 const NATURE := "res://data/models/quaternius/nature/"
 const NATURE_KIT := "res://data/models/kenney/nature_kit/GLB/"
 const SURVIVAL_KIT := "res://data/models/kenney/survival_kit/Models/GLB format/"
 const GYM_SPAWNER_3D := preload("res://src/adapters/inbound/gameplay/gym_spawner_3d.gd")
 const HOMESTEAD_SPAWNER_3D := preload("res://src/adapters/inbound/gameplay/homestead_spawner_3d.gd")
+const AUTHORED_RENDERER := preload("res://src/adapters/inbound/gameplay/world_renderer.gd")
+const SANDBOX_COMPANION := preload("res://src/adapters/inbound/gameplay/sandbox_companion.gd")
 const ADVENTURE_WATER_SHADER: Shader = preload("res://src/adapters/inbound/gameplay/shaders/adventure_water.gdshader")
 const WATER_DUDV: Texture2D = preload("res://data/textures/water/simplewater_dudv.png")
 const NPC_MODELS := [
@@ -39,7 +42,6 @@ func _ready() -> void:
 	_build_environment()
 	_build_ground()
 	var village_land := _build_village_land()
-	_build_starter_clearing(village_land)
 	_build_village_gym(village_land)
 	_build_homestead_edge(village_land)
 	_build_pond(village_land)
@@ -58,48 +60,7 @@ func _wire_systems() -> void:
 
 
 func _build_environment() -> void:
-	var we := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	var proc := ProceduralSkyMaterial.new()
-	proc.sky_top_color = Color("#3fa9ff")
-	proc.sky_horizon_color = Color("#cfeaff")
-	proc.ground_bottom_color = Color("#4a7a3f")
-	proc.ground_horizon_color = Color("#cfeaff")
-	sky.sky_material = proc
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_sky_contribution = 1.0
-
-	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	env.tonemap_exposure = 1.05
-	env.glow_enabled = true
-	env.glow_intensity = 0.55
-	env.glow_bloom = 0.08
-	env.glow_hdr_threshold = 1.1
-	env.ssao_enabled = true
-	env.ssao_intensity = 1.6
-	env.fog_enabled = true
-	env.fog_light_color = Color("#bfe3ff")
-	env.fog_density = 0.006
-	env.fog_sky_affect = 0.0
-
-	we.environment = env
-	add_child(we)
-
-	var sun := DirectionalLight3D.new()
-	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-48, -35, 0)
-	sun.light_energy = 1.5
-	sun.light_color = Color("#fff3d6")
-	sun.shadow_enabled = true
-	# Cascade count is the highest-leverage split-screen knob (Spike A: 4 views
-	# produced 10.8x the primitives at identical total pixels). GraphicsProfile
-	# drives this at runtime; the value here is only the 1-player default.
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
-	sun.directional_shadow_max_distance = 120.0
-	add_child(sun)
+	WorldRenderer.apply_sandbox_environment(self)
 
 
 func _build_ground() -> void:
@@ -128,6 +89,9 @@ func _build_ground() -> void:
 	mat.normal_enabled = true
 	mat.normal_texture = MEADOW_NORMAL
 	mat.roughness_texture = MEADOW_ROUGHNESS
+	mat.roughness = 0.9
+	# Repeat the ground detail at a play-scale frequency; the former broad
+	# tiling read as a single flat green surface from the opening camera.
 	mat.uv1_scale = Vector3(18.0, 18.0, 1.0)
 	mi.material_override = mat
 	ground.add_child(mi)
@@ -141,7 +105,7 @@ func _build_ground() -> void:
 		var dir := Vector3(cos(angle), 0, sin(angle))
 		var wcol := CollisionShape3D.new()
 		var wbox := BoxShape3D.new()
-		wbox.size = Vector3(half * 2.0, 4.0, 1.0)
+		wbox.size = Vector3(1.0, 4.0, half * 2.0)
 		wcol.shape = wbox
 		wall.add_child(wcol)
 		wall.position = dir * half
@@ -152,42 +116,86 @@ func _build_ground() -> void:
 ## A compact Choyce countryside: real imported houses and trees compose the
 ## Kit's shared World3D without changing its build, grab, or persistence APIs.
 func _build_village_land() -> Node3D:
-	var land := Node3D.new()
-	land.name = "VillageLand"
+	# Reuse the Adventure renderer's authored opening instead of rebuilding raw
+	# wall panels and unshaded prop fragments here. Sandbox-specific systems still
+	# add their own interaction nodes below this shared presentation root.
+	var land: Node3D = AUTHORED_RENDERER.new()
+	land.name = "AuthoredVillagePresentation"
 	add_child(land)
 	var meadow := get_node_or_null("Ground/TexturedMeadow") as MeshInstance3D
 	if meadow != null:
 		meadow.reparent(land)
-
-	var houses := Node3D.new()
-	houses.name = "VillageHouses"
-	land.add_child(houses)
-	_build_house(houses, "WillowCottage", Vector3(-13.0, 0.0, -16.0), 0.0)
-	_build_house(houses, "MarketHouse", Vector3(14.0, 0.0, -19.0), PI)
-	_build_house(houses, "HillCottage", Vector3(24.0, 0.0, 11.0), -PI * 0.5)
-
-	var woodland := Node3D.new()
-	woodland.name = "Woodland"
-	land.add_child(woodland)
-	var trees := ["CommonTree_4.fbx", "CommonTree_1.fbx", "BirchTree_1.fbx", "PineTree_1.fbx"]
-	var tree_positions := [
-		Vector3(-42, 0, -38), Vector3(-33, 0, -29), Vector3(-46, 0, -12),
-		Vector3(-38, 0, 15), Vector3(-48, 0, 31), Vector3(-25, 0, 36),
-		Vector3(38, 0, -37), Vector3(47, 0, -25), Vector3(40, 0, -8),
-		Vector3(46, 0, 14), Vector3(37, 0, 30), Vector3(18, 0, 39),
-		Vector3(-5, 0, 43), Vector3(-18, 0, 34), Vector3(30, 0, -31),
-	]
-	for index in tree_positions.size():
-		_add_imported_visual(woodland, "Tree%02d" % index, NATURE + trees[index % trees.size()],
-			tree_positions[index], Vector3.ONE, float(index % 4) * 0.7)
+	land.build_sandbox_opening()
+	_build_opening_slice_content(land)
+	_build_navigation_slice()
 
 	var npcs := Node3D.new()
 	npcs.name = "FriendlyNPCs"
 	land.add_child(npcs)
-	_build_friendly_npc(npcs, "Hania", Vector3(-3.4, 0.0, -4.7), 0)
-	_build_friendly_npc(npcs, "Bartek", Vector3(3.3, 0.0, -4.9), 1)
-	_build_friendly_npc(npcs, "Lena", Vector3(5.8, 0.0, -3.4), 2)
+	_build_friendly_npc(npcs, "Hania", Vector3(-2.4, 0.0, -27.0), 0)
+	_build_friendly_npc(npcs, "Bartek", Vector3(3.6, 0.0, -31.5), 1)
+	_build_friendly_npc(npcs, "Lena", Vector3(15.0, 0.0, -29.0), 2)
 	return land
+
+
+func _build_opening_slice_content(land: Node3D) -> void:
+	# Keep the first resource actions inside the authored opening instead of
+	# sending the player hundreds of metres into the Adventure world.
+	var wood: Node3D = land.add_sandbox_visual_asset("OpeningSliceWoodVisual",
+		Vector3(2.0, 0.0, -19.0), Vector3.ONE * 1.35, 0.25,
+		"res://data/models/quaternius/nature/WoodLog_Moss.fbx", true,
+		Vector3(1.8, 0.9, 1.2))
+	var wood_anchor: Area3D = land.add_sandbox_interaction_anchor("OpeningSliceWood",
+		Vector3(2.0, 0.35, -19.0), "E  Zbierz drewno", "gather_wood")
+	wood_anchor.set_meta("resource_item_id", "wood_oak")
+	wood_anchor.set_meta("resource_action", "gather_wood")
+	wood_anchor.set_meta("resource_visual", wood)
+	wood_anchor.set_meta("slice_role", "wood")
+	for index in range(2):
+		var wood_position := Vector3(3.5 + float(index), 0.0, -18.0)
+		var extra_wood: Node3D = land.add_sandbox_visual_asset("OpeningSliceWoodVisual%d" % index,
+			wood_position, Vector3.ONE * 1.1, -0.2, "res://data/models/quaternius/nature/WoodLog_Moss.fbx",
+			true, Vector3(1.5, 0.8, 1.0))
+		var extra_anchor: Area3D = land.add_sandbox_interaction_anchor("OpeningSliceWood%d" % index,
+			wood_position + Vector3(0.0, 0.35, 0.0), "E  Zbierz drewno", "gather_wood")
+		extra_anchor.set_meta("resource_item_id", "wood_oak")
+		extra_anchor.set_meta("resource_action", "gather_wood")
+		extra_anchor.set_meta("resource_visual", extra_wood)
+		extra_anchor.set_meta("slice_role", "wood")
+
+	var stone: Node3D = land.add_sandbox_visual_asset("OpeningSliceStoneVisual",
+		Vector3(10.0, 0.0, -19.0), Vector3.ONE * 1.15, -0.2,
+		"res://data/models/quaternius/nature/Rock_Moss_4.fbx", true,
+		Vector3(1.4, 1.0, 1.4))
+	var stone_anchor: Area3D = land.add_sandbox_interaction_anchor("OpeningSliceStone",
+		Vector3(10.0, 0.35, -19.0), "E  Wydobądź kamień", "gather_stone")
+	stone_anchor.set_meta("resource_item_id", "ore_iron")
+	stone_anchor.set_meta("resource_action", "gather_stone")
+	stone_anchor.set_meta("resource_visual", stone)
+	stone_anchor.set_meta("slice_role", "stone")
+
+	var repair_anchor: Area3D = land.add_sandbox_interaction_anchor("OpeningSliceHouseRepair",
+		Vector3(6.0, 0.35, -27.0), "E  Napraw dom", "repair_house")
+	repair_anchor.set_meta("slice_role", "repair")
+	var reward_anchor: Area3D = land.add_sandbox_interaction_anchor("OpeningSliceReward",
+		Vector3(6.0, 0.35, -31.0), "E  Odbierz nagrodę", "claim_reward")
+	reward_anchor.set_meta("slice_role", "reward")
+
+
+func _build_navigation_slice() -> void:
+	# A small explicit navigation surface gives agents and future NPC motion a
+	# stable contract without requiring Terrain3D baking for the first slice.
+	var region := NavigationRegion3D.new()
+	region.name = "OpeningSliceNavigationRegion"
+	region.add_to_group("navigation_region")
+	var mesh := NavigationMesh.new()
+	mesh.vertices = PackedVector3Array([
+		Vector3(-32.0, 0.02, -52.0), Vector3(32.0, 0.02, -52.0),
+		Vector3(32.0, 0.02, 4.0), Vector3(-32.0, 0.02, 4.0),
+	])
+	mesh.add_polygon(PackedInt32Array([0, 1, 2, 3]))
+	region.navigation_mesh = mesh
+	add_child(region)
 
 
 func _build_starter_clearing(land: Node3D) -> void:
@@ -298,12 +306,15 @@ func _build_house(parent: Node3D, house_name: String, center: Vector3, rotation_
 
 
 func _build_friendly_npc(parent: Node3D, npc_name: String, npc_position: Vector3, model_index: int) -> void:
-	var npc := StaticBody3D.new()
+	var npc := SANDBOX_COMPANION.new()
 	npc.name = npc_name
 	npc.position = npc_position
 	npc.collision_layer = Layers.NPC_BODY
+	npc.target_position = Vector3(6.0, 0.0, -23.0)
 	parent.add_child(npc)
-	_add_imported_visual(npc, "CharacterVisual", NPC_MODELS[model_index], Vector3(0, -0.1, 0), Vector3.ONE * 0.92, PI)
+	var character_visual := _add_imported_visual(npc, "CharacterVisual", NPC_MODELS[model_index],
+		Vector3(0, -0.1, 0), Vector3.ONE * 0.92, PI)
+	_start_imported_idle_animation(character_visual)
 	var collision := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.28
@@ -324,6 +335,28 @@ func _build_friendly_npc(parent: Node3D, npc_name: String, npc_position: Vector3
 	label.pixel_size = 0.004
 	label.outline_size = 4
 	npc.add_child(label)
+	var navigation_agent := NavigationAgent3D.new()
+	navigation_agent.name = "GuideNavigationAgent"
+	navigation_agent.add_to_group("navigation_agent")
+	navigation_agent.path_height_offset = 0.0
+	navigation_agent.target_position = npc.target_position
+	npc.add_child(navigation_agent)
+	npc.navigation_agent = navigation_agent
+
+
+func _start_imported_idle_animation(root: Node3D) -> void:
+	if root == null:
+		return
+	var animator := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if animator == null:
+		return
+	for animation_name in ["idle", "Idle", "static"]:
+		if not animator.has_animation(animation_name):
+			continue
+		var animation := animator.get_animation(animation_name)
+		animation.loop_mode = Animation.LOOP_LINEAR
+		animator.play(animation_name)
+		return
 
 
 ## --- Village gym: real GLB equipment, trained through sandbox components ----
@@ -342,8 +375,9 @@ func _build_village_gym(land: Node3D) -> void:
 	var gym: Node3D = GYM_SPAWNER_3D.new()
 	gym.name = "VillageGym"
 	land.add_child(gym)
-	# North edge of the meadow: clear of the houses, path and clearing.
-	gym.spawn_gym(Vector3(0.0, 0.0, -38.0))
+	# Keep the training compound in the west meadow so the authored house and
+	# bridge remain the opening focal point.
+	gym.spawn_gym(Vector3(-34.0, 0.0, -26.0))
 	_gym_spawner = gym
 	for area in gym.find_children("TrainArea_*", "Area3D", true, false):
 		_wire_gym_station(area as Area3D)
@@ -491,7 +525,19 @@ func _add_imported_visual(parent: Node3D, node_name: String, path: String, visua
 	visual.rotation.y = rotation_y
 	parent.add_child(visual)
 	_apply_village_materials(visual, _fallback_colour_for_visual(node_name))
+	if node_name.to_lower().contains("tree") or node_name.to_lower().contains("grove"):
+		_apply_tree_texture_fallback(visual)
 	return visual
+
+
+func _apply_tree_texture_fallback(root: Node) -> void:
+	for node in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		var material := mesh.material_override as StandardMaterial3D
+		if material == null or material.albedo_texture != null:
+			continue
+		material.albedo_texture = FOREST_CANOPY_ALBEDO
+		material.uv1_scale = Vector3(2.5, 2.5, 2.5)
 
 
 func _apply_village_materials(root: Node, fallback: Color) -> void:
@@ -503,11 +549,26 @@ func _apply_village_materials(root: Node, fallback: Color) -> void:
 
 func _apply_village_material_to_mesh(mesh: MeshInstance3D, fallback: Color) -> void:
 	var source_mesh := mesh.mesh
-	if source_mesh != null:
-		for surface_index in source_mesh.get_surface_count():
-			var source := mesh.get_active_material(surface_index) as StandardMaterial3D
-			if source != null and source.albedo_texture != null:
-				return
+	if source_mesh == null:
+		return
+	var has_textured_surface := false
+	var missing_surface_indices: Array[int] = []
+	for surface_index in source_mesh.get_surface_count():
+		var source := mesh.get_active_material(surface_index) as StandardMaterial3D
+		if source != null and source.albedo_texture != null:
+			has_textured_surface = true
+		elif source == null:
+			missing_surface_indices.append(surface_index)
+	# Preserve authored textured surfaces, but never leave an imported material slot
+	# null: Forward+ and the dummy renderer both query every surface during capture.
+	if not missing_surface_indices.is_empty():
+		for surface_index in missing_surface_indices:
+			var rescue := StandardMaterial3D.new()
+			rescue.albedo_color = fallback
+			rescue.roughness = 0.78
+			mesh.set_surface_override_material(surface_index, rescue)
+	if has_textured_surface:
+		return
 	var material := StandardMaterial3D.new()
 	material.albedo_color = fallback
 	material.roughness = 0.78

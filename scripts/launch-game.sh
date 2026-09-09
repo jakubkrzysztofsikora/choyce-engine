@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-## Direct-launch the Choyce Engine with the freshest compiled binary and the
-## project's main scene. Use this when you just want to look at the launcher
-## without booting through the test harness or the autoplay env var.
+## Direct-launch the Choyce Engine with the authored sandbox kit as the
+## default playable demo. Use this when you want to inspect the launcher or
+## boot straight into the same route covered by the GPU feedback loop.
 ##
 ## Usage:  scripts/launch-game.sh             # open the launcher
-##         scripts/launch-game.sh --solo      # autoplay solo straight in
-##         scripts/launch-game.sh --coop      # autoplay co-op straight in
+##         scripts/launch-game.sh --solo      # autoplay sandbox solo
+##         scripts/launch-game.sh --coop      # autoplay sandbox co-op
 ##         scripts/launch-game.sh --rebuild   # wipe import cache, re-import, then launch
 set -euo pipefail
 
@@ -22,10 +22,10 @@ fi
 
 case "${1:-}" in
   --solo)
-    export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_adventure}"
+    export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_sandbox_kit}"
     ;;
   --coop)
-    export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_adventure}"
+    export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_sandbox_kit}"
     export CHOYCE_FORCE_COOP=1
     ;;
   --rebuild)
@@ -33,7 +33,7 @@ case "${1:-}" in
     ;;
   --rebuild-solo)
     "$REPO_ROOT/scripts/rebuild-game.sh"
-    export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_adventure}"
+    export CHOYCE_AUTOPLAY="${CHOYCE_AUTOPLAY_OVERRIDE:-local_kid_1_starter_sandbox_kit}"
     ;;
   --help|-h)
     sed -n '2,8p' "$0"
@@ -48,4 +48,3 @@ case "${1:-}" in
 esac
 
 exec "$GODOT_BIN" --path "$REPO_ROOT"
-

@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Thin, repository-owned entry point for the GPU feedback loop. The existing
+# Godot bridge remains the runtime adapter; this command gives agents one
+# stable contract and one evidence directory regardless of local Godot path.
+
+if [[ "${1:-}" != "run" || -z "${2:-}" ]]; then
+  echo "usage: ./tools/playtest run opening_slice [--gpu] [--resolution WxH] [--seed N] [--capture-frame] [--capture-state] [--probe-collisions] [--probe-navigation] [--input FILE]" >&2
+  exit 2
+fi
+
+SCENARIO="$2"
+shift 2
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "$SCENARIO" != "opening_slice" ]]; then
+  echo "unknown scenario: $SCENARIO" >&2
+  exit 2
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --gpu|--capture-frame|--capture-state|--probe-collisions|--probe-navigation)
+      shift
+      ;;
+    --resolution|--seed|--input)
+      [[ $# -ge 2 ]] || { echo "missing value for $1" >&2; exit 2; }
+      shift 2
+      ;;
+    --resolution=*|--seed=*|--input=*)
+      shift
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -f "${REPO_ROOT}/tests/scenarios/opening_slice.yaml" ]]; then
+  :
+else
+  echo "missing scenario contract: tests/scenarios/opening_slice.yaml" >&2
+  exit 1
+fi
+
+GODOT_BIN="${CHOYCE_GODOT_BIN:-}"
+if [[ -z "$GODOT_BIN" ]]; then
+  GODOT_BIN="$(command -v godot4 || command -v godot || true)"
+fi
+if [[ -z "$GODOT_BIN" || ! -x "$GODOT_BIN" ]]; then
+  echo "Cannot find Godot 4. Set CHOYCE_GODOT_BIN." >&2
+  exit 127
+fi
+
+RUN_ID="$(date +%Y%m%d-%H%M%S)"
+EVIDENCE_DIR="${CHOYCE_FEEDBACK_DIR:-${REPO_ROOT}/.ai/local-feedback/opening-slice-${RUN_ID}}"
+mkdir -p "$EVIDENCE_DIR"
+
+CHOYCE_FEEDBACK_DIR="$EVIDENCE_DIR" \
+  CHOYCE_FEEDBACK_SCENARIO="$SCENARIO" \
+  "${REPO_ROOT}/scripts/dev/run-sandbox-feedback-loop.sh" \
+  >"${EVIDENCE_DIR}/playtest.log" 2>&1
+
+# The live bridge loop proves the opening interactions. The existing play
+# observation then proves teardown, persistence, and deterministic relaunch in
+# the same evidence directory.
+"$GODOT_BIN" --headless --path "$REPO_ROOT" --script \
+  tests/play/run_play_observation.gd >"${EVIDENCE_DIR}/replay.log" 2>&1
+if ! rg -q '11_relaunch_state_restores' "${EVIDENCE_DIR}/replay.log"; then
+  echo "replay contract failed; see ${EVIDENCE_DIR}/replay.log" >&2
+  exit 1
+fi
+
+STATE="${EVIDENCE_DIR}/04_opening_loop_state.json"
+if [[ ! -s "$STATE" ]]; then
+  echo "missing final runtime state: $STATE" >&2
+  exit 1
+fi
+
+if ! jq -e '
+  .runtime.sandbox_active == true and
+  .runtime.session_active == true and
+  (.runtime.players | length) >= 1 and
+  .runtime.players[0].collision.shape_count >= 1 and
+  (.runtime.probes.interactables | length) >= 1 and
+  .runtime.dialogue_visible == true and
+  (.runtime.weapon_tier // 0) >= 1 and
+  .runtime.slice_repaired == true and
+  .runtime.slice_reward_claimed == true and
+  (.runtime.enemies_alive // 0) == 0 and
+  (.runtime.probes.navigation.reachable == true) and
+  (.runtime.probes.materials.missing_surfaces // 0) == 0 and
+  (.save.inventory.meal // 0) >= 1
+' "$STATE" >/dev/null; then
+  echo "opening_slice probe contract failed: player collision or interactables missing" >&2
+  jq '.runtime | {sandbox_active, session_active, players, probes}' "$STATE" >&2
+  exit 1
+fi
+
+cp "$STATE" "${EVIDENCE_DIR}/runtime-probes.json"
+printf '%s\n' "opening_slice PASS" "evidence: ${EVIDENCE_DIR}" "runtime-probes: ${EVIDENCE_DIR}/runtime-probes.json"

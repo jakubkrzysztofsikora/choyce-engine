@@ -14,6 +14,7 @@ extends Control
 @export var level_scene: PackedScene
 @export var player_scene: PackedScene
 @export var spawn_radius: float = 6.0
+@export var spawn_origin: Vector3 = Vector3.ZERO
 ## Quality tiers by player count. Spike A showed shadow cascades, not
 ## resolution, are the lever that matters here.
 @export var graphics_profile: GraphicsProfile
@@ -26,6 +27,20 @@ var grid: GridContainer
 var level: Node3D
 
 var _panes: Dictionary = {}  # player_id -> SubViewportContainer
+
+
+func route_mouse_input(event: InputEvent) -> void:
+	# The world host is a non-rendering SubViewport, so it is not a reliable
+	# input target. GameplayRuntime calls this from the root viewport instead.
+	var registry := PlayerRegistrySystem.instance
+	if registry == null:
+		return
+	for profile in registry.profiles():
+		if profile.device_id != MultiplayerInputSystem.KEYBOARD_DEVICE:
+			continue
+		if is_instance_valid(profile.body) and profile.body.has_method("handle_mouse_input"):
+			profile.body.handle_mouse_input(event)
+		return
 
 
 func _ready() -> void:
@@ -85,7 +100,7 @@ func _spawn_body(profile: SandboxPlayerProfile) -> void:
 		return
 	var body := player_scene.instantiate()
 	var angle := TAU * float(profile.player_id) / float(PlayerRegistrySystem.MAX_PLAYERS)
-	body.position = Vector3(cos(angle) * spawn_radius, 2.0, sin(angle) * spawn_radius)
+	body.position = spawn_origin + Vector3(cos(angle) * spawn_radius, 2.0, sin(angle) * spawn_radius)
 	# setup() BEFORE add_child(). add_child runs _ready synchronously, and the
 	# player's _ready reads profile/device to colour its mesh and to bind its
 	# input device. Setting up afterwards leaves every player white and on
@@ -132,7 +147,7 @@ func _rebuild_panes() -> void:
 
 		var cam := Camera3D.new()
 		cam.name = "Camera3D"
-		cam.fov = 70.0
+		cam.fov = 58.0
 		vp.add_child(cam)
 		cam.make_current()
 

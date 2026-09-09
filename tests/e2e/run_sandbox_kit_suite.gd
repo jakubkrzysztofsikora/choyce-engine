@@ -278,6 +278,20 @@ func _check_runtime_kit_session_flow() -> void:
 	_check(runtime._world_renderer.visible and
 		runtime._world_renderer.process_mode == Node.PROCESS_MODE_INHERIT,
 		"S4 adventure renderer restored for next session")
+
+	# Re-entry must rebuild image-led HUD controls without retaining freed
+	# TextureRect references from the previous Kit session.
+	runtime.start_session(world, Session.new("sess_kit_2", world.world_id), null)
+	await create_timer(0.3).timeout
+	var second_overlay := runtime.get_node_or_null("SandboxKitOverlay")
+	var second_ribbon := runtime.get("_sandbox_objective_icons") as Array
+	_check(runtime._sandbox_kit_active and second_overlay != null,
+		"S4 Kit can be re-entered after teardown")
+	_check(second_ribbon.size() == 5 and runtime.get_node_or_null("SandboxKitFeedbackHUD") != null,
+		"S4 re-entry rebuilds exactly five objective icons and feedback HUD")
+	runtime.end_session()
+	await process_frame
+	await process_frame
 	_check(runtime._sandbox_kit_stage == null or
 		not is_instance_valid(runtime._sandbox_kit_stage), "S4 stage freed")
 

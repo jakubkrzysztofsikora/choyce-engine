@@ -1,0 +1,22 @@
+name: opening_slice
+locale: pl-PL
+seed: 42
+objectives:
+  - talk_to_guide
+  - collect_wood_and_stone
+  - craft_simple_tool
+  - defeat_training_target
+  - repair_or_decorate_house
+  - receive_reward
+  - save_reset_replay
+probes:
+  - mouse_look_changes_camera_yaw
+  - escape_releases_capture_without_ending_session
+  - player_starts_grounded
+  - player_has_collision_proxy
+  - interactive_props_have_collision
+  - navigation_reaches_guide
+  - dialogue_works_offline
+  - crafting_is_atomic
+  - combat_has_visible_result
+  - save_reset_replay_is_deterministic

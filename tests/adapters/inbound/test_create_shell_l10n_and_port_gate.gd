@@ -36,7 +36,7 @@ class MockVoicePrompt extends VoicePromptPort:
 	var last_spoken_text: String = ""
 	var speak_call_count: int = 0
 
-	func speak(text: String, _locale: String = "pl-PL") -> void:
+	func speak(text: String, _locale: String = "pl-PL", _request_id: int = 0) -> void:
 		last_spoken_text = text
 		speak_call_count += 1
 
@@ -331,6 +331,8 @@ func _test_port_present_enables_tool_buttons() -> void:
 		shell.queue_free()
 		await process_frame
 		return
+	shell.emit_signal("ports_ready")
+	await process_frame
 	_assert(
 		btn.disabled == false,
 		"Place button enabled when _apply_world_edit_port is provided"

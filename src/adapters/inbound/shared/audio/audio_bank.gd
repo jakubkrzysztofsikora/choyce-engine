@@ -60,6 +60,7 @@ var _last_hover_msec: int = 0
 
 
 func _ready() -> void:
+	tree_exiting.connect(_release_runtime_audio)
 	# Set up buses synchronously. The previous one-frame await left this autoload
 	# half-initialized while LauncherOverlay was already asking it for music.
 	var bus_setup_scene := load("res://src/adapters/inbound/shared/audio/bus_setup.tscn") as PackedScene
@@ -67,6 +68,9 @@ func _ready() -> void:
 		_bus_setup = bus_setup_scene.instantiate()
 		if _bus_setup.has_method("setup_now"):
 			_bus_setup.call("setup_now")
+		# The helper is intentionally instantiated off-tree for synchronous setup;
+		# clear the native node explicitly instead of only dropping the reference.
+		_bus_setup.free()
 		_bus_setup = null
 	
 	_music_player = AudioStreamPlayer.new()
@@ -103,6 +107,30 @@ func _ready() -> void:
 		_melee_pool.append(melee)
 
 	_scan_voxel_phonk()
+
+
+func _release_runtime_audio() -> void:
+	# Autoloads outlive the gameplay scene in headless probes. Release cached
+	# streams and active players when the tree shuts down so an audit does not
+	# report a false-positive AudioStream leak.
+	for player in [_music_player, _music_player_secondary, _voice_player]:
+		if player != null:
+			player.stop()
+			player.stream = null
+	for player in _sfx_pool + _melee_pool:
+		if player != null:
+			player.stop()
+			player.stream = null
+	_voice_queue.clear()
+	_music_cache.clear()
+	_voice_cache.clear()
+	_sfx_cache.clear()
+
+
+## Test/host shutdown hook. The autoload normally lives for the whole desktop
+## process, while headless probes need an explicit release before quitting.
+func shutdown() -> void:
+	_release_runtime_audio()
 
 
 # ---------- public API ----------
@@ -379,6 +407,11 @@ func _load_sfx(sfx_name: String) -> AudioStream:
 	if _sfx_cache.has(sfx_name):
 		return _sfx_cache[sfx_name]
 	var path := SFX_DIR + sfx_name + ".mp3"
+	# The opening slice ships a physical punch take but no separate grunt. Use
+	# the same dry impact as an intentional local fallback instead of warning on
+	# every training-target hit.
+	if not ResourceLoader.exists(path) and sfx_name == "enemy_grunt":
+		path = SFX_DIR + "punch_thud.mp3"
 	var s: AudioStream = load(path) if ResourceLoader.exists(path) else null
 	if s == null:
 		push_warning("AudioBank: sfx not found — %s" % path)
